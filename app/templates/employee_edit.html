@@ -1,0 +1,166 @@
+{% extends "base.html" %}
+
+{% block content %}
+<a href="/" class="back-link">← К списку сотрудников</a>
+
+<div class="card" style="max-width: 860px;">
+    <h2>Редактировать сотрудника</h2>
+    <p class="muted">
+        Измените данные и нажмите «Сохранить». Флоу запланирован: {{ 'Да' if employee.is_flow_scheduled else 'Нет' }}.
+    </p>
+    <p class="muted">Стаж: {{ workdays }} раб. дн. Этап: {{ stage }}.</p>
+
+    <form method="post" action="/employees/{{ employee.id }}" class="form">
+        <label class="field">
+            <span>ФИО</span>
+            <input type="text" name="full_name" value="{{ employee.full_name or '' }}" placeholder="Иванов Иван Иванович">
+        </label>
+        <label class="field">
+            <span>Telegram user_id или @username</span>
+            <input type="text" name="telegram_user_id" value="{{ employee.telegram_user_id }}" placeholder="привяжется по /start в боте">
+        </label>
+        <label class="field">
+            <span>Дата первого рабочего дня</span>
+            <input type="date" name="first_workday" value="{{ employee.first_workday or '' }}">
+        </label>
+        <label class="field">
+            <span>Желаемая должность</span>
+            <input type="text" name="desired_position" value="{{ employee.desired_position or '' }}" placeholder="Product Manager">
+        </label>
+        <label class="field">
+            <span>Ожидания по зарплате</span>
+            <input type="text" name="salary_expectation" value="{{ employee.salary_expectation or '' }}" placeholder="250 000 - 300 000">
+        </label>
+        <label class="field">
+            <span>Статус кандидата</span>
+            <input type="text" name="candidate_status" value="{{ employee.candidate_status or '' }}" placeholder="new / invited / offer_sent">
+        </label>
+        <label class="field">
+            <span>Ссылка на тестовое задание</span>
+            <input type="text" name="test_task_link" value="{{ employee.test_task_link or '' }}" placeholder="https://...">
+        </label>
+        <label class="field">
+            <span>Дедлайн тестового задания</span>
+            <input type="datetime-local" name="test_task_due_at" value="{{ employee.test_task_due_at.strftime('%Y-%m-%dT%H:%M') if employee.test_task_due_at else '' }}">
+        </label>
+        <label class="field">
+            <span>Согласие на ПДн (кандидат)</span>
+            <select name="personal_data_consent">
+                <option value="false" {% if not employee.personal_data_consent %}selected{% endif %}>Нет</option>
+                <option value="true" {% if employee.personal_data_consent %}selected{% endif %}>Да</option>
+            </select>
+        </label>
+        <label class="field">
+            <span>Согласие на ПДн (сотрудник)</span>
+            <select name="employee_data_consent">
+                <option value="false" {% if not employee.employee_data_consent %}selected{% endif %}>Нет</option>
+                <option value="true" {% if employee.employee_data_consent %}selected{% endif %}>Да</option>
+            </select>
+        </label>
+        <label class="field">
+            <span>Заметки HR</span>
+            <textarea name="notes" rows="3" placeholder="Внутренние заметки">{{ employee.notes or '' }}</textarea>
+        </label>
+        <div class="form-actions">
+            <button type="submit" class="btn-primary">Сохранить</button>
+            <button type="button" class="btn-danger" onclick="if(confirm('Удалить этого сотрудника?')) { document.getElementById('delete-form').submit(); }">Удалить</button>
+        </div>
+    </form>
+
+    <hr style="margin: 20px 0; border: 0; border-top: 1px solid #e5e7eb;">
+
+    <h3>Файлы</h3>
+    <form method="post" action="/employees/{{ employee.id }}/files" class="form" enctype="multipart/form-data">
+        <label class="field">
+            <span>Категория</span>
+            <input type="text" name="category" value="hr_file" placeholder="offer / sign_docs / checklist">
+        </label>
+        <label class="field">
+            <span>Файл</span>
+            <input type="file" name="upload" required>
+        </label>
+        <label class="field">
+            <span>Сразу отправить в Telegram</span>
+            <select name="send_to_telegram">
+                <option value="false" selected>Нет</option>
+                <option value="true">Да</option>
+            </select>
+        </label>
+        <div class="form-actions">
+            <button type="submit" class="btn-primary">Загрузить файл</button>
+        </div>
+    </form>
+
+    {% if employee_files %}
+        <table class="table">
+            <thead>
+            <tr>
+                <th>ID</th>
+                <th>Тип</th>
+                <th>Категория</th>
+                <th>Имя файла</th>
+                <th>Дата</th>
+                <th></th>
+            </tr>
+            </thead>
+            <tbody>
+            {% for f in employee_files %}
+                <tr>
+                    <td>{{ f.id }}</td>
+                    <td>{{ f.direction }}</td>
+                    <td>{{ f.category }}</td>
+                    <td>{{ f.original_filename }}</td>
+                    <td>{{ f.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                    <td>
+                        <a class="btn-secondary" href="/employees/{{ employee.id }}/files/{{ f.id }}/download">Скачать</a>
+                        {% if employee.telegram_user_id %}
+                            <form method="post" action="/employees/{{ employee.id }}/files/{{ f.id }}/send" style="display:inline;">
+                                <button type="submit" class="btn-secondary">Отправить в Telegram</button>
+                            </form>
+                        {% endif %}
+                    </td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <p class="muted">Файлов пока нет.</p>
+    {% endif %}
+
+    <div class="form-actions" style="margin-top: 16px; flex-wrap: wrap; gap: 8px;">
+        <form method="post" action="/employees/{{ employee.id }}/launch">
+            <input type="hidden" name="flow_key" value="recruitment_hiring">
+            <button type="submit" class="btn-secondary">Запустить флоу подбора и найма</button>
+        </form>
+        <form method="post" action="/employees/{{ employee.id }}/launch">
+            <input type="hidden" name="flow_key" value="first_day">
+            <button type="submit" class="btn-secondary">Запустить флоу первого дня</button>
+        </form>
+        <form method="post" action="/employees/{{ employee.id }}/launch">
+            <input type="hidden" name="flow_key" value="first_week">
+            <button type="submit" class="btn-secondary">Запустить флоу конца первой недели</button>
+        </form>
+        <form method="post" action="/employees/{{ employee.id }}/launch">
+            <input type="hidden" name="flow_key" value="mid_probation">
+            <button type="submit" class="btn-secondary">Запустить флоу середины ИС</button>
+        </form>
+        <form method="post" action="/employees/{{ employee.id }}/launch">
+            <input type="hidden" name="flow_key" value="end_probation">
+            <button type="submit" class="btn-secondary">Запустить флоу завершения ИС</button>
+        </form>
+        <form method="post" action="/employees/{{ employee.id }}/launch">
+            <input type="hidden" name="flow_key" value="mid_feedback">
+            <button type="submit" class="btn-secondary">Отправить ОС от коллег (середина ИС)</button>
+        </form>
+        <form method="post" action="/employees/{{ employee.id }}/launch">
+            <input type="hidden" name="flow_key" value="end_feedback">
+            <button type="submit" class="btn-secondary">Отправить ОС от коллег (конец ИС)</button>
+        </form>
+        <form method="post" action="/employees/{{ employee.id }}/launch">
+            <input type="hidden" name="flow_key" value="end_summary">
+            <button type="submit" class="btn-secondary">Отправить итог ИС</button>
+        </form>
+    </div>
+    <form id="delete-form" method="post" action="/employees/{{ employee.id }}/delete" style="display: none;"></form>
+</div>
+{% endblock %}

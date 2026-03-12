@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card">
+    <h2>Редактирование флоу</h2>
+    <p class="muted">Изменяйте тексты шагов. Пустое поле — используется текст по умолчанию.</p>
+
+    {% for group in flow_steps|groupby("flow_key") %}
+        <h3 style="margin-top: 24px;">{{ group.grouper }}</h3>
+        {% for step in group.list %}
+            <form method="post" action="/flows/{{ step.id }}" class="form" style="margin-bottom: 16px;">
+                <label class="field">
+                    <span>{{ step.step_title }} ({{ step.step_key }})</span>
+                    <textarea name="custom_text" rows="3" placeholder="{{ step.default_text }}">{{ step.custom_text or '' }}</textarea>
+                </label>
+                <div class="form-actions">
+                    <button type="submit" class="btn-primary">Сохранить шаг</button>
+                </div>
+            </form>
+            <form method="post" action="/flows/{{ step.id }}/reset" style="margin-top: -8px; margin-bottom: 18px;">
+                <button type="submit" class="btn-secondary">Сбросить к умолчанию</button>
+            </form>
+        {% endfor %}
+    {% endfor %}
+</div>
+{% endblock %}

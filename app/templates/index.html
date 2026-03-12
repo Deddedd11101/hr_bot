@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section>
+    <div class="card">
+        <div class="employees-toolbar">
+            <button type="button" class="btn-primary" id="open-create-employee">Добавить сотрудника</button>
+        </div>
+        {% if employee_views %}
+            <table class="table">
+                <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>ФИО</th>
+                    <th>Telegram</th>
+                    <th>Первый рабочий день</th>
+                    <th>Стаж</th>
+                    <th>Этап</th>
+                    <th>Флоу запланирован</th>
+                    <th></th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for item in employee_views %}
+                    {% set emp = item.employee %}
+                    <tr>
+                        <td>{{ emp.id }}</td>
+                        <td>{{ emp.full_name or '—' }}</td>
+                        <td>{{ emp.telegram_user_id or '—' }}</td>
+                        <td>{{ emp.first_workday or '—' }}</td>
+                        <td>{{ item.workdays }} раб. дн.</td>
+                        <td>{{ item.stage }}</td>
+                        <td>
+                            {% if emp.is_flow_scheduled %}
+                                <span class="badge badge-success">Да</span>
+                            {% else %}
+                                <span class="badge badge-warning">Нет</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <a href="/employees/{{ emp.id }}/edit">Редактировать</a>
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        {% else %}
+            <p class="muted">Сотрудников пока нет. Нажмите «Добавить сотрудника».</p>
+        {% endif %}
+    </div>
+</section>
+
+<div class="modal-overlay" id="employee-modal" aria-hidden="true">
+    <div class="modal-card">
+        <div class="modal-header">
+            <h3>Новый сотрудник</h3>
+            <button type="button" class="modal-close" id="close-create-employee" aria-label="Закрыть">×</button>
+        </div>
+        <p class="muted">
+            Добавьте сотрудника, чтобы запустить флоу онбординга.
+            Все уведомления будут отправляться в его Telegram.
+        </p>
+        <form method="post" action="/employees" class="form">
+            <label class="field">
+                <span>ФИО</span>
+                <input type="text" name="full_name" placeholder="Можно заполнить позже">
+            </label>
+            <label class="field">
+                <span>Telegram user_id или @username</span>
+                <input type="text" name="telegram_user_id" placeholder="Можно заполнить позже">
+            </label>
+            <label class="field">
+                <span>Дата первого рабочего дня</span>
+                <input type="date" name="first_workday">
+            </label>
+            <button type="submit" class="btn-primary">Создать сотрудника</button>
+        </form>
+    </div>
+</div>
+
+<script>
+    (function () {
+        const openBtn = document.getElementById("open-create-employee");
+        const closeBtn = document.getElementById("close-create-employee");
+        const modal = document.getElementById("employee-modal");
+        if (!openBtn || !closeBtn || !modal) return;
+
+        const openModal = function () {
+            modal.classList.add("is-open");
+            modal.setAttribute("aria-hidden", "false");
+        };
+        const closeModal = function () {
+            modal.classList.remove("is-open");
+            modal.setAttribute("aria-hidden", "true");
+        };
+
+        openBtn.addEventListener("click", openModal);
+        closeBtn.addEventListener("click", closeModal);
+        modal.addEventListener("click", function (event) {
+            if (event.target === modal) closeModal();
+        });
+        document.addEventListener("keydown", function (event) {
+            if (event.key === "Escape") closeModal();
+        });
+    })();
+</script>
+{% endblock %}

@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card" style="max-width: 680px;">
+    <h2>Настройки</h2>
+    <p class="muted">
+        Данные HR-учётки. На указанный Telegram user_id бот отправляет оповещения о новых сотрудниках и этапах флоу.
+    </p>
+    <form method="post" action="/settings" class="form">
+        <label class="field">
+            <span>Имя HR</span>
+            <input type="text" name="hr_name" value="{{ hr_settings.hr_name or '' }}" placeholder="Иван Петров">
+        </label>
+        <label class="field">
+            <span>Telegram user_id HR</span>
+            <input type="text" name="telegram_user_id" value="{{ hr_settings.telegram_user_id or '' }}" placeholder="123456789">
+        </label>
+        <div class="form-actions">
+            <button type="submit" class="btn-primary">Сохранить настройки</button>
+        </div>
+    </form>
+</div>
+{% endblock %}
