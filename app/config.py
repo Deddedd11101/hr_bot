@@ -39,6 +39,15 @@ class Settings:
     # Локальное хранение файлов кандидатов/сотрудников
     FILE_STORAGE_DIR: str = os.getenv("FILE_STORAGE_DIR", "./storage/employee_files")
 
+    # Сессии админки
+    ADMIN_SESSION_SECRET: str = os.getenv("ADMIN_SESSION_SECRET", "change-me-admin-session-secret")
+
+    # Базовые аккаунты админки
+    DEFAULT_ADMIN_LOGIN: str = os.getenv("DEFAULT_ADMIN_LOGIN", "admin")
+    DEFAULT_ADMIN_PASSWORD: str = os.getenv("DEFAULT_ADMIN_PASSWORD", "admin123")
+    DEFAULT_HR_LOGIN: str = os.getenv("DEFAULT_HR_LOGIN", "hr")
+    DEFAULT_HR_PASSWORD: str = os.getenv("DEFAULT_HR_PASSWORD", "hr123")
+
 
 @lru_cache()
 def get_settings() -> Settings:

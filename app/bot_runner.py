@@ -3,91 +3,19 @@ from datetime import datetime
 from typing import Optional
 
 from aiogram import Bot, Dispatcher
-from aiogram.enums import ParseMode
 from aiogram.client.default import DefaultBotProperties
+from aiogram.enums import ParseMode
 from aiogram.filters import CommandStart
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import CallbackQuery, KeyboardButton, Message, ReplyKeyboardMarkup
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from .config import settings
-from .database import init_db, SessionLocal
-from .flow_templates import get_step_text
+from .database import SessionLocal, init_db
 from .file_storage import build_employee_file_path
-from .models import Employee, EmployeeFile
-from .notifications import notify_hr_new_employee, notify_hr_stage
-from .recruitment_flow import (
-    ASK_FULL_NAME_MESSAGE,
-    CALLBACK_CONSENT_NO,
-    CALLBACK_CONSENT_YES,
-    CALLBACK_ROLE_ANALYST,
-    CALLBACK_ROLE_DESIGNER,
-    CALLBACK_ROLE_PM,
-    CONSENT_DECLINED_MESSAGE,
-    CONSENT_MESSAGE,
-    STATUS_DECLINED,
-    STATUS_WAIT_FULL_NAME,
-    STATUS_PRIMARY_DONE,
-    STATUS_WAIT_POSITION,
-    STATUS_WAIT_RESUME,
-    STATUS_WAIT_SALARY,
-    STATUS_WAIT_CONSENT,
-    recruitment_consent_keyboard,
-    recruitment_role_keyboard,
-)
+from .models import BotMenuButton, BotMenuSet, Employee, EmployeeFile, HrSettings, ScenarioTemplate
+from .notifications import notify_hr_new_employee, notify_hr_test_task_received
+from .scenario_engine import CALLBACK_PREFIX, handle_button_response_by_step_id, handle_file_response, handle_text_response, start_scenario
 from .scheduler import schedule_all_employees
-
-
-async def on_start(message: Message) -> None:
-    """
-    Привязка Telegram‑пользователя к сотруднику + перезапуск флоу.
-
-    Логика:
-    - берём Telegram user_id из message.from_user.id;
-    - если сотрудник уже есть — перепривязываем и перепланируем флоу;
-    - если сотрудника нет — создаём черновик карточки в админке;
-    - сбрасываем флаг is_flow_scheduled = False, чтобы флоу был
-      заново запланирован планировщиком.
-    """
-    user = message.from_user
-    if not user:
-        await message.answer("Не удалось определить ваш Telegram ID. Попробуйте ещё раз.")
-        return
-
-    user_id_str = str(user.id)
-
-    with SessionLocal() as db:
-        employee = db.query(Employee).filter(Employee.telegram_user_id == user_id_str).first()
-
-        if employee:
-            employee.telegram_user_id = user_id_str
-            employee.is_flow_scheduled = False  # важно: дать планировщику повод перепланировать флоу
-            db.commit()
-            await message.answer(
-                "Привет! Я HR‑бот.\n"
-                "Я обновил привязку вашего Telegram и перепланировал уведомления.",
-            )
-            return
-
-        new_employee = Employee(
-            full_name=None,
-            telegram_user_id=user_id_str,
-            first_workday=None,
-            created_at=datetime.utcnow(),
-            is_flow_scheduled=False,
-            candidate_status=STATUS_WAIT_CONSENT,
-        )
-        db.add(new_employee)
-        db.commit()
-        db.refresh(new_employee)
-        try:
-            await notify_hr_new_employee(message.bot, new_employee)
-        except Exception:
-            pass
-
-    await message.answer(
-        get_step_text("recruitment_consent_request", CONSENT_MESSAGE),
-        reply_markup=recruitment_consent_keyboard(),
-    )
 
 
 def _detect_category_from_caption(caption: Optional[str]) -> str:
@@ -105,35 +33,189 @@ def _detect_category_from_caption(caption: Optional[str]) -> str:
     return "candidate_file"
 
 
+async def _start_registration_scenarios(bot: Bot, db, employee: Employee) -> None:
+    scenarios = (
+        db.query(ScenarioTemplate)
+        .filter(ScenarioTemplate.trigger_mode == "bot_registration")
+        .order_by(ScenarioTemplate.id)
+        .all()
+    )
+    for scenario in scenarios:
+        await start_scenario(bot, db, employee, scenario.scenario_key)
+
+
+def _telegram_username(user) -> Optional[str]:
+    username = getattr(user, "username", None)
+    return username.strip() if isinstance(username, str) and username.strip() else None
+
+
+def _default_menu_set(db) -> Optional[BotMenuSet]:
+    hr_settings = db.get(HrSettings, 1)
+    if hr_settings and hr_settings.default_menu_set_id:
+        return db.get(BotMenuSet, hr_settings.default_menu_set_id)
+    return (
+        db.query(BotMenuSet)
+        .order_by(BotMenuSet.sort_order, BotMenuSet.id)
+        .first()
+    )
+
+
+def _current_menu_set(db, employee: Employee) -> Optional[BotMenuSet]:
+    if employee.current_menu_set_id:
+        current_set = db.get(BotMenuSet, employee.current_menu_set_id)
+        if current_set:
+            return current_set
+    default_set = _default_menu_set(db)
+    if default_set:
+        employee.current_menu_set_id = default_set.id
+        db.commit()
+    return default_set
+
+
+def _menu_buttons(db, menu_set_id: int) -> list[BotMenuButton]:
+    return (
+        db.query(BotMenuButton)
+        .filter(BotMenuButton.menu_set_id == menu_set_id)
+        .order_by(BotMenuButton.sort_order, BotMenuButton.id)
+        .all()
+    )
+
+
+def _menu_keyboard(db, employee: Employee) -> Optional[ReplyKeyboardMarkup]:
+    menu_set = _current_menu_set(db, employee)
+    if not menu_set:
+        return None
+    buttons = [button for button in _menu_buttons(db, menu_set.id) if button.label.strip()]
+    if not buttons:
+        return None
+    return ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text=button.label)] for button in buttons],
+        resize_keyboard=True,
+    )
+
+
+async def _send_menu_keyboard(bot: Bot, db, employee: Employee, text: str) -> None:
+    if not employee.telegram_user_id:
+        return
+    keyboard = _menu_keyboard(db, employee)
+    if not keyboard:
+        return
+    await bot.send_message(chat_id=employee.telegram_user_id, text=text, reply_markup=keyboard)
+
+
+async def _handle_menu_button(bot: Bot, db, employee: Employee, text: str) -> bool:
+    menu_set = _current_menu_set(db, employee)
+    if not menu_set:
+        return False
+    button = (
+        db.query(BotMenuButton)
+        .filter(
+            BotMenuButton.menu_set_id == menu_set.id,
+            BotMenuButton.label == text.strip(),
+        )
+        .order_by(BotMenuButton.sort_order, BotMenuButton.id)
+        .first()
+    )
+    if not button:
+        return False
+
+    if button.action_type == "launch_scenario" and button.scenario_key:
+        scenario = (
+            db.query(ScenarioTemplate)
+            .filter(ScenarioTemplate.scenario_key == button.scenario_key)
+            .first()
+        )
+        if not scenario:
+            await _send_menu_keyboard(bot, db, employee, "Этот сценарий сейчас недоступен.")
+            return True
+        started = await start_scenario(bot, db, employee, scenario.scenario_key)
+        if not started:
+            await _send_menu_keyboard(bot, db, employee, "Не удалось запустить этот сценарий.")
+        return True
+
+    if button.action_type == "open_set" and button.target_menu_set_id:
+        target_set = db.get(BotMenuSet, button.target_menu_set_id)
+        if not target_set:
+            await _send_menu_keyboard(bot, db, employee, "Этот раздел меню сейчас недоступен.")
+            return True
+        employee.current_menu_set_id = target_set.id
+        db.commit()
+        await _send_menu_keyboard(bot, db, employee, target_set.description or f"Открыт раздел «{target_set.title}».")
+        return True
+
+    await _send_menu_keyboard(bot, db, employee, "Эта кнопка пока неактивна.")
+    return True
+
+
+async def on_start(message: Message) -> None:
+    user = message.from_user
+    if not user:
+        await message.answer("Не удалось определить ваш Telegram ID. Попробуйте ещё раз.")
+        return
+
+    user_id_str = str(user.id)
+    username = _telegram_username(user)
+    with SessionLocal() as db:
+        employee = db.query(Employee).filter(Employee.telegram_user_id == user_id_str).first()
+        if employee:
+            employee.telegram_user_id = user_id_str
+            employee.telegram_username = username
+            employee.is_flow_scheduled = False
+            db.commit()
+            await message.answer("Привет! Я HR-бот.\nЯ обновил привязку вашего Telegram и перепланировал уведомления.")
+            await _send_menu_keyboard(message.bot, db, employee, "Меню обновлено. Выберите действие.")
+            return
+
+        employee = Employee(
+            full_name=None,
+            telegram_user_id=user_id_str,
+            telegram_username=username,
+            first_workday=None,
+            created_at=datetime.utcnow(),
+            is_flow_scheduled=False,
+            candidate_status="new",
+        )
+        db.add(employee)
+        db.commit()
+        db.refresh(employee)
+        try:
+            await notify_hr_new_employee(message.bot, employee)
+        except Exception:
+            pass
+        await _start_registration_scenarios(message.bot, db, employee)
+        await _send_menu_keyboard(message.bot, db, employee, "Меню готово. Выберите действие.")
+
+
 async def on_document(message: Message, bot: Bot) -> None:
     document = message.document
     user = message.from_user
     if not document or not user:
         return
 
-    user_id_str = str(user.id)
     with SessionLocal() as db:
-        employee = db.query(Employee).filter(Employee.telegram_user_id == user_id_str).first()
+        username = _telegram_username(user)
+        employee = db.query(Employee).filter(Employee.telegram_user_id == str(user.id)).first()
         if not employee:
             employee = Employee(
                 full_name=None,
-                telegram_user_id=user_id_str,
+                telegram_user_id=str(user.id),
+                telegram_username=username,
                 first_workday=None,
                 created_at=datetime.utcnow(),
                 is_flow_scheduled=False,
-                candidate_status=STATUS_WAIT_CONSENT,
+                candidate_status="new",
             )
             db.add(employee)
-            db.flush()
+            db.commit()
+            db.refresh(employee)
             try:
                 await notify_hr_new_employee(bot, employee)
             except Exception:
                 pass
-            await bot.send_message(
-                chat_id=user_id_str,
-                text=get_step_text("recruitment_consent_request", CONSENT_MESSAGE),
-                reply_markup=recruitment_consent_keyboard(),
-            )
+            await _start_registration_scenarios(bot, db, employee)
+        elif employee.telegram_username != username:
+            employee.telegram_username = username
+            db.commit()
 
         file_info = await bot.get_file(document.file_id)
         original_name = document.file_name or f"{document.file_unique_id}.bin"
@@ -153,94 +235,20 @@ async def on_document(message: Message, bot: Bot) -> None:
             created_at=datetime.utcnow(),
         )
         db.add(db_file)
-
-        if employee.candidate_status == STATUS_WAIT_RESUME:
-            if db_file.category == "candidate_file":
-                db_file.category = "resume"
-            employee.candidate_status = STATUS_WAIT_SALARY
-            db.commit()
-            await message.answer(get_step_text("recruitment_ask_salary", "Какой уровень дохода для тебя комфортен? Можешь указать диапазон."))
-            return
-
-        if db_file.category == "resume" and not employee.candidate_status:
-            employee.candidate_status = STATUS_WAIT_SALARY
-
         db.commit()
+        db.refresh(db_file)
 
-    await message.answer(
-        "Файл получен и сохранён в вашей карточке. Если нужно, отправьте следующий документ.",
-    )
-
-
-async def on_recruitment_consent(callback: CallbackQuery) -> None:
-    user = callback.from_user
-    if not user:
-        return
-
-    with SessionLocal() as db:
-        employee = db.query(Employee).filter(Employee.telegram_user_id == str(user.id)).first()
-        if not employee:
-            await callback.answer("Карточка сотрудника не найдена.", show_alert=True)
-            return
-
-        if callback.data == CALLBACK_CONSENT_YES:
-            employee.personal_data_consent = True
-            employee.candidate_status = STATUS_WAIT_FULL_NAME
-            db.commit()
-            await callback.message.answer(
-                get_step_text("recruitment_ask_full_name", ASK_FULL_NAME_MESSAGE)
-            )
-            await callback.answer("Согласие принято")
-            return
-
-        if callback.data == CALLBACK_CONSENT_NO:
-            employee.personal_data_consent = False
-            employee.candidate_status = STATUS_DECLINED
-            db.commit()
-            await callback.message.answer(CONSENT_DECLINED_MESSAGE)
+        if db_file.category == "test_result":
             try:
-                await notify_hr_stage(callback.bot, employee, "recruitment_consent_no")
+                await notify_hr_test_task_received(bot, employee, db_file.original_filename)
             except Exception:
                 pass
-            await callback.answer("Принято")
+
+        handled = await handle_file_response(bot, db, employee, db_file)
+        if handled:
             return
 
-    await callback.answer()
-
-
-async def on_recruitment_role(callback: CallbackQuery) -> None:
-    user = callback.from_user
-    if not user:
-        return
-
-    role_map = {
-        CALLBACK_ROLE_DESIGNER: "Дизайнер",
-        CALLBACK_ROLE_PM: "РМ",
-        CALLBACK_ROLE_ANALYST: "Аналитик",
-    }
-    selected_role = role_map.get(callback.data or "")
-    if not selected_role:
-        await callback.answer()
-        return
-
-    with SessionLocal() as db:
-        employee = db.query(Employee).filter(Employee.telegram_user_id == str(user.id)).first()
-        if not employee:
-            await callback.answer("Карточка сотрудника не найдена.", show_alert=True)
-            return
-
-        if employee.candidate_status != STATUS_WAIT_POSITION:
-            await callback.answer()
-            return
-
-        employee.desired_position = selected_role
-        employee.candidate_status = STATUS_WAIT_RESUME
-        db.commit()
-
-    await callback.message.answer(
-        get_step_text("recruitment_ask_resume", "Пришли, пожалуйста, своё резюме файлом (PDF / DOC / DOCX).")
-    )
-    await callback.answer()
+    await message.answer("Файл получен и сохранен в вашей карточке.")
 
 
 async def on_candidate_text(message: Message) -> None:
@@ -252,40 +260,50 @@ async def on_candidate_text(message: Message) -> None:
         employee = db.query(Employee).filter(Employee.telegram_user_id == str(user.id)).first()
         if not employee:
             return
-
-        text = message.text.strip()
-        if employee.candidate_status == STATUS_WAIT_FULL_NAME:
-            employee.full_name = text
-            employee.candidate_status = STATUS_WAIT_POSITION
+        username = _telegram_username(user)
+        if employee.telegram_username != username:
+            employee.telegram_username = username
             db.commit()
-            await message.answer(
-                get_step_text("recruitment_ask_position", "На какую должность ты рассматриваешься?"),
-                reply_markup=recruitment_role_keyboard(),
-            )
+        handled = await handle_text_response(message.bot, db, employee, message)
+        if handled:
             return
+        menu_handled = await _handle_menu_button(message.bot, db, employee, message.text)
+    if not menu_handled:
+        await message.answer("Сообщение получено. Если это ответ на шаг сценария, HR обработает его в админке.")
 
-        if employee.candidate_status == STATUS_WAIT_SALARY:
-            employee.salary_expectation = text
-            employee.candidate_status = STATUS_PRIMARY_DONE
-            db.commit()
-            await message.answer(
-                get_step_text(
-                    "recruitment_primary_done",
-                    "Спасибо! Мы получили первичные данные.\nДальше HR проверит информацию и вернётся к тебе со следующим шагом.",
-                )
-            )
-            try:
-                await notify_hr_stage(message.bot, employee, "recruitment_salary_received")
-            except Exception:
-                pass
+
+async def on_scenario_button(callback: CallbackQuery) -> None:
+    user = callback.from_user
+    if not user or not callback.data or not callback.data.startswith(CALLBACK_PREFIX):
+        return
+
+    _, step_id, option_index = callback.data.split(":", 2)
+    with SessionLocal() as db:
+        employee = db.query(Employee).filter(Employee.telegram_user_id == str(user.id)).first()
+        if not employee:
+            await callback.answer("Карточка сотрудника не найдена.", show_alert=True)
             return
+        username = _telegram_username(user)
+        if employee.telegram_username != username:
+            employee.telegram_username = username
+            db.commit()
+        handled = await handle_button_response_by_step_id(
+            callback.bot,
+            db,
+            employee,
+            int(step_id),
+            int(option_index),
+        )
+    if handled:
+        await callback.answer("Принято")
+    else:
+        await callback.answer()
 
 
 async def main() -> None:
     if not settings.TELEGRAM_BOT_TOKEN:
         raise RuntimeError("TELEGRAM_BOT_TOKEN не задан. Укажите его в .env")
 
-    # Инициализируем базу
     init_db()
 
     bot = Bot(
@@ -294,16 +312,10 @@ async def main() -> None:
     )
     dp = Dispatcher()
 
-    # Хэндлер /start
     dp.message.register(on_start, CommandStart())
     dp.callback_query.register(
-        on_recruitment_consent,
-        lambda callback: callback.data in {CALLBACK_CONSENT_YES, CALLBACK_CONSENT_NO},
-    )
-    dp.callback_query.register(
-        on_recruitment_role,
-        lambda callback: callback.data
-        in {CALLBACK_ROLE_DESIGNER, CALLBACK_ROLE_PM, CALLBACK_ROLE_ANALYST},
+        on_scenario_button,
+        lambda callback: callback.data is not None and callback.data.startswith(CALLBACK_PREFIX),
     )
     dp.message.register(
         on_candidate_text,
@@ -311,29 +323,17 @@ async def main() -> None:
     )
     dp.message.register(on_document, lambda message: message.document is not None)
 
-    # Планировщик
     scheduler = AsyncIOScheduler(timezone=settings.TIMEZONE)
     scheduler.start()
 
-    # Периодически проверяем БД на наличие новых сотрудников без флоу
-    if settings.DEMO_MODE:
-        scheduler.add_job(
-            schedule_all_employees,
-            "interval",
-            seconds=10,
-            args=[scheduler, bot],
-            id="scan_employees",
-            replace_existing=True,
-        )
-    else:
-        scheduler.add_job(
-            schedule_all_employees,
-            "interval",
-            minutes=1,
-            args=[scheduler, bot],
-            id="scan_employees",
-            replace_existing=True,
-        )
+    scheduler.add_job(
+        schedule_all_employees,
+        "interval",
+        seconds=10 if settings.DEMO_MODE else 60,
+        args=[scheduler, bot],
+        id="scan_employees",
+        replace_existing=True,
+    )
 
     print("HR Telegram bot is running. Press Ctrl+C to stop.")
 

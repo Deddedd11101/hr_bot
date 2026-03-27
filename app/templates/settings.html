@@ -1,23 +1,334 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="card" style="max-width: 680px;">
+<div class="card">
     <h2>Настройки</h2>
     <p class="muted">
-        Данные HR-учётки. На указанный Telegram user_id бот отправляет оповещения о новых сотрудниках и этапах флоу.
+        Настройте, кому и какие уведомления отправляет бот.
     </p>
     <form method="post" action="/settings" class="form">
-        <label class="field">
-            <span>Имя HR</span>
-            <input type="text" name="hr_name" value="{{ hr_settings.hr_name or '' }}" placeholder="Иван Петров">
+        <div class="settings-grid">
+            <label class="field settings-field">
+                <span>Имя HR</span>
+                <input type="text" name="hr_name" value="{{ hr_settings.hr_name or '' }}" placeholder="Иван Петров">
+            </label>
+            <label class="field settings-field">
+                <span>Основной Telegram user_id</span>
+                <input type="text" name="telegram_user_id" value="{{ hr_settings.telegram_user_id or '' }}" placeholder="123456789">
+            </label>
+        </div>
+        <label class="field settings-field">
+            <span>Дополнительные Telegram user_id</span>
+            <textarea name="notification_recipient_ids" rows="3" placeholder="123456789&#10;987654321">{{ hr_settings.notification_recipient_ids or '' }}</textarea>
+            <div class="field-hint">Можно указать несколько ID: по одному на строку или через запятую.</div>
         </label>
-        <label class="field">
-            <span>Telegram user_id HR</span>
-            <input type="text" name="telegram_user_id" value="{{ hr_settings.telegram_user_id or '' }}" placeholder="123456789">
+        {#
+        <label class="field settings-field settings-select-field">
+            <span>Стартовый набор кнопок чат-бота</span>
+            <span class="employees-filter-label settings-select-shell">
+                <select name="default_menu_set_id" class="employees-filter-select">
+                    <option value="">Не выбран</option>
+                    {% for menu_set in menu_sets %}
+                        <option value="{{ menu_set.id }}" {% if hr_settings.default_menu_set_id == menu_set.id %}selected{% endif %}>{{ menu_set.title }}</option>
+                    {% endfor %}
+                </select>
+            </span>
         </label>
+        #}
+        <div class="field">
+            <span>Какие уведомления отправлять</span>
+            <div class="settings-toggle-list">
+                <label class="settings-toggle">
+                    <input type="checkbox" name="notify_scenario_completed" {% if hr_settings.notify_scenario_completed %}checked{% endif %}>
+                    <span class="settings-toggle-copy">
+                        <strong>По завершению сценариев</strong>
+                        <small>Когда сотрудник доходит до финального шага сценария.</small>
+                    </span>
+                </label>
+                <label class="settings-toggle">
+                    <input type="checkbox" name="notify_test_task_received" {% if hr_settings.notify_test_task_received %}checked{% endif %}>
+                    <span class="settings-toggle-copy">
+                        <strong>По получению тестового задания</strong>
+                        <small>Когда кандидат отправляет файл с тестовым заданием в бот.</small>
+                    </span>
+                </label>
+                <label class="settings-toggle">
+                    <input type="checkbox" name="notify_user_actions" {% if hr_settings.notify_user_actions %}checked{% endif %}>
+                    <span class="settings-toggle-copy">
+                        <strong>По действиям других пользователей</strong>
+                        <small>Например, при регистрации нового пользователя в боте.</small>
+                    </span>
+                </label>
+            </div>
+        </div>
         <div class="form-actions">
             <button type="submit" class="btn-primary">Сохранить настройки</button>
         </div>
     </form>
 </div>
+
+{#
+<div class="card" style="margin-top: 20px;">
+    <h2>Меню Чат-Бота</h2>
+    <p class="muted">Соберите наборы кнопок для Telegram-интерфейса пользователя и свяжите их со сценариями или другими наборами.</p>
+
+    <form method="post" action="/settings/menu-sets" class="form" style="margin-bottom: 24px;">
+        <div class="settings-grid">
+            <label class="field settings-field">
+                <span>Новый набор кнопок</span>
+                <input type="text" name="title" placeholder="Главное меню">
+            </label>
+            <label class="field settings-field">
+                <span>Описание</span>
+                <input type="text" name="description" placeholder="Что будет видеть пользователь в этом разделе">
+            </label>
+        </div>
+        <div class="form-actions">
+            <button type="submit" class="btn-primary">Создать набор кнопок</button>
+        </div>
+    </form>
+
+    {% if menu_sets %}
+        <div class="menu-set-list">
+            {% for menu_set in menu_sets %}
+                <div class="menu-set-card">
+                    <form method="post" action="/settings/menu-sets/{{ menu_set.id }}" class="form">
+                        <div class="settings-grid">
+                            <label class="field settings-field">
+                                <span>Название набора</span>
+                                <input type="text" name="title" value="{{ menu_set.title }}" required>
+                            </label>
+                            <label class="field settings-field">
+                                <span>Описание</span>
+                                <input type="text" name="description" value="{{ menu_set.description or '' }}">
+                            </label>
+                        </div>
+                        <div class="form-actions">
+                            <button type="submit" class="btn-secondary">Сохранить набор</button>
+                            <button type="submit" formaction="/settings/menu-sets/{{ menu_set.id }}/delete" formmethod="post" class="btn-danger" onclick="return confirm('Удалить этот набор кнопок?');">Удалить набор</button>
+                        </div>
+                    </form>
+
+                    <div class="menu-button-table-wrap">
+                        <table class="table">
+                            <thead>
+                            <tr>
+                                <th>Кнопка</th>
+                                <th>Действие</th>
+                                <th>Сценарий</th>
+                                <th>Набор кнопок</th>
+                                <th></th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            {% for button in menu_buttons_by_set.get(menu_set.id, []) %}
+                                <form id="menu-button-form-{{ button.id }}" method="post" action="/settings/menu-buttons/{{ button.id }}"></form>
+                                <tr data-menu-button-row>
+                                    <td>
+                                        <input type="text" name="label" value="{{ button.label }}" form="menu-button-form-{{ button.id }}" required>
+                                    </td>
+                                    <td>
+                                        <span class="employees-filter-label settings-select-shell settings-table-select">
+                                            <select name="action_type" form="menu-button-form-{{ button.id }}" class="employees-filter-select" data-menu-action-type>
+                                                <option value="inactive" {% if button.action_type == 'inactive' %}selected{% endif %}>Неактивна</option>
+                                                <option value="launch_scenario" {% if button.action_type == 'launch_scenario' %}selected{% endif %}>Запуск сценария</option>
+                                                <option value="open_set" {% if button.action_type == 'open_set' %}selected{% endif %}>Переход к набору</option>
+                                            </select>
+                                        </span>
+                                    </td>
+                                    <td data-scenario-cell {% if button.action_type != 'launch_scenario' %}style="display:none;"{% endif %}>
+                                        <span class="employees-filter-label settings-select-shell settings-table-select">
+                                            <select name="scenario_key" form="menu-button-form-{{ button.id }}" class="employees-filter-select">
+                                                <option value="">Выберите сценарий</option>
+                                                {% for scenario in available_scenarios %}
+                                                    <option value="{{ scenario.scenario_key }}" {% if button.scenario_key == scenario.scenario_key %}selected{% endif %}>{{ scenario.title }}</option>
+                                                {% endfor %}
+                                            </select>
+                                        </span>
+                                    </td>
+                                    <td data-set-cell {% if button.action_type != 'open_set' %}style="display:none;"{% endif %}>
+                                        <span class="employees-filter-label settings-select-shell settings-table-select">
+                                            <select name="target_menu_set_id" form="menu-button-form-{{ button.id }}" class="employees-filter-select">
+                                                <option value="">Выберите набор</option>
+                                                {% for target_set in menu_sets %}
+                                                    <option value="{{ target_set.id }}" {% if button.target_menu_set_id == target_set.id %}selected{% endif %}>{{ target_set.title }}</option>
+                                                {% endfor %}
+                                            </select>
+                                        </span>
+                                    </td>
+                                    <td class="menu-button-actions">
+                                        <button type="submit" class="btn-secondary" form="menu-button-form-{{ button.id }}">Сохранить</button>
+                                        <button type="submit" formaction="/settings/menu-buttons/{{ button.id }}/delete" formmethod="post" class="btn-danger" form="menu-button-form-{{ button.id }}" onclick="return confirm('Удалить эту кнопку?');">Удалить</button>
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <form method="post" action="/settings/menu-sets/{{ menu_set.id }}/buttons" class="form menu-button-create-form" data-menu-button-row>
+                        <div class="menu-button-create-grid">
+                            <label class="field settings-field">
+                                <span>Новая кнопка</span>
+                                <input type="text" name="label" placeholder="Например, Мои сценарии" required>
+                            </label>
+                            <label class="field settings-field settings-select-field">
+                                <span>Действие</span>
+                                <span class="employees-filter-label settings-select-shell">
+                                    <select name="action_type" class="employees-filter-select" data-menu-action-type>
+                                        <option value="inactive">Неактивна</option>
+                                        <option value="launch_scenario">Запуск сценария</option>
+                                        <option value="open_set">Переход к набору</option>
+                                    </select>
+                                </span>
+                            </label>
+                            <label class="field settings-field settings-select-field" data-scenario-cell style="display:none;">
+                                <span>Какой сценарий запускать</span>
+                                <span class="employees-filter-label settings-select-shell">
+                                    <select name="scenario_key" class="employees-filter-select">
+                                        <option value="">Выберите сценарий</option>
+                                        {% for scenario in available_scenarios %}
+                                            <option value="{{ scenario.scenario_key }}">{{ scenario.title }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </span>
+                            </label>
+                            <label class="field settings-field settings-select-field" data-set-cell style="display:none;">
+                                <span>К какому набору перейти</span>
+                                <span class="employees-filter-label settings-select-shell">
+                                    <select name="target_menu_set_id" class="employees-filter-select">
+                                        <option value="">Выберите набор</option>
+                                        {% for target_set in menu_sets %}
+                                            <option value="{{ target_set.id }}">{{ target_set.title }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </span>
+                            </label>
+                        </div>
+                        <div class="form-actions">
+                            <button type="submit" class="btn-primary">Добавить кнопку</button>
+                        </div>
+                    </form>
+                </div>
+            {% endfor %}
+        </div>
+    {% else %}
+        <p class="muted">Наборов кнопок пока нет. Создайте первый набор выше.</p>
+    {% endif %}
+</div>
+#}
+
+{% if current_user and current_user.role == 'admin' %}
+<div class="card" style="margin-top: 20px;">
+    <h2>Доступ в админку</h2>
+    <p class="muted">Этим разделом может управлять только администратор.</p>
+
+    <form method="post" action="/accounts" class="form" style="margin-bottom: 24px;">
+        <label class="field settings-field">
+            <span>Логин</span>
+            <input type="text" name="login" placeholder="new_user" required>
+        </label>
+        <label class="field settings-field">
+            <span>Пароль</span>
+            <input type="password" name="password" placeholder="Не менее 1 символа" required>
+        </label>
+        <label class="field settings-field settings-select-field">
+            <span>Роль</span>
+            <span class="employees-filter-label settings-select-shell">
+                <select name="role" class="employees-filter-select">
+                    {% for value, label in role_labels.items() %}
+                        <option value="{{ value }}">{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </span>
+        </label>
+        <label class="field settings-field settings-select-field">
+            <span>Аккаунт активен</span>
+            <span class="employees-filter-label settings-select-shell">
+                <select name="is_active" class="employees-filter-select">
+                    <option value="true" selected>Да</option>
+                    <option value="false">Нет</option>
+                </select>
+            </span>
+        </label>
+        <div class="form-actions">
+            <button type="submit" class="btn-primary">Создать аккаунт</button>
+        </div>
+    </form>
+
+    <table class="table">
+        <thead>
+        <tr>
+            <th>ID</th>
+            <th>Логин</th>
+            <th>Роль</th>
+            <th>Активен</th>
+            <th>Обновить</th>
+        </tr>
+        </thead>
+        <tbody>
+        {% for account in accounts %}
+            <form id="account-form-{{ account.id }}" method="post" action="/accounts/{{ account.id }}"></form>
+            <tr>
+                <td>{{ account.id }}</td>
+                <td>
+                    <input type="text" name="login" value="{{ account.login }}" form="account-form-{{ account.id }}" required>
+                </td>
+                <td>
+                        <span class="employees-filter-label settings-select-shell settings-table-select">
+                            <select name="role" form="account-form-{{ account.id }}" class="employees-filter-select">
+                                {% for value, label in role_labels.items() %}
+                                    <option value="{{ value }}" {% if account.role == value %}selected{% endif %}>{{ label }}</option>
+                                {% endfor %}
+                            </select>
+                        </span>
+                </td>
+                <td>
+                        <span class="employees-filter-label settings-select-shell settings-table-select">
+                            <select name="is_active" form="account-form-{{ account.id }}" class="employees-filter-select">
+                                <option value="true" {% if account.is_active %}selected{% endif %}>Да</option>
+                                <option value="false" {% if not account.is_active %}selected{% endif %}>Нет</option>
+                            </select>
+                        </span>
+                </td>
+                <td>
+                        <input type="password" name="password" placeholder="Новый пароль" form="account-form-{{ account.id }}">
+                        <div class="actions" style="margin-top: 8px;">
+                            <button type="submit" class="btn-secondary" form="account-form-{{ account.id }}">Сохранить</button>
+                            {% if not (current_user and current_user.id == account.id) %}
+                                <button type="submit" formaction="/accounts/{{ account.id }}/delete" formmethod="post" class="btn-danger" form="account-form-{{ account.id }}" onclick="return confirm('Удалить этот аккаунт?');">Удалить</button>
+                            {% endif %}
+                        </div>
+                </td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+
+{#
+<script>
+    document.querySelectorAll('[data-menu-button-row]').forEach((row) => {
+        const actionSelect = row.querySelector('[data-menu-action-type]');
+        const scenarioCell = row.querySelector('[data-scenario-cell]');
+        const setCell = row.querySelector('[data-set-cell]');
+        if (!actionSelect) {
+            return;
+        }
+
+        const syncAction = () => {
+            if (scenarioCell) {
+                scenarioCell.style.display = actionSelect.value === 'launch_scenario' ? '' : 'none';
+            }
+            if (setCell) {
+                setCell.style.display = actionSelect.value === 'open_set' ? '' : 'none';
+            }
+        };
+
+        actionSelect.addEventListener('change', syncAction);
+        syncAction();
+    });
+</script>
+#}
 {% endblock %}

@@ -1,0 +1,532 @@
+{% extends "base.html" %}
+
+{% block content %}
+<a href="{{ collection_path }}" class="back-link">← {{ back_label }}</a>
+
+<div class="card">
+    {% if flash_message %}
+        <div class="flash-message flash-{{ flash_type }}">{{ flash_message }}</div>
+    {% endif %}
+    <div class="page-head scenario-page-head">
+        <div>
+            <h2>{{ edit_title }}</h2>
+            <p class="muted">Настрой роли, запуск и визуально собери последовательность шагов ниже.</p>
+        </div>
+        {% if kind == 'survey' %}
+            <a href="/surveys/{{ scenario.id }}/export" class="btn-secondary">Выгрузить Excel</a>
+        {% endif %}
+    </div>
+    <form method="post" action="{{ collection_path }}/{{ scenario.id }}" class="form" enctype="multipart/form-data">
+        <div class="settings-grid scenario-meta-grid">
+            <label class="field settings-field">
+                <span>Название {{ item_label_cap.lower() }}</span>
+                <input type="text" name="title" value="{{ scenario.title }}" required>
+            </label>
+            <label class="field settings-field settings-select-field">
+                <span>Привязка к роли сотрудника</span>
+                <span class="employees-filter-label settings-select-shell">
+                    <select name="role_scope" class="employees-filter-select">
+                        {% for value, label in role_scope_labels.items() %}
+                            <option value="{{ value }}" {% if scenario.role_scope == value %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </span>
+            </label>
+            {% if kind != 'survey' %}
+                <label class="field settings-field settings-select-field">
+                    <span>Когда запускать {{ item_label_cap.lower() }}</span>
+                    <span class="employees-filter-label settings-select-shell">
+                        <select name="trigger_mode" class="employees-filter-select">
+                            {% for value, label in trigger_mode_labels.items() %}
+                                <option value="{{ value }}" {% if scenario.trigger_mode == value %}selected{% endif %}>{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </span>
+                </label>
+            {% else %}
+                <input type="hidden" name="trigger_mode" value="manual_only">
+            {% endif %}
+        </div>
+        <label class="field settings-field">
+            <span>Описание</span>
+            <textarea name="description" rows="2">{{ scenario.description or '' }}</textarea>
+        </label>
+
+        <div class="scenario-section-head">
+            <strong>{% if kind == 'survey' %}Вопросы{% else %}Шаги сценария{% endif %}</strong>
+            <span>Карточки можно раскрывать, редактировать и перетаскивать.</span>
+        </div>
+
+        <div class="scenario-steps" id="scenario-steps">
+        {% for step in steps %}
+            <div class="card scenario-step-card is-collapsed" draggable="true" data-step-card style="margin-bottom: 16px; box-shadow: none;">
+                <div class="scenario-step-summary">
+                    <div class="scenario-step-header">
+                        <button type="button" class="drag-handle" aria-label="Перетащить шаг" title="Перетащить шаг">⋮⋮</button>
+                        <div class="scenario-step-heading">
+                            <h3 class="scenario-step-title" data-step-title-preview>{{ step.step_title }}</h3>
+                            <p class="muted scenario-step-key">{{ step.step_key }}</p>
+                        </div>
+                    </div>
+                    <button type="button" class="btn-secondary scenario-step-toggle" data-step-toggle>Редактировать</button>
+                </div>
+                <div class="scenario-step-body" data-step-body hidden>
+                    <input type="hidden" name="step_id" value="{{ step.id }}">
+                    <label class="field">
+                        <span>{% if kind == 'survey' %}Название вопроса{% else %}Название шага{% endif %}</span>
+                        <input type="text" name="step_title" value="{{ step.step_title }}" required>
+                    </label>
+                    <label class="field">
+                        <span>Текст сообщения</span>
+                        <textarea name="custom_text" rows="4" placeholder="Введите текст сообщения">{{ step.custom_text if step.custom_text is not none else step.default_text }}</textarea>
+                        <div class="token-toolbar" data-token-toolbar>
+                            <span class="field-hint">Теги:</span>
+                            <button type="button" class="token-chip" data-insert-token="{name}">{name}</button>
+                            <button type="button" class="token-chip" data-insert-token="{full_name}">{full_name}</button>
+                        </div>
+                    </label>
+                    <label class="field">
+                        <span>Документ для отправки пользователю</span>
+                        <input type="file" name="step_attachment_{{ step.id }}">
+                        {% if step.attachment_filename %}
+                            <div class="attachment-row">
+                                <div class="field-hint">
+                                    Текущий файл:
+                                                    <a href="/flows/steps/{{ step.id }}/attachment">{{ step.attachment_filename }}</a>
+                                </div>
+                                <button type="button" class="btn-danger btn-inline-danger" data-delete-attachment-url="/flows/steps/{{ step.id }}/attachment/delete" data-delete-attachment-name="{{ step.attachment_filename }}">Удалить</button>
+                            </div>
+                        {% else %}
+                            <div class="field-hint">Если выбрать файл, он будет отправляться сразу после сообщения этого шага.</div>
+                        {% endif %}
+                    </label>
+                    <label class="field">
+                        <span>Вариант ответа пользователя</span>
+                        <select name="response_type">
+                            {% for value, label in response_type_labels.items() %}
+                                <option value="{{ value }}" {% if step.response_type == value %}selected{% endif %}>{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                    <label class="field js-button-options" {% if step.response_type not in ['buttons', 'branching'] %}style="display:none;"{% endif %}>
+                        <span>Список кнопок</span>
+                        <textarea name="button_options" rows="3" placeholder="Одна кнопка на строку">{{ step.button_options or '' }}</textarea>
+                    </label>
+                    <div class="branching-section js-branching-section" data-parent-step-id="{{ step.id }}" {% if step.response_type != 'branching' %}style="display:none;"{% endif %}>
+                        <div class="branching-intro">
+                            <strong>Ветки после выбора кнопки</strong>
+                            <p class="muted">Для каждой кнопки можно настроить свое следующее сообщение. После него {{ item_label_cap.lower() }} продолжится обычными шагами.</p>
+                        </div>
+                        <div class="branching-list" data-branch-list>
+                            {% for branch_step in branch_steps_by_parent.get(step.id, []) %}
+                                <div class="card branch-step-card" data-branch-card data-option-index="{{ branch_step.branch_option_index or 0 }}" style="box-shadow: none;">
+                                    <input type="hidden" name="branch_parent_step_id" value="{{ step.id }}">
+                                    <input type="hidden" name="branch_option_index" value="{{ branch_step.branch_option_index or 0 }}">
+                                    <input type="hidden" name="branch_step_id" value="{{ branch_step.id }}">
+                                    <div class="branch-step-meta">Вариант {{ (branch_step.branch_option_index or 0) + 1 }}</div>
+                                    <label class="field">
+                                        <span>Название ветки</span>
+                                        <input type="text" name="branch_step_title" value="{{ branch_step.step_title }}" placeholder="Название ветки">
+                                    </label>
+                                    <label class="field">
+                                        <span>Сообщение после выбора</span>
+                                        <textarea name="branch_custom_text" rows="3" placeholder="Введите текст сообщения">{{ branch_step.custom_text if branch_step.custom_text is not none else branch_step.default_text }}</textarea>
+                                        <div class="token-toolbar" data-token-toolbar>
+                                            <span class="field-hint">Теги:</span>
+                                            <button type="button" class="token-chip" data-insert-token="{name}">{name}</button>
+                                            <button type="button" class="token-chip" data-insert-token="{full_name}">{full_name}</button>
+                                        </div>
+                                    </label>
+                                    <label class="field">
+                                        <span>Документ для отправки пользователю</span>
+                                        <input type="file" name="branch_attachment_{{ step.id }}_{{ branch_step.branch_option_index or 0 }}">
+                                        {% if branch_step.attachment_filename %}
+                                            <div class="attachment-row">
+                                                <div class="field-hint">
+                                                    Текущий файл:
+                                                    <a href="/flows/steps/{{ branch_step.id }}/attachment">{{ branch_step.attachment_filename }}</a>
+                                                </div>
+                                                <button type="button" class="btn-danger btn-inline-danger" data-delete-attachment-url="/flows/steps/{{ branch_step.id }}/attachment/delete" data-delete-attachment-name="{{ branch_step.attachment_filename }}">Удалить</button>
+                                            </div>
+                                        {% else %}
+                                            <div class="field-hint">Если выбрать файл, он будет отправляться сразу после сообщения этой ветки.</div>
+                                        {% endif %}
+                                    </label>
+                                    <label class="field">
+                                        <span>Вид ответа после сообщения</span>
+                                        <select name="branch_response_type" data-branch-response-type>
+                                            <option value="none" {% if branch_step.response_type == 'none' %}selected{% endif %}>Без ответа</option>
+                                            <option value="text" {% if branch_step.response_type == 'text' %}selected{% endif %}>Текстовый ответ</option>
+                                            <option value="file" {% if branch_step.response_type == 'file' %}selected{% endif %}>Загрузка файла</option>
+                                            <option value="buttons" {% if branch_step.response_type == 'buttons' %}selected{% endif %}>Выбор кнопками</option>
+                                            <option value="launch_scenario" {% if branch_step.response_type == 'launch_scenario' %}selected{% endif %}>Переход к сценарию</option>
+                                        </select>
+                                    </label>
+                                    <label class="field js-branch-button-options" {% if branch_step.response_type != 'buttons' %}style="display:none;"{% endif %}>
+                                        <span>Кнопки ответа для ветки</span>
+                                        <textarea name="branch_button_options" rows="3" placeholder="Одна кнопка на строку">{{ branch_step.button_options or '' }}</textarea>
+                                    </label>
+                                    <label class="field js-branch-scenario-select" {% if branch_step.response_type != 'launch_scenario' %}style="display:none;"{% endif %}>
+                                        <span>Какой {{ item_label_cap.lower() }} запускать</span>
+                                        <select name="branch_launch_scenario_key">
+                                            <option value="">Выберите {{ item_label_cap.lower() }}</option>
+                                            {% for available_scenario in available_scenarios %}
+                                                <option value="{{ available_scenario.scenario_key }}" {% if branch_step.launch_scenario_key == available_scenario.scenario_key %}selected{% endif %}>{{ available_scenario.title }}</option>
+                                            {% endfor %}
+                                        </select>
+                                    </label>
+                                </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% if kind != 'survey' %}
+                        <label class="field">
+                            <span>Время отправки</span>
+                            <select name="send_mode">
+                                {% for value, label in send_mode_labels.items() %}
+                                    <option value="{{ value }}" {% if step.send_mode == value %}selected{% endif %}>{{ label }}</option>
+                                {% endfor %}
+                            </select>
+                        </label>
+                        <label class="field js-send-time" {% if step.send_mode != 'specific_time' %}style="display:none;"{% endif %}>
+                            <span>Конкретное время</span>
+                            <input type="text" name="send_time" value="{{ step.send_time or '' }}" placeholder="10:00">
+                        </label>
+                        <label class="field">
+                            <span>Смещение в рабочих днях</span>
+                            <input type="number" name="day_offset_workdays" value="{{ step.day_offset_workdays or 0 }}" placeholder="0">
+                        </label>
+                        <label class="field">
+                            <span>Сохранять ответ в поле сотрудника</span>
+                            <select name="target_field">
+                                {% for value, label in target_field_labels.items() %}
+                                    <option value="{{ value }}" {% if (step.target_field or '') == value %}selected{% endif %}>{{ label }}</option>
+                                {% endfor %}
+                            </select>
+                        </label>
+                    {% endif %}
+                    <div class="form-actions">
+                        <button type="submit" name="action" value="delete_step" class="btn-danger" onclick="document.getElementById('target-step-id').value='{{ step.id }}'; return confirm('Удалить этот {{ 'вопрос' if kind == 'survey' else 'шаг сценария' }}?');">Удалить шаг</button>
+                        <button type="submit" name="action" value="reset_step" class="btn-secondary" onclick="document.getElementById('target-step-id').value='{{ step.id }}';">Сбросить текст и кнопки к умолчанию</button>
+                    </div>
+                </div>
+            </div>
+        {% endfor %}
+        </div>
+
+        <input type="hidden" id="target-step-id" name="target_step_id" value="">
+        <div class="form-actions">
+            <button type="submit" name="action" value="save" class="btn-primary">Сохранить {{ item_label_cap.lower() }}</button>
+            <button type="submit" name="action" value="add_step" class="btn-secondary" onclick="document.getElementById('target-step-id').value='';">{% if kind == 'survey' %}Добавить вопрос{% else %}Добавить шаг{% endif %}</button>
+        </div>
+    </form>
+</div>
+
+<form id="delete-step-attachment-form" method="post" style="display:none;"></form>
+
+<script>
+    function setStepCardExpanded(container, expanded) {
+        const body = container.querySelector('[data-step-body]');
+        const toggle = container.querySelector('[data-step-toggle]');
+        if (!body || !toggle) {
+            return;
+        }
+        container.classList.toggle('is-collapsed', !expanded);
+        body.hidden = !expanded;
+        toggle.textContent = expanded ? 'Свернуть' : 'Редактировать';
+    }
+
+    function syncScenarioStepFields(container) {
+        const responseSelect = container.querySelector('select[name="response_type"]');
+        const buttonField = container.querySelector('.js-button-options');
+        const branchingSection = container.querySelector('.js-branching-section');
+        const sendModeSelect = container.querySelector('select[name="send_mode"]');
+        const sendTimeField = container.querySelector('.js-send-time');
+
+        if (responseSelect && buttonField) {
+            buttonField.style.display = ['buttons', 'branching'].includes(responseSelect.value) ? '' : 'none';
+        }
+        if (responseSelect && branchingSection) {
+            branchingSection.style.display = responseSelect.value === 'branching' ? '' : 'none';
+        }
+        if (sendModeSelect && sendTimeField) {
+            sendTimeField.style.display = sendModeSelect.value === 'specific_time' ? '' : 'none';
+        }
+    }
+
+    function syncBranchEditors(container) {
+        const responseSelect = container.querySelector('select[name="response_type"]');
+        const branchingSection = container.querySelector('.js-branching-section');
+        const branchList = container.querySelector('[data-branch-list]');
+        const buttonOptions = container.querySelector('textarea[name="button_options"]');
+        if (!responseSelect || !branchingSection || !branchList || !buttonOptions) {
+            return;
+        }
+
+        if (responseSelect.value !== 'branching') {
+            return;
+        }
+
+        const parentStepId = branchingSection.dataset.parentStepId;
+        const options = buttonOptions.value.split('\n').map((item) => item.trim()).filter(Boolean);
+        const existingCards = new Map();
+        branchList.querySelectorAll('[data-branch-card]').forEach((card) => {
+            existingCards.set(Number(card.dataset.optionIndex || 0), card);
+        });
+
+        options.forEach((label, index) => {
+            let card = existingCards.get(index);
+            if (!card) {
+                card = document.createElement('div');
+                card.className = 'card branch-step-card';
+                card.dataset.branchCard = 'true';
+                card.dataset.optionIndex = String(index);
+                card.style.boxShadow = 'none';
+                card.innerHTML = `
+                    <input type="hidden" name="branch_parent_step_id" value="${parentStepId}">
+                    <input type="hidden" name="branch_option_index" value="${index}">
+                    <input type="hidden" name="branch_step_id" value="">
+                    <div class="branch-step-meta"></div>
+                    <label class="field">
+                        <span>Название ветки</span>
+                        <input type="text" name="branch_step_title" placeholder="Название ветки">
+                    </label>
+                    <label class="field">
+                        <span>Сообщение после выбора</span>
+                        <textarea name="branch_custom_text" rows="3" placeholder="Введите текст сообщения"></textarea>
+                        <div class="token-toolbar" data-token-toolbar>
+                            <span class="field-hint">Теги:</span>
+                            <button type="button" class="token-chip" data-insert-token="{name}">{name}</button>
+                            <button type="button" class="token-chip" data-insert-token="{full_name}">{full_name}</button>
+                        </div>
+                    </label>
+                    <label class="field">
+                        <span>Документ для отправки пользователю</span>
+                        <input type="file" name="branch_attachment_${parentStepId}_${index}">
+                        <div class="field-hint">Если выбрать файл, он будет отправляться сразу после сообщения этой ветки.</div>
+                    </label>
+                    <label class="field">
+                        <span>Вид ответа после сообщения</span>
+                        <select name="branch_response_type" data-branch-response-type>
+                            <option value="none" selected>Без ответа</option>
+                            <option value="text">Текстовый ответ</option>
+                            <option value="file">Загрузка файла</option>
+                            <option value="buttons">Выбор кнопками</option>
+                            <option value="launch_scenario">Переход к сценарию</option>
+                        </select>
+                    </label>
+                    <label class="field js-branch-button-options" style="display:none;">
+                        <span>Кнопки ответа для ветки</span>
+                        <textarea name="branch_button_options" rows="3" placeholder="Одна кнопка на строку"></textarea>
+                    </label>
+                    <label class="field js-branch-scenario-select" style="display:none;">
+                        <span>Какой сценарий запускать</span>
+                        <select name="branch_launch_scenario_key">
+                            <option value="">Выберите сценарий</option>
+                            {% for available_scenario in available_scenarios %}
+                                <option value="{{ available_scenario.scenario_key }}">{{ available_scenario.title }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                `;
+                branchList.appendChild(card);
+            }
+            card.dataset.optionIndex = String(index);
+            card.querySelector('input[name="branch_parent_step_id"]').value = parentStepId;
+            card.querySelector('input[name="branch_option_index"]').value = String(index);
+            const meta = card.querySelector('.branch-step-meta');
+            if (meta) {
+                meta.textContent = `Кнопка: ${label}`;
+            }
+            const titleInput = card.querySelector('input[name="branch_step_title"]');
+            if (titleInput && !titleInput.value.trim()) {
+                titleInput.value = `Ветка: ${label}`;
+            }
+            existingCards.delete(index);
+        });
+
+        existingCards.forEach((card) => card.remove());
+        syncBranchResponseFields(container);
+    }
+
+    function syncBranchResponseFields(container) {
+        container.querySelectorAll('[data-branch-card]').forEach((card) => {
+            const responseSelect = card.querySelector('[data-branch-response-type]');
+            const buttonField = card.querySelector('.js-branch-button-options');
+            const scenarioSelectField = card.querySelector('.js-branch-scenario-select');
+            if (!responseSelect || !buttonField || !scenarioSelectField) {
+                return;
+            }
+            buttonField.style.display = responseSelect.value === 'buttons' ? '' : 'none';
+            scenarioSelectField.style.display = responseSelect.value === 'launch_scenario' ? '' : 'none';
+        });
+    }
+
+    function bindAttachmentDeleteButtons(scope = document) {
+        const hiddenForm = document.getElementById('delete-step-attachment-form');
+        if (!hiddenForm) {
+            return;
+        }
+        scope.querySelectorAll('[data-delete-attachment-url]').forEach((button) => {
+            if (button.dataset.deleteAttachmentBound === 'true') {
+                return;
+            }
+            button.dataset.deleteAttachmentBound = 'true';
+            button.addEventListener('click', () => {
+                const attachmentName = button.dataset.deleteAttachmentName || 'этот документ';
+                if (!confirm(`Удалить ${attachmentName}?`)) {
+                    return;
+                }
+                hiddenForm.action = button.dataset.deleteAttachmentUrl;
+                hiddenForm.submit();
+            });
+        });
+    }
+
+    function initScenarioStepDnD() {
+        const stepsContainer = document.getElementById('scenario-steps');
+        if (!stepsContainer) {
+            return;
+        }
+
+        let draggedCard = null;
+        const dropIndicator = document.createElement('div');
+        dropIndicator.className = 'scenario-drop-indicator';
+        stepsContainer.prepend(dropIndicator);
+
+        function getDragAfterElement(container, y) {
+            const draggableElements = [...container.querySelectorAll('[data-step-card]:not(.is-dragging)')];
+
+            return draggableElements.reduce((closest, child) => {
+                const box = child.getBoundingClientRect();
+                const offset = y - box.top - box.height / 2;
+                if (offset < 0 && offset > closest.offset) {
+                    return { offset, element: child };
+                }
+                return closest;
+            }, { offset: Number.NEGATIVE_INFINITY, element: null }).element;
+        }
+
+        function updateDropIndicator(afterElement) {
+            dropIndicator.classList.add('is-visible');
+            if (!afterElement) {
+                stepsContainer.appendChild(dropIndicator);
+                return;
+            }
+            stepsContainer.insertBefore(dropIndicator, afterElement);
+        }
+
+        function autoScrollPage(pointerY) {
+            const threshold = 120;
+            const maxStep = 18;
+            const viewportHeight = window.innerHeight;
+
+            if (pointerY < threshold) {
+                const delta = Math.ceil(((threshold - pointerY) / threshold) * maxStep);
+                window.scrollBy(0, -delta);
+                return;
+            }
+            if (pointerY > viewportHeight - threshold) {
+                const delta = Math.ceil(((pointerY - (viewportHeight - threshold)) / threshold) * maxStep);
+                window.scrollBy(0, delta);
+            }
+        }
+
+        stepsContainer.querySelectorAll('[data-step-card]').forEach((card) => {
+            card.addEventListener('dragstart', () => {
+                draggedCard = card;
+                card.classList.add('is-dragging');
+                dropIndicator.classList.add('is-visible');
+            });
+
+            card.addEventListener('dragend', () => {
+                card.classList.remove('is-dragging');
+                draggedCard = null;
+                dropIndicator.classList.remove('is-visible');
+            });
+        });
+
+        stepsContainer.addEventListener('dragover', (event) => {
+            event.preventDefault();
+            if (!draggedCard) {
+                return;
+            }
+            autoScrollPage(event.clientY);
+            const afterElement = getDragAfterElement(stepsContainer, event.clientY);
+            updateDropIndicator(afterElement);
+            if (!afterElement) {
+                stepsContainer.appendChild(draggedCard);
+                return;
+            }
+            stepsContainer.insertBefore(draggedCard, afterElement);
+        });
+
+        stepsContainer.addEventListener('drop', () => {
+            dropIndicator.classList.remove('is-visible');
+        });
+    }
+
+    document.querySelectorAll('[data-step-card]').forEach((container) => {
+        setStepCardExpanded(container, false);
+        syncScenarioStepFields(container);
+        syncBranchEditors(container);
+        const toggleButton = container.querySelector('[data-step-toggle]');
+        const stepTitleInput = container.querySelector('input[name="step_title"]');
+        const titlePreview = container.querySelector('[data-step-title-preview]');
+        const responseSelect = container.querySelector('select[name="response_type"]');
+        const sendModeSelect = container.querySelector('select[name="send_mode"]');
+        const buttonOptions = container.querySelector('textarea[name="button_options"]');
+        if (toggleButton) {
+            toggleButton.addEventListener('click', () => {
+                setStepCardExpanded(container, container.classList.contains('is-collapsed'));
+            });
+        }
+        if (stepTitleInput && titlePreview) {
+            stepTitleInput.addEventListener('input', () => {
+                titlePreview.textContent = stepTitleInput.value.trim() || 'Без названия';
+            });
+        }
+        if (responseSelect) {
+            responseSelect.addEventListener('change', () => {
+                syncScenarioStepFields(container);
+                syncBranchEditors(container);
+            });
+        }
+        if (sendModeSelect) {
+            sendModeSelect.addEventListener('change', () => syncScenarioStepFields(container));
+        }
+        if (buttonOptions) {
+            buttonOptions.addEventListener('input', () => syncBranchEditors(container));
+        }
+        container.addEventListener('change', (event) => {
+            if (event.target && event.target.matches('[data-branch-response-type]')) {
+                syncBranchResponseFields(container);
+            }
+        });
+        syncBranchResponseFields(container);
+    });
+    bindAttachmentDeleteButtons();
+
+    document.addEventListener('click', (event) => {
+        const button = event.target.closest('[data-insert-token]');
+        if (!button) {
+            return;
+        }
+        const token = button.dataset.insertToken || '';
+        const field = button.closest('.field');
+        const textarea = field ? field.querySelector('textarea') : null;
+        if (!textarea) {
+            return;
+        }
+        const start = textarea.selectionStart ?? textarea.value.length;
+        const end = textarea.selectionEnd ?? textarea.value.length;
+        textarea.value = `${textarea.value.slice(0, start)}${token}${textarea.value.slice(end)}`;
+        const caret = start + token.length;
+        textarea.focus();
+        textarea.setSelectionRange(caret, caret);
+        textarea.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+
+    initScenarioStepDnD();
+</script>
+{% endblock %}

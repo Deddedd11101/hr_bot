@@ -19,6 +19,16 @@ class Employee(Base):
         nullable=True,
         doc="Telegram user_id или username (для простого демо).",
     )
+    telegram_username: Mapped[Optional[str]] = mapped_column(
+        String(255),
+        nullable=True,
+        doc="Публичный username Telegram без @ для построения ссылки на профиль.",
+    )
+    current_menu_set_id: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        nullable=True,
+        doc="Текущий набор кнопок чат-бота, показанный пользователю.",
+    )
     first_workday: Mapped[Optional[date]] = mapped_column(
         Date,
         nullable=True,
@@ -42,6 +52,11 @@ class Employee(Base):
         String(64),
         nullable=True,
         doc="Статус кандидата/сотрудника в процессе (new, invited, offer_sent и т.д.).",
+    )
+    employee_stage: Mapped[Optional[str]] = mapped_column(
+        String(32),
+        nullable=True,
+        doc="Статус сотрудника: candidate | probation | employee.",
     )
     personal_data_consent: Mapped[bool] = mapped_column(
         Boolean,
@@ -103,6 +118,17 @@ class FlowLaunchRequest(Base):
     )
     requested_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     processed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    launch_type: Mapped[str] = mapped_column(
+        String(32),
+        nullable=False,
+        default="manual",
+        doc="manual | scheduled",
+    )
+    skip_step_key: Mapped[Optional[str]] = mapped_column(
+        String(128),
+        nullable=True,
+        doc="Шаг, который уже был отправлен вручную и должен быть пропущен планировщиком.",
+    )
 
 
 class EmployeeFile(Base):
@@ -143,19 +169,215 @@ class HrSettings(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     hr_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     telegram_user_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    notification_recipient_ids: Mapped[Optional[str]] = mapped_column(String(2048), nullable=True)
+    notify_scenario_completed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    notify_test_task_received: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    notify_user_actions: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    default_menu_set_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
 
 
+class BotMenuSet(Base):
+    """Набор кнопок меню чат-бота."""
+
+    __tablename__ = "bot_menu_sets"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+
+class BotMenuButton(Base):
+    """Кнопка внутри набора меню чат-бота."""
+
+    __tablename__ = "bot_menu_buttons"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    menu_set_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    label: Mapped[str] = mapped_column(String(255), nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    action_type: Mapped[str] = mapped_column(
+        String(32),
+        nullable=False,
+        default="inactive",
+        doc="inactive | launch_scenario | open_set",
+    )
+    scenario_key: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    target_menu_set_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+
+
+class MassScenarioAction(Base):
+    """Массовый запуск сценария по группе сотрудников."""
+
+    __tablename__ = "mass_scenario_actions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    flow_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    scenario_kind: Mapped[str] = mapped_column(String(32), nullable=False, default="scenario")
+    requested_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    processed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    launch_type: Mapped[str] = mapped_column(String(32), nullable=False, default="manual")
+    target_all: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    target_statuses: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    recipient_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+
+
+class MassMessageAction(Base):
+    """Массовая отправка сообщения по группе сотрудников."""
+
+    __tablename__ = "mass_message_actions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    message_text: Mapped[str] = mapped_column(String(4096), nullable=False)
+    requested_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    processed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    launch_type: Mapped[str] = mapped_column(String(32), nullable=False, default="manual")
+    target_all: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    target_statuses: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    recipient_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+
+
+class AdminAccount(Base):
+    """Пользователь админки."""
+
+    __tablename__ = "admin_accounts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    login: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    role: Mapped[str] = mapped_column(
+        String(32),
+        nullable=False,
+        default="hr",
+        doc="admin | hr",
+    )
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+
+
+class ScenarioTemplate(Base):
+    """Редактируемый сценарий с метаданными."""
+
+    __tablename__ = "scenario_templates"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    scenario_key: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    scenario_kind: Mapped[str] = mapped_column(
+        String(32),
+        nullable=False,
+        default="scenario",
+        doc="scenario | survey",
+    )
+    role_scope: Mapped[str] = mapped_column(
+        String(64),
+        nullable=False,
+        default="all",
+        doc="designer | project_manager | analyst | all",
+    )
+    trigger_mode: Mapped[str] = mapped_column(
+        String(64),
+        nullable=False,
+        default="manual_only",
+        doc="manual_only | bot_registration | scenario_transition | first_workday | first_week_friday | mid_probation | end_probation",
+    )
+    description: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)
+
+
 class FlowStepTemplate(Base):
-    """Редактируемые шаблоны шагов флоу."""
+    """Редактируемые шаблоны шагов сценария."""
 
     __tablename__ = "flow_step_templates"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     flow_key: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     step_key: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    parent_step_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
+    branch_option_index: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     step_title: Mapped[str] = mapped_column(String(255), nullable=False)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     default_text: Mapped[str] = mapped_column(String(4096), nullable=False)
     custom_text: Mapped[Optional[str]] = mapped_column(String(4096), nullable=True)
+    response_type: Mapped[str] = mapped_column(
+        String(32),
+        nullable=False,
+        default="none",
+        doc="none | text | file | buttons",
+    )
+    button_options: Mapped[Optional[str]] = mapped_column(
+        String(4096),
+        nullable=True,
+        doc="Кнопки через перевод строки, если response_type=buttons.",
+    )
+    send_mode: Mapped[str] = mapped_column(
+        String(32),
+        nullable=False,
+        default="immediate",
+        doc="immediate | specific_time",
+    )
+    send_time: Mapped[Optional[str]] = mapped_column(
+        String(16),
+        nullable=True,
+        doc="HH:MM, если send_mode=specific_time.",
+    )
+    day_offset_workdays: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=0,
+        doc="Смещение в рабочих днях относительно даты запуска сценария.",
+    )
+    target_field: Mapped[Optional[str]] = mapped_column(
+        String(64),
+        nullable=True,
+        doc="Куда сохранять ответ сотрудника: full_name, desired_position, salary_expectation, personal_data_consent, resume и т.д.",
+    )
+    launch_scenario_key: Mapped[Optional[str]] = mapped_column(
+        String(64),
+        nullable=True,
+        doc="Какой сценарий запускать для перехода из ветки.",
+    )
+    attachment_path: Mapped[Optional[str]] = mapped_column(
+        String(1024),
+        nullable=True,
+        doc="Абсолютный путь к документу, прикрепленному к шагу.",
+    )
+    attachment_filename: Mapped[Optional[str]] = mapped_column(
+        String(255),
+        nullable=True,
+        doc="Оригинальное имя прикрепленного к шагу файла.",
+    )
+
+
+class ScenarioProgress(Base):
+    """Текущее состояние сценария для сотрудника."""
+
+    __tablename__ = "scenario_progress"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    employee_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    scenario_key: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    current_step_key: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    waiting_for_response: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    is_completed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    started_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+
+class SurveyAnswer(Base):
+    """Ответ пользователя на вопрос опроса."""
+
+    __tablename__ = "survey_answers"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    employee_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    scenario_key: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    step_key: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    answer_value: Mapped[Optional[str]] = mapped_column(String(4096), nullable=True)
+    file_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    answered_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)

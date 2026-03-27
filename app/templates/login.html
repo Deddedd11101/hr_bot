@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Вход в HR Bot Admin</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+<main class="main">
+    <div class="container">
+        <div class="card auth-card">
+            <h2>Вход в админку</h2>
+            <p class="muted">Введите логин и пароль учётной записи администратора или HR.</p>
+            {% if error_message %}
+                <p class="auth-error">{{ error_message }}</p>
+            {% endif %}
+            <form method="post" action="/login" class="form">
+                <label class="field">
+                    <span>Логин</span>
+                    <input type="text" name="login" required>
+                </label>
+                <label class="field">
+                    <span>Пароль</span>
+                    <input type="password" name="password" required>
+                </label>
+                <div class="form-actions">
+                    <button type="submit" class="btn-primary">Войти</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</main>
+</body>
+</html>

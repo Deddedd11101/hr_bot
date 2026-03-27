@@ -1,14 +1,17 @@
 {% extends "base.html" %}
 
 {% block content %}
-<a href="/" class="back-link">← К списку сотрудников</a>
+<a href="{{ list_url }}" class="back-link">← {{ list_title }}</a>
 
-<div class="card" style="max-width: 860px;">
+<div class="card">
+    {% if flash_message %}
+        <div class="flash-message flash-{{ flash_type }}">{{ flash_message }}</div>
+    {% endif %}
     <h2>Редактировать сотрудника</h2>
     <p class="muted">
-        Измените данные и нажмите «Сохранить». Флоу запланирован: {{ 'Да' if employee.is_flow_scheduled else 'Нет' }}.
+        Измените данные и нажмите «Сохранить». Сценарий запланирован: {{ 'Да' if employee.is_flow_scheduled else 'Нет' }}.
     </p>
-    <p class="muted">Стаж: {{ workdays }} раб. дн. Этап: {{ stage }}.</p>
+    <p class="muted">Стаж: {{ workdays }} раб. дн. Статус: {{ status }}.</p>
 
     <form method="post" action="/employees/{{ employee.id }}" class="form">
         <label class="field">
@@ -25,19 +28,25 @@
         </label>
         <label class="field">
             <span>Желаемая должность</span>
-            <input type="text" name="desired_position" value="{{ employee.desired_position or '' }}" placeholder="Product Manager">
+            <select name="desired_position">
+                <option value="" {% if not employee.desired_position %}selected{% endif %}>Не указана</option>
+                {% for role in employee_role_values %}
+                    <option value="{{ role }}" {% if employee.desired_position == role %}selected{% endif %}>{{ role }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <label class="field">
+            <span>Статус</span>
+            <select name="employee_stage">
+                <option value="" {% if not employee.employee_stage %}selected{% endif %}>Не указан</option>
+                {% for value, label in employee_stage_values.items() %}
+                    <option value="{{ value }}" {% if employee.employee_stage == value %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
         </label>
         <label class="field">
             <span>Ожидания по зарплате</span>
             <input type="text" name="salary_expectation" value="{{ employee.salary_expectation or '' }}" placeholder="250 000 - 300 000">
-        </label>
-        <label class="field">
-            <span>Статус кандидата</span>
-            <input type="text" name="candidate_status" value="{{ employee.candidate_status or '' }}" placeholder="new / invited / offer_sent">
-        </label>
-        <label class="field">
-            <span>Ссылка на тестовое задание</span>
-            <input type="text" name="test_task_link" value="{{ employee.test_task_link or '' }}" placeholder="https://...">
         </label>
         <label class="field">
             <span>Дедлайн тестового задания</span>
@@ -72,10 +81,6 @@
     <h3>Файлы</h3>
     <form method="post" action="/employees/{{ employee.id }}/files" class="form" enctype="multipart/form-data">
         <label class="field">
-            <span>Категория</span>
-            <input type="text" name="category" value="hr_file" placeholder="offer / sign_docs / checklist">
-        </label>
-        <label class="field">
             <span>Файл</span>
             <input type="file" name="upload" required>
         </label>
@@ -97,7 +102,6 @@
             <tr>
                 <th>ID</th>
                 <th>Тип</th>
-                <th>Категория</th>
                 <th>Имя файла</th>
                 <th>Дата</th>
                 <th></th>
@@ -108,7 +112,6 @@
                 <tr>
                     <td>{{ f.id }}</td>
                     <td>{{ f.direction }}</td>
-                    <td>{{ f.category }}</td>
                     <td>{{ f.original_filename }}</td>
                     <td>{{ f.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
                     <td>
@@ -127,40 +130,107 @@
         <p class="muted">Файлов пока нет.</p>
     {% endif %}
 
-    <div class="form-actions" style="margin-top: 16px; flex-wrap: wrap; gap: 8px;">
-        <form method="post" action="/employees/{{ employee.id }}/launch">
-            <input type="hidden" name="flow_key" value="recruitment_hiring">
-            <button type="submit" class="btn-secondary">Запустить флоу подбора и найма</button>
-        </form>
-        <form method="post" action="/employees/{{ employee.id }}/launch">
-            <input type="hidden" name="flow_key" value="first_day">
-            <button type="submit" class="btn-secondary">Запустить флоу первого дня</button>
-        </form>
-        <form method="post" action="/employees/{{ employee.id }}/launch">
-            <input type="hidden" name="flow_key" value="first_week">
-            <button type="submit" class="btn-secondary">Запустить флоу конца первой недели</button>
-        </form>
-        <form method="post" action="/employees/{{ employee.id }}/launch">
-            <input type="hidden" name="flow_key" value="mid_probation">
-            <button type="submit" class="btn-secondary">Запустить флоу середины ИС</button>
-        </form>
-        <form method="post" action="/employees/{{ employee.id }}/launch">
-            <input type="hidden" name="flow_key" value="end_probation">
-            <button type="submit" class="btn-secondary">Запустить флоу завершения ИС</button>
-        </form>
-        <form method="post" action="/employees/{{ employee.id }}/launch">
-            <input type="hidden" name="flow_key" value="mid_feedback">
-            <button type="submit" class="btn-secondary">Отправить ОС от коллег (середина ИС)</button>
-        </form>
-        <form method="post" action="/employees/{{ employee.id }}/launch">
-            <input type="hidden" name="flow_key" value="end_feedback">
-            <button type="submit" class="btn-secondary">Отправить ОС от коллег (конец ИС)</button>
-        </form>
-        <form method="post" action="/employees/{{ employee.id }}/launch">
-            <input type="hidden" name="flow_key" value="end_summary">
-            <button type="submit" class="btn-secondary">Отправить итог ИС</button>
-        </form>
-    </div>
+    <hr style="margin: 20px 0; border: 0; border-top: 1px solid #e5e7eb;">
+
+    <h3>Планировщик запуска сценария</h3>
+    <form method="post" action="/employees/{{ employee.id }}/schedule" class="scheduler-toolbar">
+        <label class="field scheduler-field">
+            <span>Сценарий</span>
+            <select name="flow_key" required>
+                <option value="">Выберите сценарий</option>
+                {% for scenario in scenarios %}
+                    <option value="{{ scenario.scenario_key }}">{{ scenario.title }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <label class="field scheduler-field">
+            <span>Время отправки</span>
+            <input type="datetime-local" name="requested_at" required>
+        </label>
+        <div class="scheduler-action">
+            <button type="submit" class="btn-primary">Запланировать сценарий</button>
+        </div>
+    </form>
+
+    {% if scheduled_launches %}
+        <table class="table scheduler-table">
+            <thead>
+            <tr>
+                <th>Название сценария</th>
+                <th>Время отправки</th>
+                <th></th>
+            </tr>
+            </thead>
+            <tbody>
+            {% for launch_request in scheduled_launches %}
+                {% set scenario = scenario_by_key.get(launch_request.flow_key) %}
+                <tr>
+                    <td>
+                        {% if scenario %}
+                            <a href="/flows/{{ scenario.id }}">{{ scenario.title }}</a>
+                        {% else %}
+                            {{ launch_request.flow_key }}
+                        {% endif %}
+                    </td>
+                    <td>{{ launch_request.requested_at.strftime('%d.%m.%Y %H:%M') }}</td>
+                    <td class="table-action-cell">
+                        <form method="post" action="/employees/{{ employee.id }}/schedule/{{ launch_request.id }}/delete" onsubmit="return confirm('Удалить запланированную отправку?');">
+                            <button type="submit" class="table-icon-link table-icon-link-danger" aria-label="Удалить запланированную отправку" title="Удалить">&#10005;</button>
+                        </form>
+                    </td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <p class="muted">Запланированных сценариев пока нет.</p>
+    {% endif %}
+
+    <hr style="margin: 20px 0; border: 0; border-top: 1px solid #e5e7eb;">
+
+    <h3>Ручной запуск сценария</h3>
+    <form method="post" action="/employees/{{ employee.id }}/launch" class="scheduler-toolbar">
+        <label class="field scheduler-field">
+            <span>Сценарий</span>
+            <select name="flow_key" required>
+                <option value="">Выберите сценарий</option>
+                {% for scenario in scenarios %}
+                    <option value="{{ scenario.scenario_key }}">{{ scenario.title }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <div class="scheduler-action">
+            <button type="submit" class="btn-primary">Запустить сценарий</button>
+        </div>
+    </form>
+
+    {% if manual_launch_history %}
+        <table class="table scheduler-table">
+            <thead>
+            <tr>
+                <th>Название сценария</th>
+                <th>Время запуска</th>
+            </tr>
+            </thead>
+            <tbody>
+            {% for launch_request in manual_launch_history %}
+                {% set scenario = scenario_by_key.get(launch_request.flow_key) %}
+                <tr>
+                    <td>
+                        {% if scenario %}
+                            <a href="/flows/{{ scenario.id }}">{{ scenario.title }}</a>
+                        {% else %}
+                            {{ launch_request.flow_key }}
+                        {% endif %}
+                    </td>
+                    <td>{{ launch_request.processed_at.strftime('%d.%m.%Y %H:%M') if launch_request.processed_at else '—' }}</td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <p class="muted">Ручных запусков пока не было.</p>
+    {% endif %}
     <form id="delete-form" method="post" action="/employees/{{ employee.id }}/delete" style="display: none;"></form>
 </div>
 {% endblock %}

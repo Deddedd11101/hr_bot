@@ -4,7 +4,7 @@
 <section>
     <div class="card">
         <div class="employees-toolbar">
-            <button type="button" class="btn-primary" id="open-create-employee">Добавить сотрудника</button>
+            <button type="button" class="btn-primary" id="open-create-employee">{{ create_button_label }}</button>
         </div>
         {% if employee_views %}
             <table class="table">
@@ -13,10 +13,15 @@
                     <th>ID</th>
                     <th>ФИО</th>
                     <th>Telegram</th>
-                    <th>Первый рабочий день</th>
-                    <th>Стаж</th>
-                    <th>Этап</th>
-                    <th>Флоу запланирован</th>
+                    {% if active_tab == 'candidates' %}
+                        <th>Должность</th>
+                        <th>Дедлайн тестового</th>
+                    {% else %}
+                        <th>Должность</th>
+                        <th>Статус</th>
+                        <th>Первый рабочий день</th>
+                    {% endif %}
+                    <th>Запланированный сценарий</th>
                     <th></th>
                 </tr>
                 </thead>
@@ -26,26 +31,33 @@
                     <tr>
                         <td>{{ emp.id }}</td>
                         <td>{{ emp.full_name or '—' }}</td>
-                        <td>{{ emp.telegram_user_id or '—' }}</td>
-                        <td>{{ emp.first_workday or '—' }}</td>
-                        <td>{{ item.workdays }} раб. дн.</td>
-                        <td>{{ item.stage }}</td>
                         <td>
-                            {% if emp.is_flow_scheduled %}
-                                <span class="badge badge-success">Да</span>
+                            {% if item.telegram_link %}
+                                <a href="{{ item.telegram_link }}" target="_blank" rel="noopener noreferrer">{{ emp.telegram_user_id }}</a>
                             {% else %}
-                                <span class="badge badge-warning">Нет</span>
+                                {{ emp.telegram_user_id or '—' }}
                             {% endif %}
                         </td>
-                        <td>
-                            <a href="/employees/{{ emp.id }}/edit">Редактировать</a>
+                        {% if active_tab == 'candidates' %}
+                            <td>{{ emp.desired_position or '—' }}</td>
+                            <td>{{ emp.test_task_due_at.strftime('%d.%m.%Y %H:%M') if emp.test_task_due_at else '—' }}</td>
+                        {% else %}
+                            <td>{{ emp.desired_position or '—' }}</td>
+                            <td>{{ item.status }}</td>
+                            <td>{{ emp.first_workday or '—' }}</td>
+                        {% endif %}
+                        <td>{{ item.planned_scenario_title }}</td>
+                        <td class="table-action-cell">
+                            <a href="/employees/{{ emp.id }}/edit" class="table-icon-link" aria-label="Редактировать" title="Редактировать">&#9998;</a>
                         </td>
                     </tr>
                 {% endfor %}
                 </tbody>
             </table>
         {% else %}
-            <p class="muted">Сотрудников пока нет. Нажмите «Добавить сотрудника».</p>
+            <div class="employees-empty-state">
+                <p class="muted">{{ empty_message }}</p>
+            </div>
         {% endif %}
     </div>
 </section>
@@ -53,14 +65,12 @@
 <div class="modal-overlay" id="employee-modal" aria-hidden="true">
     <div class="modal-card">
         <div class="modal-header">
-            <h3>Новый сотрудник</h3>
+            <h3>{{ create_modal_title }}</h3>
             <button type="button" class="modal-close" id="close-create-employee" aria-label="Закрыть">×</button>
         </div>
-        <p class="muted">
-            Добавьте сотрудника, чтобы запустить флоу онбординга.
-            Все уведомления будут отправляться в его Telegram.
-        </p>
+        <p class="muted">{{ create_intro }} Все уведомления будут отправляться в его Telegram.</p>
         <form method="post" action="/employees" class="form">
+            <input type="hidden" name="employee_stage" value="{{ default_employee_stage }}">
             <label class="field">
                 <span>ФИО</span>
                 <input type="text" name="full_name" placeholder="Можно заполнить позже">

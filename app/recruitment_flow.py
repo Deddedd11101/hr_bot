@@ -1,3 +1,5 @@
+from typing import List, Optional
+
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 
@@ -35,20 +37,26 @@ PRIMARY_DONE_MESSAGE = (
 )
 
 
-def recruitment_consent_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="Да, согласен", callback_data=CALLBACK_CONSENT_YES)],
-            [InlineKeyboardButton(text="Нет", callback_data=CALLBACK_CONSENT_NO)],
-        ]
-    )
+def _keyboard_from_options(options: List[str], callbacks: List[str]) -> InlineKeyboardMarkup:
+    rows = []
+    for idx, label in enumerate(options):
+        callback = callbacks[idx] if idx < len(callbacks) else callbacks[-1]
+        rows.append([InlineKeyboardButton(text=label, callback_data=callback)])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def recruitment_role_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="Дизайнер", callback_data=CALLBACK_ROLE_DESIGNER)],
-            [InlineKeyboardButton(text="РМ", callback_data=CALLBACK_ROLE_PM)],
-            [InlineKeyboardButton(text="Аналитик", callback_data=CALLBACK_ROLE_ANALYST)],
-        ]
+def recruitment_consent_keyboard(options: Optional[List[str]] = None) -> InlineKeyboardMarkup:
+    options = options or ["Да, согласен", "Нет"]
+    if len(options) < 2:
+        options = ["Да, согласен", "Нет"]
+    return _keyboard_from_options(options[:2], [CALLBACK_CONSENT_YES, CALLBACK_CONSENT_NO])
+
+
+def recruitment_role_keyboard(options: Optional[List[str]] = None) -> InlineKeyboardMarkup:
+    options = options or ["Дизайнер", "Project manager", "Аналитик"]
+    if len(options) < 3:
+        options = ["Дизайнер", "Project manager", "Аналитик"]
+    return _keyboard_from_options(
+        options[:3],
+        [CALLBACK_ROLE_DESIGNER, CALLBACK_ROLE_PM, CALLBACK_ROLE_ANALYST],
     )

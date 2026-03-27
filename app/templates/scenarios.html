@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card">
+    <div class="page-head scenario-page-head">
+        <div>
+            <h2>{{ collection_title }}</h2>
+            <p class="muted">{{ collection_description }}</p>
+        </div>
+        <form method="post" action="{{ collection_path }}" style="margin: 0;">
+            <input type="hidden" name="title" value="{{ new_title }}">
+            <input type="hidden" name="role_scope" value="all">
+            <input type="hidden" name="trigger_mode" value="manual_only">
+            <input type="hidden" name="description" value="">
+            <button type="submit" class="btn-primary">{{ create_label }}</button>
+        </form>
+    </div>
+
+    <div class="scenario-table-wrap">
+    <table class="table">
+        <thead>
+        <tr>
+            <th>ID</th>
+            <th>{{ collection_title_single }}</th>
+            <th>Роль</th>
+            <th>Старт</th>
+            <th>Описание</th>
+            <th></th>
+        </tr>
+        </thead>
+        <tbody>
+        {% for scenario in scenarios %}
+            <tr>
+                <td>{{ scenario.id }}</td>
+                <td>{{ scenario.title }}</td>
+                <td>{{ role_scope_labels.get(scenario.role_scope, scenario.role_scope) }}</td>
+                <td>{{ trigger_mode_labels.get(scenario.trigger_mode, scenario.trigger_mode) }}</td>
+                <td>{{ scenario.description or '—' }}</td>
+                <td class="table-action-cell table-action-cell-wide">
+                    <a href="{{ collection_path }}/{{ scenario.id }}" class="table-icon-link" aria-label="Редактировать" title="Редактировать">&#9998;</a>
+                    {% if kind == 'survey' %}
+                        <a href="/surveys/{{ scenario.id }}/export" class="table-icon-link" aria-label="Скачать результаты" title="Скачать результаты">&#10515;</a>
+                    {% endif %}
+                    <form method="post" action="{{ collection_path }}/{{ scenario.id }}/delete" style="display:inline;" onsubmit="return confirm('Удалить {{ 'опрос' if kind == 'survey' else 'сценарий' }} и все его шаги?');">
+                        <button type="submit" class="table-icon-link table-icon-link-danger" aria-label="Удалить" title="Удалить">&#10005;</button>
+                    </form>
+                </td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
+</div>
+{% endblock %}

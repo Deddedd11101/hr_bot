@@ -1,0 +1,479 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card">
+    {% if flash_message %}
+        <div class="flash-message flash-{{ flash_type }}">{{ flash_message }}</div>
+    {% endif %}
+    <h2>Массовые действия</h2>
+    <p class="muted">Планируйте или запускайте сценарии, сообщения и опросы сразу для нескольких статусов сотрудников.</p>
+
+    <section class="mass-section">
+        <button type="button" class="mass-section-toggle" data-mass-toggle aria-expanded="true">
+            <span>Сценарии</span>
+            <span class="mass-section-toggle-icon">⌄</span>
+        </button>
+        <div class="mass-section-body" data-mass-body>
+            <h3>Планировщик запуска сценария</h3>
+            <form method="post" action="/bulk-actions/scenarios/schedule" class="scheduler-toolbar scheduler-toolbar-extended">
+                <label class="field scheduler-field">
+                    <span>Сценарий</span>
+                    <select name="flow_key" required>
+                        <option value="">Выберите сценарий</option>
+                        {% for scenario in scenarios %}
+                            <option value="{{ scenario.scenario_key }}">{{ scenario.title }}</option>
+                        {% endfor %}
+                    </select>
+                </label>
+                <label class="field scheduler-field">
+                    <span>Время отправки</span>
+                    <input type="datetime-local" name="requested_at" required>
+                </label>
+                <div class="scheduler-action">
+                    <button type="submit" class="btn-primary">Запланировать сценарий</button>
+                </div>
+                <div class="bulk-targets-card">
+                    <div class="bulk-targets-head">
+                        <span>Получатели</span>
+                        <label class="checkbox-inline">
+                            <input type="checkbox" name="target_all" value="true">
+                            <span>Все</span>
+                        </label>
+                    </div>
+                    <div class="bulk-target-grid">
+                        {% for value, label in target_status_options %}
+                            <label class="bulk-target-chip">
+                                <input type="checkbox" name="target_statuses" value="{{ value }}">
+                                <span>{{ label }}</span>
+                            </label>
+                        {% endfor %}
+                    </div>
+                </div>
+            </form>
+
+            {% if scheduled_scenario_actions %}
+                <table class="table scheduler-table">
+                    <thead>
+                    <tr>
+                        <th>Название сценария</th>
+                        <th>Получатели</th>
+                        <th>Время отправки</th>
+                        <th></th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    {% for action in scheduled_scenario_actions %}
+                        {% set scenario = scenario_by_key.get(action.flow_key) %}
+                        <tr>
+                            <td>
+                                {% if scenario %}
+                                    <a href="/flows/{{ scenario.id }}">{{ scenario.title }}</a>
+                                {% else %}
+                                    {{ action.flow_key }}
+                                {% endif %}
+                            </td>
+                            <td>{{ recipient_scope_label(action.target_all, action.target_statuses) }}</td>
+                            <td>{{ action.requested_at.strftime('%d.%m.%Y %H:%M') }}</td>
+                            <td class="table-action-cell">
+                                <form method="post" action="/bulk-actions/scenarios/{{ action.id }}/delete" onsubmit="return confirm('Удалить запланированный запуск?');">
+                                    <button type="submit" class="table-icon-link table-icon-link-danger" aria-label="Удалить запланированный запуск" title="Удалить">&#10005;</button>
+                                </form>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            {% else %}
+                <p class="muted">Запланированных массовых запусков сценариев пока нет.</p>
+            {% endif %}
+
+            <hr style="margin: 20px 0; border: 0; border-top: 1px solid #e5e7eb;">
+
+            <h3>Ручной запуск сценария</h3>
+            <form method="post" action="/bulk-actions/scenarios/launch" class="scheduler-toolbar scheduler-toolbar-extended">
+                <label class="field scheduler-field">
+                    <span>Сценарий</span>
+                    <select name="flow_key" required>
+                        <option value="">Выберите сценарий</option>
+                        {% for scenario in scenarios %}
+                            <option value="{{ scenario.scenario_key }}">{{ scenario.title }}</option>
+                        {% endfor %}
+                    </select>
+                </label>
+                <div class="scheduler-action">
+                    <button type="submit" class="btn-primary">Запустить сценарий</button>
+                </div>
+                <div class="bulk-targets-card">
+                    <div class="bulk-targets-head">
+                        <span>Получатели</span>
+                        <label class="checkbox-inline">
+                            <input type="checkbox" name="target_all" value="true">
+                            <span>Все</span>
+                        </label>
+                    </div>
+                    <div class="bulk-target-grid">
+                        {% for value, label in target_status_options %}
+                            <label class="bulk-target-chip">
+                                <input type="checkbox" name="target_statuses" value="{{ value }}">
+                                <span>{{ label }}</span>
+                            </label>
+                        {% endfor %}
+                    </div>
+                </div>
+            </form>
+
+            {% if manual_scenario_history %}
+                <table class="table scheduler-table">
+                    <thead>
+                    <tr>
+                        <th>Название сценария</th>
+                        <th>Получатели</th>
+                        <th>Время запуска</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    {% for action in manual_scenario_history %}
+                        {% set scenario = scenario_by_key.get(action.flow_key) %}
+                        <tr>
+                            <td>
+                                {% if scenario %}
+                                    <a href="/flows/{{ scenario.id }}">{{ scenario.title }}</a>
+                                {% else %}
+                                    {{ action.flow_key }}
+                                {% endif %}
+                            </td>
+                            <td>{{ recipient_scope_label(action.target_all, action.target_statuses) }}</td>
+                            <td>{{ action.processed_at.strftime('%d.%m.%Y %H:%M') if action.processed_at else '—' }}</td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            {% else %}
+                <p class="muted">Массовых ручных запусков сценариев пока не было.</p>
+            {% endif %}
+        </div>
+    </section>
+
+    <section class="mass-section">
+        <button type="button" class="mass-section-toggle" data-mass-toggle aria-expanded="false">
+            <span>Сообщения</span>
+            <span class="mass-section-toggle-icon">⌄</span>
+        </button>
+        <div class="mass-section-body" data-mass-body hidden>
+            <h3>Планировщик отправки сообщения</h3>
+            <form method="post" action="/bulk-actions/messages/schedule" class="bulk-message-form">
+                <label class="field">
+                    <span>Текст сообщения</span>
+                    <textarea name="message_text" rows="4" placeholder="Введите сообщение для выбранных получателей" required data-token-target></textarea>
+                    <div class="token-toolbar">
+                        <button type="button" class="token-chip" data-token-insert="{name}">{name}</button>
+                        <button type="button" class="token-chip" data-token-insert="{full_name}">{full_name}</button>
+                    </div>
+                </label>
+                <div class="scheduler-toolbar scheduler-toolbar-extended bulk-message-toolbar">
+                    <label class="field scheduler-field">
+                        <span>Время отправки</span>
+                        <input type="datetime-local" name="requested_at" required>
+                    </label>
+                    <div class="scheduler-action">
+                        <button type="submit" class="btn-primary">Запланировать сообщение</button>
+                    </div>
+                    <div class="bulk-targets-card">
+                        <div class="bulk-targets-head">
+                            <span>Получатели</span>
+                            <label class="checkbox-inline">
+                                <input type="checkbox" name="target_all" value="true">
+                                <span>Все</span>
+                            </label>
+                        </div>
+                        <div class="bulk-target-grid">
+                            {% for value, label in target_status_options %}
+                                <label class="bulk-target-chip">
+                                    <input type="checkbox" name="target_statuses" value="{{ value }}">
+                                    <span>{{ label }}</span>
+                                </label>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+            </form>
+
+            {% if scheduled_message_actions %}
+                <table class="table scheduler-table">
+                    <thead>
+                    <tr>
+                        <th>Сообщение</th>
+                        <th>Получатели</th>
+                        <th>Время отправки</th>
+                        <th></th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    {% for action in scheduled_message_actions %}
+                        <tr>
+                            <td class="message-preview-cell">{{ action.message_text }}</td>
+                            <td>{{ recipient_scope_label(action.target_all, action.target_statuses) }}</td>
+                            <td>{{ action.requested_at.strftime('%d.%m.%Y %H:%M') }}</td>
+                            <td class="table-action-cell">
+                                <form method="post" action="/bulk-actions/messages/{{ action.id }}/delete" onsubmit="return confirm('Удалить запланированную отправку?');">
+                                    <button type="submit" class="table-icon-link table-icon-link-danger" aria-label="Удалить запланированную отправку" title="Удалить">&#10005;</button>
+                                </form>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            {% else %}
+                <p class="muted">Запланированных массовых сообщений пока нет.</p>
+            {% endif %}
+
+            <hr style="margin: 20px 0; border: 0; border-top: 1px solid #e5e7eb;">
+
+            <h3>Ручная отправка сообщения</h3>
+            <form method="post" action="/bulk-actions/messages/send" class="bulk-message-form">
+                <label class="field">
+                    <span>Текст сообщения</span>
+                    <textarea name="message_text" rows="4" placeholder="Введите сообщение для выбранных получателей" required data-token-target></textarea>
+                    <div class="token-toolbar">
+                        <button type="button" class="token-chip" data-token-insert="{name}">{name}</button>
+                        <button type="button" class="token-chip" data-token-insert="{full_name}">{full_name}</button>
+                    </div>
+                </label>
+                <div class="scheduler-toolbar scheduler-toolbar-extended bulk-message-toolbar">
+                    <div class="scheduler-action">
+                        <button type="submit" class="btn-primary">Отправить сообщение</button>
+                    </div>
+                    <div class="bulk-targets-card">
+                        <div class="bulk-targets-head">
+                            <span>Получатели</span>
+                            <label class="checkbox-inline">
+                                <input type="checkbox" name="target_all" value="true">
+                                <span>Все</span>
+                            </label>
+                        </div>
+                        <div class="bulk-target-grid">
+                            {% for value, label in target_status_options %}
+                                <label class="bulk-target-chip">
+                                    <input type="checkbox" name="target_statuses" value="{{ value }}">
+                                    <span>{{ label }}</span>
+                                </label>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+            </form>
+
+            {% if manual_message_history %}
+                <table class="table scheduler-table">
+                    <thead>
+                    <tr>
+                        <th>Сообщение</th>
+                        <th>Получатели</th>
+                        <th>Время отправки</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    {% for action in manual_message_history %}
+                        <tr>
+                            <td class="message-preview-cell">{{ action.message_text }}</td>
+                            <td>{{ recipient_scope_label(action.target_all, action.target_statuses) }}</td>
+                            <td>{{ action.processed_at.strftime('%d.%m.%Y %H:%M') if action.processed_at else '—' }}</td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            {% else %}
+                <p class="muted">Массовых ручных отправок сообщений пока не было.</p>
+            {% endif %}
+        </div>
+    </section>
+
+    <section class="mass-section">
+        <button type="button" class="mass-section-toggle" data-mass-toggle aria-expanded="false">
+            <span>Опросы</span>
+            <span class="mass-section-toggle-icon">⌄</span>
+        </button>
+        <div class="mass-section-body" data-mass-body hidden>
+            <h3>Планировщик запуска опроса</h3>
+            <form method="post" action="/bulk-actions/surveys/schedule" class="scheduler-toolbar scheduler-toolbar-extended">
+                <label class="field scheduler-field">
+                    <span>Опрос</span>
+                    <select name="flow_key" required>
+                        <option value="">Выберите опрос</option>
+                        {% for survey in surveys %}
+                            <option value="{{ survey.scenario_key }}">{{ survey.title }}</option>
+                        {% endfor %}
+                    </select>
+                </label>
+                <label class="field scheduler-field">
+                    <span>Время отправки</span>
+                    <input type="datetime-local" name="requested_at" required>
+                </label>
+                <div class="scheduler-action">
+                    <button type="submit" class="btn-primary">Запланировать опрос</button>
+                </div>
+                <div class="bulk-targets-card">
+                    <div class="bulk-targets-head">
+                        <span>Получатели</span>
+                        <label class="checkbox-inline">
+                            <input type="checkbox" name="target_all" value="true">
+                            <span>Все</span>
+                        </label>
+                    </div>
+                    <div class="bulk-target-grid">
+                        {% for value, label in target_status_options %}
+                            <label class="bulk-target-chip">
+                                <input type="checkbox" name="target_statuses" value="{{ value }}">
+                                <span>{{ label }}</span>
+                            </label>
+                        {% endfor %}
+                    </div>
+                </div>
+            </form>
+
+            {% if scheduled_survey_actions %}
+                <table class="table scheduler-table">
+                    <thead>
+                    <tr>
+                        <th>Название опроса</th>
+                        <th>Получатели</th>
+                        <th>Время отправки</th>
+                        <th></th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    {% for action in scheduled_survey_actions %}
+                        {% set survey = survey_by_key.get(action.flow_key) %}
+                        <tr>
+                            <td>
+                                {% if survey %}
+                                    <a href="/surveys/{{ survey.id }}">{{ survey.title }}</a>
+                                {% else %}
+                                    {{ action.flow_key }}
+                                {% endif %}
+                            </td>
+                            <td>{{ recipient_scope_label(action.target_all, action.target_statuses) }}</td>
+                            <td>{{ action.requested_at.strftime('%d.%m.%Y %H:%M') }}</td>
+                            <td class="table-action-cell">
+                                <form method="post" action="/bulk-actions/scenarios/{{ action.id }}/delete" onsubmit="return confirm('Удалить запланированный запуск?');">
+                                    <button type="submit" class="table-icon-link table-icon-link-danger" aria-label="Удалить запланированный запуск" title="Удалить">&#10005;</button>
+                                </form>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            {% else %}
+                <p class="muted">Запланированных массовых запусков опросов пока нет.</p>
+            {% endif %}
+
+            <hr style="margin: 20px 0; border: 0; border-top: 1px solid #e5e7eb;">
+
+            <h3>Ручной запуск опроса</h3>
+            <form method="post" action="/bulk-actions/surveys/launch" class="scheduler-toolbar scheduler-toolbar-extended">
+                <label class="field scheduler-field">
+                    <span>Опрос</span>
+                    <select name="flow_key" required>
+                        <option value="">Выберите опрос</option>
+                        {% for survey in surveys %}
+                            <option value="{{ survey.scenario_key }}">{{ survey.title }}</option>
+                        {% endfor %}
+                    </select>
+                </label>
+                <div class="scheduler-action">
+                    <button type="submit" class="btn-primary">Запустить опрос</button>
+                </div>
+                <div class="bulk-targets-card">
+                    <div class="bulk-targets-head">
+                        <span>Получатели</span>
+                        <label class="checkbox-inline">
+                            <input type="checkbox" name="target_all" value="true">
+                            <span>Все</span>
+                        </label>
+                    </div>
+                    <div class="bulk-target-grid">
+                        {% for value, label in target_status_options %}
+                            <label class="bulk-target-chip">
+                                <input type="checkbox" name="target_statuses" value="{{ value }}">
+                                <span>{{ label }}</span>
+                            </label>
+                        {% endfor %}
+                    </div>
+                </div>
+            </form>
+
+            {% if manual_survey_history %}
+                <table class="table scheduler-table">
+                    <thead>
+                    <tr>
+                        <th>Название опроса</th>
+                        <th>Получатели</th>
+                        <th>Время запуска</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    {% for action in manual_survey_history %}
+                        {% set survey = survey_by_key.get(action.flow_key) %}
+                        <tr>
+                            <td>
+                                {% if survey %}
+                                    <a href="/surveys/{{ survey.id }}">{{ survey.title }}</a>
+                                {% else %}
+                                    {{ action.flow_key }}
+                                {% endif %}
+                            </td>
+                            <td>{{ recipient_scope_label(action.target_all, action.target_statuses) }}</td>
+                            <td>{{ action.processed_at.strftime('%d.%m.%Y %H:%M') if action.processed_at else '—' }}</td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            {% else %}
+                <p class="muted">Массовых ручных запусков опросов пока не было.</p>
+            {% endif %}
+        </div>
+    </section>
+</div>
+
+<script>
+    document.querySelectorAll('.bulk-message-form').forEach((form) => {
+        const textarea = form.querySelector('[data-token-target]');
+        if (!textarea) {
+            return;
+        }
+
+        form.querySelectorAll('[data-token-insert]').forEach((button) => {
+            button.addEventListener('click', () => {
+                const token = button.dataset.tokenInsert || '';
+                const start = textarea.selectionStart ?? textarea.value.length;
+                const end = textarea.selectionEnd ?? textarea.value.length;
+                const before = textarea.value.slice(0, start);
+                const after = textarea.value.slice(end);
+                textarea.value = `${before}${token}${after}`;
+                const cursor = start + token.length;
+                textarea.focus();
+                textarea.setSelectionRange(cursor, cursor);
+            });
+        });
+    });
+
+    document.querySelectorAll('[data-mass-toggle]').forEach((toggle, index) => {
+        const section = toggle.closest('.mass-section');
+        const body = section ? section.querySelector('[data-mass-body]') : null;
+        if (!section || !body) {
+            return;
+        }
+
+        const setExpanded = (expanded) => {
+            toggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+            body.hidden = !expanded;
+            section.classList.toggle('is-open', expanded);
+        };
+
+        setExpanded(index === 0);
+        toggle.addEventListener('click', () => {
+            setExpanded(toggle.getAttribute('aria-expanded') !== 'true');
+        });
+    });
+</script>
+{% endblock %}
