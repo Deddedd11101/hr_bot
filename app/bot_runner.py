@@ -2,9 +2,11 @@ import asyncio
 from datetime import datetime
 from typing import Optional
 
+from aiohttp import ClientError
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
+from aiogram.exceptions import TelegramNetworkError
 from aiogram.filters import CommandStart
 from aiogram.types import CallbackQuery, KeyboardButton, Message, ReplyKeyboardMarkup
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -338,8 +340,20 @@ async def main() -> None:
     print("HR Telegram bot is running. Press Ctrl+C to stop.")
 
     try:
-        await dp.start_polling(bot)
+        reconnect_delay_seconds = 5
+        while True:
+            try:
+                await dp.start_polling(bot)
+                break
+            except (TelegramNetworkError, ClientError, asyncio.TimeoutError, OSError) as exc:
+                print(
+                    f"Telegram connection error: {exc}. "
+                    f"Retrying in {reconnect_delay_seconds} seconds..."
+                )
+                await asyncio.sleep(reconnect_delay_seconds)
     finally:
+        if scheduler.running:
+            scheduler.shutdown(wait=False)
         await bot.session.close()
 
 

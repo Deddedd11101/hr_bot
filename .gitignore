@@ -1,0 +1,16 @@
+.venv/
+__pycache__/
+*.py[cod]
+*.log
+.env
+.DS_Store
+
+# Local runtime data
+hr_bot.db
+storage/employee_files/
+storage/scenario_step_files/
+
+# Editor / OS noise
+.idea/
+.vscode/
+Thumbs.db
