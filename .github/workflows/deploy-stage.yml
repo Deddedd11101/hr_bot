@@ -1,0 +1,32 @@
+name: Deploy Stage
+
+on:
+  workflow_run:
+    workflows:
+      - CI
+    types:
+      - completed
+    branches:
+      - main
+
+jobs:
+  deploy:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.STAGE_HOST }}
+          username: ${{ secrets.STAGE_USERNAME }}
+          password: ${{ secrets.STAGE_PASSWORD }}
+          port: ${{ secrets.STAGE_PORT }}
+          script: |
+            set -e
+            cd "${{ secrets.STAGE_APP_DIR }}"
+            git pull --ff-only origin main
+            systemctl restart hr-bot-web
+            systemctl restart hr-bot-worker
+            systemctl is-active --quiet hr-bot-web
+            systemctl is-active --quiet hr-bot-worker

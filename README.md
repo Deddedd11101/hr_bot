@@ -169,3 +169,34 @@ MANUAL_STEP_MINUTES=1
 ### Админка работает, бот падает по сети
 
 Это не обязательно ошибка проекта. Часто это проблема соединения с Telegram API. В код уже добавлено автоматическое переподключение при временных сетевых ошибках.
+
+## CI/CD
+
+В репозитории настроены два GitHub Actions workflow:
+
+- `CI`:
+  - ставит зависимости;
+  - компилирует Python-код;
+  - делает базовый smoke import основных модулей.
+- `Deploy Stage`:
+  - запускается после успешного `CI` для ветки `main`;
+  - подключается к stage-серверу по SSH;
+  - делает `git pull --ff-only origin main`;
+  - перезапускает `hr-bot-web` и `hr-bot-worker`.
+
+Для автодеплоя на stage нужно добавить в GitHub Secrets:
+
+- `STAGE_HOST`
+- `STAGE_PORT`
+- `STAGE_USERNAME`
+- `STAGE_PASSWORD`
+- `STAGE_APP_DIR`
+
+Для текущего stage это обычно:
+
+- `STAGE_HOST=92.51.38.32`
+- `STAGE_PORT=22`
+- `STAGE_USERNAME=root`
+- `STAGE_APP_DIR=/opt/hr_bot`
+
+Пароль сервера лучше хранить только в GitHub Secrets и не коммитить в репозиторий.
