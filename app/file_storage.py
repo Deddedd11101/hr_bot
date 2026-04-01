@@ -30,6 +30,14 @@ def build_employee_file_path(employee_id: int, original_filename: str) -> Path:
     return employee_dir / f"{uuid4().hex}_{safe_name}"
 
 
+def build_employee_profile_photo_path(employee_id: int, original_filename: str) -> Path:
+    root = ensure_storage_dir()
+    employee_dir = root / str(employee_id) / "profile"
+    employee_dir.mkdir(parents=True, exist_ok=True)
+    safe_name = _safe_filename(original_filename)
+    return employee_dir / f"avatar_{uuid4().hex}_{safe_name}"
+
+
 def build_step_attachment_path(scenario_key: str, step_key: str, original_filename: str) -> Path:
     root = ensure_storage_dir().parent / "scenario_step_files"
     step_dir = root / scenario_key
