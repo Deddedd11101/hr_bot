@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 
 {% block content %}
+<script>document.body.classList.add('scenario-editor-page');</script>
 <a href="{{ collection_path }}" class="back-link">← {{ back_label }}</a>
 
 <div class="card">
@@ -22,12 +23,27 @@
                 <span>Название {{ item_label_cap.lower() }}</span>
                 <input type="text" name="title" value="{{ scenario.title }}" required>
             </label>
+            <label class="field settings-field">
+                <span>Описание</span>
+                <input type="text" name="description" value="{{ scenario.description or '' }}" placeholder="Короткое описание {{ item_label_cap.lower() }}">
+            </label>
             <label class="field settings-field settings-select-field">
-                <span>Привязка к роли сотрудника</span>
+                <span>Привязка к должности</span>
                 <span class="employees-filter-label settings-select-shell">
                     <select name="role_scope" class="employees-filter-select">
                         {% for value, label in role_scope_labels.items() %}
                             <option value="{{ value }}" {% if scenario.role_scope == value %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </span>
+            </label>
+            <label class="field settings-field settings-select-field">
+                <span>Привязка к сотруднику/кандидату</span>
+                <span class="employees-filter-label settings-select-shell">
+                    <select name="target_employee_id" class="employees-filter-select">
+                        <option value="">Для всех сотрудников и кандидатов</option>
+                        {% for employee_option in employee_options %}
+                            <option value="{{ employee_option.id }}" {% if scenario.target_employee_id == employee_option.id %}selected{% endif %}>{{ employee_option.label }}</option>
                         {% endfor %}
                     </select>
                 </span>
@@ -47,10 +63,6 @@
                 <input type="hidden" name="trigger_mode" value="manual_only">
             {% endif %}
         </div>
-        <label class="field settings-field">
-            <span>Описание</span>
-            <textarea name="description" rows="2">{{ scenario.description or '' }}</textarea>
-        </label>
 
         <div class="scenario-section-head">
             <strong>{% if kind == 'survey' %}Вопросы{% else %}Шаги сценария{% endif %}</strong>
@@ -59,10 +71,10 @@
 
         <div class="scenario-steps" id="scenario-steps">
         {% for step in steps %}
-            <div class="card scenario-step-card is-collapsed" draggable="true" data-step-card style="margin-bottom: 16px; box-shadow: none;">
+            <div class="card scenario-step-card is-collapsed" data-step-card style="margin-bottom: 16px; box-shadow: none;">
                 <div class="scenario-step-summary">
                     <div class="scenario-step-header">
-                        <button type="button" class="drag-handle" aria-label="Перетащить шаг" title="Перетащить шаг">⋮⋮</button>
+                        <button type="button" class="drag-handle" draggable="true" data-step-drag-handle aria-label="Перетащить шаг" title="Перетащить шаг">⋮⋮</button>
                         <div class="scenario-step-heading">
                             <h3 class="scenario-step-title" data-step-title-preview>{{ step.step_title }}</h3>
                             <p class="muted scenario-step-key">{{ step.step_key }}</p>
@@ -86,7 +98,7 @@
                         </div>
                     </label>
                     <label class="field">
-                        <span>Документ для отправки пользователю</span>
+                        <span>Документ или изображение для отправки пользователю</span>
                         <input type="file" name="step_attachment_{{ step.id }}">
                         {% if step.attachment_filename %}
                             <div class="attachment-row">
@@ -100,6 +112,39 @@
                             <div class="field-hint">Если выбрать файл, он будет отправляться сразу после сообщения этого шага.</div>
                         {% endif %}
                     </label>
+                    {% if kind != 'survey' %}
+                        <label class="field employee-card-field is-hidden">
+                            <span>Карточка сотрудника</span>
+                            <select name="send_employee_card">
+                                <option value="false" {% if not step.send_employee_card %}selected{% endif %}>Не отправлять</option>
+                                <option value="true" {% if step.send_employee_card %}selected{% endif %}>Отправить картинку карточки</option>
+                            </select>
+                        </label>
+                        <details class="notification-disclosure">
+                            <summary class="notification-toggle" title="Настроить уведомление для шага">
+                                <span class="notification-toggle-icon" aria-hidden="true">🔔</span>
+                                <span class="notification-toggle-label">Уведомление для шага</span>
+                            </summary>
+                            <div class="notification-editor">
+                            <label class="field">
+                                <span>Текст уведомления</span>
+                                <textarea name="notify_on_send_text" rows="3" placeholder="Например: Пользователю ушёл шаг {full_name}.">{{ step.notify_on_send_text or '' }}</textarea>
+                            </label>
+                            <label class="field">
+                                <span>Telegram ID получателей</span>
+                                <input type="text" name="notify_on_send_recipient_ids" value="{{ step.notify_on_send_recipient_ids or '' }}" placeholder="123456789, 987654321">
+                            </label>
+                            <label class="field">
+                                <span>Адресаты из карточки сотрудника</span>
+                                <select name="notify_on_send_recipient_scope">
+                                    {% for value, label in notification_recipient_scope_labels.items() %}
+                                        <option value="{{ value }}" {% if (step.notify_on_send_recipient_scope or '') == value %}selected{% endif %}>{{ label }}</option>
+                                    {% endfor %}
+                                </select>
+                            </label>
+                            </div>
+                        </details>
+                    {% endif %}
                     <label class="field">
                         <span>Вариант ответа пользователя</span>
                         <select name="response_type">
@@ -112,6 +157,42 @@
                         <span>Список кнопок</span>
                         <textarea name="button_options" rows="3" placeholder="Одна кнопка на строку">{{ step.button_options or '' }}</textarea>
                     </label>
+                    {% set step_button_notifications = button_notifications_by_step.get(step.id, {}) %}
+                    <details class="notification-disclosure js-button-notification-section" data-button-notification-section {% if step.response_type != 'buttons' %}style="display:none;"{% endif %}>
+                        <summary class="notification-toggle" title="Настроить уведомления для кнопок">
+                            <span class="notification-toggle-icon" aria-hidden="true">🔔</span>
+                            <span class="notification-toggle-label">Уведомления по кнопкам</span>
+                        </summary>
+                        <div class="notification-editor">
+                        <div class="button-notification-list" data-button-notification-list>
+                            {% for option_label in (step.button_options or '').splitlines() if option_label.strip() %}
+                                {% set button_notification = step_button_notifications.get(loop.index0) %}
+                                <div class="card button-notification-card" data-button-notification-card data-option-index="{{ loop.index0 }}" style="box-shadow: none;">
+                                    <input type="hidden" name="button_notification_parent_step_id" value="{{ step.id }}">
+                                    <input type="hidden" name="button_notification_parent_step_ref" value="">
+                                    <input type="hidden" name="button_notification_option_index" value="{{ loop.index0 }}">
+                                    <div class="branch-step-meta">Кнопка: {{ option_label.strip() }}</div>
+                                    <label class="field">
+                                        <span>Текст уведомления</span>
+                                        <textarea name="button_notification_text" rows="3" placeholder="Например: Пользователь нажал кнопку &quot;{{ option_label.strip() }}&quot;.">{{ button_notification.message_text if button_notification else '' }}</textarea>
+                                    </label>
+                                    <label class="field">
+                                        <span>Telegram ID получателей</span>
+                                        <input type="text" name="button_notification_recipient_ids" value="{{ button_notification.recipient_ids if button_notification else '' }}" placeholder="123456789, 987654321">
+                                    </label>
+                                    <label class="field">
+                                        <span>Адресаты из карточки сотрудника</span>
+                                        <select name="button_notification_recipient_scope">
+                                            {% for value, label in notification_recipient_scope_labels.items() %}
+                                                <option value="{{ value }}" {% if button_notification and (button_notification.recipient_scope or '') == value %}selected{% endif %}>{{ label }}</option>
+                                            {% endfor %}
+                                        </select>
+                                    </label>
+                                </div>
+                            {% endfor %}
+                        </div>
+                        </div>
+                    </details>
                     <div class="branching-section js-branching-section" data-parent-step-id="{{ step.id }}" {% if step.response_type != 'branching' %}style="display:none;"{% endif %}>
                         <div class="branching-intro">
                             <strong>Ветки после выбора кнопки</strong>
@@ -121,6 +202,7 @@
                             {% for branch_step in branch_steps_by_parent.get(step.id, []) %}
                                 <div class="card branch-step-card" data-branch-card data-option-index="{{ branch_step.branch_option_index or 0 }}" style="box-shadow: none;">
                                     <input type="hidden" name="branch_parent_step_id" value="{{ step.id }}">
+                                    <input type="hidden" name="branch_parent_step_ref" value="">
                                     <input type="hidden" name="branch_option_index" value="{{ branch_step.branch_option_index or 0 }}">
                                     <input type="hidden" name="branch_step_id" value="{{ branch_step.id }}">
                                     <div class="branch-step-meta">Вариант {{ (branch_step.branch_option_index or 0) + 1 }}</div>
@@ -137,8 +219,34 @@
                                             <button type="button" class="token-chip" data-insert-token="{full_name}">{full_name}</button>
                                         </div>
                                     </label>
+                                    {% if kind != 'survey' %}
+                                        <details class="notification-disclosure">
+                                            <summary class="notification-toggle" title="Настроить уведомление для ветки">
+                                                <span class="notification-toggle-icon" aria-hidden="true">🔔</span>
+                                                <span class="notification-toggle-label">Уведомление для ветки</span>
+                                            </summary>
+                                            <div class="notification-editor">
+                                            <label class="field">
+                                                <span>Текст уведомления</span>
+                                                <textarea name="branch_notify_on_send_text" rows="3" placeholder="Например: Пользователю отправлено сообщение этой ветки.">{{ branch_step.notify_on_send_text or '' }}</textarea>
+                                            </label>
+                                            <label class="field">
+                                                <span>Telegram ID получателей</span>
+                                                <input type="text" name="branch_notify_on_send_recipient_ids" value="{{ branch_step.notify_on_send_recipient_ids or '' }}" placeholder="123456789, 987654321">
+                                            </label>
+                                            <label class="field">
+                                                <span>Адресаты из карточки сотрудника</span>
+                                                <select name="branch_notify_on_send_recipient_scope">
+                                                    {% for value, label in notification_recipient_scope_labels.items() %}
+                                                        <option value="{{ value }}" {% if (branch_step.notify_on_send_recipient_scope or '') == value %}selected{% endif %}>{{ label }}</option>
+                                                    {% endfor %}
+                                                </select>
+                                            </label>
+                                            </div>
+                                        </details>
+                                    {% endif %}
                                     <label class="field">
-                                        <span>Документ для отправки пользователю</span>
+                                        <span>Документ или изображение для отправки пользователю</span>
                                         <input type="file" name="branch_attachment_{{ step.id }}_{{ branch_step.branch_option_index or 0 }}">
                                         {% if branch_step.attachment_filename %}
                                             <div class="attachment-row">
@@ -152,13 +260,48 @@
                                             <div class="field-hint">Если выбрать файл, он будет отправляться сразу после сообщения этой ветки.</div>
                                         {% endif %}
                                     </label>
+                                    {% if kind != 'survey' %}
+                                        <label class="field employee-card-field is-hidden">
+                                            <span>Карточка сотрудника</span>
+                                            <select name="branch_send_employee_card">
+                                                <option value="false" {% if not branch_step.send_employee_card %}selected{% endif %}>Не отправлять</option>
+                                                <option value="true" {% if branch_step.send_employee_card %}selected{% endif %}>Отправить картинку карточки</option>
+                                            </select>
+                                        </label>
+                                        <details class="notification-disclosure">
+                                            <summary class="notification-toggle" title="Настроить уведомление для кнопки">
+                                                <span class="notification-toggle-icon" aria-hidden="true">🔔</span>
+                                                <span class="notification-toggle-label">Уведомление для кнопки</span>
+                                            </summary>
+                                            <div class="notification-editor">
+                                            <label class="field">
+                                                <span>Текст уведомления</span>
+                                                <textarea name="branch_button_notification_text" rows="3" placeholder="Например: Пользователь выбрал этот вариант.">{{ button_notifications_by_step.get(step.id, {}).get(branch_step.branch_option_index or 0).message_text if button_notifications_by_step.get(step.id, {}).get(branch_step.branch_option_index or 0) else '' }}</textarea>
+                                            </label>
+                                            <label class="field">
+                                                <span>Telegram ID получателей</span>
+                                                <input type="text" name="branch_button_notification_recipient_ids" value="{{ button_notifications_by_step.get(step.id, {}).get(branch_step.branch_option_index or 0).recipient_ids if button_notifications_by_step.get(step.id, {}).get(branch_step.branch_option_index or 0) else '' }}" placeholder="123456789, 987654321">
+                                            </label>
+                                            <label class="field">
+                                                <span>Адресаты из карточки сотрудника</span>
+                                                <select name="branch_button_notification_recipient_scope">
+                                                    {% set branch_button_notification = button_notifications_by_step.get(step.id, {}).get(branch_step.branch_option_index or 0) %}
+                                                    {% for value, label in notification_recipient_scope_labels.items() %}
+                                                        <option value="{{ value }}" {% if branch_button_notification and (branch_button_notification.recipient_scope or '') == value %}selected{% endif %}>{{ label }}</option>
+                                                    {% endfor %}
+                                                </select>
+                                            </label>
+                                            </div>
+                                        </details>
+                                    {% endif %}
                                     <label class="field">
-                                        <span>Вид ответа после сообщения</span>
+                                        <span>Следующий шаг</span>
                                         <select name="branch_response_type" data-branch-response-type>
                                             <option value="none" {% if branch_step.response_type == 'none' %}selected{% endif %}>Без ответа</option>
                                             <option value="text" {% if branch_step.response_type == 'text' %}selected{% endif %}>Текстовый ответ</option>
                                             <option value="file" {% if branch_step.response_type == 'file' %}selected{% endif %}>Загрузка файла</option>
                                             <option value="buttons" {% if branch_step.response_type == 'buttons' %}selected{% endif %}>Выбор кнопками</option>
+                                            <option value="chain" {% if branch_step.response_type == 'chain' %}selected{% endif %}>Цепочка шагов</option>
                                             <option value="launch_scenario" {% if branch_step.response_type == 'launch_scenario' %}selected{% endif %}>Переход к сценарию</option>
                                         </select>
                                     </label>
@@ -175,12 +318,408 @@
                                             {% endfor %}
                                         </select>
                                     </label>
+                                    <div class="branch-chain-editor js-branch-chain-editor" {% if branch_step.response_type != 'chain' %}style="display:none;"{% endif %}>
+                                        <div class="branch-chain-head">
+                                            <strong>Цепочка шагов</strong>
+                                            <button type="button" class="btn-secondary btn-small" data-add-chain-step>Добавить шаг</button>
+                                        </div>
+                                        <div class="branch-chain-list" data-chain-list>
+                                            {% for chain_step in chain_steps_by_parent.get(branch_step.id, []) %}
+                                                <div class="card branch-chain-step-card" data-chain-step-card data-parent-step-id="{{ step.id }}" data-branch-option-index="{{ branch_step.branch_option_index or 0 }}">
+                                                    <input type="hidden" name="chain_parent_step_id" value="{{ step.id }}">
+                                                    <input type="hidden" name="chain_branch_option_index" value="{{ branch_step.branch_option_index or 0 }}">
+                                                    <input type="hidden" name="chain_step_id" value="{{ chain_step.id }}">
+                                                    <input type="hidden" name="chain_row_ref" value="existing:{{ chain_step.id }}">
+                                                    <div class="branch-chain-step-head">
+                                                        <strong data-chain-step-label>Шаг {{ loop.index }}</strong>
+                                                        <button type="button" class="table-icon-link table-icon-link-danger" data-remove-chain-step aria-label="Удалить шаг цепочки" title="Удалить">&#10005;</button>
+                                                    </div>
+                                                    <label class="field">
+                                                        <span>Название шага</span>
+                                                        <input type="text" name="chain_step_title" value="{{ chain_step.step_title }}" placeholder="Название шага">
+                                                    </label>
+                                                    <label class="field">
+                                                        <span>Текст сообщения</span>
+                                                        <textarea name="chain_custom_text" rows="3" placeholder="Введите текст сообщения">{{ chain_step.custom_text if chain_step.custom_text is not none else chain_step.default_text }}</textarea>
+                                                        <div class="token-toolbar" data-token-toolbar>
+                                                            <span class="field-hint">Теги:</span>
+                                                            <button type="button" class="token-chip" data-insert-token="{name}">{name}</button>
+                                                            <button type="button" class="token-chip" data-insert-token="{full_name}">{full_name}</button>
+                                                        </div>
+                                                    </label>
+                                                    <label class="field">
+                                                        <span>Документ или изображение для отправки пользователю</span>
+                                                        <input type="file" name="chain_attachment_{{ step.id }}_{{ branch_step.branch_option_index or 0 }}_{{ loop.index0 }}">
+                                                        {% if chain_step.attachment_filename %}
+                                                            <div class="attachment-row">
+                                                                <div class="field-hint">
+                                                                    Текущий файл:
+                                                                    <a href="/flows/steps/{{ chain_step.id }}/attachment">{{ chain_step.attachment_filename }}</a>
+                                                                </div>
+                                                                <button type="button" class="btn-danger btn-inline-danger" data-delete-attachment-url="/flows/steps/{{ chain_step.id }}/attachment/delete" data-delete-attachment-name="{{ chain_step.attachment_filename }}">Удалить</button>
+                                                            </div>
+                                                        {% else %}
+                                                            <div class="field-hint">Если выбрать файл, он будет отправляться сразу после сообщения этого шага.</div>
+                                                        {% endif %}
+                                                    </label>
+                                                    {% if kind != 'survey' %}
+                                                        <label class="field employee-card-field is-hidden">
+                                                            <span>Карточка сотрудника</span>
+                                                            <select name="chain_send_employee_card">
+                                                                <option value="false" {% if not chain_step.send_employee_card %}selected{% endif %}>Не отправлять</option>
+                                                                <option value="true" {% if chain_step.send_employee_card %}selected{% endif %}>Отправить картинку карточки</option>
+                                                            </select>
+                                                        </label>
+                                                        <details class="notification-disclosure">
+                                                            <summary class="notification-toggle" title="Настроить уведомление для шага">
+                                                                <span class="notification-toggle-icon" aria-hidden="true">🔔</span>
+                                                                <span class="notification-toggle-label">Уведомление для шага</span>
+                                                            </summary>
+                                                            <div class="notification-editor">
+                                                            <label class="field">
+                                                                <span>Текст уведомления</span>
+                                                                <textarea name="chain_notify_on_send_text" rows="3" placeholder="Например: Пользователю отправлен шаг цепочки.">{{ chain_step.notify_on_send_text or '' }}</textarea>
+                                                            </label>
+                                                            <label class="field">
+                                                                <span>Telegram ID получателей</span>
+                                                                <input type="text" name="chain_notify_on_send_recipient_ids" value="{{ chain_step.notify_on_send_recipient_ids or '' }}" placeholder="123456789, 987654321">
+                                                            </label>
+                                                            <label class="field">
+                                                                <span>Адресаты из карточки сотрудника</span>
+                                                                <select name="chain_notify_on_send_recipient_scope">
+                                                                    {% for value, label in notification_recipient_scope_labels.items() %}
+                                                                        <option value="{{ value }}" {% if (chain_step.notify_on_send_recipient_scope or '') == value %}selected{% endif %}>{{ label }}</option>
+                                                                    {% endfor %}
+                                                                </select>
+                                                            </label>
+                                                            </div>
+                                                        </details>
+                                                    {% endif %}
+                                                    <label class="field">
+                                                        <span>Вариант ответа пользователя</span>
+                                                        <select name="chain_response_type" data-chain-response-type>
+                                                            <option value="none" {% if chain_step.response_type == 'none' %}selected{% endif %}>Без ответа</option>
+                                                            <option value="text" {% if chain_step.response_type == 'text' %}selected{% endif %}>Текстовый ответ</option>
+                                                            <option value="file" {% if chain_step.response_type == 'file' %}selected{% endif %}>Загрузка файла</option>
+                                                            <option value="buttons" {% if chain_step.response_type == 'buttons' %}selected{% endif %}>Выбор кнопками</option>
+                                                            <option value="branching" {% if chain_step.response_type == 'branching' %}selected{% endif %}>Ветвление</option>
+                                                        </select>
+                                                    </label>
+                                                    <label class="field js-chain-button-options" {% if chain_step.response_type not in ['buttons', 'branching'] %}style="display:none;"{% endif %}>
+                                                        <span>Список кнопок</span>
+                                                        <textarea name="chain_button_options" rows="3" placeholder="Одна кнопка на строку">{{ chain_step.button_options or '' }}</textarea>
+                                                    </label>
+                                                    {% set chain_button_notifications = button_notifications_by_step.get(chain_step.id, {}) %}
+                                                    <details class="notification-disclosure js-button-notification-section" data-button-notification-section {% if chain_step.response_type != 'buttons' %}style="display:none;"{% endif %}>
+                                                        <summary class="notification-toggle" title="Настроить уведомления для кнопок">
+                                                            <span class="notification-toggle-icon" aria-hidden="true">🔔</span>
+                                                            <span class="notification-toggle-label">Уведомления по кнопкам</span>
+                                                        </summary>
+                                                        <div class="notification-editor">
+                                                        <div class="button-notification-list" data-button-notification-list>
+                                                            {% for option_label in (chain_step.button_options or '').splitlines() if option_label.strip() %}
+                                                                {% set button_notification = chain_button_notifications.get(loop.index0) %}
+                                                                <div class="card button-notification-card" data-button-notification-card data-option-index="{{ loop.index0 }}" style="box-shadow: none;">
+                                                                    <input type="hidden" name="button_notification_parent_step_id" value="{{ chain_step.id }}">
+                                                                    <input type="hidden" name="button_notification_parent_step_ref" value="existing:{{ chain_step.id }}">
+                                                                    <input type="hidden" name="button_notification_option_index" value="{{ loop.index0 }}">
+                                                                    <div class="branch-step-meta">Кнопка: {{ option_label.strip() }}</div>
+                                                                    <label class="field">
+                                                                        <span>Текст уведомления</span>
+                                                                        <textarea name="button_notification_text" rows="3" placeholder="Например: Пользователь нажал эту кнопку.">{{ button_notification.message_text if button_notification else '' }}</textarea>
+                                                                    </label>
+                                                                    <label class="field">
+                                                                        <span>Telegram ID получателей</span>
+                                                                        <input type="text" name="button_notification_recipient_ids" value="{{ button_notification.recipient_ids if button_notification else '' }}" placeholder="123456789, 987654321">
+                                                                    </label>
+                                                                    <label class="field">
+                                                                        <span>Адресаты из карточки сотрудника</span>
+                                                                        <select name="button_notification_recipient_scope">
+                                                                            {% for value, label in notification_recipient_scope_labels.items() %}
+                                                                                <option value="{{ value }}" {% if button_notification and (button_notification.recipient_scope or '') == value %}selected{% endif %}>{{ label }}</option>
+                                                                            {% endfor %}
+                                                                        </select>
+                                                                    </label>
+                                                                </div>
+                                                            {% endfor %}
+                                                        </div>
+                                                        </div>
+                                                    </details>
+                                                    <div class="branching-section js-chain-branching-section" data-parent-step-id="{{ chain_step.id }}" {% if chain_step.response_type != 'branching' %}style="display:none;"{% endif %}>
+                                                        <div class="branching-intro">
+                                                            <strong>Ветки после выбора кнопки</strong>
+                                                            <p class="muted">Для каждой кнопки можно настроить своё следующее сообщение. После него сценарий продолжится следующими шагами цепочки.</p>
+                                                        </div>
+                                                        <div class="branching-list" data-branch-list>
+                                                            {% for branch_step in branch_steps_by_parent.get(chain_step.id, []) %}
+                                                                <div class="card branch-step-card" data-branch-card data-option-index="{{ branch_step.branch_option_index or 0 }}" style="box-shadow: none;">
+                                                                    <input type="hidden" name="branch_parent_step_id" value="{{ chain_step.id }}">
+                                                                    <input type="hidden" name="branch_parent_step_ref" value="existing:{{ chain_step.id }}">
+                                                                    <input type="hidden" name="branch_option_index" value="{{ branch_step.branch_option_index or 0 }}">
+                                                                    <input type="hidden" name="branch_step_id" value="{{ branch_step.id }}">
+                                                                    <div class="branch-step-meta">Вариант {{ (branch_step.branch_option_index or 0) + 1 }}</div>
+                                                                    <label class="field">
+                                                                        <span>Название ветки</span>
+                                                                        <input type="text" name="branch_step_title" value="{{ branch_step.step_title }}" placeholder="Название ветки">
+                                                                    </label>
+                                                                    <label class="field">
+                                                                        <span>Сообщение после выбора</span>
+                                                                        <textarea name="branch_custom_text" rows="3" placeholder="Введите текст сообщения">{{ branch_step.custom_text if branch_step.custom_text is not none else branch_step.default_text }}</textarea>
+                                                                        <div class="token-toolbar" data-token-toolbar>
+                                                                            <span class="field-hint">Теги:</span>
+                                                                            <button type="button" class="token-chip" data-insert-token="{name}">{name}</button>
+                                                                            <button type="button" class="token-chip" data-insert-token="{full_name}">{full_name}</button>
+                                                                        </div>
+                                                                    </label>
+                                                                    <label class="field">
+                                                                        <span>Документ или изображение для отправки пользователю</span>
+                                                                        <input type="file" name="branch_attachment_{{ chain_step.id }}_{{ branch_step.branch_option_index or 0 }}">
+                                                                        {% if branch_step.attachment_filename %}
+                                                                            <div class="attachment-row">
+                                                                                <div class="field-hint">
+                                                                                    Текущий файл:
+                                                                                    <a href="/flows/steps/{{ branch_step.id }}/attachment">{{ branch_step.attachment_filename }}</a>
+                                                                                </div>
+                                                                                <button type="button" class="btn-danger btn-inline-danger" data-delete-attachment-url="/flows/steps/{{ branch_step.id }}/attachment/delete" data-delete-attachment-name="{{ branch_step.attachment_filename }}">Удалить</button>
+                                                                            </div>
+                                                                        {% else %}
+                                                                            <div class="field-hint">Если выбрать файл, он будет отправляться сразу после сообщения этой ветки.</div>
+                                                                        {% endif %}
+                                                                    </label>
+                                                                    {% if kind != 'survey' %}
+                                                                        <label class="field employee-card-field is-hidden">
+                                                                            <span>Карточка сотрудника</span>
+                                                                            <select name="branch_send_employee_card">
+                                                                                <option value="false" {% if not branch_step.send_employee_card %}selected{% endif %}>Не отправлять</option>
+                                                                                <option value="true" {% if branch_step.send_employee_card %}selected{% endif %}>Отправить картинку карточки</option>
+                                                                            </select>
+                                                                        </label>
+                                                                    {% endif %}
+                                                                    <label class="field">
+                                                                        <span>Следующий шаг</span>
+                                                                        <select name="branch_response_type" data-branch-response-type>
+                                                                            <option value="none" {% if branch_step.response_type == 'none' %}selected{% endif %}>Без ответа</option>
+                                                                            <option value="text" {% if branch_step.response_type == 'text' %}selected{% endif %}>Текстовый ответ</option>
+                                                                            <option value="file" {% if branch_step.response_type == 'file' %}selected{% endif %}>Загрузка файла</option>
+                                                                            <option value="buttons" {% if branch_step.response_type == 'buttons' %}selected{% endif %}>Выбор кнопками</option>
+                                                                            <option value="chain" {% if branch_step.response_type == 'chain' %}selected{% endif %}>Цепочка шагов</option>
+                                                                            <option value="launch_scenario" {% if branch_step.response_type == 'launch_scenario' %}selected{% endif %}>Переход к сценарию</option>
+                                                                        </select>
+                                                                    </label>
+                                                                    <label class="field js-branch-button-options" {% if branch_step.response_type != 'buttons' %}style="display:none;"{% endif %}>
+                                                                        <span>Кнопки ответа для ветки</span>
+                                                                        <textarea name="branch_button_options" rows="3" placeholder="Одна кнопка на строку">{{ branch_step.button_options or '' }}</textarea>
+                                                                    </label>
+                                                                    <label class="field js-branch-scenario-select" {% if branch_step.response_type != 'launch_scenario' %}style="display:none;"{% endif %}>
+                                                                        <span>Какой {{ item_label_cap.lower() }} запускать</span>
+                                                                        <select name="branch_launch_scenario_key">
+                                                                            <option value="">Выберите {{ item_label_cap.lower() }}</option>
+                                                                            {% for available_scenario in available_scenarios %}
+                                                                                <option value="{{ available_scenario.scenario_key }}" {% if branch_step.launch_scenario_key == available_scenario.scenario_key %}selected{% endif %}>{{ available_scenario.title }}</option>
+                                                                            {% endfor %}
+                                                                        </select>
+                                                                    </label>
+                                                                    <div class="branch-chain-editor js-branch-chain-editor" {% if branch_step.response_type != 'chain' %}style="display:none;"{% endif %}>
+                                                                        <div class="branch-chain-head">
+                                                                            <strong>Цепочка шагов</strong>
+                                                                            <button type="button" class="btn-secondary btn-small" data-add-chain-step>Добавить шаг</button>
+                                                                        </div>
+                                                                        <div class="branch-chain-list" data-chain-list>
+                                                                            {% for nested_chain_step in chain_steps_by_parent.get(branch_step.id, []) %}
+                                                                                <div class="card branch-chain-step-card" data-chain-step-card data-parent-step-id="{{ chain_step.id }}" data-branch-option-index="{{ branch_step.branch_option_index or 0 }}">
+                                                                                    <input type="hidden" name="chain_parent_step_id" value="{{ chain_step.id }}">
+                                                                                    <input type="hidden" name="chain_branch_option_index" value="{{ branch_step.branch_option_index or 0 }}">
+                                                                                    <input type="hidden" name="chain_step_id" value="{{ nested_chain_step.id }}">
+                                                                                    <input type="hidden" name="chain_row_ref" value="existing:{{ nested_chain_step.id }}">
+                                                                                    <div class="branch-chain-step-head">
+                                                                                        <strong data-chain-step-label>Шаг {{ loop.index }}</strong>
+                                                                                        <button type="button" class="table-icon-link table-icon-link-danger" data-remove-chain-step aria-label="Удалить шаг цепочки" title="Удалить">&#10005;</button>
+                                                                                    </div>
+                                                                                    <label class="field">
+                                                                                        <span>Название шага</span>
+                                                                                        <input type="text" name="chain_step_title" value="{{ nested_chain_step.step_title }}" placeholder="Название шага">
+                                                                                    </label>
+                                                                                    <label class="field">
+                                                                                        <span>Текст сообщения</span>
+                                                                                        <textarea name="chain_custom_text" rows="3" placeholder="Введите текст сообщения">{{ nested_chain_step.custom_text if nested_chain_step.custom_text is not none else nested_chain_step.default_text }}</textarea>
+                                                                                        <div class="token-toolbar" data-token-toolbar>
+                                                                                            <span class="field-hint">Теги:</span>
+                                                                                            <button type="button" class="token-chip" data-insert-token="{name}">{name}</button>
+                                                                                            <button type="button" class="token-chip" data-insert-token="{full_name}">{full_name}</button>
+                                                                                        </div>
+                                                                                    </label>
+                                                                                            <label class="field">
+                                                                                                <span>Документ или изображение для отправки пользователю</span>
+                                                                                                <input type="file" name="chain_attachment_{{ chain_step.id }}_{{ branch_step.branch_option_index or 0 }}_{{ loop.index0 }}">
+                                                                                        {% if nested_chain_step.attachment_filename %}
+                                                                                            <div class="attachment-row">
+                                                                                                <div class="field-hint">
+                                                                                                    Текущий файл:
+                                                                                                    <a href="/flows/steps/{{ nested_chain_step.id }}/attachment">{{ nested_chain_step.attachment_filename }}</a>
+                                                                                                </div>
+                                                                                                <button type="button" class="btn-danger btn-inline-danger" data-delete-attachment-url="/flows/steps/{{ nested_chain_step.id }}/attachment/delete" data-delete-attachment-name="{{ nested_chain_step.attachment_filename }}">Удалить</button>
+                                                                                            </div>
+                                                                                        {% else %}
+                                                                                                    <div class="field-hint">Если выбрать файл, он будет отправляться сразу после сообщения этого шага.</div>
+                                                                                                {% endif %}
+                                                                                            </label>
+                                                                                            {% if kind != 'survey' %}
+                                                                                                <label class="field employee-card-field is-hidden">
+                                                                                                    <span>Карточка сотрудника</span>
+                                                                                                    <select name="chain_send_employee_card">
+                                                                                                        <option value="false" {% if not child_chain_step.send_employee_card %}selected{% endif %}>Не отправлять</option>
+                                                                                                        <option value="true" {% if child_chain_step.send_employee_card %}selected{% endif %}>Отправить картинку карточки</option>
+                                                                                                    </select>
+                                                                                                </label>
+                                                                                            {% endif %}
+                                                                                            <label class="field">
+                                                                                                <span>Вариант ответа пользователя</span>
+                                                                                        <select name="chain_response_type" data-chain-response-type>
+                                                                                            <option value="none" {% if nested_chain_step.response_type == 'none' %}selected{% endif %}>Без ответа</option>
+                                                                                            <option value="text" {% if nested_chain_step.response_type == 'text' %}selected{% endif %}>Текстовый ответ</option>
+                                                                                            <option value="file" {% if nested_chain_step.response_type == 'file' %}selected{% endif %}>Загрузка файла</option>
+                                                                                            <option value="buttons" {% if nested_chain_step.response_type == 'buttons' %}selected{% endif %}>Выбор кнопками</option>
+                                                                                            <option value="branching" {% if nested_chain_step.response_type == 'branching' %}selected{% endif %}>Ветвление</option>
+                                                                                        </select>
+                                                                                    </label>
+                                                                                    <label class="field js-chain-button-options" {% if nested_chain_step.response_type not in ['buttons', 'branching'] %}style="display:none;"{% endif %}>
+                                                                                        <span>Список кнопок</span>
+                                                                                        <textarea name="chain_button_options" rows="3" placeholder="Одна кнопка на строку">{{ nested_chain_step.button_options or '' }}</textarea>
+                                                                                    </label>
+                                                                                    <div class="branching-section js-chain-branching-section" data-parent-step-id="{{ nested_chain_step.id }}" {% if nested_chain_step.response_type != 'branching' %}style="display:none;"{% endif %}>
+                                                                                        <div class="branching-intro">
+                                                                                            <strong>Ветки после выбора кнопки</strong>
+                                                                                            <p class="muted">Для каждой кнопки можно настроить своё следующее сообщение. После него сценарий продолжится следующими шагами цепочки.</p>
+                                                                                        </div>
+                                                                                        <div class="branching-list" data-branch-list>
+                                                                                            {% for child_branch_step in branch_steps_by_parent.get(nested_chain_step.id, []) %}
+                                                                                                <div class="card branch-step-card" data-branch-card data-option-index="{{ child_branch_step.branch_option_index or 0 }}" style="box-shadow: none;">
+                                                                                                    <input type="hidden" name="branch_parent_step_id" value="{{ nested_chain_step.id }}">
+                                                                                                    <input type="hidden" name="branch_parent_step_ref" value="existing:{{ nested_chain_step.id }}">
+                                                                                                    <input type="hidden" name="branch_option_index" value="{{ child_branch_step.branch_option_index or 0 }}">
+                                                                                                    <input type="hidden" name="branch_step_id" value="{{ child_branch_step.id }}">
+                                                                                                    <div class="branch-step-meta">Вариант {{ (child_branch_step.branch_option_index or 0) + 1 }}</div>
+                                                                                                    <label class="field">
+                                                                                                        <span>Название ветки</span>
+                                                                                                        <input type="text" name="branch_step_title" value="{{ child_branch_step.step_title }}" placeholder="Название ветки">
+                                                                                                    </label>
+                                                                                                    <label class="field">
+                                                                                                        <span>Сообщение после выбора</span>
+                                                                                                        <textarea name="branch_custom_text" rows="3" placeholder="Введите текст сообщения">{{ child_branch_step.custom_text if child_branch_step.custom_text is not none else child_branch_step.default_text }}</textarea>
+                                                                                                        <div class="token-toolbar" data-token-toolbar>
+                                                                                                            <span class="field-hint">Теги:</span>
+                                                                                                            <button type="button" class="token-chip" data-insert-token="{name}">{name}</button>
+                                                                                                            <button type="button" class="token-chip" data-insert-token="{full_name}">{full_name}</button>
+                                                                                                        </div>
+                                                                                                    </label>
+                                                                                                    <label class="field">
+                                                                                                        <span>Документ для отправки пользователю</span>
+                                                                                                        <input type="file" name="branch_attachment_{{ nested_chain_step.id }}_{{ child_branch_step.branch_option_index or 0 }}">
+                                                                                                        {% if child_branch_step.attachment_filename %}
+                                                                                                            <div class="attachment-row">
+                                                                                                                <div class="field-hint">
+                                                                                                                    Текущий файл:
+                                                                                                                    <a href="/flows/steps/{{ child_branch_step.id }}/attachment">{{ child_branch_step.attachment_filename }}</a>
+                                                                                                                </div>
+                                                                                                                <button type="button" class="btn-danger btn-inline-danger" data-delete-attachment-url="/flows/steps/{{ child_branch_step.id }}/attachment/delete" data-delete-attachment-name="{{ child_branch_step.attachment_filename }}">Удалить</button>
+                                                                                                            </div>
+                                                                                                        {% else %}
+                                                                                                            <div class="field-hint">Если выбрать файл, он будет отправляться сразу после сообщения этой ветки.</div>
+                                                                                                        {% endif %}
+                                                                                                    </label>
+                                                                                                    <label class="field">
+                                                                                                        <span>Следующий шаг</span>
+                                                                                                        <select name="branch_response_type" data-branch-response-type>
+                                                                                                            <option value="none" {% if child_branch_step.response_type == 'none' %}selected{% endif %}>Без ответа</option>
+                                                                                                            <option value="text" {% if child_branch_step.response_type == 'text' %}selected{% endif %}>Текстовый ответ</option>
+                                                                                                            <option value="file" {% if child_branch_step.response_type == 'file' %}selected{% endif %}>Загрузка файла</option>
+                                                                                                            <option value="buttons" {% if child_branch_step.response_type == 'buttons' %}selected{% endif %}>Выбор кнопками</option>
+                                                                                                            <option value="chain" {% if child_branch_step.response_type == 'chain' %}selected{% endif %}>Цепочка шагов</option>
+                                                                                                            <option value="launch_scenario" {% if child_branch_step.response_type == 'launch_scenario' %}selected{% endif %}>Переход к сценарию</option>
+                                                                                                        </select>
+                                                                                                    </label>
+                                                                                                    <label class="field js-branch-button-options" {% if child_branch_step.response_type != 'buttons' %}style="display:none;"{% endif %}>
+                                                                                                        <span>Кнопки ответа для ветки</span>
+                                                                                                        <textarea name="branch_button_options" rows="3" placeholder="Одна кнопка на строку">{{ child_branch_step.button_options or '' }}</textarea>
+                                                                                                    </label>
+                                                                                                    <label class="field js-branch-scenario-select" {% if child_branch_step.response_type != 'launch_scenario' %}style="display:none;"{% endif %}>
+                                                                                                        <span>Какой {{ item_label_cap.lower() }} запускать</span>
+                                                                                                        <select name="branch_launch_scenario_key">
+                                                                                                            <option value="">Выберите {{ item_label_cap.lower() }}</option>
+                                                                                                            {% for available_scenario in available_scenarios %}
+                                                                                                                <option value="{{ available_scenario.scenario_key }}" {% if child_branch_step.launch_scenario_key == available_scenario.scenario_key %}selected{% endif %}>{{ available_scenario.title }}</option>
+                                                                                                            {% endfor %}
+                                                                                                        </select>
+                                                                                                    </label>
+                                                                                                    <div class="branch-chain-editor js-branch-chain-editor" {% if child_branch_step.response_type != 'chain' %}style="display:none;"{% endif %}>
+                                                                                                        <div class="branch-chain-head">
+                                                                                                            <strong>Цепочка шагов</strong>
+                                                                                                            <button type="button" class="btn-secondary btn-small" data-add-chain-step>Добавить шаг</button>
+                                                                                                        </div>
+                                                                                                        <div class="branch-chain-list" data-chain-list></div>
+                                                                                                    </div>
+                                                                                                </div>
+                                                                                            {% endfor %}
+                                                                                        </div>
+                                                                                    </div>
+                                                                                    <label class="field">
+                                                                                        <span>Время отправки</span>
+                                                                                        <select name="chain_send_mode" data-chain-send-mode>
+                                                                                            {% for value, label in send_mode_labels.items() %}
+                                                                                                <option value="{{ value }}" {% if nested_chain_step.send_mode == value %}selected{% endif %}>{{ label }}</option>
+                                                                                            {% endfor %}
+                                                                                        </select>
+                                                                                    </label>
+                                                                                    <label class="field js-chain-send-time" {% if nested_chain_step.send_mode != 'specific_time' %}style="display:none;"{% endif %}>
+                                                                                        <span>Конкретное время</span>
+                                                                                        <input type="text" name="chain_send_time" value="{{ nested_chain_step.send_time or '' }}" placeholder="10:00">
+                                                                                    </label>
+                                                                                    <label class="field">
+                                                                                        <span>Сохранять ответ в поле сотрудника</span>
+                                                                                        <select name="chain_target_field">
+                                                                                            {% for value, label in target_field_labels.items() %}
+                                                                                                <option value="{{ value }}" {% if (nested_chain_step.target_field or '') == value %}selected{% endif %}>{{ label }}</option>
+                                                                                            {% endfor %}
+                                                                                        </select>
+                                                                                    </label>
+                                                                                </div>
+                                                                            {% endfor %}
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            {% endfor %}
+                                                        </div>
+                                                    </div>
+                                                    <label class="field">
+                                                        <span>Время отправки</span>
+                                                        <select name="chain_send_mode" data-chain-send-mode>
+                                                            {% for value, label in send_mode_labels.items() %}
+                                                                <option value="{{ value }}" {% if chain_step.send_mode == value %}selected{% endif %}>{{ label }}</option>
+                                                            {% endfor %}
+                                                        </select>
+                                                    </label>
+                                                    <label class="field js-chain-send-time" {% if chain_step.send_mode != 'specific_time' %}style="display:none;"{% endif %}>
+                                                        <span>Конкретное время</span>
+                                                        <input type="text" name="chain_send_time" value="{{ chain_step.send_time or '' }}" placeholder="10:00">
+                                                    </label>
+                                                    <label class="field">
+                                                        <span>Сохранять ответ в поле сотрудника</span>
+                                                        <select name="chain_target_field">
+                                                            {% for value, label in target_field_labels.items() %}
+                                                                <option value="{{ value }}" {% if (chain_step.target_field or '') == value %}selected{% endif %}>{{ label }}</option>
+                                                            {% endfor %}
+                                                        </select>
+                                                    </label>
+                                                </div>
+                                            {% endfor %}
+                                        </div>
+                                    </div>
                                 </div>
                             {% endfor %}
                         </div>
                     </div>
                     {% if kind != 'survey' %}
-                        <label class="field">
+                        <label class="field employee-card-field is-hidden">
                             <span>Время отправки</span>
                             <select name="send_mode">
                                 {% for value, label in send_mode_labels.items() %}
@@ -192,11 +731,11 @@
                             <span>Конкретное время</span>
                             <input type="text" name="send_time" value="{{ step.send_time or '' }}" placeholder="10:00">
                         </label>
-                        <label class="field">
+                        <label class="field employee-card-field is-hidden">
                             <span>Смещение в рабочих днях</span>
                             <input type="number" name="day_offset_workdays" value="{{ step.day_offset_workdays or 0 }}" placeholder="0">
                         </label>
-                        <label class="field">
+                        <label class="field employee-card-field is-hidden">
                             <span>Сохранять ответ в поле сотрудника</span>
                             <select name="target_field">
                                 {% for value, label in target_field_labels.items() %}
@@ -215,16 +754,87 @@
         </div>
 
         <input type="hidden" id="target-step-id" name="target_step_id" value="">
-        <div class="form-actions">
-            <button type="submit" name="action" value="save" class="btn-primary">Сохранить {{ item_label_cap.lower() }}</button>
-            <button type="submit" name="action" value="add_step" class="btn-secondary" onclick="document.getElementById('target-step-id').value='';">{% if kind == 'survey' %}Добавить вопрос{% else %}Добавить шаг{% endif %}</button>
+        <div class="form-actions scenario-main-actions">
+            <button type="submit" name="action" value="save" class="btn-primary scenario-main-action">Сохранить {{ item_label_cap.lower() }}</button>
+            <button type="submit" name="action" value="add_step" class="btn-secondary scenario-main-action" onclick="document.getElementById('target-step-id').value='';">{% if kind == 'survey' %}Добавить вопрос{% else %}Добавить шаг{% endif %}</button>
         </div>
     </form>
 </div>
 
 <form id="delete-step-attachment-form" method="post" style="display:none;"></form>
 
+<script type="module" src="https://cdn.jsdelivr.net/npm/emoji-picker-element@1.22.4/index.js"></script>
 <script>
+    const SCENARIO_DOCUMENT_TAG_OPTIONS = {{ (document_tag_titles|default([], true))|tojson }};
+
+    function insertIntoTextarea(textarea, value) {
+        const start = textarea.selectionStart ?? textarea.value.length;
+        const end = textarea.selectionEnd ?? textarea.value.length;
+        textarea.value = `${textarea.value.slice(0, start)}${value}${textarea.value.slice(end)}`;
+        const caret = start + value.length;
+        textarea.focus();
+        textarea.setSelectionRange(caret, caret);
+        textarea.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+
+    function buildEmojiPicker() {
+        const details = document.createElement('details');
+        details.className = 'emoji-picker';
+        details.innerHTML = `
+            <summary class="token-chip emoji-picker-toggle" title="Добавить эмодзи">😊 Эмодзи</summary>
+            <div class="emoji-picker-menu">
+                <emoji-picker class="scenario-emoji-picker" locale="ru"></emoji-picker>
+            </div>
+        `;
+        const picker = details.querySelector('emoji-picker');
+        if (picker) {
+            picker.addEventListener('emoji-click', (event) => {
+                const unicode = event?.detail?.unicode || event?.detail?.emoji?.unicode || '';
+                if (!unicode) {
+                    return;
+                }
+                const toolbar = details.closest('[data-token-toolbar]');
+                const field = toolbar ? toolbar.closest('.field') : null;
+                const textarea = field ? field.querySelector('textarea') : null;
+                if (!textarea) {
+                    return;
+                }
+                insertIntoTextarea(textarea, unicode);
+                details.removeAttribute('open');
+            });
+        }
+        return details;
+    }
+
+    function enhanceTokenToolbars(scope = document) {
+        scope.querySelectorAll('[data-token-toolbar]').forEach((toolbar) => {
+            toolbar.querySelectorAll('[data-doc-token-generated="true"]').forEach((button) => button.remove());
+            if (SCENARIO_DOCUMENT_TAG_OPTIONS.length) {
+                SCENARIO_DOCUMENT_TAG_OPTIONS.forEach((title) => {
+                    const tagValue = `{doc:${title}}`;
+                    const docButton = document.createElement('button');
+                    docButton.type = 'button';
+                    docButton.className = 'token-chip';
+                    docButton.dataset.insertToken = tagValue;
+                    docButton.dataset.docTokenGenerated = 'true';
+                    docButton.textContent = tagValue;
+                    toolbar.appendChild(docButton);
+                });
+            } else if (!toolbar.querySelector('[data-doc-token-placeholder="true"]')) {
+                const docButton = document.createElement('button');
+                docButton.type = 'button';
+                docButton.className = 'token-chip';
+                docButton.dataset.insertToken = '{doc:Название документа}';
+                docButton.dataset.docTokenPlaceholder = 'true';
+                docButton.textContent = '{doc:Название документа}';
+                toolbar.appendChild(docButton);
+            }
+            if (!toolbar.querySelector('.emoji-picker')) {
+                toolbar.appendChild(buildEmojiPicker());
+            }
+        });
+    }
+
     function setStepCardExpanded(container, expanded) {
         const body = container.querySelector('[data-step-body]');
         const toggle = container.querySelector('[data-step-toggle]');
@@ -240,6 +850,7 @@
         const responseSelect = container.querySelector('select[name="response_type"]');
         const buttonField = container.querySelector('.js-button-options');
         const branchingSection = container.querySelector('.js-branching-section');
+        const buttonNotificationSection = container.querySelector('.js-button-notification-section');
         const sendModeSelect = container.querySelector('select[name="send_mode"]');
         const sendTimeField = container.querySelector('.js-send-time');
 
@@ -249,9 +860,89 @@
         if (responseSelect && branchingSection) {
             branchingSection.style.display = responseSelect.value === 'branching' ? '' : 'none';
         }
+        if (responseSelect && buttonNotificationSection) {
+            buttonNotificationSection.style.display = responseSelect.value === 'buttons' ? '' : 'none';
+        }
         if (sendModeSelect && sendTimeField) {
             sendTimeField.style.display = sendModeSelect.value === 'specific_time' ? '' : 'none';
         }
+    }
+
+    function createButtonNotificationCard(parentStepId, parentStepRef, optionIndex, optionLabel) {
+        const card = document.createElement('div');
+        card.className = 'card button-notification-card';
+        card.dataset.buttonNotificationCard = 'true';
+        card.dataset.optionIndex = String(optionIndex);
+        card.style.boxShadow = 'none';
+        card.innerHTML = `
+            <input type="hidden" name="button_notification_parent_step_id" value="${parentStepId}">
+            <input type="hidden" name="button_notification_parent_step_ref" value="${parentStepRef || ''}">
+            <input type="hidden" name="button_notification_option_index" value="${optionIndex}">
+            <div class="branch-step-meta">Кнопка: ${optionLabel}</div>
+            <label class="field">
+                <span>Текст уведомления</span>
+                <textarea name="button_notification_text" rows="3" placeholder="Например: Пользователь нажал эту кнопку."></textarea>
+            </label>
+            <label class="field">
+                <span>Telegram ID получателей</span>
+                <input type="text" name="button_notification_recipient_ids" value="" placeholder="123456789, 987654321">
+            </label>
+            <label class="field">
+                <span>Адресаты из карточки сотрудника</span>
+                <select name="button_notification_recipient_scope">
+                    {% for value, label in notification_recipient_scope_labels.items() %}
+                        <option value="{{ value }}">{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+        `;
+        return card;
+    }
+
+    function syncButtonNotificationEditors(scope) {
+        const stepCards = [];
+        if (scope.matches && scope.matches('[data-step-card], [data-chain-step-card]')) {
+            stepCards.push(scope);
+        }
+        stepCards.push(...scope.querySelectorAll('[data-step-card], [data-chain-step-card]'));
+
+        stepCards.forEach((card) => {
+            const responseSelect = card.querySelector('select[name="response_type"], select[name="chain_response_type"]');
+            const buttonOptions = card.querySelector('textarea[name="button_options"], textarea[name="chain_button_options"]');
+            const section = card.querySelector('[data-button-notification-section]');
+            const list = card.querySelector('[data-button-notification-list]');
+            if (!responseSelect || !buttonOptions || !section || !list) {
+                return;
+            }
+            section.style.display = responseSelect.value === 'buttons' ? '' : 'none';
+            if (responseSelect.value !== 'buttons') {
+                return;
+            }
+            const parentStepId = card.querySelector('input[name="step_id"], input[name="chain_step_id"]')?.value || '';
+            const parentStepRef = card.querySelector('input[name="chain_row_ref"]')?.value || '';
+            const options = buttonOptions.value.split('\n').map((item) => item.trim()).filter(Boolean);
+            const existingCards = new Map();
+            list.querySelectorAll('[data-button-notification-card]').forEach((notificationCard) => {
+                existingCards.set(Number(notificationCard.dataset.optionIndex || 0), notificationCard);
+            });
+            options.forEach((label, index) => {
+                let notificationCard = existingCards.get(index);
+                if (!notificationCard) {
+                    notificationCard = createButtonNotificationCard(parentStepId, parentStepRef, index, label);
+                    list.appendChild(notificationCard);
+                }
+                notificationCard.dataset.optionIndex = String(index);
+                notificationCard.querySelector('input[name="button_notification_parent_step_id"]').value = parentStepId;
+                notificationCard.querySelector('input[name="button_notification_parent_step_ref"]').value = parentStepRef;
+                notificationCard.querySelector('input[name="button_notification_option_index"]').value = String(index);
+                const meta = notificationCard.querySelector('.branch-step-meta');
+                if (meta) {
+                    meta.textContent = `Кнопка: ${label}`;
+                }
+                existingCards.delete(index);
+            });
+            existingCards.forEach((notificationCard) => notificationCard.remove());
+        });
     }
 
     function syncBranchEditors(container) {
@@ -284,6 +975,7 @@
                 card.style.boxShadow = 'none';
                 card.innerHTML = `
                     <input type="hidden" name="branch_parent_step_id" value="${parentStepId}">
+                    <input type="hidden" name="branch_parent_step_ref" value="">
                     <input type="hidden" name="branch_option_index" value="${index}">
                     <input type="hidden" name="branch_step_id" value="">
                     <div class="branch-step-meta"></div>
@@ -301,17 +993,75 @@
                         </div>
                     </label>
                     <label class="field">
-                        <span>Документ для отправки пользователю</span>
+                        <span>Документ или изображение для отправки пользователю</span>
                         <input type="file" name="branch_attachment_${parentStepId}_${index}">
                         <div class="field-hint">Если выбрать файл, он будет отправляться сразу после сообщения этой ветки.</div>
                     </label>
+                    {% if kind != 'survey' %}
+                        <label class="field employee-card-field is-hidden">
+                            <span>Карточка сотрудника</span>
+                            <select name="branch_send_employee_card">
+                                <option value="false" selected>Не отправлять</option>
+                                <option value="true">Отправить картинку карточки</option>
+                            </select>
+                        </label>
+                        <details class="notification-disclosure">
+                            <summary class="notification-toggle" title="Настроить уведомление для ветки">
+                                <span class="notification-toggle-icon" aria-hidden="true">🔔</span>
+                                <span class="notification-toggle-label">Уведомление для ветки</span>
+                            </summary>
+                            <div class="notification-editor">
+                            <label class="field employee-card-field is-hidden">
+                                <span>Текст уведомления</span>
+                                <textarea name="branch_notify_on_send_text" rows="3" placeholder="Например: Пользователю отправлено сообщение этой ветки."></textarea>
+                            </label>
+                            <label class="field employee-card-field is-hidden">
+                                <span>Telegram ID получателей</span>
+                                <input type="text" name="branch_notify_on_send_recipient_ids" value="" placeholder="123456789, 987654321">
+                            </label>
+                            <label class="field employee-card-field is-hidden">
+                                <span>Адресаты из карточки сотрудника</span>
+                                <select name="branch_notify_on_send_recipient_scope">
+                                    {% for value, label in notification_recipient_scope_labels.items() %}
+                                        <option value="{{ value }}">{{ label }}</option>
+                                    {% endfor %}
+                                </select>
+                            </label>
+                            </div>
+                        </details>
+                        <details class="notification-disclosure">
+                            <summary class="notification-toggle" title="Настроить уведомление для кнопки">
+                                <span class="notification-toggle-icon" aria-hidden="true">🔔</span>
+                                <span class="notification-toggle-label">Уведомление для кнопки</span>
+                            </summary>
+                            <div class="notification-editor">
+                            <label class="field">
+                                <span>Текст уведомления</span>
+                                <textarea name="branch_button_notification_text" rows="3" placeholder="Например: Пользователь выбрал этот вариант."></textarea>
+                            </label>
+                            <label class="field">
+                                <span>Telegram ID получателей</span>
+                                <input type="text" name="branch_button_notification_recipient_ids" value="" placeholder="123456789, 987654321">
+                            </label>
+                            <label class="field">
+                                <span>Адресаты из карточки сотрудника</span>
+                                <select name="branch_button_notification_recipient_scope">
+                                    {% for value, label in notification_recipient_scope_labels.items() %}
+                                        <option value="{{ value }}">{{ label }}</option>
+                                    {% endfor %}
+                                </select>
+                            </label>
+                            </div>
+                        </details>
+                    {% endif %}
                     <label class="field">
-                        <span>Вид ответа после сообщения</span>
+                        <span>Следующий шаг</span>
                         <select name="branch_response_type" data-branch-response-type>
                             <option value="none" selected>Без ответа</option>
                             <option value="text">Текстовый ответ</option>
                             <option value="file">Загрузка файла</option>
                             <option value="buttons">Выбор кнопками</option>
+                            <option value="chain">Цепочка шагов</option>
                             <option value="launch_scenario">Переход к сценарию</option>
                         </select>
                     </label>
@@ -328,6 +1078,13 @@
                             {% endfor %}
                         </select>
                     </label>
+                    <div class="branch-chain-editor js-branch-chain-editor" style="display:none;">
+                        <div class="branch-chain-head">
+                            <strong>Цепочка шагов</strong>
+                            <button type="button" class="btn-secondary btn-small" data-add-chain-step>Добавить шаг</button>
+                        </div>
+                        <div class="branch-chain-list" data-chain-list></div>
+                    </div>
                 `;
                 branchList.appendChild(card);
             }
@@ -347,6 +1104,7 @@
 
         existingCards.forEach((card) => card.remove());
         syncBranchResponseFields(container);
+        bindChainEditors(container);
     }
 
     function syncBranchResponseFields(container) {
@@ -354,12 +1112,315 @@
             const responseSelect = card.querySelector('[data-branch-response-type]');
             const buttonField = card.querySelector('.js-branch-button-options');
             const scenarioSelectField = card.querySelector('.js-branch-scenario-select');
-            if (!responseSelect || !buttonField || !scenarioSelectField) {
+            const chainEditor = card.querySelector('.js-branch-chain-editor');
+            if (!responseSelect || !buttonField || !scenarioSelectField || !chainEditor) {
                 return;
             }
             buttonField.style.display = responseSelect.value === 'buttons' ? '' : 'none';
             scenarioSelectField.style.display = responseSelect.value === 'launch_scenario' ? '' : 'none';
+            chainEditor.style.display = responseSelect.value === 'chain' ? '' : 'none';
         });
+    }
+
+    function syncChainResponseFields(scope) {
+        const chainCards = [];
+        if (scope.matches && scope.matches('[data-chain-step-card]')) {
+            chainCards.push(scope);
+        }
+        chainCards.push(...scope.querySelectorAll('[data-chain-step-card]'));
+
+        chainCards.forEach((card) => {
+            const responseSelect = card.querySelector('[data-chain-response-type]');
+            const buttonField = card.querySelector('.js-chain-button-options');
+            const branchingSection = card.querySelector('.js-chain-branching-section');
+            const buttonNotificationSection = card.querySelector('.js-button-notification-section');
+            const sendModeSelect = card.querySelector('[data-chain-send-mode]');
+            const sendTimeField = card.querySelector('.js-chain-send-time');
+            if (!responseSelect || !buttonField) {
+                return;
+            }
+            buttonField.style.display = ['buttons', 'branching'].includes(responseSelect.value) ? '' : 'none';
+            if (branchingSection) {
+                branchingSection.style.display = responseSelect.value === 'branching' ? '' : 'none';
+            }
+            if (buttonNotificationSection) {
+                buttonNotificationSection.style.display = responseSelect.value === 'buttons' ? '' : 'none';
+            }
+            if (sendModeSelect && sendTimeField) {
+                sendTimeField.style.display = sendModeSelect.value === 'specific_time' ? '' : 'none';
+            }
+        });
+    }
+
+    function syncChainBranchEditors(scope) {
+        const chainCards = [];
+        if (scope.matches && scope.matches('[data-chain-step-card]')) {
+            chainCards.push(scope);
+        }
+        chainCards.push(...scope.querySelectorAll('[data-chain-step-card]'));
+
+        chainCards.forEach((card) => {
+            const responseSelect = card.querySelector('[data-chain-response-type]');
+            const branchingSection = card.querySelector('.js-chain-branching-section');
+            const branchList = card.querySelector('[data-branch-list]');
+            const buttonOptions = card.querySelector('textarea[name="chain_button_options"]');
+            const chainStepId = card.querySelector('input[name="chain_step_id"]')?.value || '';
+            const chainRowRef = card.querySelector('input[name="chain_row_ref"]')?.value || '';
+            if (!responseSelect || !branchingSection || !branchList || !buttonOptions) {
+                return;
+            }
+
+            branchingSection.dataset.parentStepId = chainStepId;
+            branchingSection.dataset.parentStepRef = chainRowRef;
+            if (responseSelect.value !== 'branching') {
+                return;
+            }
+
+            const options = buttonOptions.value.split('\n').map((item) => item.trim()).filter(Boolean);
+            const existingCards = new Map();
+            branchList.querySelectorAll('[data-branch-card]').forEach((branchCard) => {
+                existingCards.set(Number(branchCard.dataset.optionIndex || 0), branchCard);
+            });
+
+            options.forEach((label, index) => {
+                let branchCard = existingCards.get(index);
+                if (!branchCard) {
+                    branchCard = document.createElement('div');
+                    branchCard.className = 'card branch-step-card';
+                    branchCard.dataset.branchCard = 'true';
+                    branchCard.dataset.optionIndex = String(index);
+                    branchCard.style.boxShadow = 'none';
+                    branchCard.innerHTML = `
+                        <input type="hidden" name="branch_parent_step_id" value="${chainStepId}">
+                        <input type="hidden" name="branch_parent_step_ref" value="${chainRowRef}">
+                        <input type="hidden" name="branch_option_index" value="${index}">
+                        <input type="hidden" name="branch_step_id" value="">
+                        <div class="branch-step-meta"></div>
+                        <label class="field">
+                            <span>Название ветки</span>
+                            <input type="text" name="branch_step_title" placeholder="Название ветки">
+                        </label>
+                        <label class="field">
+                            <span>Сообщение после выбора</span>
+                            <textarea name="branch_custom_text" rows="3" placeholder="Введите текст сообщения"></textarea>
+                            <div class="token-toolbar" data-token-toolbar>
+                                <span class="field-hint">Теги:</span>
+                                <button type="button" class="token-chip" data-insert-token="{name}">{name}</button>
+                                <button type="button" class="token-chip" data-insert-token="{full_name}">{full_name}</button>
+                            </div>
+                        </label>
+                        <label class="field">
+                            <span>Документ или изображение для отправки пользователю</span>
+                            <input type="file" name="branch_attachment_${chainStepId}_${index}">
+                            <div class="field-hint">Если выбрать файл, он будет отправляться сразу после сообщения этой ветки.</div>
+                        </label>
+                        {% if kind != 'survey' %}
+                            <label class="field employee-card-field is-hidden">
+                                <span>Карточка сотрудника</span>
+                                <select name="branch_send_employee_card">
+                                    <option value="false" selected>Не отправлять</option>
+                                    <option value="true">Отправить картинку карточки</option>
+                                </select>
+                            </label>
+                        {% endif %}
+                        <label class="field">
+                            <span>Следующий шаг</span>
+                            <select name="branch_response_type" data-branch-response-type>
+                                <option value="none" selected>Без ответа</option>
+                                <option value="text">Текстовый ответ</option>
+                                <option value="file">Загрузка файла</option>
+                                <option value="buttons">Выбор кнопками</option>
+                                <option value="chain">Цепочка шагов</option>
+                                <option value="launch_scenario">Переход к сценарию</option>
+                            </select>
+                        </label>
+                        <label class="field js-branch-button-options" style="display:none;">
+                            <span>Кнопки ответа для ветки</span>
+                            <textarea name="branch_button_options" rows="3" placeholder="Одна кнопка на строку"></textarea>
+                        </label>
+                        <label class="field js-branch-scenario-select" style="display:none;">
+                            <span>Какой сценарий запускать</span>
+                            <select name="branch_launch_scenario_key">
+                                <option value="">Выберите сценарий</option>
+                                {% for available_scenario in available_scenarios %}
+                                    <option value="{{ available_scenario.scenario_key }}">{{ available_scenario.title }}</option>
+                                {% endfor %}
+                            </select>
+                        </label>
+                        <div class="branch-chain-editor js-branch-chain-editor" style="display:none;">
+                            <div class="branch-chain-head">
+                                <strong>Цепочка шагов</strong>
+                                <button type="button" class="btn-secondary btn-small" data-add-chain-step>Добавить шаг</button>
+                            </div>
+                            <div class="branch-chain-list" data-chain-list></div>
+                        </div>
+                    `;
+                    branchList.appendChild(branchCard);
+                    enhanceTokenToolbars(branchCard);
+                }
+                branchCard.dataset.optionIndex = String(index);
+                branchCard.querySelector('input[name="branch_parent_step_id"]').value = chainStepId;
+                branchCard.querySelector('input[name="branch_parent_step_ref"]').value = chainRowRef;
+                branchCard.querySelector('input[name="branch_option_index"]').value = String(index);
+                const meta = branchCard.querySelector('.branch-step-meta');
+                if (meta) {
+                    meta.textContent = `Кнопка: ${label}`;
+                }
+                const titleInput = branchCard.querySelector('input[name="branch_step_title"]');
+                if (titleInput && !titleInput.value.trim()) {
+                    titleInput.value = `Ветка: ${label}`;
+                }
+                existingCards.delete(index);
+            });
+
+            existingCards.forEach((branchCard) => branchCard.remove());
+            syncBranchResponseFields(card);
+            bindChainEditors(card);
+        });
+    }
+
+    function refreshChainStepIndexes(chainList) {
+        chainList.querySelectorAll('[data-chain-step-card]').forEach((card, index) => {
+            const label = card.querySelector('[data-chain-step-label]');
+            if (label) {
+                label.textContent = `Шаг ${index + 1}`;
+            }
+            const attachmentInput = card.querySelector('input[type="file"][name^="chain_attachment_"], input[type="file"][name=""]');
+            const parentStepId = card.dataset.parentStepId || '';
+            const optionIndex = card.dataset.branchOptionIndex || '';
+            const chainStepId = card.querySelector('input[name="chain_step_id"]')?.value || '';
+            const rowRefInput = card.querySelector('input[name="chain_row_ref"]');
+            const rowRefValue = chainStepId ? `existing:${chainStepId}` : `draft:${parentStepId}:${optionIndex}:${index}`;
+            if (rowRefInput) {
+                rowRefInput.value = rowRefValue;
+            }
+            if (attachmentInput && parentStepId && optionIndex) {
+                attachmentInput.name = `chain_attachment_${parentStepId}_${optionIndex}_${index}`;
+            }
+            card.querySelectorAll('input[name="branch_parent_step_ref"]').forEach((input) => {
+                input.value = rowRefValue;
+            });
+        });
+    }
+
+    function createChainStepCard(parentStepId, optionIndex) {
+        const card = document.createElement('div');
+        card.className = 'card branch-chain-step-card';
+        card.dataset.chainStepCard = 'true';
+        card.dataset.parentStepId = String(parentStepId);
+        card.dataset.branchOptionIndex = String(optionIndex);
+        card.innerHTML = `
+            <input type="hidden" name="chain_parent_step_id" value="${parentStepId}">
+            <input type="hidden" name="chain_branch_option_index" value="${optionIndex}">
+            <input type="hidden" name="chain_step_id" value="">
+            <input type="hidden" name="chain_row_ref" value="">
+            <div class="branch-chain-step-head">
+                <strong data-chain-step-label>Шаг</strong>
+                <button type="button" class="table-icon-link table-icon-link-danger" data-remove-chain-step aria-label="Удалить шаг цепочки" title="Удалить">&#10005;</button>
+            </div>
+            <label class="field">
+                <span>Название шага</span>
+                <input type="text" name="chain_step_title" placeholder="Название шага">
+            </label>
+            <label class="field">
+                <span>Текст сообщения</span>
+                <textarea name="chain_custom_text" rows="3" placeholder="Введите текст сообщения">Новое сообщение сценария.</textarea>
+                <div class="token-toolbar" data-token-toolbar>
+                    <span class="field-hint">Теги:</span>
+                    <button type="button" class="token-chip" data-insert-token="{name}">{name}</button>
+                    <button type="button" class="token-chip" data-insert-token="{full_name}">{full_name}</button>
+                </div>
+            </label>
+            <label class="field">
+                <span>Документ или изображение для отправки пользователю</span>
+                <input type="file" name="">
+                <div class="field-hint">Если выбрать файл, он будет отправляться сразу после сообщения этого шага.</div>
+            </label>
+            {% if kind != 'survey' %}
+                <label class="field employee-card-field is-hidden">
+                    <span>Карточка сотрудника</span>
+                    <select name="chain_send_employee_card">
+                        <option value="false" selected>Не отправлять</option>
+                        <option value="true">Отправить картинку карточки</option>
+                    </select>
+                </label>
+                <details class="notification-disclosure">
+                    <summary class="notification-toggle" title="Настроить уведомление для шага">
+                        <span class="notification-toggle-icon" aria-hidden="true">🔔</span>
+                        <span class="notification-toggle-label">Уведомление для шага</span>
+                    </summary>
+                    <div class="notification-editor">
+                    <label class="field">
+                        <span>Текст уведомления</span>
+                        <textarea name="chain_notify_on_send_text" rows="3" placeholder="Например: Пользователю отправлен шаг цепочки."></textarea>
+                    </label>
+                    <label class="field">
+                        <span>Telegram ID получателей</span>
+                        <input type="text" name="chain_notify_on_send_recipient_ids" value="" placeholder="123456789, 987654321">
+                    </label>
+                    <label class="field">
+                        <span>Адресаты из карточки сотрудника</span>
+                        <select name="chain_notify_on_send_recipient_scope">
+                            {% for value, label in notification_recipient_scope_labels.items() %}
+                                <option value="{{ value }}">{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                    </div>
+                </details>
+            {% endif %}
+            <label class="field">
+                <span>Вариант ответа пользователя</span>
+                <select name="chain_response_type" data-chain-response-type>
+                    <option value="none" selected>Без ответа</option>
+                    <option value="text">Текстовый ответ</option>
+                    <option value="file">Загрузка файла</option>
+                    <option value="buttons">Выбор кнопками</option>
+                    <option value="branching">Ветвление</option>
+                </select>
+            </label>
+            <label class="field js-chain-button-options" style="display:none;">
+                <span>Список кнопок</span>
+                <textarea name="chain_button_options" rows="3" placeholder="Одна кнопка на строку"></textarea>
+            </label>
+            <details class="notification-disclosure js-button-notification-section" data-button-notification-section style="display:none;">
+                <summary class="notification-toggle" title="Настроить уведомления для кнопок">
+                    <span class="notification-toggle-icon" aria-hidden="true">🔔</span>
+                    <span class="notification-toggle-label">Уведомления по кнопкам</span>
+                </summary>
+                <div class="notification-editor">
+                    <div class="button-notification-list" data-button-notification-list></div>
+                </div>
+            </details>
+            <div class="branching-section js-chain-branching-section" data-parent-step-id="" style="display:none;">
+                <div class="branching-intro">
+                    <strong>Ветки после выбора кнопки</strong>
+                    <p class="muted">Для каждой кнопки можно сразу настроить своё следующее сообщение.</p>
+                </div>
+                <div class="branching-list" data-branch-list></div>
+            </div>
+            <label class="field">
+                <span>Время отправки</span>
+                <select name="chain_send_mode" data-chain-send-mode>
+                    <option value="immediate" selected>Сразу после ответа на предыдущее сообщение</option>
+                    <option value="specific_time">В конкретное время</option>
+                </select>
+            </label>
+            <label class="field js-chain-send-time" style="display:none;">
+                <span>Конкретное время</span>
+                <input type="text" name="chain_send_time" value="" placeholder="10:00">
+            </label>
+            <label class="field">
+                <span>Сохранять ответ в поле сотрудника</span>
+                <select name="chain_target_field">
+                    <option value="">Не сохранять</option>
+                    {% for value, label in target_field_labels.items() %}
+                        <option value="{{ value }}">{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+        `;
+        return card;
     }
 
     function bindAttachmentDeleteButtons(scope = document) {
@@ -380,6 +1441,81 @@
                 hiddenForm.action = button.dataset.deleteAttachmentUrl;
                 hiddenForm.submit();
             });
+        });
+    }
+
+    function bindChainEditors(scope = document) {
+        const branchCards = [];
+        if (scope.matches && scope.matches('[data-branch-card]')) {
+            branchCards.push(scope);
+        }
+        branchCards.push(...scope.querySelectorAll('[data-branch-card]'));
+
+        branchCards.forEach((branchCard) => {
+            const chainList = branchCard.querySelector('[data-chain-list]');
+            const addButton = branchCard.querySelector('[data-add-chain-step]');
+            if (!chainList || !addButton) {
+                return;
+            }
+            if (addButton.dataset.chainBound !== 'true') {
+                addButton.dataset.chainBound = 'true';
+                addButton.addEventListener('click', () => {
+                    const parentStepId = branchCard.querySelector('input[name="branch_parent_step_id"]').value;
+                    const optionIndex = branchCard.querySelector('input[name="branch_option_index"]').value;
+                    const card = createChainStepCard(parentStepId, optionIndex);
+                    chainList.appendChild(card);
+                    bindChainEditors(branchCard);
+                    refreshChainStepIndexes(chainList);
+                    syncChainResponseFields(chainList);
+                    syncButtonNotificationEditors(chainList);
+                    enhanceTokenToolbars(card);
+                });
+            }
+            chainList.querySelectorAll('[data-chain-step-card]').forEach((card) => {
+                card.dataset.parentStepId = branchCard.querySelector('input[name="branch_parent_step_id"]').value;
+                card.dataset.branchOptionIndex = branchCard.querySelector('input[name="branch_option_index"]').value;
+                const chainStepIdInput = card.querySelector('input[name="chain_step_id"]');
+                const chainBranchSection = card.querySelector('.js-chain-branching-section');
+                if (chainBranchSection && chainStepIdInput) {
+                    chainBranchSection.dataset.parentStepId = chainStepIdInput.value || '';
+                }
+                const responseSelect = card.querySelector('[data-chain-response-type]');
+                const buttonOptions = card.querySelector('textarea[name="chain_button_options"]');
+                const sendModeSelect = card.querySelector('[data-chain-send-mode]');
+                if (responseSelect && responseSelect.dataset.chainFieldBound !== 'true') {
+                    responseSelect.dataset.chainFieldBound = 'true';
+                    responseSelect.addEventListener('change', () => {
+                        syncChainResponseFields(card);
+                        syncChainBranchEditors(card);
+                        syncButtonNotificationEditors(card);
+                    });
+                }
+                if (buttonOptions && buttonOptions.dataset.chainFieldBound !== 'true') {
+                    buttonOptions.dataset.chainFieldBound = 'true';
+                    buttonOptions.addEventListener('input', () => {
+                        syncChainBranchEditors(card);
+                        syncButtonNotificationEditors(card);
+                    });
+                }
+                if (sendModeSelect && sendModeSelect.dataset.chainFieldBound !== 'true') {
+                    sendModeSelect.dataset.chainFieldBound = 'true';
+                    sendModeSelect.addEventListener('change', () => syncChainResponseFields(card));
+                }
+            });
+            chainList.querySelectorAll('[data-remove-chain-step]').forEach((button) => {
+                if (button.dataset.chainRemoveBound === 'true') {
+                    return;
+                }
+                button.dataset.chainRemoveBound = 'true';
+                button.addEventListener('click', () => {
+                    button.closest('[data-chain-step-card]')?.remove();
+                    refreshChainStepIndexes(chainList);
+                });
+            });
+            refreshChainStepIndexes(chainList);
+            syncChainResponseFields(chainList);
+            syncChainBranchEditors(chainList);
+            syncButtonNotificationEditors(chainList);
         });
     }
 
@@ -433,13 +1569,17 @@
         }
 
         stepsContainer.querySelectorAll('[data-step-card]').forEach((card) => {
-            card.addEventListener('dragstart', () => {
+            const handle = card.querySelector('[data-step-drag-handle]');
+            if (!handle) {
+                return;
+            }
+            handle.addEventListener('dragstart', () => {
                 draggedCard = card;
                 card.classList.add('is-dragging');
                 dropIndicator.classList.add('is-visible');
             });
 
-            card.addEventListener('dragend', () => {
+            handle.addEventListener('dragend', () => {
                 card.classList.remove('is-dragging');
                 draggedCard = null;
                 dropIndicator.classList.remove('is-visible');
@@ -490,21 +1630,33 @@
             responseSelect.addEventListener('change', () => {
                 syncScenarioStepFields(container);
                 syncBranchEditors(container);
+                syncButtonNotificationEditors(container);
             });
         }
         if (sendModeSelect) {
             sendModeSelect.addEventListener('change', () => syncScenarioStepFields(container));
         }
         if (buttonOptions) {
-            buttonOptions.addEventListener('input', () => syncBranchEditors(container));
+            buttonOptions.addEventListener('input', () => {
+                syncBranchEditors(container);
+                syncButtonNotificationEditors(container);
+            });
         }
         container.addEventListener('change', (event) => {
             if (event.target && event.target.matches('[data-branch-response-type]')) {
                 syncBranchResponseFields(container);
             }
+            if (event.target && event.target.matches('[data-chain-response-type]')) {
+                syncChainResponseFields(container);
+            }
         });
         syncBranchResponseFields(container);
+        bindChainEditors(container);
+        syncChainResponseFields(container);
+        syncChainBranchEditors(container);
+        syncButtonNotificationEditors(container);
     });
+    enhanceTokenToolbars();
     bindAttachmentDeleteButtons();
 
     document.addEventListener('click', (event) => {
@@ -518,13 +1670,11 @@
         if (!textarea) {
             return;
         }
-        const start = textarea.selectionStart ?? textarea.value.length;
-        const end = textarea.selectionEnd ?? textarea.value.length;
-        textarea.value = `${textarea.value.slice(0, start)}${token}${textarea.value.slice(end)}`;
-        const caret = start + token.length;
-        textarea.focus();
-        textarea.setSelectionRange(caret, caret);
-        textarea.dispatchEvent(new Event('input', { bubbles: true }));
+        insertIntoTextarea(textarea, token);
+        const picker = button.closest('.emoji-picker');
+        if (picker) {
+            picker.removeAttribute('open');
+        }
     });
 
     initScenarioStepDnD();
