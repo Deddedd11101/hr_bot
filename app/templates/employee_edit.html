@@ -7,11 +7,15 @@
     {% if flash_message %}
         <div class="flash-message flash-{{ flash_type }}">{{ flash_message }}</div>
     {% endif %}
-    <h2>Редактировать сотрудника</h2>
+    <h2>{{ 'Редактировать кандидата' if is_candidate else 'Редактировать сотрудника' }}</h2>
     <p class="muted">
         Измените данные и нажмите «Сохранить». Сценарий запланирован: {{ 'Да' if employee.is_flow_scheduled else 'Нет' }}.
     </p>
-    <p class="muted">Стаж: {{ workdays }} раб. дн. Статус: {{ status }}.</p>
+    {% if is_candidate %}
+        <p class="muted">Статус: {{ status }}. Текущий этап работы: {{ candidate_work_stage_label }}.</p>
+    {% else %}
+        <p class="muted">Стаж: {{ tenure_years }} {{ 'год' if tenure_years % 10 == 1 and tenure_years % 100 != 11 else 'года' if tenure_years % 10 in [2,3,4] and tenure_years % 100 not in [12,13,14] else 'лет' }}. Статус: {{ status }}.</p>
+    {% endif %}
 
     <form method="post" action="/employees/{{ employee.id }}" class="form">
         <label class="field">
@@ -23,11 +27,11 @@
             <input type="text" name="telegram_user_id" value="{{ employee.telegram_user_id }}" placeholder="привяжется по /start в боте">
         </label>
         <label class="field">
-            <span>Дата первого рабочего дня</span>
+            <span>{{ 'Предварительная дата выхода на работу' if is_candidate else 'Дата выхода на работу' }}</span>
             <input type="date" name="first_workday" value="{{ employee.first_workday or '' }}">
         </label>
         <label class="field">
-            <span>Желаемая должность</span>
+            <span>{{ 'Желаемая должность' if is_candidate else 'Должность' }}</span>
             <select name="desired_position">
                 <option value="" {% if not employee.desired_position %}selected{% endif %}>Не указана</option>
                 {% for role in employee_role_values %}
@@ -35,37 +39,75 @@
                 {% endfor %}
             </select>
         </label>
-        <label class="field">
-            <span>Статус</span>
-            <select name="employee_stage">
-                <option value="" {% if not employee.employee_stage %}selected{% endif %}>Не указан</option>
-                {% for value, label in employee_stage_values.items() %}
-                    <option value="{{ value }}" {% if employee.employee_stage == value %}selected{% endif %}>{{ label }}</option>
-                {% endfor %}
-            </select>
-        </label>
-        <label class="field">
-            <span>Ожидания по зарплате</span>
-            <input type="text" name="salary_expectation" value="{{ employee.salary_expectation or '' }}" placeholder="250 000 - 300 000">
-        </label>
-        <label class="field">
-            <span>Дедлайн тестового задания</span>
-            <input type="datetime-local" name="test_task_due_at" value="{{ employee.test_task_due_at.strftime('%Y-%m-%dT%H:%M') if employee.test_task_due_at else '' }}">
-        </label>
-        <label class="field">
-            <span>Согласие на ПДн (кандидат)</span>
-            <select name="personal_data_consent">
-                <option value="false" {% if not employee.personal_data_consent %}selected{% endif %}>Нет</option>
-                <option value="true" {% if employee.personal_data_consent %}selected{% endif %}>Да</option>
-            </select>
-        </label>
-        <label class="field">
-            <span>Согласие на ПДн (сотрудник)</span>
-            <select name="employee_data_consent">
-                <option value="false" {% if not employee.employee_data_consent %}selected{% endif %}>Нет</option>
-                <option value="true" {% if employee.employee_data_consent %}selected{% endif %}>Да</option>
-            </select>
-        </label>
+        {% if is_candidate %}
+            <label class="field">
+                <span>Текущий этап работы</span>
+                <select name="candidate_work_stage">
+                    <option value="" {% if not employee.candidate_work_stage %}selected{% endif %}>Не указан</option>
+                    {% for value, label in candidate_work_stage_values.items() %}
+                        <option value="{{ value }}" {% if employee.candidate_work_stage == value %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+            <label class="field">
+                <span>Ожидания по зарплате</span>
+                <input type="text" name="salary_expectation" value="{{ employee.salary_expectation or '' }}" placeholder="250 000 - 300 000">
+            </label>
+            <label class="field">
+                <span>Дедлайн тестового задания</span>
+                <input type="datetime-local" name="test_task_due_at" value="{{ employee.test_task_due_at.strftime('%Y-%m-%dT%H:%M') if employee.test_task_due_at else '' }}">
+            </label>
+            <label class="field">
+                <span>Согласие на ПДн (кандидат)</span>
+                <select name="personal_data_consent">
+                    <option value="false" {% if not employee.personal_data_consent %}selected{% endif %}>Нет</option>
+                    <option value="true" {% if employee.personal_data_consent %}selected{% endif %}>Да</option>
+                </select>
+            </label>
+        {% else %}
+            <label class="field">
+                <span>Дата рождения</span>
+                <input type="date" name="birth_date" value="{{ employee.birth_date or '' }}">
+            </label>
+            <label class="field">
+                <span>Рабочая почта</span>
+                <input type="text" name="work_email" value="{{ employee.work_email or '' }}" placeholder="d.ivanov@company.ru">
+            </label>
+            <label class="field">
+                <span>Рабочие часы</span>
+                <input type="text" name="work_hours" value="{{ employee.work_hours or '' }}" placeholder="10:00-19:00 по мск">
+            </label>
+            <label class="field">
+                <span>Руководитель сотрудника</span>
+                <input type="text" name="manager_telegram_id" value="{{ employee.manager_telegram_id or '' }}" placeholder="telegram id руководителя">
+            </label>
+            <label class="field">
+                <span>Наставник (адаптация)</span>
+                <input type="text" name="mentor_adaptation_telegram_id" value="{{ employee.mentor_adaptation_telegram_id or '' }}" placeholder="telegram id наставника">
+            </label>
+            <label class="field">
+                <span>Наставник (ИПР)</span>
+                <input type="text" name="mentor_ipr_telegram_id" value="{{ employee.mentor_ipr_telegram_id or '' }}" placeholder="telegram id наставника">
+            </label>
+            <label class="field">
+                <span>Статус</span>
+                <select name="employee_stage">
+                    <option value="" {% if not employee.employee_stage %}selected{% endif %}>Не указан</option>
+                    {% for value, label in employee_stage_values.items() %}
+                        {% if value != 'candidate' %}
+                            <option value="{{ value }}" {% if employee.employee_stage == value %}selected{% endif %}>{{ label }}</option>
+                        {% endif %}
+                    {% endfor %}
+                </select>
+            </label>
+            <label class="field">
+                <span>Согласие на ПДн (сотрудник)</span>
+                <select name="employee_data_consent">
+                    <option value="false" {% if not employee.employee_data_consent %}selected{% endif %}>Нет</option>
+                    <option value="true" {% if employee.employee_data_consent %}selected{% endif %}>Да</option>
+                </select>
+            </label>
+        {% endif %}
         <label class="field">
             <span>Заметки HR</span>
             <textarea name="notes" rows="3" placeholder="Внутренние заметки">{{ employee.notes or '' }}</textarea>
@@ -75,6 +117,8 @@
             <button type="button" class="btn-danger" onclick="if(confirm('Удалить этого сотрудника?')) { document.getElementById('delete-form').submit(); }">Удалить</button>
         </div>
     </form>
+
+    {# Временно скрыто: блок карточки сотрудника вернём после доработки генерации и UX. #}
 
     <hr style="margin: 20px 0; border: 0; border-top: 1px solid #e5e7eb;">
 
@@ -128,6 +172,50 @@
         </table>
     {% else %}
         <p class="muted">Файлов пока нет.</p>
+    {% endif %}
+
+    <hr style="margin: 20px 0; border: 0; border-top: 1px solid #e5e7eb;">
+
+    <h3>Оффер</h3>
+    <form method="post" action="/employees/{{ employee.id }}/document-links" class="form">
+        <div class="settings-grid">
+            <label class="field settings-field">
+                <span>Ссылка на оффер</span>
+                <input type="text" name="url" placeholder="https://docs.google.com/..." required>
+            </label>
+        </div>
+        <div class="form-actions">
+            <button type="submit" class="btn-primary">Сохранить оффер</button>
+        </div>
+    </form>
+
+    {% if employee_document_links %}
+        <table class="table">
+            <thead>
+            <tr>
+                <th>Название</th>
+                <th>Ссылка</th>
+                <th>Тег для сценария</th>
+                <th></th>
+            </tr>
+            </thead>
+            <tbody>
+            {% for link in employee_document_links %}
+                <tr>
+                    <td>{{ link.title }}</td>
+                    <td><a href="{{ link.url }}" target="_blank" rel="noopener noreferrer">Открыть документ</a></td>
+                    <td><code>{doc:{{ link.title }}}</code></td>
+                    <td class="table-action-cell">
+                        <form method="post" action="/employees/{{ employee.id }}/document-links/{{ link.id }}/delete" onsubmit="return confirm('Удалить эту ссылку на документ?');">
+                            <button type="submit" class="table-icon-link table-icon-link-danger" aria-label="Удалить ссылку на документ" title="Удалить">&#10005;</button>
+                        </form>
+                    </td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <p class="muted">Ссылка на оффер пока не добавлена.</p>
     {% endif %}
 
     <hr style="margin: 20px 0; border: 0; border-top: 1px solid #e5e7eb;">
@@ -205,6 +293,7 @@
     </form>
 
     {% if manual_launch_history %}
+        <div class="collapsible-history" data-collapsible-list>
         <table class="table scheduler-table">
             <thead>
             <tr>
@@ -215,7 +304,7 @@
             <tbody>
             {% for launch_request in manual_launch_history %}
                 {% set scenario = scenario_by_key.get(launch_request.flow_key) %}
-                <tr>
+                <tr data-collapsible-row {% if loop.index > 3 %}hidden{% endif %}>
                     <td>
                         {% if scenario %}
                             <a href="/flows/{{ scenario.id }}">{{ scenario.title }}</a>
@@ -228,9 +317,28 @@
             {% endfor %}
             </tbody>
         </table>
+        {% if manual_launch_history|length > 3 %}
+            <button type="button" class="btn-secondary collapsible-history-toggle" data-collapsible-toggle data-expand-label="Показать все" data-collapse-label="Свернуть">Показать все</button>
+        {% endif %}
+        </div>
     {% else %}
         <p class="muted">Ручных запусков пока не было.</p>
     {% endif %}
     <form id="delete-form" method="post" action="/employees/{{ employee.id }}/delete" style="display: none;"></form>
 </div>
+<script>
+    document.querySelectorAll('[data-collapsible-list]').forEach((container) => {
+        const button = container.querySelector('[data-collapsible-toggle]');
+        if (!button) return;
+        const rows = Array.from(container.querySelectorAll('[data-collapsible-row]'));
+        let expanded = false;
+        button.addEventListener('click', () => {
+            expanded = !expanded;
+            rows.forEach((row, index) => {
+                row.hidden = !expanded && index >= 3;
+            });
+            button.textContent = expanded ? button.dataset.collapseLabel : button.dataset.expandLabel;
+        });
+    });
+</script>
 {% endblock %}

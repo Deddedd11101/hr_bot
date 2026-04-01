@@ -22,19 +22,6 @@
             <textarea name="notification_recipient_ids" rows="3" placeholder="123456789&#10;987654321">{{ hr_settings.notification_recipient_ids or '' }}</textarea>
             <div class="field-hint">Можно указать несколько ID: по одному на строку или через запятую.</div>
         </label>
-        {#
-        <label class="field settings-field settings-select-field">
-            <span>Стартовый набор кнопок чат-бота</span>
-            <span class="employees-filter-label settings-select-shell">
-                <select name="default_menu_set_id" class="employees-filter-select">
-                    <option value="">Не выбран</option>
-                    {% for menu_set in menu_sets %}
-                        <option value="{{ menu_set.id }}" {% if hr_settings.default_menu_set_id == menu_set.id %}selected{% endif %}>{{ menu_set.title }}</option>
-                    {% endfor %}
-                </select>
-            </span>
-        </label>
-        #}
         <div class="field">
             <span>Какие уведомления отправлять</span>
             <div class="settings-toggle-list">
@@ -67,26 +54,23 @@
     </form>
 </div>
 
-{#
 <div class="card" style="margin-top: 20px;">
     <h2>Меню Чат-Бота</h2>
     <p class="muted">Соберите наборы кнопок для Telegram-интерфейса пользователя и свяжите их со сценариями или другими наборами.</p>
 
     <form method="post" action="/settings/menu-sets" class="form" style="margin-bottom: 24px;">
-        <div class="settings-grid">
-            <label class="field settings-field">
-                <span>Новый набор кнопок</span>
-                <input type="text" name="title" placeholder="Главное меню">
-            </label>
-            <label class="field settings-field">
-                <span>Описание</span>
-                <input type="text" name="description" placeholder="Что будет видеть пользователь в этом разделе">
-            </label>
-        </div>
-        <div class="form-actions">
-            <button type="submit" class="btn-primary">Создать набор кнопок</button>
+        <label class="field settings-field">
+            <span>Новый набор кнопок</span>
+            <input type="text" name="title" placeholder="Главное меню">
+        </label>
+        <input type="hidden" name="description" value="">
+        <div class="form-actions menu-top-actions">
+            <button type="submit" class="btn-primary menu-top-action">Создать набор кнопок</button>
+            <button type="submit" class="btn-secondary menu-top-action" form="menu-settings-form">Сохранить настройки меню</button>
         </div>
     </form>
+
+    <form id="menu-settings-form" method="post" action="/settings/menu-buttons/save-all"></form>
 
     {% if menu_sets %}
         <div class="menu-set-list">
@@ -104,7 +88,7 @@
                             </label>
                         </div>
                         <div class="form-actions">
-                            <button type="submit" class="btn-secondary">Сохранить набор</button>
+                            <button type="submit" class="btn-primary">Сохранить настройки набора</button>
                             <button type="submit" formaction="/settings/menu-sets/{{ menu_set.id }}/delete" formmethod="post" class="btn-danger" onclick="return confirm('Удалить этот набор кнопок?');">Удалить набор</button>
                         </div>
                     </form>
@@ -125,36 +109,41 @@
                                 <form id="menu-button-form-{{ button.id }}" method="post" action="/settings/menu-buttons/{{ button.id }}"></form>
                                 <tr data-menu-button-row>
                                     <td>
-                                        <input type="text" name="label" value="{{ button.label }}" form="menu-button-form-{{ button.id }}" required>
+                                        <input type="text" name="label" value="{{ button.label }}" form="menu-button-form-{{ button.id }}" data-bulk-source="label" data-button-id="{{ button.id }}" required>
+                                        <input type="hidden" name="button_id" value="{{ button.id }}" form="menu-settings-form">
+                                        <input type="hidden" name="label" value="{{ button.label }}" data-bulk-mirror="label" data-button-id="{{ button.id }}" form="menu-settings-form">
                                     </td>
                                     <td>
                                         <span class="employees-filter-label settings-select-shell settings-table-select">
-                                            <select name="action_type" form="menu-button-form-{{ button.id }}" class="employees-filter-select" data-menu-action-type>
+                                            <select name="action_type" form="menu-button-form-{{ button.id }}" class="employees-filter-select" data-menu-action-type data-bulk-source="action_type" data-button-id="{{ button.id }}">
                                                 <option value="inactive" {% if button.action_type == 'inactive' %}selected{% endif %}>Неактивна</option>
                                                 <option value="launch_scenario" {% if button.action_type == 'launch_scenario' %}selected{% endif %}>Запуск сценария</option>
                                                 <option value="open_set" {% if button.action_type == 'open_set' %}selected{% endif %}>Переход к набору</option>
                                             </select>
                                         </span>
+                                        <input type="hidden" name="action_type" value="{{ button.action_type }}" data-bulk-mirror="action_type" data-button-id="{{ button.id }}" form="menu-settings-form">
                                     </td>
                                     <td data-scenario-cell {% if button.action_type != 'launch_scenario' %}style="display:none;"{% endif %}>
                                         <span class="employees-filter-label settings-select-shell settings-table-select">
-                                            <select name="scenario_key" form="menu-button-form-{{ button.id }}" class="employees-filter-select">
+                                            <select name="scenario_key" form="menu-button-form-{{ button.id }}" class="employees-filter-select" data-bulk-source="scenario_key" data-button-id="{{ button.id }}">
                                                 <option value="">Выберите сценарий</option>
                                                 {% for scenario in available_scenarios %}
                                                     <option value="{{ scenario.scenario_key }}" {% if button.scenario_key == scenario.scenario_key %}selected{% endif %}>{{ scenario.title }}</option>
                                                 {% endfor %}
                                             </select>
                                         </span>
+                                        <input type="hidden" name="scenario_key" value="{{ button.scenario_key or '' }}" data-bulk-mirror="scenario_key" data-button-id="{{ button.id }}" form="menu-settings-form">
                                     </td>
                                     <td data-set-cell {% if button.action_type != 'open_set' %}style="display:none;"{% endif %}>
                                         <span class="employees-filter-label settings-select-shell settings-table-select">
-                                            <select name="target_menu_set_id" form="menu-button-form-{{ button.id }}" class="employees-filter-select">
+                                            <select name="target_menu_set_id" form="menu-button-form-{{ button.id }}" class="employees-filter-select" data-bulk-source="target_menu_set_id" data-button-id="{{ button.id }}">
                                                 <option value="">Выберите набор</option>
                                                 {% for target_set in menu_sets %}
                                                     <option value="{{ target_set.id }}" {% if button.target_menu_set_id == target_set.id %}selected{% endif %}>{{ target_set.title }}</option>
                                                 {% endfor %}
                                             </select>
                                         </span>
+                                        <input type="hidden" name="target_menu_set_id" value="{{ button.target_menu_set_id or '' }}" data-bulk-mirror="target_menu_set_id" data-button-id="{{ button.id }}" form="menu-settings-form">
                                     </td>
                                     <td class="menu-button-actions">
                                         <button type="submit" class="btn-secondary" form="menu-button-form-{{ button.id }}">Сохранить</button>
@@ -216,7 +205,6 @@
         <p class="muted">Наборов кнопок пока нет. Создайте первый набор выше.</p>
     {% endif %}
 </div>
-#}
 
 {% if current_user and current_user.role == 'admin' %}
 <div class="card" style="margin-top: 20px;">
@@ -307,8 +295,22 @@
 </div>
 {% endif %}
 
-{#
 <script>
+    document.querySelectorAll('[data-bulk-source]').forEach((field) => {
+        const syncMirror = () => {
+            const mirror = document.querySelector(
+                `[data-bulk-mirror="${field.dataset.bulkSource}"][data-button-id="${field.dataset.buttonId}"]`
+            );
+            if (mirror) {
+                mirror.value = field.value;
+            }
+        };
+
+        field.addEventListener('input', syncMirror);
+        field.addEventListener('change', syncMirror);
+        syncMirror();
+    });
+
     document.querySelectorAll('[data-menu-button-row]').forEach((row) => {
         const actionSelect = row.querySelector('[data-menu-action-type]');
         const scenarioCell = row.querySelector('[data-scenario-cell]');
@@ -330,5 +332,4 @@
         syncAction();
     });
 </script>
-#}
 {% endblock %}

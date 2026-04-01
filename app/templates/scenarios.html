@@ -16,10 +16,12 @@
         </form>
     </div>
 
+    <form method="post" action="{{ collection_path }}/reorder" id="scenario-order-form">
     <div class="scenario-table-wrap">
     <table class="table">
         <thead>
         <tr>
+            <th></th>
             <th>ID</th>
             <th>{{ collection_title_single }}</th>
             <th>Роль</th>
@@ -28,15 +30,19 @@
             <th></th>
         </tr>
         </thead>
-        <tbody>
+        <tbody id="scenario-list">
         {% for scenario in scenarios %}
-            <tr>
+            <tr draggable="true" data-scenario-row>
+                <td class="table-action-cell"><button type="button" class="drag-handle" aria-label="Перетащить {{ collection_title_single|lower }}" title="Перетащить">⋮⋮</button><input type="hidden" name="scenario_id" value="{{ scenario.id }}"></td>
                 <td>{{ scenario.id }}</td>
                 <td>{{ scenario.title }}</td>
                 <td>{{ role_scope_labels.get(scenario.role_scope, scenario.role_scope) }}</td>
                 <td>{{ trigger_mode_labels.get(scenario.trigger_mode, scenario.trigger_mode) }}</td>
                 <td>{{ scenario.description or '—' }}</td>
                 <td class="table-action-cell table-action-cell-wide">
+                    <form method="post" action="{{ collection_path }}/{{ scenario.id }}/copy" style="display:inline;">
+                        <button type="submit" class="table-icon-link" aria-label="Копировать" title="Копировать">&#10697;</button>
+                    </form>
                     <a href="{{ collection_path }}/{{ scenario.id }}" class="table-icon-link" aria-label="Редактировать" title="Редактировать">&#9998;</a>
                     {% if kind == 'survey' %}
                         <a href="/surveys/{{ scenario.id }}/export" class="table-icon-link" aria-label="Скачать результаты" title="Скачать результаты">&#10515;</a>
@@ -50,5 +56,49 @@
         </tbody>
     </table>
     </div>
+    </form>
 </div>
+<script>
+    (function () {
+        const form = document.getElementById('scenario-order-form');
+        const tbody = document.getElementById('scenario-list');
+        if (!form || !tbody) return;
+        let draggedRow = null;
+
+        function getAfterElement(container, y) {
+            const rows = [...container.querySelectorAll('[data-scenario-row]:not(.is-dragging)')];
+            return rows.reduce((closest, row) => {
+                const box = row.getBoundingClientRect();
+                const offset = y - box.top - box.height / 2;
+                if (offset < 0 && offset > closest.offset) {
+                    return { offset, element: row };
+                }
+                return closest;
+            }, { offset: Number.NEGATIVE_INFINITY, element: null }).element;
+        }
+
+        tbody.querySelectorAll('[data-scenario-row]').forEach((row) => {
+            row.addEventListener('dragstart', () => {
+                draggedRow = row;
+                row.classList.add('is-dragging');
+            });
+            row.addEventListener('dragend', () => {
+                row.classList.remove('is-dragging');
+                draggedRow = null;
+                form.requestSubmit();
+            });
+        });
+
+        tbody.addEventListener('dragover', (event) => {
+            event.preventDefault();
+            if (!draggedRow) return;
+            const afterElement = getAfterElement(tbody, event.clientY);
+            if (!afterElement) {
+                tbody.appendChild(draggedRow);
+            } else {
+                tbody.insertBefore(draggedRow, afterElement);
+            }
+        });
+    })();
+</script>
 {% endblock %}

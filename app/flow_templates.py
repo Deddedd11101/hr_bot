@@ -53,6 +53,17 @@ TARGET_FIELD_LABELS = {
     "candidate_file": "Файл кандидата",
 }
 
+NOTIFICATION_RECIPIENT_SCOPE_LABELS = {
+    "": "Не добавлять адресатов из карточки",
+    "manager": "Руководитель сотрудника",
+    "mentor_adaptation": "Наставник (адаптация)",
+    "mentor_ipr": "Наставник (ИПР)",
+    "manager,mentor_adaptation": "Руководитель + наставник (адаптация)",
+    "manager,mentor_ipr": "Руководитель + наставник (ИПР)",
+    "mentor_adaptation,mentor_ipr": "Оба наставника",
+    "manager,mentor_adaptation,mentor_ipr": "Все связанные сотрудники",
+}
+
 EMPLOYEE_ROLE_VALUES = [
     "Дизайнер",
     "Project manager",

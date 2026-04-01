@@ -56,9 +56,18 @@ def _ensure_sqlite_schema() -> None:
             "telegram_username": "TEXT",
             "current_menu_set_id": "INTEGER",
             "desired_position": "TEXT",
+            "work_email": "TEXT",
+            "work_hours": "TEXT",
+            "profile_photo_path": "TEXT",
+            "profile_photo_filename": "TEXT",
             "salary_expectation": "TEXT",
             "candidate_status": "TEXT",
+            "candidate_work_stage": "TEXT",
             "employee_stage": "TEXT",
+            "birth_date": "DATE",
+            "manager_telegram_id": "TEXT",
+            "mentor_adaptation_telegram_id": "TEXT",
+            "mentor_ipr_telegram_id": "TEXT",
             "personal_data_consent": "BOOLEAN NOT NULL DEFAULT 0",
             "employee_data_consent": "BOOLEAN NOT NULL DEFAULT 0",
             "test_task_link": "TEXT",
@@ -79,6 +88,19 @@ def _ensure_sqlite_schema() -> None:
                         WHEN desired_position IN ('Дизайнер', 'Project manager', 'Аналитик') THEN desired_position
                         WHEN desired_position IN ('Project Manager', 'PM', 'РМ', 'Product Manager') THEN 'Project manager'
                         ELSE desired_position
+                    END
+                    """
+                )
+            )
+        if "employee_stage" in employee_columns:
+            conn.execute(
+                text(
+                    """
+                    UPDATE employees
+                    SET employee_stage = CASE
+                        WHEN employee_stage = 'employee' THEN 'staff'
+                        WHEN employee_stage IN ('first_day', 'probation') THEN 'adaptation'
+                        ELSE employee_stage
                     END
                     """
                 )
@@ -104,12 +126,21 @@ def _ensure_sqlite_schema() -> None:
                         telegram_username TEXT,
                         current_menu_set_id INTEGER,
                         first_workday DATE,
+                        birth_date DATE,
                         created_at DATETIME NOT NULL,
                         is_flow_scheduled BOOLEAN NOT NULL,
                         desired_position TEXT,
+                        work_email TEXT,
+                        work_hours TEXT,
+                        profile_photo_path TEXT,
+                        profile_photo_filename TEXT,
                         salary_expectation TEXT,
                         candidate_status TEXT,
+                        candidate_work_stage TEXT,
                         employee_stage TEXT,
+                        manager_telegram_id TEXT,
+                        mentor_adaptation_telegram_id TEXT,
+                        mentor_ipr_telegram_id TEXT,
                         personal_data_consent BOOLEAN NOT NULL DEFAULT 0,
                         employee_data_consent BOOLEAN NOT NULL DEFAULT 0,
                         test_task_link TEXT,
@@ -130,12 +161,21 @@ def _ensure_sqlite_schema() -> None:
                         telegram_username,
                         current_menu_set_id,
                         first_workday,
+                        birth_date,
                         created_at,
                         is_flow_scheduled,
                         desired_position,
+                        work_email,
+                        work_hours,
+                        profile_photo_path,
+                        profile_photo_filename,
                         salary_expectation,
                         candidate_status,
+                        candidate_work_stage,
                         employee_stage,
+                        manager_telegram_id,
+                        mentor_adaptation_telegram_id,
+                        mentor_ipr_telegram_id,
                         personal_data_consent,
                         employee_data_consent,
                         test_task_link,
@@ -149,12 +189,21 @@ def _ensure_sqlite_schema() -> None:
                         telegram_username,
                         current_menu_set_id,
                         first_workday,
+                        NULL,
                         created_at,
                         is_flow_scheduled,
                         desired_position,
+                        NULL,
+                        NULL,
+                        NULL,
+                        NULL,
                         salary_expectation,
                         candidate_status,
+                        NULL,
                         employee_stage,
+                        NULL,
+                        NULL,
+                        NULL,
                         personal_data_consent,
                         employee_data_consent,
                         test_task_link,
@@ -180,10 +229,36 @@ def _ensure_sqlite_schema() -> None:
             "launch_scenario_key": "TEXT",
             "attachment_path": "TEXT",
             "attachment_filename": "TEXT",
+            "send_employee_card": "BOOLEAN NOT NULL DEFAULT 0",
+            "notify_on_send_text": "TEXT",
+            "notify_on_send_recipient_ids": "TEXT",
+            "notify_on_send_recipient_scope": "TEXT",
         }
         for col, ddl in scenario_required.items():
             if col not in scenario_columns:
                 conn.execute(text(f"ALTER TABLE flow_step_templates ADD COLUMN {col} {ddl}"))
+
+        button_notification_columns = conn.execute(text("PRAGMA table_info(step_button_notifications)")).fetchall()
+        if not button_notification_columns:
+            conn.execute(
+                text(
+                    """
+                    CREATE TABLE step_button_notifications (
+                        id INTEGER NOT NULL,
+                        flow_key VARCHAR(64) NOT NULL,
+                        step_id INTEGER NOT NULL,
+                        option_index INTEGER NOT NULL,
+                        message_text VARCHAR(4096),
+                        recipient_ids VARCHAR(2048),
+                        recipient_scope VARCHAR(255),
+                        PRIMARY KEY (id)
+                    )
+                    """
+                )
+            )
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_step_button_notifications_id ON step_button_notifications (id)"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_step_button_notifications_flow_key ON step_button_notifications (flow_key)"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_step_button_notifications_step_id ON step_button_notifications (step_id)"))
 
         scenario_table_columns = {
             row[1] for row in conn.execute(text("PRAGMA table_info(scenario_templates)")).fetchall()
@@ -198,6 +273,28 @@ def _ensure_sqlite_schema() -> None:
             conn.execute(
                 text(
                     "ALTER TABLE scenario_templates ADD COLUMN scenario_kind TEXT NOT NULL DEFAULT 'scenario'"
+                )
+            )
+        if scenario_table_columns and "sort_order" not in scenario_table_columns:
+            conn.execute(
+                text(
+                    "ALTER TABLE scenario_templates ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0"
+                )
+            )
+        if scenario_table_columns and "target_employee_id" not in scenario_table_columns:
+            conn.execute(
+                text(
+                    "ALTER TABLE scenario_templates ADD COLUMN target_employee_id INTEGER"
+                )
+            )
+        if scenario_table_columns and "sort_order" in {row[1] for row in conn.execute(text("PRAGMA table_info(scenario_templates)")).fetchall()}:
+            conn.execute(
+                text(
+                    """
+                    UPDATE scenario_templates
+                    SET sort_order = id * 10
+                    WHERE sort_order IS NULL OR sort_order = 0
+                    """
                 )
             )
 
@@ -336,6 +433,22 @@ def _ensure_sqlite_schema() -> None:
                 )
             )
             conn.execute(text("CREATE INDEX IF NOT EXISTS ix_bot_menu_buttons_id ON bot_menu_buttons (id)"))
+
+        mass_scenario_columns = {
+            row[1] for row in conn.execute(text("PRAGMA table_info(mass_scenario_actions)")).fetchall()
+        }
+        if mass_scenario_columns and "target_employee_id" not in mass_scenario_columns:
+            conn.execute(text("ALTER TABLE mass_scenario_actions ADD COLUMN target_employee_id INTEGER"))
+        if mass_scenario_columns and "target_role_scope" not in mass_scenario_columns:
+            conn.execute(text("ALTER TABLE mass_scenario_actions ADD COLUMN target_role_scope TEXT"))
+
+        mass_message_columns = {
+            row[1] for row in conn.execute(text("PRAGMA table_info(mass_message_actions)")).fetchall()
+        }
+        if mass_message_columns and "target_employee_id" not in mass_message_columns:
+            conn.execute(text("ALTER TABLE mass_message_actions ADD COLUMN target_employee_id INTEGER"))
+        if mass_message_columns and "target_role_scope" not in mass_message_columns:
+            conn.execute(text("ALTER TABLE mass_message_actions ADD COLUMN target_role_scope TEXT"))
             conn.execute(
                 text("CREATE INDEX IF NOT EXISTS ix_bot_menu_buttons_menu_set_id ON bot_menu_buttons (menu_set_id)")
             )

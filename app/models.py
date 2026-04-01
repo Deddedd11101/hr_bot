@@ -34,6 +34,11 @@ class Employee(Base):
         nullable=True,
         doc="Дата первого рабочего дня (день, в который запускается флоу).",
     )
+    birth_date: Mapped[Optional[date]] = mapped_column(
+        Date,
+        nullable=True,
+        doc="Дата рождения сотрудника.",
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     is_flow_scheduled: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, doc="Запланирован ли флоу первого дня."
@@ -42,6 +47,26 @@ class Employee(Base):
         String(255),
         nullable=True,
         doc="Желаемая должность (из ранних этапов флоу кандидата).",
+    )
+    work_email: Mapped[Optional[str]] = mapped_column(
+        String(255),
+        nullable=True,
+        doc="Рабочая почта сотрудника.",
+    )
+    work_hours: Mapped[Optional[str]] = mapped_column(
+        String(255),
+        nullable=True,
+        doc="Рабочие часы сотрудника.",
+    )
+    profile_photo_path: Mapped[Optional[str]] = mapped_column(
+        String(1024),
+        nullable=True,
+        doc="Абсолютный путь к фото сотрудника для карточки.",
+    )
+    profile_photo_filename: Mapped[Optional[str]] = mapped_column(
+        String(255),
+        nullable=True,
+        doc="Имя файла фото сотрудника для карточки.",
     )
     salary_expectation: Mapped[Optional[str]] = mapped_column(
         String(255),
@@ -53,10 +78,30 @@ class Employee(Base):
         nullable=True,
         doc="Статус кандидата/сотрудника в процессе (new, invited, offer_sent и т.д.).",
     )
+    candidate_work_stage: Mapped[Optional[str]] = mapped_column(
+        String(64),
+        nullable=True,
+        doc="Текущий этап работы с кандидатом, который указывает HR вручную.",
+    )
     employee_stage: Mapped[Optional[str]] = mapped_column(
         String(32),
         nullable=True,
-        doc="Статус сотрудника: candidate | probation | employee.",
+        doc="Статус записи: candidate | adaptation | ipr | staff.",
+    )
+    manager_telegram_id: Mapped[Optional[str]] = mapped_column(
+        String(64),
+        nullable=True,
+        doc="Telegram ID руководителя сотрудника.",
+    )
+    mentor_adaptation_telegram_id: Mapped[Optional[str]] = mapped_column(
+        String(64),
+        nullable=True,
+        doc="Telegram ID наставника по адаптации.",
+    )
+    mentor_ipr_telegram_id: Mapped[Optional[str]] = mapped_column(
+        String(64),
+        nullable=True,
+        doc="Telegram ID наставника по ИПР.",
     )
     personal_data_consent: Mapped[bool] = mapped_column(
         Boolean,
@@ -161,6 +206,18 @@ class EmployeeFile(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
 
 
+class EmployeeDocumentLink(Base):
+    """Ссылки на персональные документы сотрудника."""
+
+    __tablename__ = "employee_document_links"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    employee_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    url: Mapped[str] = mapped_column(String(2048), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+
+
 class HrSettings(Base):
     """Настройки HR для получения уведомлений."""
 
@@ -221,6 +278,8 @@ class MassScenarioAction(Base):
     launch_type: Mapped[str] = mapped_column(String(32), nullable=False, default="manual")
     target_all: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     target_statuses: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    target_role_scope: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    target_employee_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     recipient_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
 
@@ -237,6 +296,8 @@ class MassMessageAction(Base):
     launch_type: Mapped[str] = mapped_column(String(32), nullable=False, default="manual")
     target_all: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     target_statuses: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    target_role_scope: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    target_employee_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     recipient_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
 
@@ -268,6 +329,7 @@ class ScenarioTemplate(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     scenario_key: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     scenario_kind: Mapped[str] = mapped_column(
         String(32),
         nullable=False,
@@ -285,6 +347,11 @@ class ScenarioTemplate(Base):
         nullable=False,
         default="manual_only",
         doc="manual_only | bot_registration | scenario_transition | first_workday | first_week_friday | mid_probation | end_probation",
+    )
+    target_employee_id: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        nullable=True,
+        doc="Опциональная привязка сценария/опроса к конкретному сотруднику.",
     )
     description: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)
 
@@ -350,6 +417,45 @@ class FlowStepTemplate(Base):
         String(255),
         nullable=True,
         doc="Оригинальное имя прикрепленного к шагу файла.",
+    )
+    send_employee_card: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        doc="Нужно ли отправлять карточку сотрудника как изображение на этом шаге.",
+    )
+    notify_on_send_text: Mapped[Optional[str]] = mapped_column(
+        String(4096),
+        nullable=True,
+        doc="Текст уведомления, которое отправляется при показе этого шага.",
+    )
+    notify_on_send_recipient_ids: Mapped[Optional[str]] = mapped_column(
+        String(2048),
+        nullable=True,
+        doc="Список Telegram ID получателей уведомления через запятую или с новой строки.",
+    )
+    notify_on_send_recipient_scope: Mapped[Optional[str]] = mapped_column(
+        String(255),
+        nullable=True,
+        doc="Связанные адресаты из карточки сотрудника: manager, mentor_adaptation, mentor_ipr.",
+    )
+
+
+class StepButtonNotification(Base):
+    """Уведомление, которое отправляется при выборе конкретной кнопки шага."""
+
+    __tablename__ = "step_button_notifications"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    flow_key: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    step_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    option_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    message_text: Mapped[Optional[str]] = mapped_column(String(4096), nullable=True)
+    recipient_ids: Mapped[Optional[str]] = mapped_column(String(2048), nullable=True)
+    recipient_scope: Mapped[Optional[str]] = mapped_column(
+        String(255),
+        nullable=True,
+        doc="Связанные адресаты из карточки сотрудника: manager, mentor_adaptation, mentor_ipr.",
     )
 
 

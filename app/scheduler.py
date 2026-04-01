@@ -12,11 +12,11 @@ from sqlalchemy.orm import Session
 from .config import settings
 from .database import SessionLocal
 from .models import Employee, FlowLaunchRequest, FlowStepTemplate, MassMessageAction, MassScenarioAction, OnboardingEvent, ScenarioTemplate
-from .scenario_engine import add_workdays, format_message, get_scenario_steps, matches_role_scope, scenario_anchor_date, send_step, start_scenario
+from .scenario_engine import SINGLE_STEP_REQUEST_PREFIX, add_workdays, format_message, get_scenario_steps, get_step_by_key, matches_role_scope, scenario_anchor_date, send_step, start_scenario
 
 
 MASS_TARGET_NONE = "__none__"
-MASS_TARGET_OPTIONS = {MASS_TARGET_NONE, "candidate", "first_day", "probation", "employee"}
+MASS_TARGET_OPTIONS = {MASS_TARGET_NONE, "candidate", "adaptation", "ipr", "staff"}
 
 
 def _get_tz():
@@ -80,8 +80,26 @@ def _deserialize_mass_target_statuses(value: Optional[str]) -> list[str]:
     return normalized
 
 
-def _mass_target_employees(db: Session, target_all: bool, target_statuses: list[str]) -> list[Employee]:
+def _mass_target_employees(
+    db: Session,
+    target_all: bool,
+    target_statuses: list[str],
+    target_employee_id: Optional[int] = None,
+    target_role_scope: Optional[str] = None,
+) -> list[Employee]:
     query = db.query(Employee)
+    if target_employee_id:
+        return query.filter(Employee.id == target_employee_id).order_by(Employee.id.asc()).all()
+    if (target_role_scope or "").strip() and target_role_scope != "all":
+        role_map = {
+            "designer": "Дизайнер",
+            "project_manager": "Project manager",
+            "analyst": "Аналитик",
+        }
+        target_position = role_map.get(target_role_scope)
+        if not target_position:
+            return []
+        return query.filter(Employee.desired_position == target_position).order_by(Employee.id.asc()).all()
     if target_all:
         return query.order_by(Employee.id.asc()).all()
     if not target_statuses:
@@ -96,10 +114,10 @@ def _mass_target_employees(db: Session, target_all: bool, target_statuses: list[
     return query.filter(or_(*conditions)).order_by(Employee.id.asc()).all()
 
 
-async def _send_mass_message(bot, employee: Employee, message_text: str, requested_at: datetime) -> bool:
+async def _send_mass_message(db: Session, bot, employee: Employee, message_text: str, requested_at: datetime) -> bool:
     if not employee.telegram_user_id:
         return False
-    rendered_text = format_message(message_text, employee, requested_at.date(), requested_at.strftime("%H:%M")).strip()
+    rendered_text = format_message(db, message_text, employee, requested_at.date(), requested_at.strftime("%H:%M")).strip()
     if not rendered_text:
         return False
     await bot.send_message(chat_id=employee.telegram_user_id, text=rendered_text)
@@ -241,6 +259,8 @@ async def schedule_all_employees(scheduler: AsyncIOScheduler, bot) -> None:
                 db,
                 action.target_all,
                 _deserialize_mass_target_statuses(action.target_statuses),
+                getattr(action, "target_employee_id", None),
+                getattr(action, "target_role_scope", None),
             )
             started_count = 0
             for employee in recipients:
@@ -260,10 +280,12 @@ async def schedule_all_employees(scheduler: AsyncIOScheduler, bot) -> None:
                 db,
                 action.target_all,
                 _deserialize_mass_target_statuses(action.target_statuses),
+                getattr(action, "target_employee_id", None),
+                getattr(action, "target_role_scope", None),
             )
             sent_count = 0
             for employee in recipients:
-                if await _send_mass_message(bot, employee, action.message_text, action.requested_at):
+                if await _send_mass_message(db, bot, employee, action.message_text, action.requested_at):
                     sent_count += 1
             action.recipient_count = sent_count
             action.processed_at = datetime.utcnow()
@@ -276,6 +298,13 @@ async def schedule_all_employees(scheduler: AsyncIOScheduler, bot) -> None:
                 request.processed_at = datetime.utcnow()
                 continue
             if not employee.telegram_user_id:
+                continue
+            if request.skip_step_key and request.skip_step_key.startswith(SINGLE_STEP_REQUEST_PREFIX):
+                step_key = request.skip_step_key[len(SINGLE_STEP_REQUEST_PREFIX):]
+                step = get_step_by_key(db, scenario.scenario_key, step_key)
+                if step:
+                    await send_step(bot, db, employee, scenario, step, scheduled_at=request.requested_at)
+                request.processed_at = datetime.utcnow()
                 continue
             sent_keys = _load_sent_event_keys(db, employee.id)
             schedule_employee_scenario(
