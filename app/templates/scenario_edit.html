@@ -13,9 +13,14 @@
             <h2>{{ edit_title }}</h2>
             <p class="muted">Настрой роли, запуск и визуально собери последовательность шагов ниже.</p>
         </div>
-        {% if kind == 'survey' %}
-            <a href="/surveys/{{ scenario.id }}/export" class="btn-secondary">Выгрузить Excel</a>
-        {% endif %}
+        <div class="react-detail-header-actions">
+            {% if kind == 'scenario' %}
+                <a href="/app/flows/{{ scenario.id }}" class="btn-secondary">Открыть visual-версию</a>
+            {% endif %}
+            {% if kind == 'survey' %}
+                <a href="/surveys/{{ scenario.id }}/export" class="btn-secondary">Выгрузить Excel</a>
+            {% endif %}
+        </div>
     </div>
     <form method="post" action="{{ collection_path }}/{{ scenario.id }}" class="form" enctype="multipart/form-data">
         <div class="settings-grid scenario-meta-grid">

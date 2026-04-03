@@ -254,7 +254,7 @@
                 e(
                     "a",
                     {
-                        href: item.edit_url,
+                        href: item.react_edit_url || item.edit_url,
                         className: "react-link-button",
                     },
                     "Открыть"

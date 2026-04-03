@@ -164,6 +164,247 @@ def _scenario_matches_employee_role(scenario: ScenarioTemplate, employee: Employ
     return (employee.desired_position or "") == role_map.get(scenario.role_scope, "")
 
 
+def _load_scenario_editor_data(db: Session, scenario: ScenarioTemplate):
+    steps = (
+        db.query(FlowStepTemplate)
+        .filter(
+            FlowStepTemplate.flow_key == scenario.scenario_key,
+            FlowStepTemplate.parent_step_id.is_(None),
+        )
+        .order_by(FlowStepTemplate.sort_order)
+        .all()
+    )
+    branch_steps = (
+        db.query(FlowStepTemplate)
+        .filter(
+            FlowStepTemplate.flow_key == scenario.scenario_key,
+            FlowStepTemplate.parent_step_id.is_not(None),
+            FlowStepTemplate.branch_option_index.is_not(None),
+        )
+        .order_by(FlowStepTemplate.parent_step_id, FlowStepTemplate.branch_option_index, FlowStepTemplate.id)
+        .all()
+    )
+    chain_steps = (
+        db.query(FlowStepTemplate)
+        .filter(
+            FlowStepTemplate.flow_key == scenario.scenario_key,
+            FlowStepTemplate.parent_step_id.is_not(None),
+            FlowStepTemplate.branch_option_index.is_(None),
+        )
+        .order_by(FlowStepTemplate.parent_step_id, FlowStepTemplate.sort_order, FlowStepTemplate.id)
+        .all()
+    )
+    branch_steps_by_parent = defaultdict(list)
+    for branch_step in branch_steps:
+        branch_steps_by_parent[branch_step.parent_step_id].append(branch_step)
+    chain_steps_by_parent = defaultdict(list)
+    for chain_step in chain_steps:
+        chain_steps_by_parent[chain_step.parent_step_id].append(chain_step)
+    button_notifications = (
+        db.query(StepButtonNotification)
+        .filter(StepButtonNotification.flow_key == scenario.scenario_key)
+        .order_by(StepButtonNotification.step_id, StepButtonNotification.option_index, StepButtonNotification.id)
+        .all()
+    )
+    button_notifications_by_step: dict[int, dict[int, StepButtonNotification]] = defaultdict(dict)
+    for notification in button_notifications:
+        button_notifications_by_step[notification.step_id][notification.option_index] = notification
+    available_scenarios = (
+        db.query(ScenarioTemplate)
+        .order_by(ScenarioTemplate.title, ScenarioTemplate.id)
+        .all()
+    )
+    employee_options = _all_employee_options(db)
+    return {
+        "steps": steps,
+        "branch_steps_by_parent": dict(branch_steps_by_parent),
+        "chain_steps_by_parent": dict(chain_steps_by_parent),
+        "button_notifications_by_step": {step_id: dict(option_map) for step_id, option_map in button_notifications_by_step.items()},
+        "available_scenarios": available_scenarios,
+        "employee_options": employee_options,
+        "document_tag_titles": [OFFER_DOCUMENT_TITLE],
+    }
+
+
+def _step_response_label(step: FlowStepTemplate) -> str:
+    return RESPONSE_TYPE_LABELS.get((step.response_type or "").strip(), step.response_type or "none")
+
+
+def _step_node_kind(step: FlowStepTemplate) -> str:
+    if step.parent_step_id is None:
+        return "step"
+    if step.branch_option_index is None:
+        return "chain"
+    return "branch"
+
+
+def _serialize_step_node(step: FlowStepTemplate, kind: str):
+    return {
+        "id": step.id,
+        "kind": kind,
+        "parent_id": step.parent_step_id,
+        "branch_option_index": step.branch_option_index,
+        "title": step.step_title,
+        "step_key": step.step_key,
+        "text": (step.custom_text or step.default_text or "").strip(),
+        "response_type": step.response_type,
+        "response_label": _step_response_label(step),
+        "button_options": [item.strip() for item in (step.button_options or "").splitlines() if item.strip()],
+        "send_mode": step.send_mode,
+        "send_time": step.send_time or "",
+        "day_offset_workdays": step.day_offset_workdays or 0,
+        "target_field": step.target_field or "",
+        "launch_scenario_key": step.launch_scenario_key or "",
+        "has_attachment": bool(step.attachment_filename),
+        "attachment_filename": step.attachment_filename or "",
+        "send_employee_card": bool(getattr(step, "send_employee_card", False)),
+        "notify_on_send_text": getattr(step, "notify_on_send_text", "") or "",
+    }
+
+
+def _build_scenario_visual_payload(
+    db: Session,
+    scenario: ScenarioTemplate,
+    kind: str,
+):
+    editor_data = _load_scenario_editor_data(db, scenario)
+    steps = editor_data["steps"]
+    branch_steps_by_parent = editor_data["branch_steps_by_parent"]
+    chain_steps_by_parent = editor_data["chain_steps_by_parent"]
+    button_notifications_by_step = editor_data["button_notifications_by_step"]
+
+    all_nodes = []
+    node_lookup = {}
+    edges = []
+
+    def add_node(step: FlowStepTemplate):
+        node_kind = _step_node_kind(step)
+        node = _serialize_step_node(step, node_kind)
+        all_nodes.append(node)
+        node_lookup[step.id] = node
+        return node
+
+    for step in steps:
+        add_node(step)
+    for branch_group in branch_steps_by_parent.values():
+        for step in branch_group:
+            add_node(step)
+    for chain_group in chain_steps_by_parent.values():
+        for step in chain_group:
+            add_node(step)
+
+    for index, step in enumerate(steps):
+        if index < len(steps) - 1:
+            edges.append({
+                "from": step.id,
+                "to": steps[index + 1].id,
+                "kind": "next",
+                "label": "Дальше",
+            })
+        for chain_index, chain_step in enumerate(chain_steps_by_parent.get(step.id, [])):
+            edges.append({
+                "from": step.id if chain_index == 0 else chain_steps_by_parent[step.id][chain_index - 1].id,
+                "to": chain_step.id,
+                "kind": "chain",
+                "label": "Цепочка" if chain_index == 0 else "Следующий",
+            })
+        for branch_step in branch_steps_by_parent.get(step.id, []):
+            button_labels = [item.strip() for item in (step.button_options or "").splitlines() if item.strip()]
+            option_label = ""
+            if branch_step.branch_option_index is not None and branch_step.branch_option_index < len(button_labels):
+                option_label = button_labels[branch_step.branch_option_index]
+            edges.append({
+                "from": step.id,
+                "to": branch_step.id,
+                "kind": "branch",
+                "label": option_label or f"Ветка {(branch_step.branch_option_index or 0) + 1}",
+            })
+
+    for parent_id, chain_group in chain_steps_by_parent.items():
+        for index, chain_step in enumerate(chain_group):
+            if index < len(chain_group) - 1:
+                continue
+            parent_node = node_lookup.get(parent_id)
+            top_level_steps = steps if parent_node and parent_node["kind"] == "step" else []
+            if top_level_steps:
+                for index_step, top in enumerate(top_level_steps):
+                    if top.id == parent_id and index_step < len(top_level_steps) - 1:
+                        edges.append({
+                            "from": chain_step.id,
+                            "to": top_level_steps[index_step + 1].id,
+                            "kind": "return",
+                            "label": "Вернуться в поток",
+                        })
+
+    for parent_id, branch_group in branch_steps_by_parent.items():
+        parent_node = node_lookup.get(parent_id)
+        if not parent_node:
+            continue
+        top_level_steps = steps if parent_node["kind"] == "step" else []
+        for branch_step in branch_group:
+            for chain_index, chain_step in enumerate(chain_steps_by_parent.get(branch_step.id, [])):
+                edges.append({
+                    "from": branch_step.id if chain_index == 0 else chain_steps_by_parent[branch_step.id][chain_index - 1].id,
+                    "to": chain_step.id,
+                    "kind": "chain",
+                    "label": "Цепочка" if chain_index == 0 else "Следующий",
+                })
+            if top_level_steps:
+                for index_step, top in enumerate(top_level_steps):
+                    if top.id == parent_id and index_step < len(top_level_steps) - 1:
+                        tail_id = chain_steps_by_parent.get(branch_step.id, [])[-1].id if chain_steps_by_parent.get(branch_step.id, []) else branch_step.id
+                        edges.append({
+                            "from": tail_id,
+                            "to": top_level_steps[index_step + 1].id,
+                            "kind": "return",
+                            "label": "Вернуться в поток",
+                        })
+
+    return {
+        "scenario": {
+            "id": scenario.id,
+            "title": scenario.title,
+            "description": scenario.description or "",
+            "scenario_key": scenario.scenario_key,
+            "kind": kind,
+            "role_scope": scenario.role_scope,
+            "role_scope_label": ROLE_SCOPE_LABELS.get(scenario.role_scope, scenario.role_scope),
+            "trigger_mode": scenario.trigger_mode,
+            "trigger_mode_label": TRIGGER_MODE_LABELS.get(scenario.trigger_mode, scenario.trigger_mode),
+            "target_employee_id": scenario.target_employee_id,
+        },
+        "meta": {
+            "nodes_count": len(all_nodes),
+            "edges_count": len(edges),
+            "classic_url": f"/{'surveys' if kind == 'survey' else 'flows'}/{scenario.id}",
+            "list_url": "/surveys" if kind == "survey" else "/flows",
+            "list_title": "К списку опросов" if kind == "survey" else "К списку сценариев",
+            "kind_label": "опрос" if kind == "survey" else "сценарий",
+        },
+        "nodes": all_nodes,
+        "edges": edges,
+        "response_type_labels": RESPONSE_TYPE_LABELS,
+        "available_scenarios": [
+            {
+                "value": item.scenario_key,
+                "label": item.title,
+            }
+            for item in editor_data["available_scenarios"]
+        ],
+        "button_notifications": {
+            str(step_id): {
+                str(option_index): {
+                    "message_text": notification.message_text or "",
+                    "recipient_ids": notification.recipient_ids or "",
+                    "recipient_scope": notification.recipient_scope or "",
+                }
+                for option_index, notification in option_map.items()
+            }
+            for step_id, option_map in button_notifications_by_step.items()
+        },
+    }
+
+
 EMPLOYEE_STAGE_VALUES = {
     "candidate": "Кандидат",
     "adaptation": "Адаптация",
@@ -594,6 +835,7 @@ def _serialize_employee_view(item: dict, list_kind: str) -> dict:
         "test_task_due_at_label": employee.test_task_due_at.strftime("%d.%m.%Y %H:%M") if employee.test_task_due_at else "—",
         "workdays": item.get("workdays", 0),
         "edit_url": f"/employees/{employee.id}/edit",
+        "react_edit_url": f"/app/employees/{employee.id}",
         "list_kind": list_kind,
     }
 
@@ -642,6 +884,256 @@ def _create_employee_record(
     db.commit()
     db.refresh(employee)
     return employee
+
+
+def _apply_employee_update(
+    db: Session,
+    employee: Employee,
+    *,
+    full_name: str,
+    chat_id: str,
+    first_workday: str,
+    desired_position: str,
+    birth_date: str,
+    work_email: str,
+    work_hours: str,
+    manager_chat_id: str,
+    mentor_adaptation_chat_id: str,
+    mentor_ipr_chat_id: str,
+    employee_stage: str,
+    candidate_work_stage: str,
+    salary_expectation: str,
+    personal_data_consent: bool,
+    employee_data_consent: bool,
+    test_task_due_at: str,
+    notes: str,
+) -> Employee:
+    is_candidate = _employee_list_kind(employee) == "candidates"
+    first_day = datetime.strptime(first_workday, "%Y-%m-%d").date() if first_workday else None
+    parsed_birth_date = datetime.strptime(birth_date, "%Y-%m-%d").date() if birth_date else None
+
+    employee.full_name = full_name.strip() or None
+    set_primary_chat_id(employee, chat_id, db=db)
+    employee.first_workday = first_day
+    normalized_position = desired_position.strip()
+    employee.desired_position = normalized_position or None
+
+    if is_candidate:
+        normalized_candidate_work_stage = candidate_work_stage.strip()
+        employee.candidate_work_stage = (
+            normalized_candidate_work_stage
+            if normalized_candidate_work_stage in CANDIDATE_WORK_STAGE_VALUES
+            else None
+        )
+        employee.salary_expectation = salary_expectation.strip() or None
+        employee.personal_data_consent = personal_data_consent
+        employee.test_task_due_at = (
+            datetime.strptime(test_task_due_at, "%Y-%m-%dT%H:%M")
+            if (test_task_due_at or "").strip()
+            else None
+        )
+    else:
+        employee.birth_date = parsed_birth_date
+        employee.work_email = work_email.strip() or None
+        employee.work_hours = work_hours.strip() or None
+        employee.manager_telegram_id = manager_chat_id.strip() or None
+        employee.mentor_adaptation_telegram_id = mentor_adaptation_chat_id.strip() or None
+        employee.mentor_ipr_telegram_id = mentor_ipr_chat_id.strip() or None
+        normalized_stage = employee_stage.strip()
+        employee.employee_stage = normalized_stage if normalized_stage in EMPLOYEE_STAGE_VALUES else None
+        employee.employee_data_consent = employee_data_consent
+
+    employee.notes = notes.strip() or None
+    db.commit()
+    sync_legacy_telegram_account(db, employee)
+    db.commit()
+    db.refresh(employee)
+    return employee
+
+
+def _serialize_employee_file(file_row: EmployeeFile, employee_id: int, can_send_to_channel: bool) -> dict:
+    return {
+        "id": file_row.id,
+        "direction": file_row.direction,
+        "original_filename": file_row.original_filename or "",
+        "created_at_label": file_row.created_at.strftime("%d.%m.%Y %H:%M") if file_row.created_at else "—",
+        "download_url": f"/employees/{employee_id}/files/{file_row.id}/download",
+        "send_url": f"/employees/{employee_id}/files/{file_row.id}/send",
+        "can_send_to_channel": can_send_to_channel,
+    }
+
+
+def _serialize_document_link(link_row: EmployeeDocumentLink, employee_id: int) -> dict:
+    return {
+        "id": link_row.id,
+        "title": link_row.title,
+        "url": link_row.url,
+        "scenario_tag": f"{{doc:{link_row.title}}}",
+        "delete_url": f"/employees/{employee_id}/document-links/{link_row.id}/delete",
+    }
+
+
+def _serialize_launch_request(launch_request: FlowLaunchRequest, scenario_by_key: dict[str, ScenarioTemplate], employee_id: int) -> dict:
+    scenario = scenario_by_key.get(launch_request.flow_key)
+    return {
+        "id": launch_request.id,
+        "flow_key": launch_request.flow_key,
+        "scenario_title": scenario.title if scenario else launch_request.flow_key,
+        "scenario_url": f"/flows/{scenario.id}" if scenario else None,
+        "requested_at_label": launch_request.requested_at.strftime("%d.%m.%Y %H:%M") if launch_request.requested_at else "—",
+        "processed_at_label": launch_request.processed_at.strftime("%d.%m.%Y %H:%M") if launch_request.processed_at else "—",
+        "delete_url": f"/employees/{employee_id}/schedule/{launch_request.id}/delete",
+    }
+
+
+def _save_offer_document_link(db: Session, employee_id: int, url: str) -> tuple[Optional[EmployeeDocumentLink], Optional[str]]:
+    url_value = url.strip()
+    if not url_value:
+        return None, "Укажи ссылку на оффер."
+
+    existing_link = (
+        db.query(EmployeeDocumentLink)
+        .filter(
+            EmployeeDocumentLink.employee_id == employee_id,
+            EmployeeDocumentLink.title == OFFER_DOCUMENT_TITLE,
+        )
+        .order_by(EmployeeDocumentLink.id.asc())
+        .first()
+    )
+    if existing_link:
+        existing_link.url = url_value
+        link_row = existing_link
+    else:
+        link_row = EmployeeDocumentLink(
+            employee_id=employee_id,
+            title=OFFER_DOCUMENT_TITLE,
+            url=url_value,
+            created_at=datetime.utcnow(),
+        )
+        db.add(link_row)
+    db.commit()
+    db.refresh(link_row)
+    return link_row, None
+
+
+def _delete_employee_record(db: Session, employee: Employee) -> str:
+    redirect_url = "/candidates" if _employee_list_kind(employee) == "candidates" else "/employees"
+    employee_id = employee.id
+    employee_files = db.query(EmployeeFile).filter(EmployeeFile.employee_id == employee_id).all()
+    for file_row in employee_files:
+        path = Path(file_row.stored_path)
+        try:
+            if path.exists():
+                path.unlink()
+        except OSError:
+            pass
+        db.delete(file_row)
+
+    employee_document_links = (
+        db.query(EmployeeDocumentLink)
+        .filter(EmployeeDocumentLink.employee_id == employee_id)
+        .all()
+    )
+    for link_row in employee_document_links:
+        db.delete(link_row)
+
+    employee_dir = Path(settings.FILE_STORAGE_DIR).expanduser().resolve() / str(employee_id)
+    if employee_dir.exists():
+        shutil.rmtree(employee_dir, ignore_errors=True)
+
+    db.delete(employee)
+    db.commit()
+    return redirect_url
+
+
+def _schedule_employee_flow_request(
+    db: Session,
+    employee: Employee,
+    *,
+    flow_key: str,
+    requested_at: str,
+) -> Optional[str]:
+    scenario = db.query(ScenarioTemplate).filter(ScenarioTemplate.scenario_key == flow_key).first()
+    if not scenario:
+        return "Сценарий не найден."
+    if not _scenario_matches_employee_role(scenario, employee):
+        return "Сценарий недоступен для роли этого сотрудника."
+    if not (requested_at or "").strip():
+        return "Укажи дату и время запуска сценария."
+    try:
+        run_at = datetime.strptime(requested_at.strip(), "%Y-%m-%dT%H:%M")
+    except ValueError:
+        return "Неверный формат даты и времени."
+
+    db.add(
+        FlowLaunchRequest(
+            employee_id=employee.id,
+            flow_key=flow_key,
+            requested_at=run_at,
+            processed_at=None,
+            launch_type="scheduled",
+            skip_step_key=None,
+        )
+    )
+    db.commit()
+    return None
+
+
+async def _launch_employee_flow_now(
+    db: Session,
+    employee: Employee,
+    *,
+    flow_key: str,
+) -> Optional[str]:
+    scenario = db.query(ScenarioTemplate).filter(ScenarioTemplate.scenario_key == flow_key).first()
+    if not scenario:
+        return "Сценарий не найден."
+    if not get_primary_chat_id(employee, db=db):
+        return "У сотрудника не указан ID пользователя в канале."
+    if not _scenario_matches_employee_role(scenario, employee):
+        return "Сценарий недоступен для роли этого сотрудника."
+    if not settings.TELEGRAM_BOT_TOKEN:
+        return "Не задан TELEGRAM_BOT_TOKEN."
+
+    first_step = get_first_step(db, scenario.scenario_key)
+    if not first_step:
+        return "В сценарии нет шагов для запуска."
+
+    messenger = create_telegram_messenger(settings.TELEGRAM_BOT_TOKEN)
+    try:
+        started = await start_scenario(messenger, db, employee, scenario.scenario_key)
+        if not started:
+            return "Сценарий не удалось запустить."
+
+        db.add(
+            FlowLaunchRequest(
+                employee_id=employee.id,
+                flow_key=flow_key,
+                requested_at=datetime.now(),
+                processed_at=datetime.now(),
+                launch_type="manual",
+                skip_step_key=None,
+            )
+        )
+
+        steps = get_scenario_steps(db, scenario.scenario_key)
+        if first_step.response_type == "none" and len(steps) > 1:
+            db.add(
+                FlowLaunchRequest(
+                    employee_id=employee.id,
+                    flow_key=flow_key,
+                    requested_at=datetime.now(),
+                    processed_at=None,
+                    launch_type="manual",
+                    skip_step_key=first_step.step_key,
+                )
+            )
+        db.commit()
+        return None
+    except Exception as exc:
+        return f"Ошибка запуска сценария: {exc}"
+    finally:
+        await messenger.close()
 
 
 @app.get("/candidates")
@@ -707,6 +1199,237 @@ def create_employee_api(
     }
 
 
+@app.get("/api/employees/{employee_id}")
+def employee_detail_api(
+    request: Request,
+    employee_id: int,
+    db: Session = Depends(get_db),
+):
+    _require_api_auth(request)
+    employee = db.get(Employee, employee_id)
+    if not employee:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Сотрудник не найден")
+    return _build_employee_detail_payload(db, employee)
+
+
+@app.post("/api/employees/{employee_id}")
+def update_employee_api(
+    request: Request,
+    employee_id: int,
+    payload: dict = Body(...),
+    db: Session = Depends(get_db),
+):
+    _require_api_auth(request)
+    employee = db.get(Employee, employee_id)
+    if not employee:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Сотрудник не найден")
+    employee = _apply_employee_update(
+        db,
+        employee,
+        full_name=str(payload.get("full_name") or ""),
+        chat_id=str(payload.get("chat_id") or ""),
+        first_workday=str(payload.get("first_workday") or ""),
+        desired_position=str(payload.get("desired_position") or ""),
+        birth_date=str(payload.get("birth_date") or ""),
+        work_email=str(payload.get("work_email") or ""),
+        work_hours=str(payload.get("work_hours") or ""),
+        manager_chat_id=str(payload.get("manager_chat_id") or ""),
+        mentor_adaptation_chat_id=str(payload.get("mentor_adaptation_chat_id") or ""),
+        mentor_ipr_chat_id=str(payload.get("mentor_ipr_chat_id") or ""),
+        employee_stage=str(payload.get("employee_stage") or ""),
+        candidate_work_stage=str(payload.get("candidate_work_stage") or ""),
+        salary_expectation=str(payload.get("salary_expectation") or ""),
+        personal_data_consent=bool(payload.get("personal_data_consent")),
+        employee_data_consent=bool(payload.get("employee_data_consent")),
+        test_task_due_at=str(payload.get("test_task_due_at") or ""),
+        notes=str(payload.get("notes") or ""),
+    )
+    return _build_employee_detail_payload(db, employee)
+
+
+@app.post("/api/employees/{employee_id}/document-links")
+def create_employee_document_link_api(
+    request: Request,
+    employee_id: int,
+    payload: dict = Body(...),
+    db: Session = Depends(get_db),
+):
+    _require_api_auth(request)
+    employee = db.get(Employee, employee_id)
+    if not employee:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Сотрудник не найден")
+    link_row, error_message = _save_offer_document_link(db, employee_id, str(payload.get("url") or ""))
+    if error_message:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=error_message)
+    return {
+        "item": _serialize_document_link(link_row, employee_id),
+        "payload": _build_employee_detail_payload(db, employee),
+    }
+
+
+@app.delete("/api/employees/{employee_id}/document-links/{link_id}")
+def delete_employee_document_link_api(
+    request: Request,
+    employee_id: int,
+    link_id: int,
+    db: Session = Depends(get_db),
+):
+    _require_api_auth(request)
+    employee = db.get(Employee, employee_id)
+    link_row = db.get(EmployeeDocumentLink, link_id)
+    if not employee:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Сотрудник не найден")
+    if not link_row or link_row.employee_id != employee_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ссылка на документ не найдена")
+    db.delete(link_row)
+    db.commit()
+    return _build_employee_detail_payload(db, employee)
+
+
+@app.post("/api/employees/{employee_id}/schedule")
+def schedule_employee_flow_api(
+    request: Request,
+    employee_id: int,
+    payload: dict = Body(...),
+    db: Session = Depends(get_db),
+):
+    _require_api_auth(request)
+    employee = db.get(Employee, employee_id)
+    if not employee:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Сотрудник не найден")
+    error_message = _schedule_employee_flow_request(
+        db,
+        employee,
+        flow_key=str(payload.get("flow_key") or ""),
+        requested_at=str(payload.get("requested_at") or ""),
+    )
+    if error_message:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=error_message)
+    return _build_employee_detail_payload(db, employee)
+
+
+@app.delete("/api/employees/{employee_id}/schedule/{launch_request_id}")
+def delete_scheduled_flow_api(
+    request: Request,
+    employee_id: int,
+    launch_request_id: int,
+    db: Session = Depends(get_db),
+):
+    _require_api_auth(request)
+    employee = db.get(Employee, employee_id)
+    launch_request = db.get(FlowLaunchRequest, launch_request_id)
+    if not employee:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Сотрудник не найден")
+    if (
+        not launch_request
+        or launch_request.employee_id != employee_id
+        or launch_request.launch_type != "scheduled"
+        or launch_request.processed_at is not None
+    ):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Запланированный сценарий не найден")
+    db.delete(launch_request)
+    db.commit()
+    return _build_employee_detail_payload(db, employee)
+
+
+@app.post("/api/employees/{employee_id}/launch")
+async def launch_flow_api(
+    request: Request,
+    employee_id: int,
+    payload: dict = Body(...),
+    db: Session = Depends(get_db),
+):
+    _require_api_auth(request)
+    employee = db.get(Employee, employee_id)
+    if not employee:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Сотрудник не найден")
+    error_message = await _launch_employee_flow_now(
+        db,
+        employee,
+        flow_key=str(payload.get("flow_key") or ""),
+    )
+    if error_message:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=error_message)
+    return _build_employee_detail_payload(db, employee)
+
+
+@app.post("/api/employees/{employee_id}/files")
+async def upload_employee_file_api(
+    request: Request,
+    employee_id: int,
+    upload: UploadFile = File(...),
+    category: str = Form("hr_file"),
+    send_to_channel: str = Form("false"),
+    db: Session = Depends(get_db),
+):
+    _require_api_auth(request)
+    employee = db.get(Employee, employee_id)
+    if not employee:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Сотрудник не найден")
+
+    filename = upload.filename or "file.bin"
+    destination = build_employee_file_path(employee_id, filename)
+    content = await upload.read()
+    destination.write_bytes(content)
+
+    db_file = EmployeeFile(
+        employee_id=employee_id,
+        direction="outbound",
+        category=(category or "hr_file").strip(),
+        telegram_file_id=None,
+        telegram_file_unique_id=None,
+        original_filename=filename,
+        stored_path=str(destination),
+        mime_type=upload.content_type,
+        file_size=len(content),
+        created_at=datetime.utcnow(),
+    )
+    db.add(db_file)
+    db.commit()
+
+    chat_id = get_primary_chat_id(employee, db=db)
+    if send_to_channel == "true" and chat_id and settings.TELEGRAM_BOT_TOKEN:
+        await _send_file_to_telegram(chat_id, destination, filename)
+
+    return _build_employee_detail_payload(db, employee)
+
+
+@app.post("/api/employees/{employee_id}/files/{file_id}/send")
+async def send_employee_file_api(
+    request: Request,
+    employee_id: int,
+    file_id: int,
+    db: Session = Depends(get_db),
+):
+    _require_api_auth(request)
+    employee = db.get(Employee, employee_id)
+    db_file = db.get(EmployeeFile, file_id)
+    if not employee or not db_file or db_file.employee_id != employee_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Файл не найден")
+    chat_id = get_primary_chat_id(employee, db=db)
+    if not chat_id or not settings.TELEGRAM_BOT_TOKEN:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="У сотрудника не настроен канал для отправки")
+
+    path = Path(db_file.stored_path)
+    if path.exists():
+        await _send_file_to_telegram(chat_id, path, db_file.original_filename)
+    return _build_employee_detail_payload(db, employee)
+
+
+@app.delete("/api/employees/{employee_id}")
+def delete_employee_api(
+    request: Request,
+    employee_id: int,
+    db: Session = Depends(get_db),
+):
+    _require_api_auth(request)
+    employee = db.get(Employee, employee_id)
+    if not employee:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Сотрудник не найден")
+    redirect_url = _delete_employee_record(db, employee)
+    return {"redirect_url": redirect_url}
+
+
 @app.get("/app/employees")
 def react_employees_page(
     request: Request,
@@ -726,6 +1449,33 @@ def react_employees_page(
             "react_create_url": "/api/employees",
             "react_default_list_kind": normalized_kind,
             "classic_page_url": "/candidates" if normalized_kind == "candidates" else "/employees",
+        },
+    )
+
+
+@app.get("/app/employees/{employee_id}")
+def react_employee_edit_page(
+    request: Request,
+    employee_id: int,
+    db: Session = Depends(get_db),
+):
+    auth_redirect = _require_auth(request)
+    if auth_redirect:
+        return auth_redirect
+    employee = db.get(Employee, employee_id)
+    if not employee:
+        return RedirectResponse(url="/employees", status_code=status.HTTP_303_SEE_OTHER)
+    list_kind = _employee_list_kind(employee)
+    return _render(
+        request,
+        "react_employee_edit.html",
+        {
+            "active_tab": list_kind,
+            "employee_id": employee_id,
+            "react_api_url": f"/api/employees/{employee_id}",
+            "react_save_url": f"/api/employees/{employee_id}",
+            "classic_page_url": f"/employees/{employee_id}/edit",
+            "list_url": "/candidates" if list_kind == "candidates" else "/employees",
         },
     )
 
@@ -925,6 +1675,123 @@ def edit_employee_form(
     )
 
 
+def _build_employee_detail_payload(db: Session, employee: Employee) -> dict:
+    employee_files = (
+        db.query(EmployeeFile)
+        .filter(EmployeeFile.employee_id == employee.id)
+        .order_by(EmployeeFile.id.desc())
+        .all()
+    )
+    employee_document_links = (
+        db.query(EmployeeDocumentLink)
+        .filter(
+            EmployeeDocumentLink.employee_id == employee.id,
+            EmployeeDocumentLink.title == OFFER_DOCUMENT_TITLE,
+        )
+        .order_by(EmployeeDocumentLink.created_at.desc(), EmployeeDocumentLink.id.desc())
+        .all()
+    )
+    scenarios = _available_scenarios_for_employee(db, employee)
+    scenario_by_key = {scenario.scenario_key: scenario for scenario in db.query(ScenarioTemplate).all()}
+    pending_scheduled_launches = (
+        db.query(FlowLaunchRequest)
+        .filter(
+            FlowLaunchRequest.employee_id == employee.id,
+            FlowLaunchRequest.launch_type == "scheduled",
+            FlowLaunchRequest.processed_at.is_(None),
+        )
+        .order_by(FlowLaunchRequest.requested_at.asc(), FlowLaunchRequest.id.asc())
+        .all()
+    )
+    manual_launch_history = (
+        db.query(FlowLaunchRequest)
+        .filter(
+            FlowLaunchRequest.employee_id == employee.id,
+            FlowLaunchRequest.launch_type == "manual",
+            FlowLaunchRequest.processed_at.is_not(None),
+        )
+        .order_by(FlowLaunchRequest.processed_at.desc(), FlowLaunchRequest.id.desc())
+        .all()
+    )
+    employee_role_values = list(EMPLOYEE_ROLE_VALUES)
+    current_position = (employee.desired_position or "").strip()
+    if current_position and current_position not in employee_role_values:
+        employee_role_values.append(current_position)
+
+    today = datetime.now().date()
+    list_kind = _employee_list_kind(employee)
+    is_candidate = list_kind == "candidates"
+    primary_chat_id = get_primary_chat_id(employee, db=db) or ""
+
+    return {
+        "meta": {
+            "list_kind": list_kind,
+            "is_candidate": is_candidate,
+            "status_label": _employee_status_label(employee),
+            "candidate_work_stage_label": _candidate_work_stage_label(employee),
+            "tenure_years": _full_years_between(employee.first_workday, today),
+            "list_url": "/candidates" if is_candidate else "/employees",
+            "list_title": "к списку кандидатов" if is_candidate else "к списку сотрудников",
+            "classic_edit_url": f"/employees/{employee.id}/edit",
+            "react_edit_url": f"/app/employees/{employee.id}",
+            "employee_card_image_url": f"/employees/{employee.id}/card-image",
+        },
+        "employee": {
+            "id": employee.id,
+            "full_name": employee.full_name or "",
+            "chat_id": primary_chat_id,
+            "first_workday": employee.first_workday.isoformat() if employee.first_workday else "",
+            "desired_position": employee.desired_position or "",
+            "birth_date": employee.birth_date.isoformat() if employee.birth_date else "",
+            "work_email": employee.work_email or "",
+            "work_hours": employee.work_hours or "",
+            "manager_chat_id": employee.manager_telegram_id or "",
+            "mentor_adaptation_chat_id": employee.mentor_adaptation_telegram_id or "",
+            "mentor_ipr_chat_id": employee.mentor_ipr_telegram_id or "",
+            "employee_stage": employee.employee_stage or "",
+            "candidate_work_stage": employee.candidate_work_stage or "",
+            "salary_expectation": employee.salary_expectation or "",
+            "personal_data_consent": bool(employee.personal_data_consent),
+            "employee_data_consent": bool(employee.employee_data_consent),
+            "test_task_due_at": employee.test_task_due_at.strftime("%Y-%m-%dT%H:%M") if employee.test_task_due_at else "",
+            "notes": employee.notes or "",
+            "is_flow_scheduled": bool(employee.is_flow_scheduled),
+        },
+        "options": {
+            "employee_role_values": employee_role_values,
+            "employee_stage_values": [
+                {"value": value, "label": label}
+                for value, label in EMPLOYEE_STAGE_VALUES.items()
+                if value != "candidate"
+            ],
+            "candidate_work_stage_values": [
+                {"value": value, "label": label}
+                for value, label in CANDIDATE_WORK_STAGE_VALUES.items()
+            ],
+            "scenarios": [
+                {"value": scenario.scenario_key, "label": scenario.title}
+                for scenario in scenarios
+            ],
+        },
+        "files": [
+            _serialize_employee_file(file_row, employee.id, bool(primary_chat_id))
+            for file_row in employee_files
+        ],
+        "document_links": [
+            _serialize_document_link(link_row, employee.id)
+            for link_row in employee_document_links
+        ],
+        "scheduled_launches": [
+            _serialize_launch_request(launch_request, scenario_by_key, employee.id)
+            for launch_request in pending_scheduled_launches
+        ],
+        "manual_launch_history": [
+            _serialize_launch_request(launch_request, scenario_by_key, employee.id)
+            for launch_request in manual_launch_history
+        ],
+    }
+
+
 @app.post("/employees/{employee_id}")
 def update_employee(
     request: Request,
@@ -954,42 +1821,27 @@ def update_employee(
     employee = db.get(Employee, employee_id)
     if not employee:
         return RedirectResponse(url="/employees", status_code=status.HTTP_303_SEE_OTHER)
-    is_candidate = _employee_list_kind(employee) == "candidates"
-    first_day = datetime.strptime(first_workday, "%Y-%m-%d").date() if first_workday else None
-    parsed_birth_date = datetime.strptime(birth_date, "%Y-%m-%d").date() if birth_date else None
-    employee.full_name = full_name.strip() or None
-    set_primary_chat_id(employee, telegram_user_id, db=db)
-    employee.first_workday = first_day
-    desired_position = desired_position.strip()
-    employee.desired_position = desired_position or None
-    if is_candidate:
-        normalized_candidate_work_stage = candidate_work_stage.strip()
-        employee.candidate_work_stage = (
-            normalized_candidate_work_stage
-            if normalized_candidate_work_stage in CANDIDATE_WORK_STAGE_VALUES
-            else None
-        )
-        employee.salary_expectation = salary_expectation.strip() or None
-        employee.personal_data_consent = personal_data_consent == "true"
-        employee.test_task_due_at = (
-            datetime.strptime(test_task_due_at, "%Y-%m-%dT%H:%M")
-            if (test_task_due_at or "").strip()
-            else None
-        )
-    else:
-        employee.birth_date = parsed_birth_date
-        employee.work_email = work_email.strip() or None
-        employee.work_hours = work_hours.strip() or None
-        employee.manager_telegram_id = manager_telegram_id.strip() or None
-        employee.mentor_adaptation_telegram_id = mentor_adaptation_telegram_id.strip() or None
-        employee.mentor_ipr_telegram_id = mentor_ipr_telegram_id.strip() or None
-        normalized_stage = employee_stage.strip()
-        employee.employee_stage = normalized_stage if normalized_stage in EMPLOYEE_STAGE_VALUES else None
-        employee.employee_data_consent = employee_data_consent == "true"
-    employee.notes = notes.strip() or None
-    db.commit()
-    sync_legacy_telegram_account(db, employee)
-    db.commit()
+    employee = _apply_employee_update(
+        db,
+        employee,
+        full_name=full_name,
+        chat_id=telegram_user_id,
+        first_workday=first_workday,
+        desired_position=desired_position,
+        birth_date=birth_date,
+        work_email=work_email,
+        work_hours=work_hours,
+        manager_chat_id=manager_telegram_id,
+        mentor_adaptation_chat_id=mentor_adaptation_telegram_id,
+        mentor_ipr_chat_id=mentor_ipr_telegram_id,
+        employee_stage=employee_stage,
+        candidate_work_stage=candidate_work_stage,
+        salary_expectation=salary_expectation,
+        personal_data_consent=personal_data_consent == "true",
+        employee_data_consent=employee_data_consent == "true",
+        test_task_due_at=test_task_due_at,
+        notes=notes,
+    )
     return RedirectResponse(
         url="/candidates" if _employee_list_kind(employee) == "candidates" else "/employees",
         status_code=status.HTTP_303_SEE_OTHER,
@@ -1069,32 +1921,7 @@ def delete_employee(
         return auth_redirect
     employee = db.get(Employee, employee_id)
     if employee:
-        redirect_url = "/candidates" if _employee_list_kind(employee) == "candidates" else "/employees"
-        # Удаляем связанные файлы из БД и с диска.
-        employee_files = db.query(EmployeeFile).filter(EmployeeFile.employee_id == employee_id).all()
-        for file_row in employee_files:
-            path = Path(file_row.stored_path)
-            try:
-                if path.exists():
-                    path.unlink()
-            except OSError:
-                pass
-            db.delete(file_row)
-
-        employee_document_links = (
-            db.query(EmployeeDocumentLink)
-            .filter(EmployeeDocumentLink.employee_id == employee_id)
-            .all()
-        )
-        for link_row in employee_document_links:
-            db.delete(link_row)
-
-        employee_dir = Path(settings.FILE_STORAGE_DIR).expanduser().resolve() / str(employee_id)
-        if employee_dir.exists():
-            shutil.rmtree(employee_dir, ignore_errors=True)
-
-        db.delete(employee)
-        db.commit()
+        redirect_url = _delete_employee_record(db, employee)
         return RedirectResponse(url=redirect_url, status_code=status.HTTP_303_SEE_OTHER)
     return RedirectResponse(url="/employees", status_code=status.HTTP_303_SEE_OTHER)
 
@@ -1140,55 +1967,10 @@ async def launch_flow(
     employee = db.get(Employee, employee_id)
     if not employee:
         return RedirectResponse(url="/employees", status_code=status.HTTP_303_SEE_OTHER)
-    scenario = db.query(ScenarioTemplate).filter(ScenarioTemplate.scenario_key == flow_key).first()
-    if not scenario:
-        return _employee_edit_redirect(employee_id, "Сценарий не найден.", "error")
-    if not get_primary_chat_id(employee, db=db):
-        return _employee_edit_redirect(employee_id, "У сотрудника не указан ID пользователя в канале.", "error")
-    if not _scenario_matches_employee_role(scenario, employee):
-        return _employee_edit_redirect(employee_id, "Сценарий недоступен для роли этого сотрудника.", "error")
-    if not settings.TELEGRAM_BOT_TOKEN:
-        return _employee_edit_redirect(employee_id, "Не задан TELEGRAM_BOT_TOKEN.", "error")
-
-    first_step = get_first_step(db, scenario.scenario_key)
-    if not first_step:
-        return _employee_edit_redirect(employee_id, "В сценарии нет шагов для запуска.", "error")
-
-    messenger = create_telegram_messenger(settings.TELEGRAM_BOT_TOKEN)
-    try:
-        started = await start_scenario(messenger, db, employee, scenario.scenario_key)
-        if not started:
-            return _employee_edit_redirect(employee_id, "Сценарий не удалось запустить.", "error")
-
-        db.add(
-            FlowLaunchRequest(
-                employee_id=employee.id,
-                flow_key=flow_key,
-                requested_at=datetime.now(),
-                processed_at=datetime.now(),
-                launch_type="manual",
-                skip_step_key=None,
-            )
-        )
-
-        steps = get_scenario_steps(db, scenario.scenario_key)
-        if first_step.response_type == "none" and len(steps) > 1:
-            db.add(
-                FlowLaunchRequest(
-                    employee_id=employee.id,
-                    flow_key=flow_key,
-                    requested_at=datetime.now(),
-                    processed_at=None,
-                    launch_type="manual",
-                    skip_step_key=first_step.step_key,
-                )
-            )
-        db.commit()
-        return _employee_edit_redirect(employee_id, "Сценарий успешно запущен.", "success")
-    except Exception as exc:
-        return _employee_edit_redirect(employee_id, f"Ошибка запуска сценария: {exc}", "error")
-    finally:
-        await messenger.close()
+    error_message = await _launch_employee_flow_now(db, employee, flow_key=flow_key)
+    if error_message:
+        return _employee_edit_redirect(employee_id, error_message, "error")
+    return _employee_edit_redirect(employee_id, "Сценарий успешно запущен.", "success")
 
 
 @app.post("/employees/{employee_id}/schedule")
@@ -1205,29 +1987,14 @@ def schedule_flow(
     employee = db.get(Employee, employee_id)
     if not employee:
         return RedirectResponse(url="/employees", status_code=status.HTTP_303_SEE_OTHER)
-    scenario = db.query(ScenarioTemplate).filter(ScenarioTemplate.scenario_key == flow_key).first()
-    if not scenario:
-        return _employee_edit_redirect(employee_id, "Сценарий не найден.", "error")
-    if not _scenario_matches_employee_role(scenario, employee):
-        return _employee_edit_redirect(employee_id, "Сценарий недоступен для роли этого сотрудника.", "error")
-    if not (requested_at or "").strip():
-        return _employee_edit_redirect(employee_id, "Укажи дату и время запуска сценария.", "error")
-    try:
-        run_at = datetime.strptime(requested_at.strip(), "%Y-%m-%dT%H:%M")
-    except ValueError:
-        return _employee_edit_redirect(employee_id, "Неверный формат даты и времени.", "error")
-
-    db.add(
-        FlowLaunchRequest(
-            employee_id=employee.id,
-            flow_key=flow_key,
-            requested_at=run_at,
-            processed_at=None,
-            launch_type="scheduled",
-            skip_step_key=None,
-        )
+    error_message = _schedule_employee_flow_request(
+        db,
+        employee,
+        flow_key=flow_key,
+        requested_at=requested_at,
     )
-    db.commit()
+    if error_message:
+        return _employee_edit_redirect(employee_id, error_message, "error")
     return _employee_edit_redirect(employee_id, "Сценарий запланирован.", "success")
 
 
@@ -1725,30 +2492,9 @@ def create_employee_document_link(
     employee = db.get(Employee, employee_id)
     if not employee:
         return RedirectResponse(url="/employees", status_code=status.HTTP_303_SEE_OTHER)
-    url_value = url.strip()
-    if not url_value:
-        return _employee_edit_redirect(employee_id, "Укажи ссылку на оффер.", "error")
-    existing_link = (
-        db.query(EmployeeDocumentLink)
-        .filter(
-            EmployeeDocumentLink.employee_id == employee_id,
-            EmployeeDocumentLink.title == OFFER_DOCUMENT_TITLE,
-        )
-        .order_by(EmployeeDocumentLink.id.asc())
-        .first()
-    )
-    if existing_link:
-        existing_link.url = url_value
-    else:
-        db.add(
-            EmployeeDocumentLink(
-                employee_id=employee_id,
-                title=OFFER_DOCUMENT_TITLE,
-                url=url_value,
-                created_at=datetime.utcnow(),
-            )
-        )
-    db.commit()
+    _, error_message = _save_offer_document_link(db, employee_id, url)
+    if error_message:
+        return _employee_edit_redirect(employee_id, error_message, "error")
     return _employee_edit_redirect(employee_id, "Ссылка на оффер сохранена.", "success")
 
 
@@ -2086,76 +2832,26 @@ def _edit_template_page(
     meta = _template_entity_meta(kind)
     if not scenario or scenario.scenario_kind != kind:
         return RedirectResponse(url=meta["collection_path"], status_code=status.HTTP_303_SEE_OTHER)
-    steps = (
-        db.query(FlowStepTemplate)
-        .filter(
-            FlowStepTemplate.flow_key == scenario.scenario_key,
-            FlowStepTemplate.parent_step_id.is_(None),
-        )
-        .order_by(FlowStepTemplate.sort_order)
-        .all()
-    )
-    branch_steps = (
-        db.query(FlowStepTemplate)
-        .filter(
-            FlowStepTemplate.flow_key == scenario.scenario_key,
-            FlowStepTemplate.parent_step_id.is_not(None),
-            FlowStepTemplate.branch_option_index.is_not(None),
-        )
-        .order_by(FlowStepTemplate.parent_step_id, FlowStepTemplate.branch_option_index, FlowStepTemplate.id)
-        .all()
-    )
-    chain_steps = (
-        db.query(FlowStepTemplate)
-        .filter(
-            FlowStepTemplate.flow_key == scenario.scenario_key,
-            FlowStepTemplate.parent_step_id.is_not(None),
-            FlowStepTemplate.branch_option_index.is_(None),
-        )
-        .order_by(FlowStepTemplate.parent_step_id, FlowStepTemplate.sort_order, FlowStepTemplate.id)
-        .all()
-    )
-    branch_steps_by_parent = defaultdict(list)
-    for branch_step in branch_steps:
-        branch_steps_by_parent[branch_step.parent_step_id].append(branch_step)
-    chain_steps_by_parent = defaultdict(list)
-    for chain_step in chain_steps:
-        chain_steps_by_parent[chain_step.parent_step_id].append(chain_step)
-    button_notifications = (
-        db.query(StepButtonNotification)
-        .filter(StepButtonNotification.flow_key == scenario.scenario_key)
-        .order_by(StepButtonNotification.step_id, StepButtonNotification.option_index, StepButtonNotification.id)
-        .all()
-    )
-    button_notifications_by_step: dict[int, dict[int, StepButtonNotification]] = defaultdict(dict)
-    for notification in button_notifications:
-        button_notifications_by_step[notification.step_id][notification.option_index] = notification
-    available_scenarios = (
-        db.query(ScenarioTemplate)
-        .order_by(ScenarioTemplate.title, ScenarioTemplate.id)
-        .all()
-    )
-    document_tag_titles = [OFFER_DOCUMENT_TITLE]
-    employee_options = _all_employee_options(db)
+    editor_data = _load_scenario_editor_data(db, scenario)
     return _render(
         request,
         "scenario_edit.html",
         {
             "active_tab": meta["active_tab"],
             "scenario": scenario,
-            "steps": steps,
+            "steps": editor_data["steps"],
             "role_scope_labels": ROLE_SCOPE_LABELS,
             "trigger_mode_labels": TRIGGER_MODE_LABELS,
             "response_type_labels": RESPONSE_TYPE_LABELS,
             "send_mode_labels": SEND_MODE_LABELS,
             "target_field_labels": TARGET_FIELD_LABELS,
             "notification_recipient_scope_labels": NOTIFICATION_RECIPIENT_SCOPE_LABELS,
-            "branch_steps_by_parent": dict(branch_steps_by_parent),
-            "chain_steps_by_parent": dict(chain_steps_by_parent),
-            "button_notifications_by_step": {step_id: dict(option_map) for step_id, option_map in button_notifications_by_step.items()},
-            "available_scenarios": available_scenarios,
-            "employee_options": employee_options,
-            "document_tag_titles": document_tag_titles,
+            "branch_steps_by_parent": editor_data["branch_steps_by_parent"],
+            "chain_steps_by_parent": editor_data["chain_steps_by_parent"],
+            "button_notifications_by_step": editor_data["button_notifications_by_step"],
+            "available_scenarios": editor_data["available_scenarios"],
+            "employee_options": editor_data["employee_options"],
+            "document_tag_titles": editor_data["document_tag_titles"],
             "collection_path": meta["collection_path"],
             "collection_title": meta["collection_title"],
             "collection_title_single": meta["collection_title_single"],
@@ -2185,6 +2881,44 @@ def edit_survey_page(
     db: Session = Depends(get_db),
 ):
     return _edit_template_page(request, scenario_id, "survey", db)
+
+
+@app.get("/api/flows/{scenario_id}/builder")
+def scenario_builder_api(
+    request: Request,
+    scenario_id: int,
+    db: Session = Depends(get_db),
+):
+    _require_api_auth(request)
+    scenario = db.get(ScenarioTemplate, scenario_id)
+    if not scenario or scenario.scenario_kind != "scenario":
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Сценарий не найден")
+    return _build_scenario_visual_payload(db, scenario, "scenario")
+
+
+@app.get("/app/flows/{scenario_id}")
+def react_scenario_builder_page(
+    request: Request,
+    scenario_id: int,
+    db: Session = Depends(get_db),
+):
+    auth_redirect = _require_auth(request)
+    if auth_redirect:
+        return auth_redirect
+    scenario = db.get(ScenarioTemplate, scenario_id)
+    if not scenario or scenario.scenario_kind != "scenario":
+        return RedirectResponse(url="/flows", status_code=status.HTTP_303_SEE_OTHER)
+    return _render(
+        request,
+        "react_scenario_builder.html",
+        {
+            "active_tab": "flows",
+            "scenario_id": scenario_id,
+            "react_api_url": f"/api/flows/{scenario_id}/builder",
+            "classic_page_url": f"/flows/{scenario_id}",
+            "list_url": "/flows",
+        },
+    )
 
 
 @app.get("/flows/steps/{step_id}/attachment")

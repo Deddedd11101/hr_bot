@@ -1,0 +1,289 @@
+.main > .container:has(#react-employee-edit-root) {
+    max-width: 1480px;
+}
+
+.react-detail-page {
+    display: grid;
+    gap: 28px;
+}
+
+.react-detail-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 20px;
+}
+
+.react-detail-back {
+    color: #4d6c64;
+    text-decoration: none;
+    font-weight: 700;
+}
+
+.react-detail-card {
+    background: linear-gradient(180deg, #ffffff 0%, #f7faf8 100%);
+    border: 1px solid rgba(23, 44, 38, 0.08);
+    border-radius: 28px;
+    box-shadow: 0 26px 60px rgba(23, 44, 38, 0.08);
+    overflow: hidden;
+}
+
+.react-detail-card-head {
+    display: grid;
+    gap: 14px;
+    padding: 32px 32px 0;
+}
+
+.react-detail-card-head p {
+    margin: 0;
+}
+
+.react-detail-card-head h2,
+.react-detail-card-head h3 {
+    margin: 0;
+}
+
+.react-detail-grid {
+    padding: 24px 32px 32px;
+    display: grid;
+    grid-template-columns: minmax(0, 1.75fr) minmax(360px, 0.9fr);
+    gap: 28px;
+}
+
+.react-detail-main,
+.react-detail-side {
+    display: grid;
+    gap: 24px;
+    align-content: start;
+}
+
+.react-detail-side {
+    position: sticky;
+    top: 24px;
+    align-self: start;
+}
+
+.react-section {
+    display: grid;
+    gap: 18px;
+    padding: 24px;
+    border: 1px solid rgba(23, 44, 38, 0.08);
+    border-radius: 20px;
+    background: #fff;
+}
+
+.react-section-danger {
+    border-color: rgba(140, 47, 57, 0.16);
+    background: linear-gradient(180deg, #fff 0%, #fff7f8 100%);
+}
+
+.react-section h3,
+.react-section h4,
+.react-overview-title {
+    margin: 0;
+}
+
+.react-overview-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.react-overview-pill {
+    display: inline-flex;
+    align-items: center;
+    padding: 7px 12px;
+    border-radius: 999px;
+    background: #eef4f1;
+    color: #35534a;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.react-detail-form {
+    display: grid;
+    gap: 22px;
+}
+
+.react-detail-form-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 18px;
+}
+
+.react-detail-form-grid.is-single {
+    grid-template-columns: 1fr;
+}
+
+.react-field {
+    display: grid;
+    gap: 8px;
+}
+
+.react-field span {
+    font-size: 13px;
+    font-weight: 700;
+    color: #314c44;
+}
+
+.react-field input,
+.react-field select,
+.react-field textarea {
+    border: 1px solid rgba(23, 44, 38, 0.12);
+    background: #fff;
+    border-radius: 14px;
+    padding: 13px 14px;
+    font-size: 14px;
+    width: 100%;
+}
+
+.react-field textarea {
+    resize: vertical;
+    min-height: 120px;
+}
+
+.react-checkbox {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+    border: 1px solid rgba(23, 44, 38, 0.08);
+    border-radius: 16px;
+    padding: 14px 16px;
+    background: #fbfdfc;
+}
+
+.react-checkbox input {
+    margin-top: 2px;
+}
+
+.react-form-actions {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    align-items: center;
+}
+
+.react-form-section {
+    display: grid;
+    gap: 16px;
+    padding: 18px;
+    border: 1px solid rgba(23, 44, 38, 0.08);
+    border-radius: 18px;
+    background: #fbfdfc;
+}
+
+.react-form-section h4 {
+    margin: 0;
+    color: #21352f;
+}
+
+.react-form-section p {
+    margin: 0;
+}
+
+.react-save-state {
+    font-size: 14px;
+    color: #4f6c64;
+}
+
+.react-save-state.is-error {
+    color: #8c2f39;
+}
+
+.react-ops-grid {
+    display: grid;
+    gap: 16px;
+}
+
+.react-inline-form {
+    display: grid;
+    gap: 14px;
+}
+
+.react-inline-actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.react-inline-message {
+    font-size: 14px;
+    color: #4f6c64;
+}
+
+.react-inline-message.is-error {
+    color: #8c2f39;
+}
+
+.react-overview-list {
+    display: grid;
+    gap: 12px;
+}
+
+.react-overview-item {
+    border: 1px solid rgba(23, 44, 38, 0.08);
+    border-radius: 16px;
+    padding: 14px 16px;
+    background: #fff;
+}
+
+.react-overview-item-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    align-items: flex-start;
+}
+
+.react-overview-item p {
+    margin: 6px 0 0;
+}
+
+.react-overview-link {
+    color: #1b473c;
+    font-weight: 700;
+    text-decoration: none;
+}
+
+.react-overview-empty {
+    color: #758983;
+    font-size: 14px;
+}
+
+.react-loading-state,
+.react-error-state {
+    padding: 56px 28px;
+    text-align: center;
+}
+
+.react-error-state {
+    color: #8c2f39;
+}
+
+@media (max-width: 1024px) {
+    .main > .container:has(#react-employee-edit-root) {
+        max-width: 1100px;
+    }
+
+    .react-detail-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .react-detail-side {
+        position: static;
+    }
+}
+
+@media (max-width: 720px) {
+    .react-detail-header,
+    .react-detail-card-head,
+    .react-form-actions,
+    .react-overview-item-head {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .react-detail-form-grid {
+        grid-template-columns: 1fr;
+    }
+}

@@ -2,6 +2,9 @@
 
 {% block content %}
 <a href="{{ list_url }}" class="back-link">← {{ list_title }}</a>
+<div style="margin: 12px 0 18px;">
+    <a href="/app/employees/{{ employee.id }}" class="btn-secondary">Открыть React-версию карточки</a>
+</div>
 
 <div class="card">
     {% if flash_message %}

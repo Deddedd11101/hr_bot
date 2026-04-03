@@ -1,0 +1,246 @@
+.main > .container:has(#react-scenario-builder-root) {
+    max-width: 1560px;
+}
+
+.scenario-builder-page {
+    display: grid;
+    gap: 24px;
+}
+
+.scenario-builder-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 16px;
+}
+
+.scenario-builder-back {
+    color: #4d6c64;
+    text-decoration: none;
+    font-weight: 700;
+}
+
+.scenario-builder-shell {
+    display: grid;
+    grid-template-columns: minmax(0, 1.7fr) minmax(360px, 0.95fr);
+    gap: 24px;
+    align-items: start;
+}
+
+.scenario-builder-card {
+    background: linear-gradient(180deg, #ffffff 0%, #f7faf8 100%);
+    border: 1px solid rgba(23, 44, 38, 0.08);
+    border-radius: 28px;
+    box-shadow: 0 26px 60px rgba(23, 44, 38, 0.08);
+}
+
+.scenario-builder-summary {
+    padding: 28px 30px 0;
+    display: grid;
+    gap: 14px;
+}
+
+.scenario-builder-summary h2,
+.scenario-builder-summary h3,
+.scenario-builder-summary h4,
+.scenario-builder-summary p {
+    margin: 0;
+}
+
+.scenario-builder-pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.scenario-builder-pill {
+    display: inline-flex;
+    align-items: center;
+    padding: 7px 12px;
+    border-radius: 999px;
+    background: #eef4f1;
+    color: #35534a;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.scenario-builder-canvas {
+    padding: 22px 30px 30px;
+    display: grid;
+    gap: 18px;
+}
+
+.scenario-flow-board {
+    overflow-x: auto;
+    padding-bottom: 6px;
+}
+
+.scenario-flow-track {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(280px, 320px);
+    gap: 18px;
+    align-items: start;
+}
+
+.scenario-flow-column {
+    display: grid;
+    gap: 14px;
+}
+
+.scenario-flow-node,
+.scenario-flow-branch {
+    border-radius: 22px;
+    border: 1px solid rgba(23, 44, 38, 0.09);
+    background: #fff;
+    padding: 16px 16px 15px;
+    cursor: pointer;
+    transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+}
+
+.scenario-flow-node:hover,
+.scenario-flow-branch:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 14px 28px rgba(23, 44, 38, 0.08);
+}
+
+.scenario-flow-node.is-selected,
+.scenario-flow-branch.is-selected {
+    border-color: rgba(30, 90, 72, 0.32);
+    box-shadow: 0 18px 36px rgba(30, 90, 72, 0.14);
+}
+
+.scenario-flow-node-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    align-items: flex-start;
+    margin-bottom: 10px;
+}
+
+.scenario-flow-node-head h4,
+.scenario-flow-node-head p,
+.scenario-flow-node-copy {
+    margin: 0;
+}
+
+.scenario-flow-node-key {
+    font-size: 12px;
+    color: #6f8680;
+}
+
+.scenario-flow-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 5px 9px;
+    border-radius: 999px;
+    background: #f0f5f3;
+    color: #35534a;
+    font-size: 11px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.scenario-flow-copy {
+    display: grid;
+    gap: 8px;
+}
+
+.scenario-flow-copy p {
+    margin: 0;
+}
+
+.scenario-flow-muted {
+    color: #6f8680;
+    font-size: 13px;
+}
+
+.scenario-flow-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 10px;
+}
+
+.scenario-flow-mini-pill {
+    font-size: 12px;
+    color: #1b473c;
+    background: #f4f8f6;
+    border-radius: 999px;
+    padding: 6px 9px;
+}
+
+.scenario-flow-subtree {
+    display: grid;
+    gap: 10px;
+    margin-left: 16px;
+    padding-left: 14px;
+    border-left: 2px dashed rgba(53, 83, 74, 0.18);
+}
+
+.scenario-flow-label {
+    font-size: 12px;
+    font-weight: 700;
+    color: #547067;
+}
+
+.scenario-flow-branches {
+    display: grid;
+    gap: 10px;
+}
+
+.scenario-inspector {
+    position: sticky;
+    top: 22px;
+    display: grid;
+    gap: 18px;
+}
+
+.scenario-inspector-card {
+    padding: 24px;
+    display: grid;
+    gap: 16px;
+}
+
+.scenario-inspector-grid {
+    display: grid;
+    gap: 14px;
+}
+
+.scenario-inspector-row {
+    display: grid;
+    gap: 6px;
+}
+
+.scenario-inspector-row strong {
+    color: #21352f;
+}
+
+.scenario-inspector-list {
+    margin: 0;
+    padding-left: 18px;
+    color: #35534a;
+}
+
+.scenario-builder-empty {
+    padding: 56px 28px;
+    text-align: center;
+}
+
+@media (max-width: 1100px) {
+    .scenario-builder-shell {
+        grid-template-columns: 1fr;
+    }
+
+    .scenario-inspector {
+        position: static;
+    }
+}
+
+@media (max-width: 720px) {
+    .scenario-builder-head {
+        flex-direction: column;
+        align-items: stretch;
+    }
+}
