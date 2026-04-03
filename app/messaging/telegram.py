@@ -6,7 +6,7 @@ from typing import Any
 from aiogram import Bot
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
-from aiogram.types import BufferedInputFile, FSInputFile
+from aiogram.types import BufferedInputFile, FSInputFile, KeyboardButton, ReplyKeyboardMarkup
 
 
 class TelegramMessenger:
@@ -15,6 +15,16 @@ class TelegramMessenger:
 
     async def send_text(self, chat_id: str, text: str, reply_markup: Any | None = None) -> None:
         await self.bot.send_message(chat_id=chat_id, text=text, reply_markup=reply_markup)
+
+    async def send_menu(self, chat_id: str, text: str, buttons: list[str]) -> None:
+        if not buttons:
+            await self.send_text(chat_id=chat_id, text=text)
+            return
+        keyboard = ReplyKeyboardMarkup(
+            keyboard=[[KeyboardButton(text=button)] for button in buttons if button.strip()],
+            resize_keyboard=True,
+        )
+        await self.bot.send_message(chat_id=chat_id, text=text, reply_markup=keyboard)
 
     async def send_photo_path(self, chat_id: str, path: str | Path, filename: str | None = None) -> None:
         file_path = Path(path)
