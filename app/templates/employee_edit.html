@@ -23,8 +23,8 @@
             <input type="text" name="full_name" value="{{ employee.full_name or '' }}" placeholder="Иванов Иван Иванович">
         </label>
         <label class="field">
-            <span>Telegram user_id или @username</span>
-            <input type="text" name="telegram_user_id" value="{{ employee.telegram_user_id }}" placeholder="привяжется по /start в боте">
+            <span>ID пользователя в канале или @username</span>
+            <input type="text" name="telegram_user_id" value="{{ employee.telegram_user_id }}" placeholder="привяжется при первом сообщении в подключённом мессенджере">
         </label>
         <label class="field">
             <span>{{ 'Предварительная дата выхода на работу' if is_candidate else 'Дата выхода на работу' }}</span>
@@ -79,15 +79,15 @@
             </label>
             <label class="field">
                 <span>Руководитель сотрудника</span>
-                <input type="text" name="manager_telegram_id" value="{{ employee.manager_telegram_id or '' }}" placeholder="telegram id руководителя">
+                <input type="text" name="manager_telegram_id" value="{{ employee.manager_telegram_id or '' }}" placeholder="id руководителя в канале">
             </label>
             <label class="field">
                 <span>Наставник (адаптация)</span>
-                <input type="text" name="mentor_adaptation_telegram_id" value="{{ employee.mentor_adaptation_telegram_id or '' }}" placeholder="telegram id наставника">
+                <input type="text" name="mentor_adaptation_telegram_id" value="{{ employee.mentor_adaptation_telegram_id or '' }}" placeholder="id наставника в канале">
             </label>
             <label class="field">
                 <span>Наставник (ИПР)</span>
-                <input type="text" name="mentor_ipr_telegram_id" value="{{ employee.mentor_ipr_telegram_id or '' }}" placeholder="telegram id наставника">
+                <input type="text" name="mentor_ipr_telegram_id" value="{{ employee.mentor_ipr_telegram_id or '' }}" placeholder="id наставника в канале">
             </label>
             <label class="field">
                 <span>Статус</span>
@@ -129,7 +129,7 @@
             <input type="file" name="upload" required>
         </label>
         <label class="field">
-            <span>Сразу отправить в Telegram</span>
+            <span>Сразу отправить в мессенджер</span>
             <select name="send_to_telegram">
                 <option value="false" selected>Нет</option>
                 <option value="true">Да</option>
@@ -162,7 +162,7 @@
                         <a class="btn-secondary" href="/employees/{{ employee.id }}/files/{{ f.id }}/download">Скачать</a>
                         {% if employee.telegram_user_id %}
                             <form method="post" action="/employees/{{ employee.id }}/files/{{ f.id }}/send" style="display:inline;">
-                                <button type="submit" class="btn-secondary">Отправить в Telegram</button>
+                                <button type="submit" class="btn-secondary">Отправить в мессенджер</button>
                             </form>
                         {% endif %}
                     </td>

@@ -131,7 +131,7 @@
                                 <textarea name="notify_on_send_text" rows="3" placeholder="Например: Пользователю ушёл шаг {full_name}.">{{ step.notify_on_send_text or '' }}</textarea>
                             </label>
                             <label class="field">
-                                <span>Telegram ID получателей</span>
+                                <span>ID получателей</span>
                                 <input type="text" name="notify_on_send_recipient_ids" value="{{ step.notify_on_send_recipient_ids or '' }}" placeholder="123456789, 987654321">
                             </label>
                             <label class="field">
@@ -177,7 +177,7 @@
                                         <textarea name="button_notification_text" rows="3" placeholder="Например: Пользователь нажал кнопку &quot;{{ option_label.strip() }}&quot;.">{{ button_notification.message_text if button_notification else '' }}</textarea>
                                     </label>
                                     <label class="field">
-                                        <span>Telegram ID получателей</span>
+                                        <span>ID получателей</span>
                                         <input type="text" name="button_notification_recipient_ids" value="{{ button_notification.recipient_ids if button_notification else '' }}" placeholder="123456789, 987654321">
                                     </label>
                                     <label class="field">
@@ -231,7 +231,7 @@
                                                 <textarea name="branch_notify_on_send_text" rows="3" placeholder="Например: Пользователю отправлено сообщение этой ветки.">{{ branch_step.notify_on_send_text or '' }}</textarea>
                                             </label>
                                             <label class="field">
-                                                <span>Telegram ID получателей</span>
+                                                <span>ID получателей</span>
                                                 <input type="text" name="branch_notify_on_send_recipient_ids" value="{{ branch_step.notify_on_send_recipient_ids or '' }}" placeholder="123456789, 987654321">
                                             </label>
                                             <label class="field">
@@ -279,7 +279,7 @@
                                                 <textarea name="branch_button_notification_text" rows="3" placeholder="Например: Пользователь выбрал этот вариант.">{{ button_notifications_by_step.get(step.id, {}).get(branch_step.branch_option_index or 0).message_text if button_notifications_by_step.get(step.id, {}).get(branch_step.branch_option_index or 0) else '' }}</textarea>
                                             </label>
                                             <label class="field">
-                                                <span>Telegram ID получателей</span>
+                                                <span>ID получателей</span>
                                                 <input type="text" name="branch_button_notification_recipient_ids" value="{{ button_notifications_by_step.get(step.id, {}).get(branch_step.branch_option_index or 0).recipient_ids if button_notifications_by_step.get(step.id, {}).get(branch_step.branch_option_index or 0) else '' }}" placeholder="123456789, 987654321">
                                             </label>
                                             <label class="field">
@@ -381,7 +381,7 @@
                                                                 <textarea name="chain_notify_on_send_text" rows="3" placeholder="Например: Пользователю отправлен шаг цепочки.">{{ chain_step.notify_on_send_text or '' }}</textarea>
                                                             </label>
                                                             <label class="field">
-                                                                <span>Telegram ID получателей</span>
+                                                                <span>ID получателей</span>
                                                                 <input type="text" name="chain_notify_on_send_recipient_ids" value="{{ chain_step.notify_on_send_recipient_ids or '' }}" placeholder="123456789, 987654321">
                                                             </label>
                                                             <label class="field">
@@ -429,7 +429,7 @@
                                                                         <textarea name="button_notification_text" rows="3" placeholder="Например: Пользователь нажал эту кнопку.">{{ button_notification.message_text if button_notification else '' }}</textarea>
                                                                     </label>
                                                                     <label class="field">
-                                                                        <span>Telegram ID получателей</span>
+                                                                        <span>ID получателей</span>
                                                                         <input type="text" name="button_notification_recipient_ids" value="{{ button_notification.recipient_ids if button_notification else '' }}" placeholder="123456789, 987654321">
                                                                     </label>
                                                                     <label class="field">
@@ -884,7 +884,7 @@
                 <textarea name="button_notification_text" rows="3" placeholder="Например: Пользователь нажал эту кнопку."></textarea>
             </label>
             <label class="field">
-                <span>Telegram ID получателей</span>
+                <span>ID получателей</span>
                 <input type="text" name="button_notification_recipient_ids" value="" placeholder="123456789, 987654321">
             </label>
             <label class="field">
@@ -1016,7 +1016,7 @@
                                 <textarea name="branch_notify_on_send_text" rows="3" placeholder="Например: Пользователю отправлено сообщение этой ветки."></textarea>
                             </label>
                             <label class="field employee-card-field is-hidden">
-                                <span>Telegram ID получателей</span>
+                                <span>ID получателей</span>
                                 <input type="text" name="branch_notify_on_send_recipient_ids" value="" placeholder="123456789, 987654321">
                             </label>
                             <label class="field employee-card-field is-hidden">
@@ -1040,7 +1040,7 @@
                                 <textarea name="branch_button_notification_text" rows="3" placeholder="Например: Пользователь выбрал этот вариант."></textarea>
                             </label>
                             <label class="field">
-                                <span>Telegram ID получателей</span>
+                                <span>ID получателей</span>
                                 <input type="text" name="branch_button_notification_recipient_ids" value="" placeholder="123456789, 987654321">
                             </label>
                             <label class="field">
@@ -1355,7 +1355,7 @@
                         <textarea name="chain_notify_on_send_text" rows="3" placeholder="Например: Пользователю отправлен шаг цепочки."></textarea>
                     </label>
                     <label class="field">
-                        <span>Telegram ID получателей</span>
+                        <span>ID получателей</span>
                         <input type="text" name="chain_notify_on_send_recipient_ids" value="" placeholder="123456789, 987654321">
                     </label>
                     <label class="field">

@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from .config import settings
 from .employee_card import render_employee_card_png
 from .flow_templates import EMPLOYEE_ROLE_VALUES
+from .messaging.identity import get_primary_chat_id
 from .messaging import as_messenger
 from .models import Employee, EmployeeDocumentLink, EmployeeFile, FlowLaunchRequest, FlowStepTemplate, OnboardingEvent, ScenarioProgress, ScenarioTemplate, StepButtonNotification, SurveyAnswer
 from .notifications import notify_hr_stage
@@ -610,7 +611,8 @@ async def send_step(
     auto_follow: bool = True,
 ) -> None:
     messenger = as_messenger(messenger_or_bot)
-    if not employee.telegram_user_id:
+    chat_id = get_primary_chat_id(employee)
+    if not chat_id:
         return
 
     anchor_date = scenario_anchor_date(employee, scenario) or datetime.now(_get_tz()).date()
@@ -622,15 +624,15 @@ async def send_step(
 
     if message_text.strip():
         await messenger.send_text(
-            chat_id=employee.telegram_user_id,
+            chat_id=chat_id,
             text=message_text,
             reply_markup=None if inline_buttons_after_attachment else reply_markup,
         )
     if send_employee_card:
-        await send_employee_card_image(messenger, employee.telegram_user_id, employee)
-    await send_step_attachment(messenger, employee.telegram_user_id, step)
+        await send_employee_card_image(messenger, chat_id, employee)
+    await send_step_attachment(messenger, chat_id, step)
     if inline_buttons_after_attachment:
-        await send_step_buttons(messenger, employee.telegram_user_id, step)
+        await send_step_buttons(messenger, chat_id, step)
     await send_custom_notification(
         messenger,
         db,

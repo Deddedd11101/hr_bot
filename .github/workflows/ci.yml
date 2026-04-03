@@ -31,7 +31,7 @@ jobs:
           TELEGRAM_BOT_TOKEN: ci-dummy-token
           DATABASE_URL: sqlite:///./ci.db
           ADMIN_SESSION_SECRET: ci-admin-session-secret
-        run: python -m unittest tests.test_scenario_engine_smoke -v
+        run: python -m unittest tests.test_scenario_engine_smoke tests.test_messaging_identity -v
 
       - name: Smoke import application modules
         env:

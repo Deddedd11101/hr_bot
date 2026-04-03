@@ -13,12 +13,12 @@
                 <input type="text" name="hr_name" value="{{ hr_settings.hr_name or '' }}" placeholder="Иван Петров">
             </label>
             <label class="field settings-field">
-                <span>Основной Telegram user_id</span>
+                <span>Основной ID получателя</span>
                 <input type="text" name="telegram_user_id" value="{{ hr_settings.telegram_user_id or '' }}" placeholder="123456789">
             </label>
         </div>
         <label class="field settings-field">
-            <span>Дополнительные Telegram user_id</span>
+            <span>Дополнительные ID получателей</span>
             <textarea name="notification_recipient_ids" rows="3" placeholder="123456789&#10;987654321">{{ hr_settings.notification_recipient_ids or '' }}</textarea>
             <div class="field-hint">Можно указать несколько ID: по одному на строку или через запятую.</div>
         </label>
@@ -55,8 +55,8 @@
 </div>
 
 <div class="card" style="margin-top: 20px;">
-    <h2>Меню Чат-Бота</h2>
-    <p class="muted">Соберите наборы кнопок для Telegram-интерфейса пользователя и свяжите их со сценариями или другими наборами.</p>
+    <h2>Меню Мессенджера</h2>
+    <p class="muted">Соберите наборы кнопок для интерфейса пользователя и свяжите их со сценариями или другими наборами.</p>
 
     <form method="post" action="/settings/menu-sets" class="form" style="margin-bottom: 24px;">
         <label class="field settings-field">

@@ -12,7 +12,7 @@
                 <tr>
                     <th>ID</th>
                     <th>ФИО</th>
-                    <th>Telegram</th>
+                    <th>Канал связи</th>
                     {% if active_tab == 'candidates' %}
                         <th>Должность</th>
                         <th>Дедлайн тестового</th>
@@ -68,7 +68,7 @@
             <h3>{{ create_modal_title }}</h3>
             <button type="button" class="modal-close" id="close-create-employee" aria-label="Закрыть">×</button>
         </div>
-        <p class="muted">{{ create_intro }} Все уведомления будут отправляться в его Telegram.</p>
+        <p class="muted">{{ create_intro }} Все уведомления будут отправляться в подключённый канал связи.</p>
         <form method="post" action="/employees" class="form">
             <input type="hidden" name="employee_stage" value="{{ default_employee_stage }}">
             <label class="field">
@@ -76,7 +76,7 @@
                 <input type="text" name="full_name" placeholder="Можно заполнить позже">
             </label>
             <label class="field">
-                <span>Telegram user_id или @username</span>
+                <span>ID пользователя в канале или @username</span>
                 <input type="text" name="telegram_user_id" placeholder="Можно заполнить позже">
             </label>
             <label class="field">

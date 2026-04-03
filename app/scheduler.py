@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from .config import settings
 from .database import SessionLocal
 from .messaging import as_messenger
+from .messaging.identity import get_primary_chat_id
 from .models import Employee, FlowLaunchRequest, FlowStepTemplate, MassMessageAction, MassScenarioAction, OnboardingEvent, ScenarioTemplate
 from .scenario_engine import SINGLE_STEP_REQUEST_PREFIX, add_workdays, format_message, get_scenario_steps, get_step_by_key, matches_role_scope, scenario_anchor_date, send_step, start_scenario
 
@@ -117,12 +118,13 @@ def _mass_target_employees(
 
 async def _send_mass_message(db: Session, bot, employee: Employee, message_text: str, requested_at: datetime) -> bool:
     messenger = as_messenger(bot)
-    if not employee.telegram_user_id:
+    chat_id = get_primary_chat_id(employee)
+    if not chat_id:
         return False
     rendered_text = format_message(db, message_text, employee, requested_at.date(), requested_at.strftime("%H:%M")).strip()
     if not rendered_text:
         return False
-    await messenger.send_text(chat_id=employee.telegram_user_id, text=rendered_text)
+    await messenger.send_text(chat_id=chat_id, text=rendered_text)
     return True
 
 
@@ -162,7 +164,7 @@ async def run_scheduled_step(bot, employee_id: int, scenario_key: str, step_key:
         )
         if not employee or not scenario or not step:
             return
-        if not employee.telegram_user_id:
+        if not get_primary_chat_id(employee):
             return
         await send_step(bot, db, employee, scenario, step, scheduled_at=scheduled_at)
 
@@ -266,7 +268,7 @@ async def schedule_all_employees(scheduler: AsyncIOScheduler, bot) -> None:
             )
             started_count = 0
             for employee in recipients:
-                if not employee.telegram_user_id:
+                if not get_primary_chat_id(employee):
                     continue
                 if not matches_role_scope(employee, scenario):
                     continue
@@ -299,7 +301,7 @@ async def schedule_all_employees(scheduler: AsyncIOScheduler, bot) -> None:
             if not employee or not scenario:
                 request.processed_at = datetime.utcnow()
                 continue
-            if not employee.telegram_user_id:
+            if not get_primary_chat_id(employee):
                 continue
             if request.skip_step_key and request.skip_step_key.startswith(SINGLE_STEP_REQUEST_PREFIX):
                 step_key = request.skip_step_key[len(SINGLE_STEP_REQUEST_PREFIX):]
