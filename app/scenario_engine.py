@@ -4,18 +4,18 @@ import html
 import re
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
-from aiogram import Bot
-from aiogram.types import BufferedInputFile, FSInputFile, InlineKeyboardButton, InlineKeyboardMarkup, Message
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message
 from pytz import timezone as tz_get
 from sqlalchemy.orm import Session
 
 from .config import settings
+from .employee_card import render_employee_card_png
 from .flow_templates import EMPLOYEE_ROLE_VALUES
+from .messaging import as_messenger
 from .models import Employee, EmployeeDocumentLink, EmployeeFile, FlowLaunchRequest, FlowStepTemplate, OnboardingEvent, ScenarioProgress, ScenarioTemplate, StepButtonNotification, SurveyAnswer
 from .notifications import notify_hr_stage
-from .employee_card import render_employee_card_png
 
 
 CALLBACK_PREFIX = "scenario:"
@@ -427,7 +427,7 @@ def resolve_notification_recipients(employee: Employee, explicit_ids: Optional[s
 
 
 async def send_custom_notification(
-    bot: Bot,
+    messenger_or_bot: Any,
     db: Session,
     employee: Employee,
     message_template: Optional[str],
@@ -435,6 +435,7 @@ async def send_custom_notification(
     recipient_scope: Optional[str],
     step_time: Optional[str],
 ) -> None:
+    messenger = as_messenger(messenger_or_bot)
     recipients = resolve_notification_recipients(employee, recipient_ids, recipient_scope)
     message_template = (message_template or "").strip()
     if not recipients or not message_template:
@@ -445,7 +446,7 @@ async def send_custom_notification(
         return
     for chat_id in recipients:
         try:
-            await bot.send_message(chat_id=chat_id, text=message_text)
+            await messenger.send_text(chat_id=chat_id, text=message_text)
         except Exception:
             continue
 
@@ -478,7 +479,8 @@ def step_reply_markup(step: FlowStepTemplate) -> Optional[InlineKeyboardMarkup]:
     return InlineKeyboardMarkup(inline_keyboard=buttons) if buttons else None
 
 
-async def send_step_attachment(bot: Bot, chat_id: str, step: FlowStepTemplate) -> None:
+async def send_step_attachment(messenger_or_bot: Any, chat_id: str, step: FlowStepTemplate) -> None:
+    messenger = as_messenger(messenger_or_bot)
     attachment_path = (getattr(step, "attachment_path", None) or "").strip()
     if not attachment_path:
         return
@@ -487,30 +489,26 @@ async def send_step_attachment(bot: Bot, chat_id: str, step: FlowStepTemplate) -
         return
     filename = getattr(step, "attachment_filename", None) or path.name
     if path.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}:
-        await bot.send_photo(
-            chat_id=chat_id,
-            photo=FSInputFile(str(path), filename=filename),
-        )
+        await messenger.send_photo_path(chat_id=chat_id, path=path, filename=filename)
         return
-    await bot.send_document(chat_id=chat_id, document=FSInputFile(str(path), filename=filename))
+    await messenger.send_document_path(chat_id=chat_id, path=path, filename=filename)
 
 
-async def send_employee_card_image(bot: Bot, chat_id: str, employee: Employee) -> None:
+async def send_employee_card_image(messenger_or_bot: Any, chat_id: str, employee: Employee) -> None:
+    messenger = as_messenger(messenger_or_bot)
     try:
         image_bytes = render_employee_card_png(employee)
     except ImportError:
         return
-    await bot.send_photo(
-        chat_id=chat_id,
-        photo=BufferedInputFile(image_bytes, filename=f"employee_card_{employee.id}.png"),
-    )
+    await messenger.send_photo_bytes(chat_id=chat_id, data=image_bytes, filename=f"employee_card_{employee.id}.png")
 
 
-async def send_step_buttons(bot: Bot, chat_id: str, step: FlowStepTemplate) -> None:
+async def send_step_buttons(messenger_or_bot: Any, chat_id: str, step: FlowStepTemplate) -> None:
+    messenger = as_messenger(messenger_or_bot)
     reply_markup = step_reply_markup(step)
     if not reply_markup:
         return
-    await bot.send_message(
+    await messenger.send_text(
         chat_id=chat_id,
         text="Выберите вариант ответа:",
         reply_markup=reply_markup,
@@ -603,7 +601,7 @@ def queue_followup_step(db: Session, employee: Employee, scenario: ScenarioTempl
 
 
 async def send_step(
-    bot: Bot,
+    messenger_or_bot: Any,
     db: Session,
     employee: Employee,
     scenario: ScenarioTemplate,
@@ -611,6 +609,7 @@ async def send_step(
     scheduled_at: Optional[datetime] = None,
     auto_follow: bool = True,
 ) -> None:
+    messenger = as_messenger(messenger_or_bot)
     if not employee.telegram_user_id:
         return
 
@@ -622,18 +621,18 @@ async def send_step(
     inline_buttons_after_attachment = (has_attachment or send_employee_card) and reply_markup is not None
 
     if message_text.strip():
-        await bot.send_message(
+        await messenger.send_text(
             chat_id=employee.telegram_user_id,
             text=message_text,
             reply_markup=None if inline_buttons_after_attachment else reply_markup,
         )
     if send_employee_card:
-        await send_employee_card_image(bot, employee.telegram_user_id, employee)
-    await send_step_attachment(bot, employee.telegram_user_id, step)
+        await send_employee_card_image(messenger, employee.telegram_user_id, employee)
+    await send_step_attachment(messenger, employee.telegram_user_id, step)
     if inline_buttons_after_attachment:
-        await send_step_buttons(bot, employee.telegram_user_id, step)
+        await send_step_buttons(messenger, employee.telegram_user_id, step)
     await send_custom_notification(
-        bot,
+        messenger,
         db,
         employee,
         getattr(step, "notify_on_send_text", None),
@@ -669,24 +668,25 @@ async def send_step(
             progress.updated_at = datetime.utcnow()
             db.commit()
             try:
-                await notify_hr_stage(bot, employee, step.step_key)
+                await notify_hr_stage(messenger, employee, step.step_key)
             except Exception:
                 pass
             return
         if settings.DEMO_MODE or next_step.send_mode == "immediate":
-            await send_step(bot, db, employee, scenario, next_step)
+            await send_step(messenger, db, employee, scenario, next_step)
         else:
             if not queue_followup_step(db, employee, scenario, next_step):
-                await send_step(bot, db, employee, scenario, next_step)
+                await send_step(messenger, db, employee, scenario, next_step)
 
 
 async def advance_after_response(
-    bot: Bot,
+    messenger_or_bot: Any,
     db: Session,
     employee: Employee,
     scenario: ScenarioTemplate,
     current_step: FlowStepTemplate,
 ) -> None:
+    messenger = as_messenger(messenger_or_bot)
     progress = get_or_create_progress(db, employee.id, scenario.scenario_key)
     progress.waiting_for_response = False
     progress.updated_at = datetime.utcnow()
@@ -699,15 +699,15 @@ async def advance_after_response(
 
     if settings.DEMO_MODE or next_step.send_mode == "immediate":
         db.commit()
-        await send_step(bot, db, employee, scenario, next_step)
+        await send_step(messenger, db, employee, scenario, next_step)
         return
 
     if not queue_followup_step(db, employee, scenario, next_step):
         db.commit()
-        await send_step(bot, db, employee, scenario, next_step)
+        await send_step(messenger, db, employee, scenario, next_step)
 
 
-async def handle_text_response(bot: Bot, db: Session, employee: Employee, message: Message) -> bool:
+async def handle_text_response(messenger_or_bot: Any, db: Session, employee: Employee, message: Message) -> bool:
     progress = get_waiting_progress(db, employee.id)
     if not progress or not progress.current_step_key:
         return False
@@ -722,11 +722,12 @@ async def handle_text_response(bot: Bot, db: Session, employee: Employee, messag
         return False
     employee.candidate_status = step.step_key
     db.commit()
-    await advance_after_response(bot, db, employee, scenario, step)
+    await advance_after_response(messenger_or_bot, db, employee, scenario, step)
     return True
 
 
-async def handle_button_response(bot: Bot, db: Session, employee: Employee, scenario_key: str, step_key: str, option_index: int) -> bool:
+async def handle_button_response(messenger_or_bot: Any, db: Session, employee: Employee, scenario_key: str, step_key: str, option_index: int) -> bool:
+    messenger = as_messenger(messenger_or_bot)
     progress = get_waiting_progress_for_step(db, employee.id, scenario_key, step_key)
     if not progress:
         return False
@@ -745,7 +746,7 @@ async def handle_button_response(bot: Bot, db: Session, employee: Employee, scen
     button_notification = get_button_notification(db, step.id, option_index)
     if button_notification:
         await send_custom_notification(
-            bot,
+            messenger,
             db,
             employee,
             button_notification.message_text,
@@ -761,7 +762,7 @@ async def handle_button_response(bot: Bot, db: Session, employee: Employee, scen
         progress.completed_at = datetime.utcnow()
         db.commit()
         try:
-            await notify_hr_stage(bot, employee, "recruitment_consent_no")
+            await notify_hr_stage(messenger, employee, "recruitment_consent_no")
         except Exception:
             pass
         return True
@@ -769,27 +770,27 @@ async def handle_button_response(bot: Bot, db: Session, employee: Employee, scen
         branch_step = get_branch_step(db, step.id, option_index)
         if branch_step:
             if branch_step.response_type == "chain":
-                await send_step(bot, db, employee, scenario, branch_step, auto_follow=False)
+                await send_step(messenger, db, employee, scenario, branch_step, auto_follow=False)
                 first_chain_step = get_first_chain_step(db, branch_step.id)
                 if first_chain_step:
-                    await send_step(bot, db, employee, scenario, first_chain_step)
+                    await send_step(messenger, db, employee, scenario, first_chain_step)
                 return True
 
-            await send_step(bot, db, employee, scenario, branch_step)
+            await send_step(messenger, db, employee, scenario, branch_step)
             if branch_step.response_type == "launch_scenario" and branch_step.launch_scenario_key:
                 progress.waiting_for_response = False
                 progress.is_completed = True
                 progress.completed_at = datetime.utcnow()
                 progress.updated_at = datetime.utcnow()
                 db.commit()
-                await start_scenario(bot, db, employee, branch_step.launch_scenario_key)
+                await start_scenario(messenger, db, employee, branch_step.launch_scenario_key)
             return True
-    await advance_after_response(bot, db, employee, scenario, step)
+    await advance_after_response(messenger, db, employee, scenario, step)
     return True
 
 
 async def handle_button_response_by_step_id(
-    bot: Bot,
+    messenger_or_bot: Any,
     db: Session,
     employee: Employee,
     step_id: int,
@@ -799,7 +800,7 @@ async def handle_button_response_by_step_id(
     if not step:
         return False
     return await handle_button_response(
-        bot,
+        messenger_or_bot,
         db,
         employee,
         step.flow_key,
@@ -809,7 +810,7 @@ async def handle_button_response_by_step_id(
 
 
 async def handle_file_response(
-    bot: Bot,
+    messenger_or_bot: Any,
     db: Session,
     employee: Employee,
     uploaded_file: EmployeeFile,
@@ -830,11 +831,12 @@ async def handle_file_response(
         return False
     employee.candidate_status = step.step_key
     db.commit()
-    await advance_after_response(bot, db, employee, scenario, step)
+    await advance_after_response(messenger_or_bot, db, employee, scenario, step)
     return True
 
 
-async def start_scenario(bot: Bot, db: Session, employee: Employee, scenario_key: str) -> bool:
+async def start_scenario(messenger_or_bot: Any, db: Session, employee: Employee, scenario_key: str) -> bool:
+    messenger = as_messenger(messenger_or_bot)
     scenario = db.query(ScenarioTemplate).filter(ScenarioTemplate.scenario_key == scenario_key).first()
     if not scenario or not matches_role_scope(employee, scenario):
         return False
@@ -843,5 +845,5 @@ async def start_scenario(bot: Bot, db: Session, employee: Employee, scenario_key
         return False
     reset_progress(db, employee.id, scenario_key)
     db.commit()
-    await send_step(bot, db, employee, scenario, first_step)
+    await send_step(messenger, db, employee, scenario, first_step)
     return True

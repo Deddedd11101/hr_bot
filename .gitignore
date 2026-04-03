@@ -7,6 +7,7 @@ __pycache__/
 
 # Local runtime data
 hr_bot.db
+storage/media_library/
 storage/employee_files/
 storage/scenario_step_files/
 

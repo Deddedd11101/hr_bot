@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from .config import settings
 from .database import SessionLocal
+from .messaging import as_messenger
 from .models import Employee, FlowLaunchRequest, FlowStepTemplate, MassMessageAction, MassScenarioAction, OnboardingEvent, ScenarioTemplate
 from .scenario_engine import SINGLE_STEP_REQUEST_PREFIX, add_workdays, format_message, get_scenario_steps, get_step_by_key, matches_role_scope, scenario_anchor_date, send_step, start_scenario
 
@@ -115,12 +116,13 @@ def _mass_target_employees(
 
 
 async def _send_mass_message(db: Session, bot, employee: Employee, message_text: str, requested_at: datetime) -> bool:
+    messenger = as_messenger(bot)
     if not employee.telegram_user_id:
         return False
     rendered_text = format_message(db, message_text, employee, requested_at.date(), requested_at.strftime("%H:%M")).strip()
     if not rendered_text:
         return False
-    await bot.send_message(chat_id=employee.telegram_user_id, text=rendered_text)
+    await messenger.send_text(chat_id=employee.telegram_user_id, text=rendered_text)
     return True
 
 

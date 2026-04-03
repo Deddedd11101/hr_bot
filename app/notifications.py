@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-from aiogram import Bot
-
 from .database import SessionLocal
+from .messaging import as_messenger
 from .models import Employee, HrSettings
 
 
@@ -17,7 +16,8 @@ def _employee_label(employee: Employee) -> str:
     return f"ФИО не указано (ID {employee.id})"
 
 
-async def notify_hr(bot: Bot, text: str) -> None:
+async def notify_hr(messenger_or_bot, text: str) -> None:
+    messenger = as_messenger(messenger_or_bot)
     with SessionLocal() as db:
         settings = db.get(HrSettings, 1)
         recipients = _notification_recipients(settings)
@@ -25,7 +25,7 @@ async def notify_hr(bot: Bot, text: str) -> None:
         return
     for chat_id in recipients:
         try:
-            await bot.send_message(chat_id=chat_id, text=text)
+            await messenger.send_text(chat_id=chat_id, text=text)
         except Exception:
             continue
 
@@ -61,7 +61,8 @@ def _is_notification_enabled(settings: HrSettings | None, kind: str) -> bool:
     return True
 
 
-async def notify_hr_by_kind(bot: Bot, text: str, kind: str) -> None:
+async def notify_hr_by_kind(messenger_or_bot, text: str, kind: str) -> None:
+    messenger = as_messenger(messenger_or_bot)
     with SessionLocal() as db:
         settings = db.get(HrSettings, 1)
         if not _is_notification_enabled(settings, kind):
@@ -71,30 +72,30 @@ async def notify_hr_by_kind(bot: Bot, text: str, kind: str) -> None:
         return
     for chat_id in recipients:
         try:
-            await bot.send_message(chat_id=chat_id, text=text)
+            await messenger.send_text(chat_id=chat_id, text=text)
         except Exception:
             continue
 
 
-async def notify_hr_new_employee(bot: Bot, employee: Employee) -> None:
+async def notify_hr_new_employee(messenger_or_bot, employee: Employee) -> None:
     await notify_hr_by_kind(
-        bot,
+        messenger_or_bot,
         f"Новый сотрудник зарегистрирован в боте: {_employee_label(employee)}.",
         NOTIFY_USER_ACTIONS,
     )
 
 
-async def notify_hr_stage(bot: Bot, employee: Employee, stage_key: str) -> None:
+async def notify_hr_stage(messenger_or_bot, employee: Employee, stage_key: str) -> None:
     await notify_hr_by_kind(
-        bot,
+        messenger_or_bot,
         f"Сотрудник {_employee_label(employee)} прошёл этап: {stage_key}.",
         NOTIFY_SCENARIO_COMPLETED,
     )
 
 
-async def notify_hr_test_task_received(bot: Bot, employee: Employee, filename: str) -> None:
+async def notify_hr_test_task_received(messenger_or_bot, employee: Employee, filename: str) -> None:
     await notify_hr_by_kind(
-        bot,
+        messenger_or_bot,
         f"Кандидат {_employee_label(employee)} отправил тестовое задание: {filename}.",
         NOTIFY_TEST_TASK_RECEIVED,
     )

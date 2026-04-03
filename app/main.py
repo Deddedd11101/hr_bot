@@ -5,10 +5,6 @@ import shutil
 from typing import List, Optional
 from collections import defaultdict
 
-from aiogram import Bot
-from aiogram.client.default import DefaultBotProperties
-from aiogram.enums import ParseMode
-from aiogram.types import FSInputFile
 from fastapi import Depends, FastAPI, File, Form, Request, UploadFile, status
 from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -34,6 +30,7 @@ from .file_storage import (
     build_employee_profile_photo_path,
     build_step_attachment_path,
 )
+from .messaging import create_telegram_messenger
 from .models import (
     AdminAccount,
     BotMenuButton,
@@ -1004,12 +1001,9 @@ async def launch_flow(
     if not first_step:
         return _employee_edit_redirect(employee_id, "В сценарии нет шагов для запуска.", "error")
 
-    bot = Bot(
-        token=settings.TELEGRAM_BOT_TOKEN,
-        default=DefaultBotProperties(parse_mode=ParseMode.HTML),
-    )
+    messenger = create_telegram_messenger(settings.TELEGRAM_BOT_TOKEN)
     try:
-        started = await start_scenario(bot, db, employee, scenario.scenario_key)
+        started = await start_scenario(messenger, db, employee, scenario.scenario_key)
         if not started:
             return _employee_edit_redirect(employee_id, "Сценарий не удалось запустить.", "error")
 
@@ -1041,7 +1035,7 @@ async def launch_flow(
     except Exception as exc:
         return _employee_edit_redirect(employee_id, f"Ошибка запуска сценария: {exc}", "error")
     finally:
-        await bot.session.close()
+        await messenger.close()
 
 
 @app.post("/employees/{employee_id}/schedule")
@@ -1107,7 +1101,7 @@ def delete_scheduled_flow(
     return _employee_edit_redirect(employee_id, "Запланированная отправка удалена.", "success")
 
 
-async def _send_mass_message(db: Session, bot: Bot, employee: Employee, message_text: str) -> bool:
+async def _send_mass_message(db: Session, messenger, employee: Employee, message_text: str) -> bool:
     if not employee.telegram_user_id:
         return False
     rendered_text = format_message(
@@ -1119,7 +1113,7 @@ async def _send_mass_message(db: Session, bot: Bot, employee: Employee, message_
     ).strip()
     if not rendered_text:
         return False
-    await bot.send_message(chat_id=employee.telegram_user_id, text=rendered_text)
+    await messenger.send_text(chat_id=employee.telegram_user_id, text=rendered_text)
     return True
 
 
@@ -1246,10 +1240,7 @@ async def bulk_launch_scenario(
     if not settings.TELEGRAM_BOT_TOKEN:
         return _mass_actions_redirect("Не задан TELEGRAM_BOT_TOKEN.", "error")
 
-    bot = Bot(
-        token=settings.TELEGRAM_BOT_TOKEN,
-        default=DefaultBotProperties(parse_mode=ParseMode.HTML),
-    )
+    messenger = create_telegram_messenger(settings.TELEGRAM_BOT_TOKEN)
     started_count = 0
     try:
         for employee in recipients:
@@ -1257,7 +1248,7 @@ async def bulk_launch_scenario(
                 continue
             if not _scenario_matches_employee_role(scenario, employee):
                 continue
-            started = await start_scenario(bot, db, employee, scenario.scenario_key)
+            started = await start_scenario(messenger, db, employee, scenario.scenario_key)
             if started:
                 started_count += 1
         db.add(
@@ -1276,7 +1267,7 @@ async def bulk_launch_scenario(
         )
         db.commit()
     finally:
-        await bot.session.close()
+        await messenger.close()
 
     if not started_count:
         return _mass_actions_redirect("Не удалось запустить сценарий ни для одного получателя.", "error")
@@ -1309,10 +1300,7 @@ async def bulk_launch_survey(
     if not settings.TELEGRAM_BOT_TOKEN:
         return _mass_actions_redirect("Не задан TELEGRAM_BOT_TOKEN.", "error")
 
-    bot = Bot(
-        token=settings.TELEGRAM_BOT_TOKEN,
-        default=DefaultBotProperties(parse_mode=ParseMode.HTML),
-    )
+    messenger = create_telegram_messenger(settings.TELEGRAM_BOT_TOKEN)
     started_count = 0
     try:
         for employee in recipients:
@@ -1320,7 +1308,7 @@ async def bulk_launch_survey(
                 continue
             if not _scenario_matches_employee_role(scenario, employee):
                 continue
-            started = await start_scenario(bot, db, employee, scenario.scenario_key)
+            started = await start_scenario(messenger, db, employee, scenario.scenario_key)
             if started:
                 started_count += 1
         db.add(
@@ -1340,7 +1328,7 @@ async def bulk_launch_survey(
         )
         db.commit()
     finally:
-        await bot.session.close()
+        await messenger.close()
 
     if not started_count:
         return _mass_actions_redirect("Не удалось запустить опрос ни для одного получателя.", "error")
@@ -1406,14 +1394,11 @@ async def bulk_send_message(
     if not settings.TELEGRAM_BOT_TOKEN:
         return _mass_actions_redirect("Не задан TELEGRAM_BOT_TOKEN.", "error")
 
-    bot = Bot(
-        token=settings.TELEGRAM_BOT_TOKEN,
-        default=DefaultBotProperties(parse_mode=ParseMode.HTML),
-    )
+    messenger = create_telegram_messenger(settings.TELEGRAM_BOT_TOKEN)
     sent_count = 0
     try:
         for employee in recipients:
-            if await _send_mass_message(db, bot, employee, message_text):
+            if await _send_mass_message(db, messenger, employee, message_text):
                 sent_count += 1
         db.add(
             MassMessageAction(
@@ -1431,7 +1416,7 @@ async def bulk_send_message(
         )
         db.commit()
     finally:
-        await bot.session.close()
+        await messenger.close()
 
     if not sent_count:
         return _mass_actions_redirect("Не удалось отправить сообщение ни одному получателю.", "error")
@@ -1564,11 +1549,11 @@ async def send_employee_file(
 
 
 async def _send_file_to_telegram(chat_id: str, path: Path, filename: str) -> None:
-    bot = Bot(token=settings.TELEGRAM_BOT_TOKEN)
+    messenger = create_telegram_messenger(settings.TELEGRAM_BOT_TOKEN, parse_mode=None)
     try:
-        await bot.send_document(chat_id=chat_id, document=FSInputFile(str(path), filename=filename))
+        await messenger.send_document_path(chat_id=chat_id, path=path, filename=filename)
     finally:
-        await bot.session.close()
+        await messenger.close()
 
 
 @app.post("/employees/{employee_id}/document-links")
