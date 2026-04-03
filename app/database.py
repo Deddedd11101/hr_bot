@@ -501,3 +501,73 @@ def _ensure_sqlite_schema() -> None:
                 )
             )
             conn.execute(text("CREATE INDEX IF NOT EXISTS ix_mass_message_actions_id ON mass_message_actions (id)"))
+
+        messenger_accounts_info = conn.execute(text("PRAGMA table_info(employee_messenger_accounts)")).fetchall()
+        if not messenger_accounts_info:
+            conn.execute(
+                text(
+                    """
+                    CREATE TABLE employee_messenger_accounts (
+                        id INTEGER NOT NULL,
+                        employee_id INTEGER NOT NULL,
+                        channel VARCHAR(32) NOT NULL,
+                        external_user_id VARCHAR(255) NOT NULL,
+                        external_username VARCHAR(255),
+                        is_primary BOOLEAN NOT NULL DEFAULT 0,
+                        is_active BOOLEAN NOT NULL DEFAULT 1,
+                        created_at DATETIME NOT NULL,
+                        updated_at DATETIME NOT NULL,
+                        PRIMARY KEY (id)
+                    )
+                    """
+                )
+            )
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_employee_messenger_accounts_id ON employee_messenger_accounts (id)"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_employee_messenger_accounts_employee_id ON employee_messenger_accounts (employee_id)"))
+            conn.execute(
+                text(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS uq_employee_messenger_accounts_channel_user ON employee_messenger_accounts (channel, external_user_id)"
+                )
+            )
+            conn.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS ix_employee_messenger_accounts_employee_channel ON employee_messenger_accounts (employee_id, channel)"
+                )
+            )
+
+        employee_columns = {row[1] for row in conn.execute(text("PRAGMA table_info(employees)")).fetchall()}
+        if messenger_accounts_info or conn.execute(text("PRAGMA table_info(employee_messenger_accounts)")).fetchall():
+            if {"telegram_user_id", "telegram_username"} <= employee_columns:
+                conn.execute(
+                    text(
+                        """
+                        INSERT INTO employee_messenger_accounts (
+                            employee_id,
+                            channel,
+                            external_user_id,
+                            external_username,
+                            is_primary,
+                            is_active,
+                            created_at,
+                            updated_at
+                        )
+                        SELECT
+                            e.id,
+                            'telegram',
+                            e.telegram_user_id,
+                            e.telegram_username,
+                            1,
+                            1,
+                            COALESCE(e.created_at, CURRENT_TIMESTAMP),
+                            CURRENT_TIMESTAMP
+                        FROM employees e
+                        WHERE NULLIF(TRIM(COALESCE(e.telegram_user_id, '')), '') IS NOT NULL
+                          AND NOT EXISTS (
+                              SELECT 1
+                              FROM employee_messenger_accounts a
+                              WHERE a.channel = 'telegram'
+                                AND a.external_user_id = e.telegram_user_id
+                          )
+                        """
+                    )
+                )

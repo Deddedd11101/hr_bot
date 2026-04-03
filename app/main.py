@@ -31,7 +31,7 @@ from .file_storage import (
     build_step_attachment_path,
 )
 from .messaging import create_telegram_messenger
-from .messaging.identity import get_primary_chat_id, set_primary_chat_id
+from .messaging.identity import get_primary_chat_id, set_primary_chat_id, sync_legacy_telegram_account
 from .models import (
     AdminAccount,
     BotMenuButton,
@@ -795,7 +795,7 @@ def update_employee(
     first_day = datetime.strptime(first_workday, "%Y-%m-%d").date() if first_workday else None
     parsed_birth_date = datetime.strptime(birth_date, "%Y-%m-%d").date() if birth_date else None
     employee.full_name = full_name.strip() or None
-    set_primary_chat_id(employee, telegram_user_id)
+    set_primary_chat_id(employee, telegram_user_id, db=db)
     employee.first_workday = first_day
     desired_position = desired_position.strip()
     employee.desired_position = desired_position or None
@@ -824,6 +824,8 @@ def update_employee(
         employee.employee_stage = normalized_stage if normalized_stage in EMPLOYEE_STAGE_VALUES else None
         employee.employee_data_consent = employee_data_consent == "true"
     employee.notes = notes.strip() or None
+    db.commit()
+    sync_legacy_telegram_account(db, employee)
     db.commit()
     return RedirectResponse(
         url="/candidates" if _employee_list_kind(employee) == "candidates" else "/employees",
@@ -960,6 +962,7 @@ def create_employee(
     set_primary_chat_id(employee, telegram_user_id)
     db.add(employee)
     db.flush()
+    sync_legacy_telegram_account(db, employee)
     db.add(
         FlowLaunchRequest(
             employee_id=employee.id,
@@ -992,7 +995,7 @@ async def launch_flow(
     scenario = db.query(ScenarioTemplate).filter(ScenarioTemplate.scenario_key == flow_key).first()
     if not scenario:
         return _employee_edit_redirect(employee_id, "Сценарий не найден.", "error")
-    if not get_primary_chat_id(employee):
+    if not get_primary_chat_id(employee, db=db):
         return _employee_edit_redirect(employee_id, "У сотрудника не указан ID пользователя в канале.", "error")
     if not _scenario_matches_employee_role(scenario, employee):
         return _employee_edit_redirect(employee_id, "Сценарий недоступен для роли этого сотрудника.", "error")
@@ -1104,7 +1107,7 @@ def delete_scheduled_flow(
 
 
 async def _send_mass_message(db: Session, messenger, employee: Employee, message_text: str) -> bool:
-    chat_id = get_primary_chat_id(employee)
+    chat_id = get_primary_chat_id(employee, db=db)
     if not chat_id:
         return False
     rendered_text = format_message(
@@ -1496,7 +1499,7 @@ async def upload_employee_file(
     db.add(db_file)
     db.commit()
 
-    chat_id = get_primary_chat_id(employee)
+    chat_id = get_primary_chat_id(employee, db=db)
     if send_to_telegram == "true" and chat_id and settings.TELEGRAM_BOT_TOKEN:
         await _send_file_to_telegram(chat_id, destination, filename)
 
@@ -1543,7 +1546,7 @@ async def send_employee_file(
     db_file = db.get(EmployeeFile, file_id)
     if not employee or not db_file or db_file.employee_id != employee_id:
         return RedirectResponse(url="/employees", status_code=status.HTTP_303_SEE_OTHER)
-    chat_id = get_primary_chat_id(employee)
+    chat_id = get_primary_chat_id(employee, db=db)
     if not chat_id or not settings.TELEGRAM_BOT_TOKEN:
         return RedirectResponse(url=f"/employees/{employee_id}/edit", status_code=status.HTTP_303_SEE_OTHER)
 

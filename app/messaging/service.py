@@ -9,7 +9,14 @@ from ..models import BotMenuButton, BotMenuSet, Employee, EmployeeFile, HrSettin
 from ..notifications import notify_hr_new_employee, notify_hr_test_task_received
 from ..scenario_engine import handle_button_response_by_step_id, handle_file_response, handle_text_response, start_scenario
 from .base import MessengerClient
-from .identity import get_primary_chat_id, get_public_chat_handle, set_primary_chat_id, set_public_chat_handle
+from .identity import (
+    find_employee_by_channel_user_id,
+    get_primary_chat_id,
+    get_public_chat_handle,
+    set_primary_chat_id,
+    set_public_chat_handle,
+    sync_legacy_telegram_account,
+)
 
 
 def detect_category_from_caption(caption: Optional[str]) -> str:
@@ -71,7 +78,7 @@ def menu_button_labels(db: Session, employee: Employee) -> list[str]:
 
 
 async def send_menu(messenger: MessengerClient, db: Session, employee: Employee, text: str) -> None:
-    chat_id = get_primary_chat_id(employee)
+    chat_id = get_primary_chat_id(employee, db=db)
     if not chat_id:
         return
     labels = menu_button_labels(db, employee)
@@ -121,12 +128,12 @@ async def handle_menu_button(messenger: MessengerClient, db: Session, employee: 
 
 
 def get_or_create_employee_by_chat(db: Session, chat_user_id: str, username: Optional[str]) -> tuple[Employee, bool]:
-    employee = db.query(Employee).filter(Employee.telegram_user_id == chat_user_id).first()
+    employee = find_employee_by_channel_user_id(db, channel="telegram", external_user_id=chat_user_id)
     created = False
     if employee:
-        if get_public_chat_handle(employee) != username:
-            set_public_chat_handle(employee, username)
-        set_primary_chat_id(employee, chat_user_id)
+        if get_public_chat_handle(employee, db=db) != username:
+            set_public_chat_handle(employee, username, db=db)
+        set_primary_chat_id(employee, chat_user_id, db=db)
         employee.is_flow_scheduled = False
         db.commit()
         return employee, created
@@ -145,6 +152,8 @@ def get_or_create_employee_by_chat(db: Session, chat_user_id: str, username: Opt
     db.add(employee)
     db.commit()
     db.refresh(employee)
+    sync_legacy_telegram_account(db, employee)
+    db.commit()
     created = True
     return employee, created
 
@@ -233,11 +242,11 @@ async def handle_text_event(
     username: Optional[str],
     text: str,
 ) -> bool:
-    employee = db.query(Employee).filter(Employee.telegram_user_id == chat_user_id).first()
+    employee = find_employee_by_channel_user_id(db, channel="telegram", external_user_id=chat_user_id)
     if not employee:
         return False
-    if get_public_chat_handle(employee) != username:
-        set_public_chat_handle(employee, username)
+    if get_public_chat_handle(employee, db=db) != username:
+        set_public_chat_handle(employee, username, db=db)
         db.commit()
     handled = await handle_text_response(messenger, db, employee, type("MessageStub", (), {"text": text})())
     if handled:
@@ -253,11 +262,11 @@ async def handle_button_event(
     step_id: int,
     option_index: int,
 ) -> Optional[bool]:
-    employee = db.query(Employee).filter(Employee.telegram_user_id == chat_user_id).first()
+    employee = find_employee_by_channel_user_id(db, channel="telegram", external_user_id=chat_user_id)
     if not employee:
         return None
-    if get_public_chat_handle(employee) != username:
-        set_public_chat_handle(employee, username)
+    if get_public_chat_handle(employee, db=db) != username:
+        set_public_chat_handle(employee, username, db=db)
         db.commit()
     return await handle_button_response_by_step_id(
         messenger,

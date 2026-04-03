@@ -611,7 +611,7 @@ async def send_step(
     auto_follow: bool = True,
 ) -> None:
     messenger = as_messenger(messenger_or_bot)
-    chat_id = get_primary_chat_id(employee)
+    chat_id = get_primary_chat_id(employee, db=db)
     if not chat_id:
         return
 

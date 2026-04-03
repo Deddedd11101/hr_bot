@@ -1,40 +1,204 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Optional
 
-from ..models import Employee
+from sqlalchemy.orm import Session
+
+from ..models import Employee, EmployeeMessengerAccount
 
 
-def get_primary_chat_id(employee: Employee) -> Optional[str]:
-    value = (employee.telegram_user_id or "").strip()
-    return value or None
+def _normalized(value: Optional[str]) -> Optional[str]:
+    text = (value or "").strip()
+    return text or None
 
 
-def set_primary_chat_id(employee: Employee, value: Optional[str]) -> None:
-    normalized = (value or "").strip()
-    employee.telegram_user_id = normalized or None
+def get_primary_account(
+    employee: Employee,
+    db: Session | None = None,
+    channel: str | None = None,
+) -> Optional[EmployeeMessengerAccount]:
+    if db is None or employee.id is None:
+        return None
+
+    query = db.query(EmployeeMessengerAccount).filter(
+        EmployeeMessengerAccount.employee_id == employee.id,
+        EmployeeMessengerAccount.is_active.is_(True),
+    )
+    if channel:
+        query = query.filter(EmployeeMessengerAccount.channel == channel)
+
+    account = (
+        query.filter(EmployeeMessengerAccount.is_primary.is_(True))
+        .order_by(EmployeeMessengerAccount.id.asc())
+        .first()
+    )
+    if account:
+        return account
+
+    return query.order_by(EmployeeMessengerAccount.id.asc()).first()
 
 
-def get_public_chat_handle(employee: Employee) -> Optional[str]:
-    value = (employee.telegram_username or "").strip()
-    return value or None
+def find_employee_by_channel_user_id(
+    db: Session,
+    *,
+    channel: str,
+    external_user_id: Optional[str],
+) -> Optional[Employee]:
+    normalized_user_id = _normalized(external_user_id)
+    if not normalized_user_id:
+        return None
+
+    account = (
+        db.query(EmployeeMessengerAccount)
+        .filter(
+            EmployeeMessengerAccount.channel == channel,
+            EmployeeMessengerAccount.external_user_id == normalized_user_id,
+            EmployeeMessengerAccount.is_active.is_(True),
+        )
+        .order_by(EmployeeMessengerAccount.is_primary.desc(), EmployeeMessengerAccount.id.asc())
+        .first()
+    )
+    if account:
+        return db.get(Employee, account.employee_id)
+
+    if channel == "telegram":
+        return db.query(Employee).filter(Employee.telegram_user_id == normalized_user_id).first()
+    return None
 
 
-def set_public_chat_handle(employee: Employee, value: Optional[str]) -> None:
-    normalized = (value or "").strip()
-    employee.telegram_username = normalized or None
+def get_primary_chat_id(
+    employee: Employee,
+    db: Session | None = None,
+    channel: str | None = None,
+) -> Optional[str]:
+    account = get_primary_account(employee, db=db, channel=channel)
+    if account:
+        return _normalized(account.external_user_id)
+    return _normalized(employee.telegram_user_id)
+
+
+def set_primary_chat_id(
+    employee: Employee,
+    value: Optional[str],
+    db: Session | None = None,
+    channel: str = "telegram",
+) -> None:
+    normalized = _normalized(value)
+    employee.telegram_user_id = normalized
+    if db is not None and employee.id is not None:
+        upsert_employee_channel_account(
+            db,
+            employee,
+            channel=channel,
+            external_user_id=normalized,
+            external_username=_normalized(employee.telegram_username),
+            make_primary=(channel == "telegram"),
+        )
+
+
+def get_public_chat_handle(
+    employee: Employee,
+    db: Session | None = None,
+    channel: str = "telegram",
+) -> Optional[str]:
+    account = get_primary_account(employee, db=db, channel=channel)
+    if account and _normalized(account.external_username):
+        return _normalized(account.external_username)
+    return _normalized(employee.telegram_username)
+
+
+def set_public_chat_handle(
+    employee: Employee,
+    value: Optional[str],
+    db: Session | None = None,
+    channel: str = "telegram",
+) -> None:
+    normalized = _normalized(value)
+    employee.telegram_username = normalized
+    if db is not None and employee.id is not None and _normalized(employee.telegram_user_id):
+        upsert_employee_channel_account(
+            db,
+            employee,
+            channel=channel,
+            external_user_id=_normalized(employee.telegram_user_id),
+            external_username=normalized,
+            make_primary=(channel == "telegram"),
+        )
+
+
+def upsert_employee_channel_account(
+    db: Session,
+    employee: Employee,
+    *,
+    channel: str,
+    external_user_id: Optional[str],
+    external_username: Optional[str] = None,
+    make_primary: bool = False,
+) -> Optional[EmployeeMessengerAccount]:
+    normalized_user_id = _normalized(external_user_id)
+    if employee.id is None or not normalized_user_id:
+        return None
+
+    account = (
+        db.query(EmployeeMessengerAccount)
+        .filter(
+            EmployeeMessengerAccount.employee_id == employee.id,
+            EmployeeMessengerAccount.channel == channel,
+            EmployeeMessengerAccount.external_user_id == normalized_user_id,
+        )
+        .first()
+    )
+    now = datetime.utcnow()
+    if not account:
+        account = EmployeeMessengerAccount(
+            employee_id=employee.id,
+            channel=channel,
+            external_user_id=normalized_user_id,
+            external_username=_normalized(external_username),
+            is_primary=bool(make_primary),
+            is_active=True,
+            created_at=now,
+            updated_at=now,
+        )
+        db.add(account)
+    else:
+        account.external_username = _normalized(external_username)
+        account.is_active = True
+        if make_primary:
+            account.is_primary = True
+        account.updated_at = now
+
+    if make_primary:
+        primary_reset_query = db.query(EmployeeMessengerAccount).filter(
+            EmployeeMessengerAccount.employee_id == employee.id,
+        )
+        if account.id is not None:
+            primary_reset_query = primary_reset_query.filter(EmployeeMessengerAccount.id != account.id)
+        primary_reset_query.update({"is_primary": False}, synchronize_session=False)
+        account.is_primary = True
+
+    return account
+
+
+def sync_legacy_telegram_account(db: Session, employee: Employee) -> Optional[EmployeeMessengerAccount]:
+    return upsert_employee_channel_account(
+        db,
+        employee,
+        channel="telegram",
+        external_user_id=_normalized(employee.telegram_user_id),
+        external_username=_normalized(employee.telegram_username),
+        make_primary=True,
+    )
 
 
 def get_manager_chat_id(employee: Employee) -> Optional[str]:
-    value = (employee.manager_telegram_id or "").strip()
-    return value or None
+    return _normalized(employee.manager_telegram_id)
 
 
 def get_mentor_adaptation_chat_id(employee: Employee) -> Optional[str]:
-    value = (employee.mentor_adaptation_telegram_id or "").strip()
-    return value or None
+    return _normalized(employee.mentor_adaptation_telegram_id)
 
 
 def get_mentor_ipr_chat_id(employee: Employee) -> Optional[str]:
-    value = (employee.mentor_ipr_telegram_id or "").strip()
-    return value or None
+    return _normalized(employee.mentor_ipr_telegram_id)
