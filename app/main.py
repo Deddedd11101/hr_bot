@@ -5,7 +5,7 @@ import shutil
 from typing import List, Optional
 from collections import defaultdict
 
-from fastapi import Depends, FastAPI, File, Form, Request, UploadFile, status
+from fastapi import Body, Depends, FastAPI, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -31,7 +31,12 @@ from .file_storage import (
     build_step_attachment_path,
 )
 from .messaging import create_telegram_messenger
-from .messaging.identity import get_primary_chat_id, set_primary_chat_id, sync_legacy_telegram_account
+from .messaging.identity import (
+    get_primary_chat_id,
+    get_public_chat_handle,
+    set_primary_chat_id,
+    sync_legacy_telegram_account,
+)
 from .models import (
     AdminAccount,
     BotMenuButton,
@@ -93,6 +98,13 @@ def _require_auth(request: Request) -> Optional[RedirectResponse]:
     if getattr(request.state, "current_user", None):
         return None
     return _redirect_login()
+
+
+def _require_api_auth(request: Request) -> AdminAccount:
+    current_user = getattr(request.state, "current_user", None)
+    if current_user:
+        return current_user
+    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Требуется авторизация")
 
 
 def _require_admin(request: Request) -> Optional[RedirectResponse]:
@@ -502,11 +514,25 @@ def _employees_page(
     auth_redirect = _require_auth(request)
     if auth_redirect:
         return auth_redirect
+    employee_views = _build_employee_views(list_kind, db)
+    page_meta = _employee_list_meta(list_kind)
+    return _render(
+        request,
+        "index.html",
+        {
+            "employee_views": employee_views,
+            **page_meta,
+        },
+    )
+
+
+def _build_employee_views(list_kind: str, db: Session) -> list[dict]:
     query = db.query(Employee)
     if list_kind == "candidates":
         query = query.filter(Employee.employee_stage == "candidate")
     else:
         query = query.filter((Employee.employee_stage != "candidate") | (Employee.employee_stage.is_(None)))
+
     employees = query.order_by(Employee.id.desc()).all()
     employee_ids = [employee.id for employee in employees]
     scenario_titles = {
@@ -526,29 +552,96 @@ def _employees_page(
         )
         for launch_request in pending_launch_requests:
             launch_requests_by_employee.setdefault(launch_request.employee_id, launch_request)
+
     today = datetime.now().date()
-    employee_views = [
-        {
-            "employee": emp,
-            "status": _employee_status_label(emp),
-            "workdays": _workdays_between(emp.first_workday, today),
-            "planned_scenario_title": scenario_titles.get(
-                getattr(launch_requests_by_employee.get(emp.id), "flow_key", ""),
-                "—",
-            ),
-            "telegram_link": _telegram_profile_url(getattr(emp, "telegram_username", None), emp.telegram_user_id),
-        }
-        for emp in employees
-    ]
-    page_meta = _employee_list_meta(list_kind)
-    return _render(
-        request,
-        "index.html",
-        {
-            "employee_views": employee_views,
-            **page_meta,
-        },
+    employee_views: list[dict] = []
+    for employee in employees:
+        chat_handle = get_public_chat_handle(employee, db=db)
+        chat_id = get_primary_chat_id(employee, db=db)
+        employee_views.append(
+            {
+                "employee": employee,
+                "status": _employee_status_label(employee),
+                "work_stage": _candidate_work_stage_label(employee),
+                "workdays": _workdays_between(employee.first_workday, today),
+                "planned_scenario_title": scenario_titles.get(
+                    getattr(launch_requests_by_employee.get(employee.id), "flow_key", ""),
+                    "—",
+                ),
+                "chat_id": chat_id,
+                "chat_handle": chat_handle,
+                "chat_link": _telegram_profile_url(chat_handle, chat_id),
+            }
+        )
+    return employee_views
+
+
+def _serialize_employee_view(item: dict, list_kind: str) -> dict:
+    employee = item["employee"]
+    return {
+        "id": employee.id,
+        "full_name": employee.full_name or "",
+        "chat_id": item.get("chat_id") or "",
+        "chat_handle": item.get("chat_handle") or "",
+        "chat_link": item.get("chat_link"),
+        "position": employee.desired_position or "",
+        "status_label": item.get("status") or "",
+        "candidate_work_stage_label": item.get("work_stage") or "",
+        "planned_scenario_title": item.get("planned_scenario_title") or "—",
+        "first_workday": employee.first_workday.isoformat() if employee.first_workday else None,
+        "first_workday_label": employee.first_workday.strftime("%d.%m.%Y") if employee.first_workday else "—",
+        "test_task_due_at": employee.test_task_due_at.isoformat() if employee.test_task_due_at else None,
+        "test_task_due_at_label": employee.test_task_due_at.strftime("%d.%m.%Y %H:%M") if employee.test_task_due_at else "—",
+        "workdays": item.get("workdays", 0),
+        "edit_url": f"/employees/{employee.id}/edit",
+        "list_kind": list_kind,
+    }
+
+
+def _parse_employee_stage_for_create(employee_stage: str, list_kind: str) -> Optional[str]:
+    normalized_stage = (employee_stage or "").strip()
+    if list_kind == "candidates":
+        return "candidate"
+    if normalized_stage in EMPLOYEE_STAGE_VALUES:
+        return normalized_stage
+    return "staff"
+
+
+def _create_employee_record(
+    db: Session,
+    *,
+    full_name: str,
+    chat_id: str,
+    first_workday: str,
+    employee_stage: str,
+    list_kind: str,
+) -> Employee:
+    first_day = datetime.strptime(first_workday, "%Y-%m-%d").date() if first_workday else None
+    employee = Employee(
+        full_name=full_name.strip() or None,
+        telegram_user_id=None,
+        first_workday=first_day,
+        created_at=datetime.utcnow(),
+        is_flow_scheduled=False,
+        candidate_status="new",
+        employee_stage=_parse_employee_stage_for_create(employee_stage, list_kind),
+        candidate_work_stage="testing" if list_kind == "candidates" else None,
     )
+    set_primary_chat_id(employee, chat_id)
+    db.add(employee)
+    db.flush()
+    sync_legacy_telegram_account(db, employee)
+    db.add(
+        FlowLaunchRequest(
+            employee_id=employee.id,
+            flow_key="recruitment_hiring",
+            requested_at=datetime.utcnow(),
+            processed_at=None,
+        )
+    )
+    db.commit()
+    db.refresh(employee)
+    return employee
 
 
 @app.get("/candidates")
@@ -565,6 +658,76 @@ def employees_page(
     db: Session = Depends(get_db),
 ):
     return _employees_page(request, "employees", db)
+
+
+@app.get("/api/employees")
+def employees_api(
+    request: Request,
+    list_kind: str = "employees",
+    db: Session = Depends(get_db),
+):
+    _require_api_auth(request)
+    normalized_kind = "candidates" if list_kind == "candidates" else "employees"
+    employee_views = _build_employee_views(normalized_kind, db)
+    return {
+        "meta": {
+            **_employee_list_meta(normalized_kind),
+            "list_kind": normalized_kind,
+            "classic_page_url": "/candidates" if normalized_kind == "candidates" else "/employees",
+        },
+        "items": [_serialize_employee_view(item, normalized_kind) for item in employee_views],
+    }
+
+
+@app.post("/api/employees")
+def create_employee_api(
+    request: Request,
+    payload: dict = Body(...),
+    db: Session = Depends(get_db),
+):
+    _require_api_auth(request)
+    list_kind = "candidates" if (payload.get("list_kind") or "").strip() == "candidates" else "employees"
+    employee = _create_employee_record(
+        db,
+        full_name=str(payload.get("full_name") or ""),
+        chat_id=str(payload.get("chat_id") or ""),
+        first_workday=str(payload.get("first_workday") or ""),
+        employee_stage=str(payload.get("employee_stage") or ""),
+        list_kind=list_kind,
+    )
+    views = _build_employee_views(list_kind, db)
+    item = next((row for row in views if row["employee"].id == employee.id), None)
+    return {
+        "meta": {
+            **_employee_list_meta(list_kind),
+            "list_kind": list_kind,
+            "classic_page_url": "/candidates" if list_kind == "candidates" else "/employees",
+        },
+        "item": _serialize_employee_view(item, list_kind) if item else None,
+    }
+
+
+@app.get("/app/employees")
+def react_employees_page(
+    request: Request,
+    list_kind: str = "employees",
+):
+    auth_redirect = _require_auth(request)
+    if auth_redirect:
+        return auth_redirect
+    normalized_kind = "candidates" if list_kind == "candidates" else "employees"
+    return _render(
+        request,
+        "react_employees.html",
+        {
+            "active_tab": normalized_kind,
+            "react_page_title": "Список сотрудников 2.0",
+            "react_api_url": f"/api/employees?list_kind={normalized_kind}",
+            "react_create_url": "/api/employees",
+            "react_default_list_kind": normalized_kind,
+            "classic_page_url": "/candidates" if normalized_kind == "candidates" else "/employees",
+        },
+    )
 
 
 @app.get("/bulk-actions")
@@ -948,30 +1111,15 @@ def create_employee(
     auth_redirect = _require_auth(request)
     if auth_redirect:
         return auth_redirect
-    first_day = datetime.strptime(first_workday, "%Y-%m-%d").date() if first_workday else None
-
-    employee = Employee(
-        full_name=full_name.strip() or None,
-        telegram_user_id=None,
-        first_workday=first_day,
-        created_at=datetime.utcnow(),
-        is_flow_scheduled=False,
-        candidate_status="new",
-        employee_stage=employee_stage.strip() if employee_stage.strip() in EMPLOYEE_STAGE_VALUES else None,
+    list_kind = "candidates" if (employee_stage or "").strip() == "candidate" else "employees"
+    employee = _create_employee_record(
+        db,
+        full_name=full_name,
+        chat_id=telegram_user_id,
+        first_workday=first_workday,
+        employee_stage=employee_stage,
+        list_kind=list_kind,
     )
-    set_primary_chat_id(employee, telegram_user_id)
-    db.add(employee)
-    db.flush()
-    sync_legacy_telegram_account(db, employee)
-    db.add(
-        FlowLaunchRequest(
-            employee_id=employee.id,
-            flow_key="recruitment_hiring",
-            requested_at=datetime.utcnow(),
-            processed_at=None,
-        )
-    )
-    db.commit()
 
     return RedirectResponse(
         url="/candidates" if _employee_list_kind(employee) == "candidates" else "/employees",

@@ -541,7 +541,7 @@ def _ensure_sqlite_schema() -> None:
                 conn.execute(
                     text(
                         """
-                        INSERT INTO employee_messenger_accounts (
+                        INSERT OR IGNORE INTO employee_messenger_accounts (
                             employee_id,
                             channel,
                             external_user_id,
@@ -554,8 +554,8 @@ def _ensure_sqlite_schema() -> None:
                         SELECT
                             e.id,
                             'telegram',
-                            e.telegram_user_id,
-                            e.telegram_username,
+                            TRIM(e.telegram_user_id),
+                            NULLIF(TRIM(COALESCE(e.telegram_username, '')), ''),
                             1,
                             1,
                             COALESCE(e.created_at, CURRENT_TIMESTAMP),
@@ -566,7 +566,7 @@ def _ensure_sqlite_schema() -> None:
                               SELECT 1
                               FROM employee_messenger_accounts a
                               WHERE a.channel = 'telegram'
-                                AND a.external_user_id = e.telegram_user_id
+                                AND a.external_user_id = TRIM(e.telegram_user_id)
                           )
                         """
                     )

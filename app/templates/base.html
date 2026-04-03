@@ -5,6 +5,7 @@
     <title>HR Bot Admin</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <link rel="stylesheet" href="/static/styles.css">
+    {% block extra_head %}{% endblock %}
 </head>
 <body>
 <header class="header">
@@ -37,5 +38,6 @@
     </div>
 </main>
 
+{% block scripts %}{% endblock %}
 </body>
 </html>

@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+
+{% block extra_head %}
+    <link rel="stylesheet" href="/static/react_employees.css">
+{% endblock %}
+
+{% block content %}
+<section class="react-page">
+    <div class="react-page-header">
+        <div>
+            <p class="react-page-eyebrow">React Preview</p>
+            <h2>{{ react_page_title }}</h2>
+            <p class="muted">Новая версия списка сотрудников живёт параллельно со старой страницей и пока закрывает только просмотр списка.</p>
+        </div>
+        <a href="{{ classic_page_url }}" class="btn-secondary">Открыть классическую версию</a>
+    </div>
+
+    <div
+        id="react-employees-root"
+        data-api-url="{{ react_api_url }}"
+        data-create-url="{{ react_create_url }}"
+        data-classic-url="{{ classic_page_url }}"
+        data-default-list-kind="{{ react_default_list_kind }}"
+    ></div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="/static/react_employees_page.js"></script>
+{% endblock %}

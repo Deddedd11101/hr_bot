@@ -1,0 +1,347 @@
+.react-page {
+    display: grid;
+    gap: 24px;
+}
+
+.react-page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 20px;
+}
+
+.react-page-eyebrow {
+    margin: 0 0 8px;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: #5d7d76;
+}
+
+.react-employees-shell {
+    display: grid;
+    gap: 20px;
+}
+
+.react-employees-card {
+    background: linear-gradient(180deg, #ffffff 0%, #f7faf8 100%);
+    border: 1px solid rgba(23, 44, 38, 0.08);
+    border-radius: 20px;
+    box-shadow: 0 20px 50px rgba(23, 44, 38, 0.08);
+    overflow: hidden;
+}
+
+.react-employees-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 16px;
+    padding: 24px 24px 0;
+}
+
+.react-employees-toolbar h3 {
+    margin: 0;
+}
+
+.react-employees-toolbar p {
+    margin: 6px 0 0;
+}
+
+.react-employees-controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: center;
+    padding: 20px 24px 0;
+}
+
+.react-segmented {
+    display: inline-flex;
+    padding: 4px;
+    gap: 4px;
+    border-radius: 999px;
+    background: #edf3f0;
+}
+
+.react-segmented button {
+    border: none;
+    background: transparent;
+    color: #446057;
+    font-weight: 700;
+    padding: 10px 16px;
+    border-radius: 999px;
+    cursor: pointer;
+}
+
+.react-segmented button.is-active {
+    background: #172c26;
+    color: #fff;
+}
+
+.react-search {
+    flex: 1 1 280px;
+    min-width: 240px;
+}
+
+.react-search input {
+    width: 100%;
+    border: 1px solid rgba(23, 44, 38, 0.12);
+    background: #fff;
+    border-radius: 14px;
+    padding: 13px 16px;
+    font-size: 14px;
+}
+
+.react-toolbar-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.react-filter-select {
+    border: 1px solid rgba(23, 44, 38, 0.12);
+    background: #fff;
+    border-radius: 14px;
+    padding: 13px 14px;
+    font-size: 14px;
+    min-width: 190px;
+}
+
+.react-employees-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 42px;
+    height: 42px;
+    padding: 0 14px;
+    border-radius: 999px;
+    background: #172c26;
+    color: #fff;
+    font-size: 14px;
+    font-weight: 700;
+}
+
+.react-employees-grid {
+    padding: 20px 24px 24px;
+    display: grid;
+    gap: 14px;
+}
+
+.react-employee-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1.4fr) minmax(0, 1.1fr) auto;
+    gap: 16px;
+    align-items: center;
+    padding: 18px 20px;
+    border: 1px solid rgba(23, 44, 38, 0.08);
+    border-radius: 18px;
+    background: #fff;
+}
+
+.react-employee-facts {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px 18px;
+}
+
+.react-employee-main {
+    display: grid;
+    gap: 6px;
+}
+
+.react-employee-name {
+    margin: 0;
+    font-size: 17px;
+    font-weight: 700;
+    color: #172c26;
+}
+
+.react-employee-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+}
+
+.react-employee-pill {
+    display: inline-flex;
+    align-items: center;
+    padding: 6px 10px;
+    border-radius: 999px;
+    background: #eef4f1;
+    color: #35534a;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.react-employee-subline {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    color: #597069;
+    font-size: 13px;
+}
+
+.react-employee-meta {
+    display: grid;
+    gap: 6px;
+}
+
+.react-employee-label {
+    color: #7b9089;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+
+.react-employee-value {
+    color: #203730;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.react-employee-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.react-link-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 11px 16px;
+    border-radius: 12px;
+    background: #eef4f1;
+    color: #172c26;
+    font-weight: 700;
+    text-decoration: none;
+}
+
+.react-link-button.is-ghost {
+    background: transparent;
+    border: 1px solid rgba(23, 44, 38, 0.12);
+}
+
+.react-empty-state,
+.react-loading-state,
+.react-error-state {
+    padding: 48px 24px;
+    text-align: center;
+}
+
+.react-error-state {
+    color: #8c2f39;
+}
+
+.react-modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 25, 22, 0.48);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    z-index: 1000;
+}
+
+.react-modal-card {
+    width: min(100%, 560px);
+    background: #fff;
+    border-radius: 24px;
+    box-shadow: 0 30px 80px rgba(15, 25, 22, 0.24);
+    padding: 28px;
+    display: grid;
+    gap: 20px;
+}
+
+.react-modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 16px;
+}
+
+.react-modal-header h3 {
+    margin: 0;
+}
+
+.react-modal-close {
+    border: none;
+    background: #eff3f1;
+    color: #223730;
+    width: 40px;
+    height: 40px;
+    border-radius: 999px;
+    font-size: 20px;
+    cursor: pointer;
+}
+
+.react-form-grid {
+    display: grid;
+    gap: 16px;
+}
+
+.react-field {
+    display: grid;
+    gap: 8px;
+}
+
+.react-field span {
+    font-size: 13px;
+    font-weight: 700;
+    color: #314c44;
+}
+
+.react-field input,
+.react-field select {
+    border: 1px solid rgba(23, 44, 38, 0.12);
+    background: #fff;
+    border-radius: 14px;
+    padding: 13px 14px;
+    font-size: 14px;
+}
+
+.react-form-actions {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    align-items: center;
+}
+
+.react-form-error {
+    color: #8c2f39;
+    font-size: 14px;
+}
+
+@media (max-width: 960px) {
+    .react-page-header,
+    .react-employees-toolbar,
+    .react-employee-row {
+        grid-template-columns: 1fr;
+        display: grid;
+    }
+
+    .react-employees-controls {
+        align-items: stretch;
+    }
+
+    .react-toolbar-actions {
+        width: 100%;
+    }
+
+    .react-employee-facts {
+        grid-template-columns: 1fr;
+    }
+
+    .react-employee-actions {
+        justify-content: flex-start;
+    }
+
+    .react-form-actions {
+        flex-direction: column;
+        align-items: stretch;
+    }
+}

@@ -5,6 +5,9 @@
     <div class="card">
         <div class="employees-toolbar">
             <button type="button" class="btn-primary" id="open-create-employee">{{ create_button_label }}</button>
+            {% if active_tab == 'employees' %}
+                <a href="/app/employees" class="btn-secondary">Открыть новую версию</a>
+            {% endif %}
         </div>
         {% if employee_views %}
             <table class="table">
@@ -32,10 +35,10 @@
                         <td>{{ emp.id }}</td>
                         <td>{{ emp.full_name or '—' }}</td>
                         <td>
-                            {% if item.telegram_link %}
-                                <a href="{{ item.telegram_link }}" target="_blank" rel="noopener noreferrer">{{ emp.telegram_user_id }}</a>
+                            {% if item.chat_link %}
+                                <a href="{{ item.chat_link }}" target="_blank" rel="noopener noreferrer">{{ item.chat_id or item.chat_handle }}</a>
                             {% else %}
-                                {{ emp.telegram_user_id or '—' }}
+                                {{ item.chat_id or item.chat_handle or '—' }}
                             {% endif %}
                         </td>
                         {% if active_tab == 'candidates' %}
