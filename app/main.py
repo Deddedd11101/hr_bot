@@ -226,183 +226,209 @@ def _load_scenario_editor_data(db: Session, scenario: ScenarioTemplate):
     }
 
 
-def _step_response_label(step: FlowStepTemplate) -> str:
-    return RESPONSE_TYPE_LABELS.get((step.response_type or "").strip(), step.response_type or "none")
+def _workspace_response_label(step: FlowStepTemplate) -> str:
+    response_type = (step.response_type or "").strip()
+    extra_labels = {
+        "chain": "Цепочка шагов",
+        "launch_scenario": "Переход к сценарию",
+    }
+    return RESPONSE_TYPE_LABELS.get(response_type, extra_labels.get(response_type, response_type or "none"))
 
 
-def _step_node_kind(step: FlowStepTemplate) -> str:
+def _workspace_node_kind(step: FlowStepTemplate) -> str:
     if step.parent_step_id is None:
         return "step"
     if step.branch_option_index is None:
-        return "chain"
-    return "branch"
+        return "chain_step"
+    return "branch_step"
 
 
-def _serialize_step_node(step: FlowStepTemplate, kind: str):
+def _workspace_text_preview(step: FlowStepTemplate) -> str:
+    raw = (step.custom_text or step.default_text or "").strip()
+    if len(raw) <= 180:
+        return raw
+    return f"{raw[:177].rstrip()}..."
+
+
+def _serialize_workspace_step(
+    step: FlowStepTemplate,
+    branch_steps_by_parent: dict[int, list[FlowStepTemplate]],
+    chain_steps_by_parent: dict[int, list[FlowStepTemplate]],
+):
+    button_options = [item.strip() for item in (step.button_options or "").splitlines() if item.strip()]
+    branch_items = []
+    if step.response_type == "branching":
+        existing_branch_steps = {
+            child.branch_option_index: child
+            for child in branch_steps_by_parent.get(step.id, [])
+            if child.branch_option_index is not None
+        }
+        for option_index, label in enumerate(button_options):
+            branch_step = existing_branch_steps.get(option_index)
+            branch_items.append(
+                {
+                    "id": f"branch-slot-{step.id}-{option_index}",
+                    "kind": "branch_slot",
+                    "option_index": option_index,
+                    "label": label,
+                    "has_step": branch_step is not None,
+                    "step": _serialize_workspace_step(branch_step, branch_steps_by_parent, chain_steps_by_parent) if branch_step else None,
+                }
+            )
+
+    chain_steps = []
+    if step.response_type == "chain":
+        chain_steps = [
+            _serialize_workspace_step(child, branch_steps_by_parent, chain_steps_by_parent)
+            for child in chain_steps_by_parent.get(step.id, [])
+        ]
+
     return {
         "id": step.id,
-        "kind": kind,
-        "parent_id": step.parent_step_id,
-        "branch_option_index": step.branch_option_index,
+        "kind": _workspace_node_kind(step),
         "title": step.step_title,
-        "step_key": step.step_key,
-        "text": (step.custom_text or step.default_text or "").strip(),
-        "response_type": step.response_type,
-        "response_label": _step_response_label(step),
-        "button_options": [item.strip() for item in (step.button_options or "").splitlines() if item.strip()],
-        "send_mode": step.send_mode,
-        "send_time": step.send_time or "",
-        "day_offset_workdays": step.day_offset_workdays or 0,
-        "target_field": step.target_field or "",
-        "launch_scenario_key": step.launch_scenario_key or "",
+        "text_preview": _workspace_text_preview(step),
+        "response_type": step.response_type or "none",
+        "response_label": _workspace_response_label(step),
+        "button_options": button_options,
         "has_attachment": bool(step.attachment_filename),
         "attachment_filename": step.attachment_filename or "",
         "send_employee_card": bool(getattr(step, "send_employee_card", False)),
-        "notify_on_send_text": getattr(step, "notify_on_send_text", "") or "",
+        "send_mode": step.send_mode or "immediate",
+        "send_mode_label": SEND_MODE_LABELS.get(step.send_mode or "immediate", step.send_mode or "immediate"),
+        "send_time": step.send_time or "",
+        "day_offset_workdays": step.day_offset_workdays or 0,
+        "target_field": step.target_field or "",
+        "target_field_label": TARGET_FIELD_LABELS.get(step.target_field or "", "Не сохранять"),
+        "launch_scenario_key": step.launch_scenario_key or "",
+        "notify_on_send": bool(
+            (getattr(step, "notify_on_send_text", None) or "").strip()
+            or (getattr(step, "notify_on_send_recipient_ids", None) or "").strip()
+            or (getattr(step, "notify_on_send_recipient_scope", None) or "").strip()
+        ),
+        "branch_items": branch_items,
+        "chain_steps": chain_steps,
     }
 
 
-def _build_scenario_visual_payload(
+def _build_scenario_workspace_payload(
     db: Session,
-    scenario: ScenarioTemplate,
-    kind: str,
+    selected_scenario_id: Optional[int] = None,
 ):
-    editor_data = _load_scenario_editor_data(db, scenario)
-    steps = editor_data["steps"]
-    branch_steps_by_parent = editor_data["branch_steps_by_parent"]
-    chain_steps_by_parent = editor_data["chain_steps_by_parent"]
-    button_notifications_by_step = editor_data["button_notifications_by_step"]
+    scenarios = (
+        db.query(ScenarioTemplate)
+        .filter(ScenarioTemplate.scenario_kind == "scenario")
+        .order_by(ScenarioTemplate.sort_order, ScenarioTemplate.id)
+        .all()
+    )
 
-    all_nodes = []
-    node_lookup = {}
-    edges = []
+    selected_scenario = None
+    if selected_scenario_id:
+        selected_scenario = next((item for item in scenarios if item.id == selected_scenario_id), None)
+    if selected_scenario is None and scenarios:
+        selected_scenario = scenarios[0]
 
-    def add_node(step: FlowStepTemplate):
-        node_kind = _step_node_kind(step)
-        node = _serialize_step_node(step, node_kind)
-        all_nodes.append(node)
-        node_lookup[step.id] = node
-        return node
+    scenario_items = []
+    for scenario in scenarios:
+        steps_count = (
+            db.query(FlowStepTemplate)
+            .filter(
+                FlowStepTemplate.flow_key == scenario.scenario_key,
+                FlowStepTemplate.parent_step_id.is_(None),
+            )
+            .count()
+        )
+        scenario_items.append(
+            {
+                "id": scenario.id,
+                "title": scenario.title,
+                "description": scenario.description or "",
+                "role_scope_label": ROLE_SCOPE_LABELS.get(scenario.role_scope, scenario.role_scope),
+                "trigger_mode_label": TRIGGER_MODE_LABELS.get(scenario.trigger_mode, scenario.trigger_mode),
+                "steps_count": steps_count,
+                "classic_url": f"/flows/{scenario.id}",
+                "workspace_url": f"/app/flows/workspace?scenario_id={scenario.id}",
+            }
+        )
 
-    for step in steps:
-        add_node(step)
-    for branch_group in branch_steps_by_parent.values():
-        for step in branch_group:
-            add_node(step)
-    for chain_group in chain_steps_by_parent.values():
-        for step in chain_group:
-            add_node(step)
-
-    for index, step in enumerate(steps):
-        if index < len(steps) - 1:
-            edges.append({
-                "from": step.id,
-                "to": steps[index + 1].id,
-                "kind": "next",
-                "label": "Дальше",
-            })
-        for chain_index, chain_step in enumerate(chain_steps_by_parent.get(step.id, [])):
-            edges.append({
-                "from": step.id if chain_index == 0 else chain_steps_by_parent[step.id][chain_index - 1].id,
-                "to": chain_step.id,
-                "kind": "chain",
-                "label": "Цепочка" if chain_index == 0 else "Следующий",
-            })
-        for branch_step in branch_steps_by_parent.get(step.id, []):
-            button_labels = [item.strip() for item in (step.button_options or "").splitlines() if item.strip()]
-            option_label = ""
-            if branch_step.branch_option_index is not None and branch_step.branch_option_index < len(button_labels):
-                option_label = button_labels[branch_step.branch_option_index]
-            edges.append({
-                "from": step.id,
-                "to": branch_step.id,
-                "kind": "branch",
-                "label": option_label or f"Ветка {(branch_step.branch_option_index or 0) + 1}",
-            })
-
-    for parent_id, chain_group in chain_steps_by_parent.items():
-        for index, chain_step in enumerate(chain_group):
-            if index < len(chain_group) - 1:
-                continue
-            parent_node = node_lookup.get(parent_id)
-            top_level_steps = steps if parent_node and parent_node["kind"] == "step" else []
-            if top_level_steps:
-                for index_step, top in enumerate(top_level_steps):
-                    if top.id == parent_id and index_step < len(top_level_steps) - 1:
-                        edges.append({
-                            "from": chain_step.id,
-                            "to": top_level_steps[index_step + 1].id,
-                            "kind": "return",
-                            "label": "Вернуться в поток",
-                        })
-
-    for parent_id, branch_group in branch_steps_by_parent.items():
-        parent_node = node_lookup.get(parent_id)
-        if not parent_node:
-            continue
-        top_level_steps = steps if parent_node["kind"] == "step" else []
-        for branch_step in branch_group:
-            for chain_index, chain_step in enumerate(chain_steps_by_parent.get(branch_step.id, [])):
-                edges.append({
-                    "from": branch_step.id if chain_index == 0 else chain_steps_by_parent[branch_step.id][chain_index - 1].id,
-                    "to": chain_step.id,
-                    "kind": "chain",
-                    "label": "Цепочка" if chain_index == 0 else "Следующий",
-                })
-            if top_level_steps:
-                for index_step, top in enumerate(top_level_steps):
-                    if top.id == parent_id and index_step < len(top_level_steps) - 1:
-                        tail_id = chain_steps_by_parent.get(branch_step.id, [])[-1].id if chain_steps_by_parent.get(branch_step.id, []) else branch_step.id
-                        edges.append({
-                            "from": tail_id,
-                            "to": top_level_steps[index_step + 1].id,
-                            "kind": "return",
-                            "label": "Вернуться в поток",
-                        })
+    workspace = None
+    if selected_scenario is not None:
+        editor_data = _load_scenario_editor_data(db, selected_scenario)
+        root_steps = [
+            _serialize_workspace_step(step, editor_data["branch_steps_by_parent"], editor_data["chain_steps_by_parent"])
+            for step in editor_data["steps"]
+        ]
+        workspace = {
+            "scenario": {
+                "id": selected_scenario.id,
+                "title": selected_scenario.title,
+                "description": selected_scenario.description or "",
+                "role_scope_label": ROLE_SCOPE_LABELS.get(selected_scenario.role_scope, selected_scenario.role_scope),
+                "trigger_mode_label": TRIGGER_MODE_LABELS.get(selected_scenario.trigger_mode, selected_scenario.trigger_mode),
+                "classic_url": f"/flows/{selected_scenario.id}",
+            },
+            "root_steps": root_steps,
+            "stats": {
+                "steps_count": len(root_steps),
+            },
+            "target_field_labels": TARGET_FIELD_LABELS,
+            "send_mode_labels": SEND_MODE_LABELS,
+            "notification_recipient_scope_labels": NOTIFICATION_RECIPIENT_SCOPE_LABELS,
+            "document_tag_titles": editor_data["document_tag_titles"],
+            "employee_options": editor_data["employee_options"],
+            "available_scenarios": [
+                {
+                    "value": item.scenario_key,
+                    "label": item.title,
+                }
+                for item in editor_data["available_scenarios"]
+            ],
+        }
 
     return {
-        "scenario": {
-            "id": scenario.id,
-            "title": scenario.title,
-            "description": scenario.description or "",
-            "scenario_key": scenario.scenario_key,
-            "kind": kind,
-            "role_scope": scenario.role_scope,
-            "role_scope_label": ROLE_SCOPE_LABELS.get(scenario.role_scope, scenario.role_scope),
-            "trigger_mode": scenario.trigger_mode,
-            "trigger_mode_label": TRIGGER_MODE_LABELS.get(scenario.trigger_mode, scenario.trigger_mode),
-            "target_employee_id": scenario.target_employee_id,
-        },
-        "meta": {
-            "nodes_count": len(all_nodes),
-            "edges_count": len(edges),
-            "classic_url": f"/{'surveys' if kind == 'survey' else 'flows'}/{scenario.id}",
-            "list_url": "/surveys" if kind == "survey" else "/flows",
-            "list_title": "К списку опросов" if kind == "survey" else "К списку сценариев",
-            "kind_label": "опрос" if kind == "survey" else "сценарий",
-        },
-        "nodes": all_nodes,
-        "edges": edges,
-        "response_type_labels": RESPONSE_TYPE_LABELS,
-        "available_scenarios": [
-            {
-                "value": item.scenario_key,
-                "label": item.title,
-            }
-            for item in editor_data["available_scenarios"]
-        ],
-        "button_notifications": {
-            str(step_id): {
-                str(option_index): {
-                    "message_text": notification.message_text or "",
-                    "recipient_ids": notification.recipient_ids or "",
-                    "recipient_scope": notification.recipient_scope or "",
-                }
-                for option_index, notification in option_map.items()
-            }
-            for step_id, option_map in button_notifications_by_step.items()
-        },
+        "scenarios": scenario_items,
+        "selected_scenario_id": selected_scenario.id if selected_scenario else None,
+        "workspace": workspace,
     }
+
+
+def _normalize_workspace_response_type(value: str, step: FlowStepTemplate) -> str:
+    normalized = (value or "").strip()
+    allowed = {"none", "text", "file", "buttons", "branching", "launch_scenario"}
+    if step.parent_step_id is not None and step.branch_option_index is not None:
+        allowed.add("chain")
+    return normalized if normalized in allowed else (step.response_type or "none")
+
+
+def _apply_workspace_step_update(step: FlowStepTemplate, payload: dict):
+    step.step_title = (str(payload.get("title") or "").strip() or step.step_title or "Без названия")
+    step.custom_text = str(payload.get("text") or "").strip()
+    step.response_type = _normalize_workspace_response_type(str(payload.get("response_type") or ""), step)
+    button_options = str(payload.get("button_options") or "").strip()
+    step.button_options = button_options or None
+
+    send_mode = (str(payload.get("send_mode") or "").strip() or "immediate")
+    step.send_mode = send_mode if send_mode in SEND_MODE_LABELS else "immediate"
+    step.send_time = (str(payload.get("send_time") or "").strip() or None) if step.send_mode == "specific_time" else None
+
+    target_field = str(payload.get("target_field") or "").strip()
+    step.target_field = target_field if target_field in TARGET_FIELD_LABELS else None
+    step.launch_scenario_key = (
+        str(payload.get("launch_scenario_key") or "").strip() or None
+        if step.response_type == "launch_scenario"
+        else None
+    )
+    step.send_employee_card = str(payload.get("send_employee_card") or "").strip().lower() in {"1", "true", "yes", "on"}
+    step.notify_on_send_text = str(payload.get("notify_on_send_text") or "").strip() or None
+    step.notify_on_send_recipient_ids = str(payload.get("notify_on_send_recipient_ids") or "").strip() or None
+    step.notify_on_send_recipient_scope = _normalize_notification_scope(str(payload.get("notify_on_send_recipient_scope") or ""))
+
+    if step.response_type not in {"buttons", "branching"}:
+        step.button_options = None
+    if step.response_type in {"branching", "chain"}:
+        step.target_field = None
+
+    return step
 
 
 EMPLOYEE_STAGE_VALUES = {
@@ -2526,6 +2552,20 @@ def _delete_step_attachment_file(step: FlowStepTemplate) -> None:
     setattr(step, "attachment_filename", None)
 
 
+def _delete_step_subtree(db: Session, step: FlowStepTemplate) -> None:
+    child_steps = (
+        db.query(FlowStepTemplate)
+        .filter(FlowStepTemplate.parent_step_id == step.id)
+        .order_by(FlowStepTemplate.id.asc())
+        .all()
+    )
+    for child_step in child_steps:
+        _delete_step_subtree(db, child_step)
+    _delete_step_attachment_file(step)
+    db.query(StepButtonNotification).filter(StepButtonNotification.step_id == step.id).delete()
+    db.delete(step)
+
+
 def _normalize_notification_scope(value: Optional[str]) -> Optional[str]:
     normalized = ",".join(
         chunk.strip()
@@ -2752,6 +2792,355 @@ def scenarios_page(request: Request, db: Session = Depends(get_db)):
     return _template_list_page(request, "scenario", db)
 
 
+@app.get("/api/flows/workspace")
+def scenario_workspace_api(
+    request: Request,
+    scenario_id: Optional[int] = None,
+    db: Session = Depends(get_db),
+):
+    _require_api_auth(request)
+    return _build_scenario_workspace_payload(db, scenario_id)
+
+
+@app.post("/api/flows/workspace/scenarios")
+def create_workspace_scenario_api(
+    request: Request,
+    payload: dict = Body(...),
+    db: Session = Depends(get_db),
+):
+    _require_api_auth(request)
+    title = (str(payload.get("title") or "").strip() or "Новый сценарий")
+    description = str(payload.get("description") or "").strip() or None
+
+    last_scenario = (
+        db.query(ScenarioTemplate)
+        .filter(ScenarioTemplate.scenario_kind == "scenario")
+        .order_by(ScenarioTemplate.sort_order.desc(), ScenarioTemplate.id.desc())
+        .first()
+    )
+    next_order = (last_scenario.sort_order + 10) if last_scenario else 10
+    now = datetime.utcnow()
+    scenario = ScenarioTemplate(
+        title=title,
+        description=description,
+        scenario_key=f"scenario_{int(now.timestamp())}",
+        scenario_kind="scenario",
+        role_scope="all",
+        trigger_mode="manual_only",
+        sort_order=next_order,
+        created_at=now,
+        updated_at=now,
+    )
+    db.add(scenario)
+    db.commit()
+    db.refresh(scenario)
+
+    return {
+        "message": "Сценарий создан",
+        "payload": _build_scenario_workspace_payload(db, scenario.id),
+        "scenario_id": scenario.id,
+    }
+
+
+@app.post("/api/flows/workspace/steps/{step_id}")
+def update_workspace_step_api(
+    request: Request,
+    step_id: int,
+    payload: dict = Body(...),
+    db: Session = Depends(get_db),
+):
+    _require_api_auth(request)
+    step = db.get(FlowStepTemplate, step_id)
+    if not step:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Шаг не найден")
+
+    scenario = (
+        db.query(ScenarioTemplate)
+        .filter(
+            ScenarioTemplate.scenario_key == step.flow_key,
+            ScenarioTemplate.scenario_kind == "scenario",
+        )
+        .first()
+    )
+    if not scenario:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Сценарий не найден")
+
+    _apply_workspace_step_update(step, payload)
+    db.commit()
+
+    return {
+        "message": "Шаг сохранён",
+        "payload": _build_scenario_workspace_payload(db, scenario.id),
+        "step_id": step.id,
+    }
+
+
+@app.post("/api/flows/workspace/scenarios/{scenario_id}/steps")
+def create_workspace_root_step_api(
+    request: Request,
+    scenario_id: int,
+    payload: dict = Body(...),
+    db: Session = Depends(get_db),
+):
+    _require_api_auth(request)
+    scenario = db.get(ScenarioTemplate, scenario_id)
+    if not scenario or scenario.scenario_kind != "scenario":
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Сценарий не найден")
+
+    last_step = (
+        db.query(FlowStepTemplate)
+        .filter(
+            FlowStepTemplate.flow_key == scenario.scenario_key,
+            FlowStepTemplate.parent_step_id.is_(None),
+        )
+        .order_by(FlowStepTemplate.sort_order.desc(), FlowStepTemplate.id.desc())
+        .first()
+    )
+    next_order = (last_step.sort_order + 10) if last_step else 10
+    title = str(payload.get("title") or "Новый шаг").strip() or "Новый шаг"
+
+    step = FlowStepTemplate(
+        flow_key=scenario.scenario_key,
+        step_key=f"{scenario.scenario_key}_step_{int(datetime.utcnow().timestamp())}",
+        step_title=title,
+        sort_order=next_order,
+        default_text="Новое сообщение сценария.",
+        custom_text=None,
+        response_type="none",
+        button_options=None,
+        send_mode="immediate",
+        send_time=None,
+        day_offset_workdays=0,
+        target_field=None,
+        send_employee_card=False,
+    )
+    db.add(step)
+    db.commit()
+
+    return {
+        "message": "Шаг добавлен",
+        "payload": _build_scenario_workspace_payload(db, scenario.id),
+        "step_id": step.id,
+    }
+
+
+@app.post("/api/flows/workspace/steps/{step_id}/branches")
+def create_workspace_branch_step_api(
+    request: Request,
+    step_id: int,
+    payload: dict = Body(...),
+    db: Session = Depends(get_db),
+):
+    _require_api_auth(request)
+    parent_step = db.get(FlowStepTemplate, step_id)
+    if not parent_step:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Шаг не найден")
+
+    scenario = (
+        db.query(ScenarioTemplate)
+        .filter(
+            ScenarioTemplate.scenario_key == parent_step.flow_key,
+            ScenarioTemplate.scenario_kind == "scenario",
+        )
+        .first()
+    )
+    if not scenario:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Сценарий не найден")
+    if parent_step.response_type != "branching":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Ветки можно создавать только для шага с ветвлением")
+
+    try:
+        option_index = int(payload.get("option_index"))
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Не удалось определить кнопку для ветки")
+
+    button_labels = [item.strip() for item in (parent_step.button_options or "").splitlines() if item.strip()]
+    if option_index < 0 or option_index >= len(button_labels):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Кнопка для ветки не найдена")
+
+    existing_branch = (
+        db.query(FlowStepTemplate)
+        .filter(
+            FlowStepTemplate.flow_key == parent_step.flow_key,
+            FlowStepTemplate.parent_step_id == parent_step.id,
+            FlowStepTemplate.branch_option_index == option_index,
+        )
+        .first()
+    )
+    if existing_branch:
+        return {
+            "message": "Ветка уже существует",
+            "payload": _build_scenario_workspace_payload(db, scenario.id),
+            "step_id": existing_branch.id,
+        }
+
+    button_label = button_labels[option_index]
+    branch_step = FlowStepTemplate(
+        flow_key=parent_step.flow_key,
+        step_key=f"{parent_step.step_key}__branch_{option_index}",
+        parent_step_id=parent_step.id,
+        branch_option_index=option_index,
+        step_title=f"Ветка: {button_label}",
+        sort_order=(parent_step.sort_order or 0) * 100 + option_index + 1,
+        default_text="Новое сообщение сценария.",
+        custom_text=None,
+        response_type="none",
+        button_options=None,
+        send_mode="immediate",
+        send_time=None,
+        day_offset_workdays=0,
+        target_field=None,
+        send_employee_card=False,
+    )
+    db.add(branch_step)
+    db.commit()
+
+    return {
+        "message": "Ветка создана",
+        "payload": _build_scenario_workspace_payload(db, scenario.id),
+        "step_id": branch_step.id,
+    }
+
+
+@app.post("/api/flows/workspace/steps/{step_id}/chain")
+def create_workspace_chain_step_api(
+    request: Request,
+    step_id: int,
+    payload: dict = Body(...),
+    db: Session = Depends(get_db),
+):
+    _require_api_auth(request)
+    parent_step = db.get(FlowStepTemplate, step_id)
+    if not parent_step:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Шаг не найден")
+
+    scenario = (
+        db.query(ScenarioTemplate)
+        .filter(
+            ScenarioTemplate.scenario_key == parent_step.flow_key,
+            ScenarioTemplate.scenario_kind == "scenario",
+        )
+        .first()
+    )
+    if not scenario:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Сценарий не найден")
+    if parent_step.parent_step_id is None or parent_step.branch_option_index is None or parent_step.response_type != "chain":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Шаг цепочки можно добавить только внутри ветки с типом «Цепочка шагов»")
+
+    last_step = (
+        db.query(FlowStepTemplate)
+        .filter(
+            FlowStepTemplate.flow_key == parent_step.flow_key,
+            FlowStepTemplate.parent_step_id == parent_step.id,
+            FlowStepTemplate.branch_option_index.is_(None),
+        )
+        .order_by(FlowStepTemplate.sort_order.desc(), FlowStepTemplate.id.desc())
+        .first()
+    )
+    next_order = (last_step.sort_order + 10) if last_step else 10
+    title = str(payload.get("title") or "Шаг цепочки").strip() or "Шаг цепочки"
+
+    chain_step = FlowStepTemplate(
+        flow_key=parent_step.flow_key,
+        step_key=f"{parent_step.step_key}__chain_{int(datetime.utcnow().timestamp())}",
+        parent_step_id=parent_step.id,
+        branch_option_index=None,
+        step_title=title,
+        sort_order=next_order,
+        default_text="Новое сообщение сценария.",
+        custom_text=None,
+        response_type="none",
+        button_options=None,
+        send_mode="immediate",
+        send_time=None,
+        day_offset_workdays=0,
+        target_field=None,
+        send_employee_card=False,
+    )
+    db.add(chain_step)
+    db.commit()
+
+    return {
+        "message": "Шаг цепочки добавлен",
+        "payload": _build_scenario_workspace_payload(db, scenario.id),
+        "step_id": chain_step.id,
+    }
+
+
+@app.post("/api/flows/workspace/steps/{step_id}/delete")
+def delete_workspace_step_api(
+    request: Request,
+    step_id: int,
+    db: Session = Depends(get_db),
+):
+    _require_api_auth(request)
+    step = db.get(FlowStepTemplate, step_id)
+    if not step:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Шаг не найден")
+
+    scenario = (
+        db.query(ScenarioTemplate)
+        .filter(
+            ScenarioTemplate.scenario_key == step.flow_key,
+            ScenarioTemplate.scenario_kind == "scenario",
+        )
+        .first()
+    )
+    if not scenario:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Сценарий не найден")
+
+    deleted_kind = _workspace_node_kind(step)
+    _delete_step_subtree(db, step)
+    db.commit()
+
+    return {
+        "message": "Элемент удалён",
+        "payload": _build_scenario_workspace_payload(db, scenario.id),
+        "deleted_kind": deleted_kind,
+    }
+
+
+@app.get("/app/flows/workspace")
+def scenario_workspace_page(
+    request: Request,
+    scenario_id: Optional[int] = None,
+):
+    auth_redirect = _require_auth(request)
+    if auth_redirect:
+        return auth_redirect
+    return _render(
+        request,
+        "react_scenario_workspace.html",
+        {
+            "active_tab": "flows",
+            "react_api_url": "/api/flows/workspace",
+            "react_selected_scenario_id": scenario_id or "",
+            "classic_list_url": "/flows",
+        },
+    )
+
+
+@app.get("/app/flows/workspace-v2")
+def scenario_workspace_v2_page(
+    request: Request,
+    scenario_id: Optional[int] = None,
+):
+    auth_redirect = _require_auth(request)
+    if auth_redirect:
+        return auth_redirect
+    return _render(
+        request,
+        "react_scenario_workspace_v2.html",
+        {
+            "active_tab": "flows",
+            "react_api_url": "/api/flows/workspace",
+            "react_selected_scenario_id": scenario_id or "",
+            "classic_list_url": "/flows",
+            "workspace_v1_url": f"/app/flows/workspace?scenario_id={scenario_id}" if scenario_id else "/app/flows/workspace",
+        },
+    )
+
+
 @app.get("/surveys")
 def surveys_page(request: Request, db: Session = Depends(get_db)):
     return _template_list_page(request, "survey", db)
@@ -2881,44 +3270,6 @@ def edit_survey_page(
     db: Session = Depends(get_db),
 ):
     return _edit_template_page(request, scenario_id, "survey", db)
-
-
-@app.get("/api/flows/{scenario_id}/builder")
-def scenario_builder_api(
-    request: Request,
-    scenario_id: int,
-    db: Session = Depends(get_db),
-):
-    _require_api_auth(request)
-    scenario = db.get(ScenarioTemplate, scenario_id)
-    if not scenario or scenario.scenario_kind != "scenario":
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Сценарий не найден")
-    return _build_scenario_visual_payload(db, scenario, "scenario")
-
-
-@app.get("/app/flows/{scenario_id}")
-def react_scenario_builder_page(
-    request: Request,
-    scenario_id: int,
-    db: Session = Depends(get_db),
-):
-    auth_redirect = _require_auth(request)
-    if auth_redirect:
-        return auth_redirect
-    scenario = db.get(ScenarioTemplate, scenario_id)
-    if not scenario or scenario.scenario_kind != "scenario":
-        return RedirectResponse(url="/flows", status_code=status.HTTP_303_SEE_OTHER)
-    return _render(
-        request,
-        "react_scenario_builder.html",
-        {
-            "active_tab": "flows",
-            "scenario_id": scenario_id,
-            "react_api_url": f"/api/flows/{scenario_id}/builder",
-            "classic_page_url": f"/flows/{scenario_id}",
-            "list_url": "/flows",
-        },
-    )
 
 
 @app.get("/flows/steps/{step_id}/attachment")

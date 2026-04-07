@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+
+{% block extra_head %}
+    <link rel="stylesheet" href="/static/workspace_v2/scenario-workspace.css">
+{% endblock %}
+
+{% block content %}
+<section class="react-page">
+    <div class="react-page-header">
+        <div>
+            <p class="react-page-eyebrow">Workspace V2</p>
+            <h2>Сценарии</h2>
+            <p class="muted">Новый foundation под shadcn-style workspace: независимые панели, мягкий UI и готовность к нормальным контролам.</p>
+        </div>
+        <div class="react-detail-header-actions">
+            <a href="{{ classic_list_url }}" class="btn-secondary">Классический список</a>
+            <a href="{{ workspace_v1_url }}" class="btn-secondary">Текущий workspace</a>
+        </div>
+    </div>
+
+    <div
+        id="react-scenario-workspace-v2-root"
+        data-api-url="{{ react_api_url }}"
+        data-selected-scenario-id="{{ react_selected_scenario_id }}"
+        data-classic-list-url="{{ classic_list_url }}"
+    ></div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+    <script type="module" src="/static/workspace_v2/scenario-workspace.js"></script>
+{% endblock %}

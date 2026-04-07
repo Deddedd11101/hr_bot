@@ -4,6 +4,7 @@ __pycache__/
 *.log
 .env
 .DS_Store
+frontend/node_modules/
 
 # Local runtime data
 hr_bot.db

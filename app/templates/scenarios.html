@@ -7,13 +7,19 @@
             <h2>{{ collection_title }}</h2>
             <p class="muted">{{ collection_description }}</p>
         </div>
-        <form method="post" action="{{ collection_path }}" style="margin: 0;">
-            <input type="hidden" name="title" value="{{ new_title }}">
-            <input type="hidden" name="role_scope" value="all">
-            <input type="hidden" name="trigger_mode" value="manual_only">
-            <input type="hidden" name="description" value="">
-            <button type="submit" class="btn-primary">{{ create_label }}</button>
-        </form>
+        <div style="display:flex; gap:12px; align-items:center;">
+            {% if kind == 'scenario' %}
+                <a href="/app/flows/workspace" class="btn-secondary">Workspace</a>
+                <a href="/app/flows/workspace-v2" class="btn-secondary">Workspace V2</a>
+            {% endif %}
+            <form method="post" action="{{ collection_path }}" style="margin: 0;">
+                <input type="hidden" name="title" value="{{ new_title }}">
+                <input type="hidden" name="role_scope" value="all">
+                <input type="hidden" name="trigger_mode" value="manual_only">
+                <input type="hidden" name="description" value="">
+                <button type="submit" class="btn-primary">{{ create_label }}</button>
+            </form>
+        </div>
     </div>
 
     <form method="post" action="{{ collection_path }}/reorder" id="scenario-order-form">
@@ -43,6 +49,10 @@
                     <form method="post" action="{{ collection_path }}/{{ scenario.id }}/copy" style="display:inline;">
                         <button type="submit" class="table-icon-link" aria-label="Копировать" title="Копировать">&#10697;</button>
                     </form>
+                    {% if kind == 'scenario' %}
+                        <a href="/app/flows/workspace?scenario_id={{ scenario.id }}" class="table-icon-link" aria-label="Workspace" title="Workspace">&#9776;</a>
+                        <a href="/app/flows/workspace-v2?scenario_id={{ scenario.id }}" class="table-icon-link" aria-label="Workspace V2" title="Workspace V2">&#10697;</a>
+                    {% endif %}
                     <a href="{{ collection_path }}/{{ scenario.id }}" class="table-icon-link" aria-label="Редактировать" title="Редактировать">&#9998;</a>
                     {% if kind == 'survey' %}
                         <a href="/surveys/{{ scenario.id }}/export" class="table-icon-link" aria-label="Скачать результаты" title="Скачать результаты">&#10515;</a>
