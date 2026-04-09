@@ -902,9 +902,11 @@ def _create_employee_record(
     chat_id: str,
     first_workday: str,
     employee_stage: str,
+    candidate_work_stage: str,
     list_kind: str,
 ) -> Employee:
     first_day = datetime.strptime(first_workday, "%Y-%m-%d").date() if first_workday else None
+    normalized_candidate_stage = (candidate_work_stage or "").strip()
     employee = Employee(
         full_name=full_name.strip() or None,
         telegram_user_id=None,
@@ -913,7 +915,11 @@ def _create_employee_record(
         is_flow_scheduled=False,
         candidate_status="new",
         employee_stage=_parse_employee_stage_for_create(employee_stage, list_kind),
-        candidate_work_stage="testing" if list_kind == "candidates" else None,
+        candidate_work_stage=(
+            normalized_candidate_stage
+            if list_kind == "candidates" and normalized_candidate_stage in CANDIDATE_WORK_STAGE_VALUES
+            else ("testing" if list_kind == "candidates" else None)
+        ),
     )
     set_primary_chat_id(employee, chat_id)
     db.add(employee)
@@ -1231,6 +1237,7 @@ def create_employee_api(
         chat_id=str(payload.get("chat_id") or ""),
         first_workday=str(payload.get("first_workday") or ""),
         employee_stage=str(payload.get("employee_stage") or ""),
+        candidate_work_stage=str(payload.get("candidate_work_stage") or ""),
         list_kind=list_kind,
     )
     views = _build_employee_views(list_kind, db)
@@ -1979,6 +1986,7 @@ def create_employee(
     telegram_user_id: str = Form(""),
     first_workday: str = Form(""),
     employee_stage: str = Form(""),
+    candidate_work_stage: str = Form(""),
     db: Session = Depends(get_db),
 ):
     auth_redirect = _require_auth(request)
@@ -1991,6 +1999,7 @@ def create_employee(
         chat_id=telegram_user_id,
         first_workday=first_workday,
         employee_stage=employee_stage,
+        candidate_work_stage=candidate_work_stage,
         list_kind=list_kind,
     )
 

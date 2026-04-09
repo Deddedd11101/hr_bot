@@ -13,13 +13,17 @@ export default defineConfig({
   build: {
     outDir: path.resolve(__dirname, "../app/static/workspace_v2"),
     emptyOutDir: true,
+    cssCodeSplit: false,
     rollupOptions: {
-      input: path.resolve(__dirname, "./src/scenario-workspace/main.tsx"),
+      input: {
+        "scenario-workspace": path.resolve(__dirname, "./src/scenario-workspace/main.tsx"),
+        "employees-list": path.resolve(__dirname, "./src/employees-list/main.tsx"),
+      },
       output: {
-        entryFileNames: "scenario-workspace.js",
+        entryFileNames: "[name].js",
         assetFileNames: (assetInfo) => {
           if ((assetInfo.name || "").endsWith(".css")) {
-            return "scenario-workspace.css";
+            return "app.css";
           }
           return "assets/[name]-[hash][extname]";
         },

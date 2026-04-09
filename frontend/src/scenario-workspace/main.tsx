@@ -979,7 +979,7 @@ function App() {
           </p>
         ) : null}
         <ScrollArea className="mt-4 min-h-0 flex-1">
-          <div className="pr-2" style={{ display: "grid", gap: "0.65rem" }}>
+          <div className="pr-3" style={{ display: "grid", gap: "0.65rem" }}>
             {scenarios.map((scenario: ScenarioSummary) => (
               <button
                 key={scenario.id}
@@ -1060,7 +1060,7 @@ function App() {
         </div>
 
         <ScrollArea className="min-h-0 flex-1">
-          <div className="pr-2" style={{ display: "grid", gap: "0.65rem" }}>
+          <div className="pr-3" style={{ display: "grid", gap: "0.65rem" }}>
             {currentItems.map((item, index) => {
               const canOpen = !!buildChildContainer(item);
               const active = itemKey(item) === selectedItemKey;
@@ -1127,7 +1127,7 @@ function App() {
         </div>
         <Separator />
         <ScrollArea className="min-h-0 flex-1 pt-3">
-          <div className="pr-2">
+          <div className="pr-3">
             {selectedItem ? (
               selectedItem.kind === "branch_slot" && !detailTarget ? (
                 <div className="flex flex-col gap-4 rounded-[10px] border border-[var(--color-border)] bg-[var(--color-panel-muted)] p-4">
