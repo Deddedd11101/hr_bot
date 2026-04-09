@@ -4,40 +4,159 @@
     <meta charset="UTF-8">
     <title>HR Bot Admin</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <link rel="stylesheet" href="/static/styles.css">
+    <link rel="stylesheet" href="/static/styles.css?v=4">
     {% block extra_head %}{% endblock %}
 </head>
 <body>
-<header class="header">
-    <div class="container">
-        <div class="header-top">
-            <h1 class="logo">HR <span>Bot</span> Admin</h1>
-            {% if current_user %}
-                <div class="header-user">
-                    <span>{{ current_user.login }} · {{ role_labels.get(current_user.role, current_user.role) }}</span>
-                    <form method="post" action="/logout">
-                        <button type="submit" class="btn-secondary">Выйти</button>
-                    </form>
-                </div>
-            {% endif %}
-        </div>
-        <nav class="tabs">
-            <a href="/candidates" class="{% if active_tab == 'candidates' %}tab tab-active{% else %}tab{% endif %}">Кандидаты</a>
-            <a href="/employees" class="{% if active_tab == 'employees' %}tab tab-active{% else %}tab{% endif %}">Сотрудники</a>
-            <a href="/bulk-actions" class="{% if active_tab == 'bulk_actions' %}tab tab-active{% else %}tab{% endif %}">Массовые действия</a>
-            <a href="/flows" class="{% if active_tab == 'flows' %}tab tab-active{% else %}tab{% endif %}">Сценарии</a>
-            <a href="/surveys" class="{% if active_tab == 'surveys' %}tab tab-active{% else %}tab{% endif %}">Опросы</a>
-            <a href="/settings" class="{% if active_tab == 'settings' %}tab tab-active{% else %}tab{% endif %}">Настройки</a>
-        </nav>
-    </div>
-</header>
+<div class="app-shell" id="app-shell">
+    <aside class="app-sidebar" id="app-sidebar">
+        <div class="app-sidebar-inner">
+            <div class="app-sidebar-top">
+                <a href="/employees" class="app-logo" aria-label="HR Bot Admin">
+                    <span class="app-logo-icon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M12 3 4 7.2v5.6c0 4.6 3.3 7.7 8 8.9 4.7-1.2 8-4.3 8-8.9V7.2L12 3Z"></path>
+                            <path d="M9.5 12 11 13.5 14.5 10"></path>
+                        </svg>
+                    </span>
+                    <span class="app-nav-label app-logo-label">HR Bot Admin</span>
+                </a>
 
-<main class="main">
-    <div class="container">
-        {% block content %}{% endblock %}
+                <nav class="app-nav" aria-label="Основная навигация">
+                    <a href="/candidates" class="app-nav-item {% if active_tab == 'candidates' %}app-nav-item-active{% endif %}">
+                        <span class="app-nav-icon" aria-hidden="true">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"></path>
+                                <circle cx="10" cy="7" r="4"></circle>
+                                <path d="M20 8v6"></path>
+                                <path d="M23 11h-6"></path>
+                            </svg>
+                        </span>
+                        <span class="app-nav-label">Кандидаты</span>
+                    </a>
+                    <a href="/employees" class="app-nav-item {% if active_tab == 'employees' %}app-nav-item-active{% endif %}">
+                        <span class="app-nav-icon" aria-hidden="true">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path>
+                                <circle cx="9" cy="7" r="4"></circle>
+                                <path d="M22 21v-2a4 4 0 0 0-3-3.87"></path>
+                                <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                            </svg>
+                        </span>
+                        <span class="app-nav-label">Сотрудники</span>
+                    </a>
+                    <a href="/bulk-actions" class="app-nav-item {% if active_tab == 'bulk_actions' %}app-nav-item-active{% endif %}">
+                        <span class="app-nav-icon" aria-hidden="true">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M12 3H5a2 2 0 0 0-2 2v7"></path>
+                                <path d="M21 12v7a2 2 0 0 1-2 2h-7"></path>
+                                <path d="M8 8h13v13"></path>
+                            </svg>
+                        </span>
+                        <span class="app-nav-label">Массовые действия</span>
+                    </a>
+                    <a href="/flows" class="app-nav-item {% if active_tab == 'flows' %}app-nav-item-active{% endif %}">
+                        <span class="app-nav-icon" aria-hidden="true">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                                <circle cx="6" cy="6" r="2"></circle>
+                                <circle cx="18" cy="6" r="2"></circle>
+                                <circle cx="12" cy="18" r="2"></circle>
+                                <path d="M8 6h8"></path>
+                                <path d="M7.7 7.5 10.8 15"></path>
+                                <path d="M16.3 7.5 13.2 15"></path>
+                            </svg>
+                        </span>
+                        <span class="app-nav-label">Сценарии</span>
+                    </a>
+                    <a href="/surveys" class="app-nav-item {% if active_tab == 'surveys' %}app-nav-item-active{% endif %}">
+                        <span class="app-nav-icon" aria-hidden="true">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M9 11l3 3L22 4"></path>
+                                <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
+                            </svg>
+                        </span>
+                        <span class="app-nav-label">Опросы</span>
+                    </a>
+                </nav>
+            </div>
+
+            <div class="app-sidebar-bottom">
+                <a href="/settings" class="app-nav-item {% if active_tab == 'settings' %}app-nav-item-active{% endif %}">
+                    <span class="app-nav-icon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="3"></circle>
+                            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06A1.65 1.65 0 0 0 15 19.4a1.65 1.65 0 0 0-1 .6 1.65 1.65 0 0 1-2 0 1.65 1.65 0 0 0-1-.6 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-.6-1 1.65 1.65 0 0 1 0-2 1.65 1.65 0 0 0 .6-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-.6 1.65 1.65 0 0 1 2 0 1.65 1.65 0 0 0 1 .6 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9c.25.32.44.69.6 1a1.65 1.65 0 0 1 0 2c-.16.31-.35.68-.6 1Z"></path>
+                        </svg>
+                    </span>
+                    <span class="app-nav-label">Настройки</span>
+                </a>
+
+                {% if current_user %}
+                    <div class="app-role-pill" title="{{ role_labels.get(current_user.role, current_user.role) }}">
+                        <span class="app-nav-icon" aria-hidden="true">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M12 2 4 7v6c0 5 3.4 8.2 8 9 4.6-.8 8-4 8-9V7l-8-5Z"></path>
+                                <path d="M9.5 12.5 11 14l3.5-3.5"></path>
+                            </svg>
+                        </span>
+                        <span class="app-nav-label">{{ role_labels.get(current_user.role, current_user.role) }}</span>
+                    </div>
+                    <form method="post" action="/logout" class="app-logout-form">
+                        <button type="submit" class="app-nav-item app-nav-item-ghost">
+                            <span class="app-nav-icon" aria-hidden="true">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+                                    <path d="m16 17 5-5-5-5"></path>
+                                    <path d="M21 12H9"></path>
+                                </svg>
+                            </span>
+                            <span class="app-nav-label">Выйти</span>
+                        </button>
+                    </form>
+                {% endif %}
+            </div>
+        </div>
+    </aside>
+
+    <div class="app-shell-content">
+        <main class="main">
+            <div class="container">
+                {% block content %}{% endblock %}
+            </div>
+        </main>
     </div>
-</main>
+</div>
 
 {% block scripts %}{% endblock %}
+<script>
+    (function () {
+        var shell = document.getElementById("app-shell");
+        var sidebar = document.getElementById("app-sidebar");
+        if (!shell || !sidebar || window.matchMedia("(max-width: 560px)").matches) return;
+
+        var collapseTimer = null;
+
+        function expand() {
+            if (collapseTimer) {
+                window.clearTimeout(collapseTimer);
+                collapseTimer = null;
+            }
+            shell.classList.add("app-shell-expanded");
+        }
+
+        function collapse() {
+            collapseTimer = window.setTimeout(function () {
+                shell.classList.remove("app-shell-expanded");
+            }, 24);
+        }
+
+        sidebar.addEventListener("mouseenter", expand);
+        sidebar.addEventListener("mouseleave", collapse);
+        sidebar.addEventListener("focusin", expand);
+        sidebar.addEventListener("focusout", function (event) {
+            if (!sidebar.contains(event.relatedTarget)) collapse();
+        });
+    })();
+</script>
 </body>
 </html>

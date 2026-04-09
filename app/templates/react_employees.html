@@ -4,8 +4,9 @@
     <link rel="stylesheet" href="/static/workspace_v2/app.css?v=20">
     <style>
         .main > .container:has(#react-employees-root) {
-            width: min(1960px, calc(100vw - 24px));
-            max-width: min(1960px, calc(100vw - 24px));
+            width: min(1820px, calc(100vw - var(--sidebar-width, 86px) - 32px));
+            max-width: min(1820px, calc(100vw - var(--sidebar-width, 86px) - 32px));
+            transition: width 0.28s ease, max-width 0.28s ease;
         }
     </style>
 {% endblock %}

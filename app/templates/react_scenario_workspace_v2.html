@@ -1,11 +1,24 @@
 {% extends "base.html" %}
 
 {% block extra_head %}
-    <link rel="stylesheet" href="/static/workspace_v2/app.css?v=20">
+    <link rel="stylesheet" href="/static/workspace_v2/app.css?v=21">
     <style>
+        .main:has(#react-scenario-workspace-v2-root) {
+            padding-block: 18px 12px;
+        }
+
         .main > .container:has(#react-scenario-workspace-v2-root) {
-            width: min(1960px, calc(100vw - 24px));
-            max-width: min(1960px, calc(100vw - 24px));
+            width: min(1760px, calc(100vw - var(--sidebar-width, 86px) - 32px));
+            max-width: min(1760px, calc(100vw - var(--sidebar-width, 86px) - 32px));
+            height: calc(100vh - 30px);
+            max-height: calc(100vh - 30px);
+            overflow: hidden;
+            transition: width 0.28s ease, max-width 0.28s ease;
+        }
+
+        .react-page:has(#react-scenario-workspace-v2-root),
+        #react-scenario-workspace-v2-root {
+            height: 100%;
         }
     </style>
 {% endblock %}
@@ -28,5 +41,5 @@
 {% endblock %}
 
 {% block scripts %}
-    <script type="module" src="/static/workspace_v2/scenario-workspace.js?v=20"></script>
+    <script type="module" src="/static/workspace_v2/scenario-workspace.js?v=22"></script>
 {% endblock %}

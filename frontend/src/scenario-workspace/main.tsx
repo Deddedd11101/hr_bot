@@ -69,6 +69,18 @@ function buildChildContainer(item: WorkspaceItem | null): Container | null {
   if (!item) return null;
 
   if (item.kind === "branch_slot") {
+    if (item.step?.response_type === "branching" && item.step.branch_items.length) {
+      return {
+        type: "branches",
+        key: `branches-${item.step.id}`,
+        sourceKey: itemKey(item),
+        ownerStepId: item.step.id,
+        title: item.label,
+        subtitle: "Вложенные ветки",
+        crumbLabel: `Ветки: ${item.label}`,
+        items: item.step.branch_items,
+      };
+    }
     if (item.step?.response_type === "chain") {
       return {
         type: "chain",
@@ -912,9 +924,9 @@ function App() {
       ) : null}
       <div
         className={`h-full gap-4 transition-opacity ${loading ? "opacity-80" : "opacity-100"}`}
-        style={{ display: "grid", gridTemplateColumns: "400px minmax(0, 1fr) 500px" }}
+        style={{ display: "grid", gridTemplateColumns: "392px minmax(0, 1fr) 488px" }}
       >
-      <section className="flex min-h-0 flex-col overflow-hidden rounded-[10px] border border-[var(--color-border)] bg-[var(--color-panel)] p-4 shadow-[var(--shadow-soft)]">
+      <section className="flex min-h-0 flex-col overflow-hidden rounded-[10px] border border-[var(--color-border)] bg-[var(--color-panel)] p-4">
         <div className="mb-3">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--color-muted-foreground)]">Workspace V2</p>
@@ -1018,7 +1030,7 @@ function App() {
         </ScrollArea>
       </section>
 
-      <section className="flex min-h-0 flex-col overflow-hidden rounded-[10px] border border-[var(--color-border)] bg-[var(--color-panel)] p-4 shadow-[var(--shadow-soft)]">
+      <section className="flex min-h-0 flex-col overflow-hidden rounded-[10px] border border-[var(--color-border)] bg-[var(--color-panel)] p-4">
         <div className="mb-3 flex flex-wrap items-center gap-2 text-sm text-[var(--color-muted-foreground)]">
           {stack.map((entry, index) => (
             <React.Fragment key={entry.key}>
@@ -1119,7 +1131,7 @@ function App() {
       </section>
 
       <section
-        className="flex min-h-0 flex-col overflow-hidden rounded-[10px] border border-[var(--color-border)] bg-[var(--color-panel)] p-4 shadow-[var(--shadow-soft)]"
+        className="flex min-h-0 flex-col overflow-hidden rounded-[10px] border border-[var(--color-border)] bg-[var(--color-panel)] p-4"
         style={{ position: "sticky", top: 0, alignSelf: "stretch" }}
       >
         <div className="mb-3">
@@ -1317,7 +1329,7 @@ function App() {
                   />
                 </label>
 
-                <details className="rounded-[10px] border border-[var(--color-border)] bg-[var(--color-panel-muted)] p-3 transition-all duration-200 hover:rounded-[18px]" open={Boolean(form?.notify_on_send_text || form?.notify_on_send_recipient_ids || form?.notify_on_send_recipient_scope)}>
+                <details className="rounded-[10px] border border-[var(--color-border)] bg-[var(--color-panel-muted)] p-3 transition-all duration-200 hover:rounded-[18px]">
                   <summary className="cursor-pointer list-none text-sm font-semibold text-[var(--color-foreground)]/80">
                     Уведомление для шага
                   </summary>
