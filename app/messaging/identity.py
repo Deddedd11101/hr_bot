@@ -13,6 +13,11 @@ def _normalized(value: Optional[str]) -> Optional[str]:
     return text or None
 
 
+def _looks_like_numeric_chat_id(value: Optional[str]) -> bool:
+    normalized = _normalized(value)
+    return bool(normalized) and (normalized.isdigit() or (normalized.startswith("-") and normalized[1:].isdigit()))
+
+
 def get_primary_account(
     employee: Employee,
     db: Session | None = None,
@@ -73,9 +78,12 @@ def get_primary_chat_id(
     channel: str | None = None,
 ) -> Optional[str]:
     account = get_primary_account(employee, db=db, channel=channel)
-    if account:
+    if account and _looks_like_numeric_chat_id(account.external_user_id):
         return _normalized(account.external_user_id)
-    return _normalized(employee.telegram_user_id)
+    legacy_user_id = _normalized(employee.telegram_user_id)
+    if _looks_like_numeric_chat_id(legacy_user_id):
+        return legacy_user_id
+    return None
 
 
 def set_primary_chat_id(
@@ -105,7 +113,13 @@ def get_public_chat_handle(
     account = get_primary_account(employee, db=db, channel=channel)
     if account and _normalized(account.external_username):
         return _normalized(account.external_username)
-    return _normalized(employee.telegram_username)
+    public_handle = _normalized(employee.telegram_username)
+    if public_handle:
+        return public_handle
+    legacy_user_id = _normalized(employee.telegram_user_id)
+    if legacy_user_id and not _looks_like_numeric_chat_id(legacy_user_id):
+        return legacy_user_id
+    return None
 
 
 def set_public_chat_handle(
@@ -116,7 +130,7 @@ def set_public_chat_handle(
 ) -> None:
     normalized = _normalized(value)
     employee.telegram_username = normalized
-    if db is not None and employee.id is not None and _normalized(employee.telegram_user_id):
+    if db is not None and employee.id is not None and _looks_like_numeric_chat_id(employee.telegram_user_id):
         upsert_employee_channel_account(
             db,
             employee,
@@ -182,6 +196,8 @@ def upsert_employee_channel_account(
 
 
 def sync_legacy_telegram_account(db: Session, employee: Employee) -> Optional[EmployeeMessengerAccount]:
+    if not _looks_like_numeric_chat_id(employee.telegram_user_id):
+        return None
     return upsert_employee_channel_account(
         db,
         employee,

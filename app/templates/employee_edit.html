@@ -26,8 +26,12 @@
             <input type="text" name="full_name" value="{{ employee.full_name or '' }}" placeholder="Иванов Иван Иванович">
         </label>
         <label class="field">
-            <span>ID пользователя в канале или @username</span>
+            <span>ID пользователя в канале</span>
             <input type="text" name="telegram_user_id" value="{{ employee.telegram_user_id }}" placeholder="привяжется при первом сообщении в подключённом мессенджере">
+        </label>
+        <label class="field">
+            <span>Публичный Telegram @username</span>
+            <input type="text" name="telegram_username" value="{{ employee.telegram_username or '' }}" placeholder="@username">
         </label>
         <label class="field">
             <span>{{ 'Предварительная дата выхода на работу' if is_candidate else 'Дата выхода на работу' }}</span>

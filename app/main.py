@@ -896,11 +896,37 @@ def _parse_employee_stage_for_create(employee_stage: str, list_kind: str) -> Opt
     return "staff"
 
 
+def _looks_like_numeric_chat_id(value: Optional[str]) -> bool:
+    normalized = (value or "").strip()
+    return bool(normalized) and (normalized.isdigit() or (normalized.startswith("-") and normalized[1:].isdigit()))
+
+
+def _apply_employee_telegram_identity(
+    employee: Employee,
+    *,
+    chat_id: str = "",
+    chat_handle: str = "",
+    db: Session | None = None,
+) -> None:
+    normalized_chat_id = (chat_id or "").strip()
+    normalized_chat_handle = (chat_handle or "").strip()
+
+    if normalized_chat_id:
+        if _looks_like_numeric_chat_id(normalized_chat_id):
+            set_primary_chat_id(employee, normalized_chat_id, db=db)
+        else:
+            set_public_chat_handle(employee, normalized_chat_id, db=db)
+
+    if normalized_chat_handle:
+        set_public_chat_handle(employee, normalized_chat_handle, db=db)
+
+
 def _create_employee_record(
     db: Session,
     *,
     full_name: str,
     chat_id: str,
+    chat_handle: str = "",
     first_workday: str,
     employee_stage: str,
     candidate_work_stage: str,
@@ -922,7 +948,7 @@ def _create_employee_record(
             else ("testing" if list_kind == "candidates" else None)
         ),
     )
-    set_primary_chat_id(employee, chat_id)
+    _apply_employee_telegram_identity(employee, chat_id=chat_id, chat_handle=chat_handle)
     db.add(employee)
     db.flush()
     sync_legacy_telegram_account(db, employee)
@@ -945,6 +971,7 @@ def _apply_employee_update(
     *,
     full_name: str,
     chat_id: str,
+    chat_handle: str,
     first_workday: str,
     desired_position: str,
     birth_date: str,
@@ -966,7 +993,7 @@ def _apply_employee_update(
     parsed_birth_date = datetime.strptime(birth_date, "%Y-%m-%d").date() if birth_date else None
 
     employee.full_name = full_name.strip() or None
-    set_primary_chat_id(employee, chat_id, db=db)
+    _apply_employee_telegram_identity(employee, chat_id=chat_id, chat_handle=chat_handle, db=db)
     employee.first_workday = first_day
     normalized_position = desired_position.strip()
     employee.desired_position = normalized_position or None
@@ -1244,6 +1271,7 @@ def create_employee_api(
         db,
         full_name=str(payload.get("full_name") or ""),
         chat_id=str(payload.get("chat_id") or ""),
+        chat_handle=str(payload.get("chat_handle") or ""),
         first_workday=str(payload.get("first_workday") or ""),
         employee_stage=str(payload.get("employee_stage") or ""),
         candidate_work_stage=str(payload.get("candidate_work_stage") or ""),
@@ -1290,6 +1318,7 @@ def update_employee_api(
         employee,
         full_name=str(payload.get("full_name") or ""),
         chat_id=str(payload.get("chat_id") or ""),
+        chat_handle=str(payload.get("chat_handle") or ""),
         first_workday=str(payload.get("first_workday") or ""),
         desired_position=str(payload.get("desired_position") or ""),
         birth_date=str(payload.get("birth_date") or ""),
@@ -1801,7 +1830,8 @@ def _build_employee_detail_payload(db: Session, employee: Employee) -> dict:
         "employee": {
             "id": employee.id,
             "full_name": employee.full_name or "",
-            "chat_id": primary_chat_id,
+            "chat_id": primary_chat_id or "",
+            "chat_handle": get_public_chat_handle(employee, db=db) or "",
             "first_workday": employee.first_workday.isoformat() if employee.first_workday else "",
             "desired_position": employee.desired_position or "",
             "birth_date": employee.birth_date.isoformat() if employee.birth_date else "",
@@ -1860,6 +1890,7 @@ def update_employee(
     employee_id: int,
     full_name: str = Form(""),
     telegram_user_id: str = Form(""),
+    telegram_username: str = Form(""),
     first_workday: str = Form(""),
     desired_position: str = Form(""),
     birth_date: str = Form(""),
@@ -1888,6 +1919,7 @@ def update_employee(
         employee,
         full_name=full_name,
         chat_id=telegram_user_id,
+        chat_handle=telegram_username,
         first_workday=first_workday,
         desired_position=desired_position,
         birth_date=birth_date,
@@ -1993,6 +2025,7 @@ def create_employee(
     request: Request,
     full_name: str = Form(""),
     telegram_user_id: str = Form(""),
+    telegram_username: str = Form(""),
     first_workday: str = Form(""),
     employee_stage: str = Form(""),
     candidate_work_stage: str = Form(""),
@@ -2006,6 +2039,7 @@ def create_employee(
         db,
         full_name=full_name,
         chat_id=telegram_user_id,
+        chat_handle=telegram_username,
         first_workday=first_workday,
         employee_stage=employee_stage,
         candidate_work_stage=candidate_work_stage,

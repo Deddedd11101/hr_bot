@@ -560,12 +560,23 @@
                                         ),
                                         e(
                                             Field,
-                                            { label: "ID пользователя в канале или @username" },
+                                            { label: "ID пользователя в канале" },
                                             e("input", {
                                                 type: "text",
                                                 name: "chat_id",
                                                 value: form.chat_id,
                                                 onChange: handleChange,
+                                            })
+                                        ),
+                                        e(
+                                            Field,
+                                            { label: "Публичный Telegram @username" },
+                                            e("input", {
+                                                type: "text",
+                                                name: "chat_handle",
+                                                value: form.chat_handle || "",
+                                                onChange: handleChange,
+                                                placeholder: "@username",
                                             })
                                         ),
                                         e(
