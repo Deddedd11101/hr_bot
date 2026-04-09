@@ -9,8 +9,7 @@
         </div>
         <div style="display:flex; gap:12px; align-items:center;">
             {% if kind == 'scenario' %}
-                <a href="/app/flows/workspace" class="btn-secondary">Workspace</a>
-                <a href="/app/flows/workspace-v2" class="btn-secondary">Workspace V2</a>
+                <a href="/app/flows/workspace-v2" class="btn-secondary">Workspace</a>
             {% endif %}
             <form method="post" action="{{ collection_path }}" style="margin: 0;">
                 <input type="hidden" name="title" value="{{ new_title }}">
@@ -50,8 +49,7 @@
                         <button type="submit" class="table-icon-link" aria-label="Копировать" title="Копировать">&#10697;</button>
                     </form>
                     {% if kind == 'scenario' %}
-                        <a href="/app/flows/workspace?scenario_id={{ scenario.id }}" class="table-icon-link" aria-label="Workspace" title="Workspace">&#9776;</a>
-                        <a href="/app/flows/workspace-v2?scenario_id={{ scenario.id }}" class="table-icon-link" aria-label="Workspace V2" title="Workspace V2">&#10697;</a>
+                        <a href="/app/flows/workspace-v2?scenario_id={{ scenario.id }}" class="table-icon-link" aria-label="Workspace" title="Workspace">&#10697;</a>
                     {% endif %}
                     <a href="{{ collection_path }}/{{ scenario.id }}" class="table-icon-link" aria-label="Редактировать" title="Редактировать">&#9998;</a>
                     {% if kind == 'survey' %}

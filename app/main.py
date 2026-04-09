@@ -4,12 +4,14 @@ from pathlib import Path
 import shutil
 from typing import List, Optional
 from collections import defaultdict
+from uuid import uuid4
 
 from fastapi import Body, Depends, FastAPI, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import or_
+from sqlalchemy import or_, text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from .auth import ROLE_LABELS, authenticate_account, hash_password
@@ -228,11 +230,24 @@ def _load_scenario_editor_data(db: Session, scenario: ScenarioTemplate):
 
 def _workspace_response_label(step: FlowStepTemplate) -> str:
     response_type = (step.response_type or "").strip()
+    if response_type == "buttons":
+        response_type = "branching"
     extra_labels = {
         "chain": "Цепочка шагов",
         "launch_scenario": "Переход к сценарию",
     }
     return RESPONSE_TYPE_LABELS.get(response_type, extra_labels.get(response_type, response_type or "none"))
+
+
+def _workspace_response_type_labels() -> dict[str, str]:
+    labels = {key: value for key, value in RESPONSE_TYPE_LABELS.items() if key != "buttons"}
+    labels["launch_scenario"] = "Переход к сценарию"
+    labels["chain"] = "Цепочка шагов"
+    return labels
+
+
+def _generate_workspace_scenario_key(kind: str = "scenario") -> str:
+    return f"{kind}_{uuid4().hex[:12]}"
 
 
 def _workspace_node_kind(step: FlowStepTemplate) -> str:
@@ -287,6 +302,7 @@ def _serialize_workspace_step(
         "id": step.id,
         "kind": _workspace_node_kind(step),
         "title": step.step_title,
+        "text": (step.custom_text or "").strip() if (step.custom_text or "").strip() else (step.default_text or ""),
         "text_preview": _workspace_text_preview(step),
         "response_type": step.response_type or "none",
         "response_label": _workspace_response_label(step),
@@ -306,6 +322,9 @@ def _serialize_workspace_step(
             or (getattr(step, "notify_on_send_recipient_ids", None) or "").strip()
             or (getattr(step, "notify_on_send_recipient_scope", None) or "").strip()
         ),
+        "notify_on_send_text": getattr(step, "notify_on_send_text", None) or "",
+        "notify_on_send_recipient_ids": getattr(step, "notify_on_send_recipient_ids", None) or "",
+        "notify_on_send_recipient_scope": getattr(step, "notify_on_send_recipient_scope", None) or "",
         "branch_items": branch_items,
         "chain_steps": chain_steps,
     }
@@ -347,7 +366,7 @@ def _build_scenario_workspace_payload(
                 "trigger_mode_label": TRIGGER_MODE_LABELS.get(scenario.trigger_mode, scenario.trigger_mode),
                 "steps_count": steps_count,
                 "classic_url": f"/flows/{scenario.id}",
-                "workspace_url": f"/app/flows/workspace?scenario_id={scenario.id}",
+                "workspace_url": f"/app/flows/workspace-v2?scenario_id={scenario.id}",
             }
         )
 
@@ -371,6 +390,7 @@ def _build_scenario_workspace_payload(
             "stats": {
                 "steps_count": len(root_steps),
             },
+            "response_type_labels": _workspace_response_type_labels(),
             "target_field_labels": TARGET_FIELD_LABELS,
             "send_mode_labels": SEND_MODE_LABELS,
             "notification_recipient_scope_labels": NOTIFICATION_RECIPIENT_SCOPE_LABELS,
@@ -2662,7 +2682,7 @@ def _copy_template_entity(db: Session, scenario: ScenarioTemplate) -> ScenarioTe
         .first()
     )
     scenario_copy = ScenarioTemplate(
-        scenario_key=f"custom_{scenario.scenario_kind}_{int(datetime.utcnow().timestamp())}_{scenario.id}",
+        scenario_key=_generate_workspace_scenario_key(f"custom_{scenario.scenario_kind}"),
         title=f"{scenario.title} (копия)",
         sort_order=(last_scenario.sort_order + 10) if last_scenario else 10,
         scenario_kind=scenario.scenario_kind,
@@ -2732,6 +2752,17 @@ def _copy_template_entity(db: Session, scenario: ScenarioTemplate) -> ScenarioTe
     db.commit()
     db.refresh(scenario_copy)
     return scenario_copy
+
+
+def _delete_template_entity(db: Session, scenario: ScenarioTemplate) -> None:
+    for step in db.query(FlowStepTemplate).filter(FlowStepTemplate.flow_key == scenario.scenario_key).all():
+        _delete_step_attachment_file(step)
+    db.query(StepButtonNotification).filter(StepButtonNotification.flow_key == scenario.scenario_key).delete()
+    db.query(FlowStepTemplate).filter(FlowStepTemplate.flow_key == scenario.scenario_key).delete()
+    db.query(ScenarioProgress).filter(ScenarioProgress.scenario_key == scenario.scenario_key).delete()
+    db.query(SurveyAnswer).filter(SurveyAnswer.scenario_key == scenario.scenario_key).delete()
+    db.query(FlowLaunchRequest).filter(FlowLaunchRequest.flow_key == scenario.scenario_key).delete()
+    db.delete(scenario)
 
 
 def _template_list_page(request: Request, kind: str, db: Session):
@@ -2809,36 +2840,187 @@ def create_workspace_scenario_api(
     db: Session = Depends(get_db),
 ):
     _require_api_auth(request)
-    title = (str(payload.get("title") or "").strip() or "Новый сценарий")
-    description = str(payload.get("description") or "").strip() or None
+    try:
+        title = (str(payload.get("title") or "").strip() or "Новый сценарий")
+        description = str(payload.get("description") or "").strip() or None
 
-    last_scenario = (
-        db.query(ScenarioTemplate)
-        .filter(ScenarioTemplate.scenario_kind == "scenario")
-        .order_by(ScenarioTemplate.sort_order.desc(), ScenarioTemplate.id.desc())
-        .first()
-    )
-    next_order = (last_scenario.sort_order + 10) if last_scenario else 10
-    now = datetime.utcnow()
-    scenario = ScenarioTemplate(
-        title=title,
-        description=description,
-        scenario_key=f"scenario_{int(now.timestamp())}",
-        scenario_kind="scenario",
-        role_scope="all",
-        trigger_mode="manual_only",
-        sort_order=next_order,
-        created_at=now,
-        updated_at=now,
-    )
-    db.add(scenario)
-    db.commit()
-    db.refresh(scenario)
+        last_scenario = (
+            db.query(ScenarioTemplate)
+            .filter(ScenarioTemplate.scenario_kind == "scenario")
+            .order_by(ScenarioTemplate.sort_order.desc(), ScenarioTemplate.id.desc())
+            .first()
+        )
+        next_order = ((last_scenario.sort_order or 0) + 10) if last_scenario else 10
+        now = datetime.utcnow()
+        scenario_key = _generate_workspace_scenario_key("scenario")
+
+        table_info = db.execute(text("PRAGMA table_info(scenario_templates)")).fetchall()
+        table_columns = {row[1] for row in table_info}
+
+        insert_values = {
+            "scenario_key": scenario_key,
+            "title": title,
+            "sort_order": next_order,
+            "scenario_kind": "scenario",
+            "role_scope": "all",
+            "trigger_mode": "manual_only",
+            "target_employee_id": None,
+            "description": description,
+        }
+        if "created_at" in table_columns:
+            insert_values["created_at"] = now
+        if "updated_at" in table_columns:
+            insert_values["updated_at"] = now
+
+        required_columns_without_default = {
+            row[1]
+            for row in table_info
+            if row[5] == 0 and row[3] == 1 and row[4] is None
+        }
+        missing_required_columns = sorted(required_columns_without_default - set(insert_values.keys()))
+        if missing_required_columns:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Не удалось создать сценарий: в БД есть обязательные колонки без поддержки в UI ({', '.join(missing_required_columns)}).",
+            )
+
+        columns_sql = ", ".join(insert_values.keys())
+        placeholders_sql = ", ".join(f":{key}" for key in insert_values.keys())
+        db.execute(
+            text(f"INSERT INTO scenario_templates ({columns_sql}) VALUES ({placeholders_sql})"),
+            insert_values,
+        )
+        db.commit()
+        scenario = (
+            db.query(ScenarioTemplate)
+            .filter(ScenarioTemplate.scenario_key == scenario_key)
+            .first()
+        )
+        if not scenario:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Не удалось создать сценарий: запись не найдена после сохранения.",
+            )
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Не удалось создать сценарий. Попробуй ещё раз.")
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Не удалось создать сценарий.")
 
     return {
         "message": "Сценарий создан",
-        "payload": _build_scenario_workspace_payload(db, scenario.id),
         "scenario_id": scenario.id,
+        "payload": _build_scenario_workspace_payload(db, scenario.id),
+    }
+
+
+@app.post("/api/flows/workspace/scenarios/reorder")
+def reorder_workspace_scenarios_api(
+    request: Request,
+    payload: dict = Body(...),
+    db: Session = Depends(get_db),
+):
+    _require_api_auth(request)
+    scenario_ids = [int(value) for value in (payload.get("scenario_ids") or []) if str(value).isdigit()]
+    if not scenario_ids:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Не передан порядок сценариев")
+
+    scenarios = (
+        db.query(ScenarioTemplate)
+        .filter(
+            ScenarioTemplate.id.in_(scenario_ids),
+            ScenarioTemplate.scenario_kind == "scenario",
+        )
+        .all()
+    )
+    scenario_map = {scenario.id: scenario for scenario in scenarios}
+    for index, scenario_id in enumerate(scenario_ids):
+        scenario = scenario_map.get(scenario_id)
+        if scenario:
+            scenario.sort_order = (index + 1) * 10
+    db.commit()
+
+    selected_scenario_id = next((scenario_id for scenario_id in scenario_ids if scenario_id in scenario_map), None)
+    return {
+        "message": "Порядок сценариев обновлён",
+        "payload": _build_scenario_workspace_payload(db, selected_scenario_id),
+    }
+
+
+@app.post("/api/flows/workspace/scenarios/bulk-copy")
+def copy_workspace_scenarios_api(
+    request: Request,
+    payload: dict = Body(...),
+    db: Session = Depends(get_db),
+):
+    _require_api_auth(request)
+    scenario_ids = [int(value) for value in (payload.get("scenario_ids") or []) if str(value).isdigit()]
+    if not scenario_ids:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Не выбраны сценарии для копирования")
+
+    scenarios = (
+        db.query(ScenarioTemplate)
+        .filter(
+            ScenarioTemplate.id.in_(scenario_ids),
+            ScenarioTemplate.scenario_kind == "scenario",
+        )
+        .order_by(ScenarioTemplate.sort_order, ScenarioTemplate.id)
+        .all()
+    )
+    if not scenarios:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Сценарии не найдены")
+
+    copied_items = [_copy_template_entity(db, scenario) for scenario in scenarios]
+    db.commit()
+
+    return {
+        "message": f"Скопировано: {len(copied_items)}",
+        "payload": _build_scenario_workspace_payload(db, copied_items[-1].id),
+    }
+
+
+@app.post("/api/flows/workspace/scenarios/bulk-delete")
+def delete_workspace_scenarios_api(
+    request: Request,
+    payload: dict = Body(...),
+    db: Session = Depends(get_db),
+):
+    _require_api_auth(request)
+    scenario_ids = [int(value) for value in (payload.get("scenario_ids") or []) if str(value).isdigit()]
+    if not scenario_ids:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Не выбраны сценарии для удаления")
+
+    scenarios = (
+        db.query(ScenarioTemplate)
+        .filter(
+            ScenarioTemplate.id.in_(scenario_ids),
+            ScenarioTemplate.scenario_kind == "scenario",
+        )
+        .all()
+    )
+    if not scenarios:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Сценарии не найдены")
+
+    deleted_ids = {scenario.id for scenario in scenarios}
+    for scenario in scenarios:
+        _delete_template_entity(db, scenario)
+    db.commit()
+
+    remaining = (
+        db.query(ScenarioTemplate)
+        .filter(ScenarioTemplate.scenario_kind == "scenario")
+        .order_by(ScenarioTemplate.sort_order, ScenarioTemplate.id)
+        .all()
+    )
+    selected_scenario_id = next((scenario.id for scenario in remaining if scenario.id not in deleted_ids), None)
+
+    return {
+        "message": f"Удалено: {len(deleted_ids)}",
+        "payload": _build_scenario_workspace_payload(db, selected_scenario_id),
     }
 
 
@@ -2921,6 +3103,44 @@ def create_workspace_root_step_api(
         "message": "Шаг добавлен",
         "payload": _build_scenario_workspace_payload(db, scenario.id),
         "step_id": step.id,
+    }
+
+
+@app.post("/api/flows/workspace/scenarios/{scenario_id}/steps/reorder")
+def reorder_workspace_root_steps_api(
+    request: Request,
+    scenario_id: int,
+    payload: dict = Body(...),
+    db: Session = Depends(get_db),
+):
+    _require_api_auth(request)
+    scenario = db.get(ScenarioTemplate, scenario_id)
+    if not scenario or scenario.scenario_kind != "scenario":
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Сценарий не найден")
+
+    step_ids = [int(value) for value in (payload.get("step_ids") or []) if str(value).isdigit()]
+    if not step_ids:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Не передан порядок шагов")
+
+    steps = (
+        db.query(FlowStepTemplate)
+        .filter(
+            FlowStepTemplate.flow_key == scenario.scenario_key,
+            FlowStepTemplate.parent_step_id.is_(None),
+            FlowStepTemplate.id.in_(step_ids),
+        )
+        .all()
+    )
+    step_map = {step.id: step for step in steps}
+    for index, step_id in enumerate(step_ids):
+        step = step_map.get(step_id)
+        if step:
+            step.sort_order = (index + 1) * 10
+    db.commit()
+
+    return {
+        "message": "Порядок шагов обновлён",
+        "payload": _build_scenario_workspace_payload(db, scenario.id),
     }
 
 
@@ -3101,23 +3321,74 @@ def delete_workspace_step_api(
 
 
 @app.get("/app/flows/workspace")
-def scenario_workspace_page(
+def scenario_workspace_legacy_redirect(
     request: Request,
     scenario_id: Optional[int] = None,
 ):
     auth_redirect = _require_auth(request)
     if auth_redirect:
         return auth_redirect
-    return _render(
-        request,
-        "react_scenario_workspace.html",
-        {
-            "active_tab": "flows",
-            "react_api_url": "/api/flows/workspace",
-            "react_selected_scenario_id": scenario_id or "",
-            "classic_list_url": "/flows",
-        },
+    target = f"/app/flows/workspace-v2?scenario_id={scenario_id}" if scenario_id else "/app/flows/workspace-v2"
+    return RedirectResponse(url=target, status_code=status.HTTP_303_SEE_OTHER)
+
+
+@app.post("/api/flows/workspace/steps/{step_id}/attachment")
+async def upload_workspace_step_attachment_api(
+    request: Request,
+    step_id: int,
+    upload: UploadFile = File(...),
+    db: Session = Depends(get_db),
+):
+    _require_api_auth(request)
+    step = db.get(FlowStepTemplate, step_id)
+    if not step:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Шаг не найден")
+    scenario = (
+        db.query(ScenarioTemplate)
+        .filter(
+            ScenarioTemplate.scenario_key == step.flow_key,
+            ScenarioTemplate.scenario_kind == "scenario",
+        )
+        .first()
     )
+    if not scenario:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Сценарий не найден")
+    await _save_step_attachment(step, upload)
+    db.commit()
+    return {
+        "message": "Вложение добавлено",
+        "payload": _build_scenario_workspace_payload(db, scenario.id),
+        "step_id": step.id,
+    }
+
+
+@app.post("/api/flows/workspace/steps/{step_id}/attachment/delete")
+def delete_workspace_step_attachment_api(
+    request: Request,
+    step_id: int,
+    db: Session = Depends(get_db),
+):
+    _require_api_auth(request)
+    step = db.get(FlowStepTemplate, step_id)
+    if not step:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Шаг не найден")
+    scenario = (
+        db.query(ScenarioTemplate)
+        .filter(
+            ScenarioTemplate.scenario_key == step.flow_key,
+            ScenarioTemplate.scenario_kind == "scenario",
+        )
+        .first()
+    )
+    if not scenario:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Сценарий не найден")
+    _delete_step_attachment_file(step)
+    db.commit()
+    return {
+        "message": "Вложение удалено",
+        "payload": _build_scenario_workspace_payload(db, scenario.id),
+        "step_id": step.id,
+    }
 
 
 @app.get("/app/flows/workspace-v2")
@@ -3136,7 +3407,6 @@ def scenario_workspace_v2_page(
             "react_api_url": "/api/flows/workspace",
             "react_selected_scenario_id": scenario_id or "",
             "classic_list_url": "/flows",
-            "workspace_v1_url": f"/app/flows/workspace?scenario_id={scenario_id}" if scenario_id else "/app/flows/workspace",
         },
     )
 
@@ -4114,15 +4384,7 @@ def delete_scenario(
     if not scenario:
         return RedirectResponse(url="/flows", status_code=status.HTTP_303_SEE_OTHER)
     collection_path = _template_entity_meta(getattr(scenario, "scenario_kind", "scenario"))["collection_path"]
-
-    for step in db.query(FlowStepTemplate).filter(FlowStepTemplate.flow_key == scenario.scenario_key).all():
-        _delete_step_attachment_file(step)
-    db.query(StepButtonNotification).filter(StepButtonNotification.flow_key == scenario.scenario_key).delete()
-    db.query(FlowStepTemplate).filter(FlowStepTemplate.flow_key == scenario.scenario_key).delete()
-    db.query(ScenarioProgress).filter(ScenarioProgress.scenario_key == scenario.scenario_key).delete()
-    db.query(SurveyAnswer).filter(SurveyAnswer.scenario_key == scenario.scenario_key).delete()
-    db.query(FlowLaunchRequest).filter(FlowLaunchRequest.flow_key == scenario.scenario_key).delete()
-    db.delete(scenario)
+    _delete_template_entity(db, scenario)
     db.commit()
     return RedirectResponse(url=collection_path, status_code=status.HTTP_303_SEE_OTHER)
 

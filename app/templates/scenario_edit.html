@@ -15,7 +15,6 @@
         </div>
         <div class="react-detail-header-actions">
             {% if kind == 'scenario' %}
-                <a href="/app/flows/{{ scenario.id }}" class="btn-secondary">Открыть visual-версию</a>
             {% endif %}
             {% if kind == 'survey' %}
                 <a href="/surveys/{{ scenario.id }}/export" class="btn-secondary">Выгрузить Excel</a>

@@ -13,6 +13,7 @@ export type WorkspaceStep = {
   id: number;
   kind: "step" | "branch_step" | "chain_step";
   title: string;
+  text: string;
   text_preview: string;
   response_type: string;
   response_label: string;
@@ -28,6 +29,9 @@ export type WorkspaceStep = {
   target_field_label: string;
   launch_scenario_key: string;
   notify_on_send: boolean;
+  notify_on_send_text: string;
+  notify_on_send_recipient_ids: string;
+  notify_on_send_recipient_scope: string;
   branch_items: WorkspaceBranchSlot[];
   chain_steps: WorkspaceStep[];
 };
@@ -54,6 +58,7 @@ export type WorkspaceData = {
   stats: {
     steps_count: number;
   };
+  response_type_labels: Record<string, string>;
   target_field_labels: Record<string, string>;
   send_mode_labels: Record<string, string>;
   notification_recipient_scope_labels: Record<string, string>;
