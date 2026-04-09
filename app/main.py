@@ -10,6 +10,7 @@ from fastapi import Body, Depends, FastAPI, File, Form, HTTPException, Request, 
 from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from aiogram.exceptions import TelegramBadRequest
 from sqlalchemy import or_, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -1142,6 +1143,9 @@ async def _launch_employee_flow_now(
         return "Сценарий не найден."
     if not get_primary_chat_id(employee, db=db):
         return "У сотрудника не указан ID пользователя в канале."
+    chat_id = get_primary_chat_id(employee, db=db)
+    if chat_id and not (chat_id.isdigit() or (chat_id.startswith("-") and chat_id[1:].isdigit())):
+        return "У сотрудника указан не числовой Telegram chat id. Для запуска сценария нужен chat id из диалога с ботом."
     if not _scenario_matches_employee_role(scenario, employee):
         return "Сценарий недоступен для роли этого сотрудника."
     if not settings.TELEGRAM_BOT_TOKEN:
@@ -1182,6 +1186,11 @@ async def _launch_employee_flow_now(
             )
         db.commit()
         return None
+    except TelegramBadRequest as exc:
+        message = str(exc)
+        if "chat not found" in message.lower():
+            return "Telegram не находит этот чат. Сотрудник должен сначала открыть бота и нажать Start, а в карточке должен быть сохранен его chat id."
+        return f"Telegram отказал в запуске сценария: {exc}"
     except Exception as exc:
         return f"Ошибка запуска сценария: {exc}"
     finally:
