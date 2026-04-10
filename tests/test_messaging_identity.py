@@ -1,6 +1,7 @@
 import unittest
 from types import SimpleNamespace
 
+from app.main import _apply_employee_telegram_identity
 from app.messaging.identity import (
     get_primary_chat_id,
     get_public_chat_handle,
@@ -28,6 +29,14 @@ class MessagingIdentityTests(unittest.TestCase):
         set_public_chat_handle(employee, "")
         self.assertIsNone(employee.telegram_user_id)
         self.assertIsNone(employee.telegram_username)
+
+    def test_apply_employee_telegram_identity_sets_public_handle(self) -> None:
+        employee = SimpleNamespace(telegram_user_id=None, telegram_username=None)
+
+        _apply_employee_telegram_identity(employee, chat_id="", chat_handle=" hr_team ")
+
+        self.assertIsNone(employee.telegram_user_id)
+        self.assertEqual(employee.telegram_username, "hr_team")
 
 
 if __name__ == "__main__":

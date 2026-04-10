@@ -38,6 +38,7 @@ from .messaging.identity import (
     get_primary_chat_id,
     get_public_chat_handle,
     set_primary_chat_id,
+    set_public_chat_handle,
     sync_legacy_telegram_account,
 )
 from .models import (

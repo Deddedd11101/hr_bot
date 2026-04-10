@@ -8,6 +8,8 @@ frontend/node_modules/
 
 # Local runtime data
 hr_bot.db
+stage_copy.db
+*.stage-copy.db
 storage/media_library/
 storage/employee_files/
 storage/scenario_step_files/
