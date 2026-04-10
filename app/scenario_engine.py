@@ -480,6 +480,28 @@ def step_reply_markup(step: FlowStepTemplate) -> Optional[InlineKeyboardMarkup]:
     return InlineKeyboardMarkup(inline_keyboard=buttons) if buttons else None
 
 
+def step_has_sendable_content(step: FlowStepTemplate) -> bool:
+    return bool(
+        resolve_step_message_template(step).strip()
+        or (getattr(step, "attachment_path", None) or "").strip()
+        or bool(getattr(step, "send_employee_card", False))
+        or step_reply_markup(step)
+    )
+
+
+def resolve_branch_followup_step(
+    db: Session,
+    scenario_key: str,
+    branch_step: FlowStepTemplate,
+) -> Optional[FlowStepTemplate]:
+    if branch_step.response_type != "chain":
+        return branch_step
+    first_chain_step = get_first_chain_step(db, branch_step.id)
+    if first_chain_step:
+        return first_chain_step
+    return resolve_followup_step(db, scenario_key, branch_step)
+
+
 async def send_step_attachment(messenger_or_bot: Any, chat_id: str, step: FlowStepTemplate) -> None:
     messenger = as_messenger(messenger_or_bot)
     attachment_path = (getattr(step, "attachment_path", None) or "").strip()
@@ -772,10 +794,13 @@ async def handle_button_response(messenger_or_bot: Any, db: Session, employee: E
         branch_step = get_branch_step(db, step.id, option_index)
         if branch_step:
             if branch_step.response_type == "chain":
-                await send_step(messenger, db, employee, scenario, branch_step, auto_follow=False)
-                first_chain_step = get_first_chain_step(db, branch_step.id)
-                if first_chain_step:
-                    await send_step(messenger, db, employee, scenario, first_chain_step)
+                if step_has_sendable_content(branch_step):
+                    await send_step(messenger, db, employee, scenario, branch_step, auto_follow=False)
+                next_branch_step = resolve_branch_followup_step(db, scenario.scenario_key, branch_step)
+                if next_branch_step:
+                    await send_step(messenger, db, employee, scenario, next_branch_step)
+                else:
+                    await advance_after_response(messenger, db, employee, scenario, branch_step)
                 return True
 
             await send_step(messenger, db, employee, scenario, branch_step)
