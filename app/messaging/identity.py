@@ -8,6 +8,25 @@ from sqlalchemy.orm import Session
 from ..models import Employee, EmployeeMessengerAccount
 
 
+class EmployeeIdentityConflictError(ValueError):
+    def __init__(
+        self,
+        *,
+        channel: str,
+        external_user_id: str,
+        conflicting_employee_id: int,
+        conflicting_employee_name: str | None = None,
+    ) -> None:
+        self.channel = channel
+        self.external_user_id = external_user_id
+        self.conflicting_employee_id = conflicting_employee_id
+        self.conflicting_employee_name = conflicting_employee_name
+        label = conflicting_employee_name or f"#{conflicting_employee_id}"
+        super().__init__(
+            f"Идентификатор {external_user_id} уже привязан к сотруднику {label} (id={conflicting_employee_id})."
+        )
+
+
 def _normalized(value: Optional[str]) -> Optional[str]:
     text = (value or "").strip()
     return text or None
@@ -77,9 +96,22 @@ def get_primary_chat_id(
     db: Session | None = None,
     channel: str | None = None,
 ) -> Optional[str]:
-    account = get_primary_account(employee, db=db, channel=channel)
-    if account and _looks_like_numeric_chat_id(account.external_user_id):
-        return _normalized(account.external_user_id)
+    if db is not None and employee.id is not None:
+        numeric_account = (
+            db.query(EmployeeMessengerAccount)
+            .filter(
+                EmployeeMessengerAccount.employee_id == employee.id,
+                EmployeeMessengerAccount.is_active.is_(True),
+            )
+            .order_by(EmployeeMessengerAccount.is_primary.desc(), EmployeeMessengerAccount.id.asc())
+            .all()
+        )
+        for account in numeric_account:
+            if channel and account.channel != channel:
+                continue
+            if _looks_like_numeric_chat_id(account.external_user_id):
+                return _normalized(account.external_user_id)
+
     legacy_user_id = _normalized(employee.telegram_user_id)
     if _looks_like_numeric_chat_id(legacy_user_id):
         return legacy_user_id
@@ -153,6 +185,24 @@ def upsert_employee_channel_account(
     normalized_user_id = _normalized(external_user_id)
     if employee.id is None or not normalized_user_id:
         return None
+
+    conflicting_account = (
+        db.query(EmployeeMessengerAccount)
+        .filter(
+            EmployeeMessengerAccount.channel == channel,
+            EmployeeMessengerAccount.external_user_id == normalized_user_id,
+            EmployeeMessengerAccount.employee_id != employee.id,
+        )
+        .first()
+    )
+    if conflicting_account:
+        conflicting_employee = db.get(Employee, conflicting_account.employee_id)
+        raise EmployeeIdentityConflictError(
+            channel=channel,
+            external_user_id=normalized_user_id,
+            conflicting_employee_id=conflicting_account.employee_id,
+            conflicting_employee_name=(getattr(conflicting_employee, "full_name", None) or "").strip() or None,
+        )
 
     account = (
         db.query(EmployeeMessengerAccount)

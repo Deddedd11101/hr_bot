@@ -35,6 +35,7 @@ from .file_storage import (
 )
 from .messaging import create_telegram_messenger
 from .messaging.identity import (
+    EmployeeIdentityConflictError,
     get_primary_chat_id,
     get_public_chat_handle,
     set_primary_chat_id,
@@ -486,6 +487,21 @@ def _employee_edit_redirect(employee_id: int, flash_message: Optional[str] = Non
 
         url = f"{url}?{urlencode({'flash_message': flash_message, 'flash_type': flash_type})}"
     return RedirectResponse(url=url, status_code=status.HTTP_303_SEE_OTHER)
+
+
+def _employee_identity_conflict_detail(exc: EmployeeIdentityConflictError) -> str:
+    return str(exc)
+
+
+def _employee_identity_integrity_detail(chat_id: str) -> str:
+    normalized_chat_id = (chat_id or "").strip()
+    if normalized_chat_id:
+        return f"Идентификатор {normalized_chat_id} уже привязан к другому сотруднику."
+    return "Указанный идентификатор уже привязан к другому сотруднику."
+
+
+def _is_employee_identity_integrity_error(exc: IntegrityError) -> bool:
+    return "employee_messenger_accounts.channel, employee_messenger_accounts.external_user_id" in str(exc)
 
 
 def _delete_employee_profile_photo(employee: Employee) -> None:
@@ -1268,16 +1284,28 @@ def create_employee_api(
 ):
     _require_api_auth(request)
     list_kind = "candidates" if (payload.get("list_kind") or "").strip() == "candidates" else "employees"
-    employee = _create_employee_record(
-        db,
-        full_name=str(payload.get("full_name") or ""),
-        chat_id=str(payload.get("chat_id") or ""),
-        chat_handle=str(payload.get("chat_handle") or ""),
-        first_workday=str(payload.get("first_workday") or ""),
-        employee_stage=str(payload.get("employee_stage") or ""),
-        candidate_work_stage=str(payload.get("candidate_work_stage") or ""),
-        list_kind=list_kind,
-    )
+    try:
+        employee = _create_employee_record(
+            db,
+            full_name=str(payload.get("full_name") or ""),
+            chat_id=str(payload.get("chat_id") or ""),
+            chat_handle=str(payload.get("chat_handle") or ""),
+            first_workday=str(payload.get("first_workday") or ""),
+            employee_stage=str(payload.get("employee_stage") or ""),
+            candidate_work_stage=str(payload.get("candidate_work_stage") or ""),
+            list_kind=list_kind,
+        )
+    except EmployeeIdentityConflictError as exc:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=_employee_identity_conflict_detail(exc))
+    except IntegrityError as exc:
+        db.rollback()
+        if _is_employee_identity_integrity_error(exc):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=_employee_identity_integrity_detail(str(payload.get("chat_id") or "")),
+            )
+        raise
     views = _build_employee_views(list_kind, db)
     item = next((row for row in views if row["employee"].id == employee.id), None)
     return {
@@ -1314,28 +1342,40 @@ def update_employee_api(
     employee = db.get(Employee, employee_id)
     if not employee:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Сотрудник не найден")
-    employee = _apply_employee_update(
-        db,
-        employee,
-        full_name=str(payload.get("full_name") or ""),
-        chat_id=str(payload.get("chat_id") or ""),
-        chat_handle=str(payload.get("chat_handle") or ""),
-        first_workday=str(payload.get("first_workday") or ""),
-        desired_position=str(payload.get("desired_position") or ""),
-        birth_date=str(payload.get("birth_date") or ""),
-        work_email=str(payload.get("work_email") or ""),
-        work_hours=str(payload.get("work_hours") or ""),
-        manager_chat_id=str(payload.get("manager_chat_id") or ""),
-        mentor_adaptation_chat_id=str(payload.get("mentor_adaptation_chat_id") or ""),
-        mentor_ipr_chat_id=str(payload.get("mentor_ipr_chat_id") or ""),
-        employee_stage=str(payload.get("employee_stage") or ""),
-        candidate_work_stage=str(payload.get("candidate_work_stage") or ""),
-        salary_expectation=str(payload.get("salary_expectation") or ""),
-        personal_data_consent=bool(payload.get("personal_data_consent")),
-        employee_data_consent=bool(payload.get("employee_data_consent")),
-        test_task_due_at=str(payload.get("test_task_due_at") or ""),
-        notes=str(payload.get("notes") or ""),
-    )
+    try:
+        employee = _apply_employee_update(
+            db,
+            employee,
+            full_name=str(payload.get("full_name") or ""),
+            chat_id=str(payload.get("chat_id") or ""),
+            chat_handle=str(payload.get("chat_handle") or ""),
+            first_workday=str(payload.get("first_workday") or ""),
+            desired_position=str(payload.get("desired_position") or ""),
+            birth_date=str(payload.get("birth_date") or ""),
+            work_email=str(payload.get("work_email") or ""),
+            work_hours=str(payload.get("work_hours") or ""),
+            manager_chat_id=str(payload.get("manager_chat_id") or ""),
+            mentor_adaptation_chat_id=str(payload.get("mentor_adaptation_chat_id") or ""),
+            mentor_ipr_chat_id=str(payload.get("mentor_ipr_chat_id") or ""),
+            employee_stage=str(payload.get("employee_stage") or ""),
+            candidate_work_stage=str(payload.get("candidate_work_stage") or ""),
+            salary_expectation=str(payload.get("salary_expectation") or ""),
+            personal_data_consent=bool(payload.get("personal_data_consent")),
+            employee_data_consent=bool(payload.get("employee_data_consent")),
+            test_task_due_at=str(payload.get("test_task_due_at") or ""),
+            notes=str(payload.get("notes") or ""),
+        )
+    except EmployeeIdentityConflictError as exc:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=_employee_identity_conflict_detail(exc))
+    except IntegrityError as exc:
+        db.rollback()
+        if _is_employee_identity_integrity_error(exc):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=_employee_identity_integrity_detail(str(payload.get("chat_id") or "")),
+            )
+        raise
     return _build_employee_detail_payload(db, employee)
 
 
@@ -1915,28 +1955,37 @@ def update_employee(
     employee = db.get(Employee, employee_id)
     if not employee:
         return RedirectResponse(url="/employees", status_code=status.HTTP_303_SEE_OTHER)
-    employee = _apply_employee_update(
-        db,
-        employee,
-        full_name=full_name,
-        chat_id=telegram_user_id,
-        chat_handle=telegram_username,
-        first_workday=first_workday,
-        desired_position=desired_position,
-        birth_date=birth_date,
-        work_email=work_email,
-        work_hours=work_hours,
-        manager_chat_id=manager_telegram_id,
-        mentor_adaptation_chat_id=mentor_adaptation_telegram_id,
-        mentor_ipr_chat_id=mentor_ipr_telegram_id,
-        employee_stage=employee_stage,
-        candidate_work_stage=candidate_work_stage,
-        salary_expectation=salary_expectation,
-        personal_data_consent=personal_data_consent == "true",
-        employee_data_consent=employee_data_consent == "true",
-        test_task_due_at=test_task_due_at,
-        notes=notes,
-    )
+    try:
+        employee = _apply_employee_update(
+            db,
+            employee,
+            full_name=full_name,
+            chat_id=telegram_user_id,
+            chat_handle=telegram_username,
+            first_workday=first_workday,
+            desired_position=desired_position,
+            birth_date=birth_date,
+            work_email=work_email,
+            work_hours=work_hours,
+            manager_chat_id=manager_telegram_id,
+            mentor_adaptation_chat_id=mentor_adaptation_telegram_id,
+            mentor_ipr_chat_id=mentor_ipr_telegram_id,
+            employee_stage=employee_stage,
+            candidate_work_stage=candidate_work_stage,
+            salary_expectation=salary_expectation,
+            personal_data_consent=personal_data_consent == "true",
+            employee_data_consent=employee_data_consent == "true",
+            test_task_due_at=test_task_due_at,
+            notes=notes,
+        )
+    except EmployeeIdentityConflictError as exc:
+        db.rollback()
+        return _employee_edit_redirect(employee_id, _employee_identity_conflict_detail(exc), "error")
+    except IntegrityError as exc:
+        db.rollback()
+        if _is_employee_identity_integrity_error(exc):
+            return _employee_edit_redirect(employee_id, _employee_identity_integrity_detail(telegram_user_id), "error")
+        raise
     return RedirectResponse(
         url="/candidates" if _employee_list_kind(employee) == "candidates" else "/employees",
         status_code=status.HTTP_303_SEE_OTHER,
@@ -2036,16 +2085,28 @@ def create_employee(
     if auth_redirect:
         return auth_redirect
     list_kind = "candidates" if (employee_stage or "").strip() == "candidate" else "employees"
-    employee = _create_employee_record(
-        db,
-        full_name=full_name,
-        chat_id=telegram_user_id,
-        chat_handle=telegram_username,
-        first_workday=first_workday,
-        employee_stage=employee_stage,
-        candidate_work_stage=candidate_work_stage,
-        list_kind=list_kind,
-    )
+    try:
+        employee = _create_employee_record(
+            db,
+            full_name=full_name,
+            chat_id=telegram_user_id,
+            chat_handle=telegram_username,
+            first_workday=first_workday,
+            employee_stage=employee_stage,
+            candidate_work_stage=candidate_work_stage,
+            list_kind=list_kind,
+        )
+    except EmployeeIdentityConflictError as exc:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=_employee_identity_conflict_detail(exc))
+    except IntegrityError as exc:
+        db.rollback()
+        if _is_employee_identity_integrity_error(exc):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=_employee_identity_integrity_detail(telegram_user_id),
+            )
+        raise
 
     return RedirectResponse(
         url="/candidates" if _employee_list_kind(employee) == "candidates" else "/employees",

@@ -187,7 +187,9 @@
             })
                 .then(function (response) {
                     if (!response.ok) {
-                        throw new Error("Не удалось сохранить изменения");
+                        return response.json().catch(function () { return {}; }).then(function (payload) {
+                            throw new Error(payload.detail || "Не удалось сохранить изменения");
+                        });
                     }
                     return response.json();
                 })
