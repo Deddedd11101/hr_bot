@@ -112,6 +112,43 @@ cd D:\HRBot\hr_bot
 5. Проверить сценарии локально.
 6. После проверки перенести изменения в целевую среду тем же пакетом.
 
+## Как скачать stage-БД после работы аналитиков
+
+Если нужно сохранить всё состояние тестового стенда после аналитиков, сначала на сервере зафиксируй backup:
+
+```bash
+cd /opt/hr_bot
+mkdir -p backups
+ts=$(date +%Y%m%d-%H%M%S)
+cp -a hr_bot.db "backups/hr_bot.after-analytics.$ts.db"
+```
+
+Потом локально в PowerShell скачай SQLite-базу:
+
+```powershell
+scp root@92.51.38.32:/opt/hr_bot/hr_bot.db D:\HRBot\hr_bot\stage_after_analytics.db
+```
+
+Эта БД будет локальной копией всего stage-состояния: сотрудники, кандидаты, сценарии, прогресс, настройки.
+
+## Как вытащить из stage-БД только сценарии
+
+После скачивания `stage_after_analytics.db` можно собрать переносимый пакет сценариев:
+
+```powershell
+cd D:\HRBot\hr_bot
+.\.venv\Scripts\python.exe tools\scenario_portability.py export --db stage_after_analytics.db --out exports\analytics_pkg --scenario-key first_day --scenario-key custom_scenario_1775198172
+```
+
+Затем импортировать пакет в локальную рабочую базу:
+
+```powershell
+cd D:\HRBot\hr_bot
+.\.venv\Scripts\python.exe tools\scenario_portability.py import --db hr_bot.db --in exports\analytics_pkg --storage-root storage\scenario_step_files
+```
+
+Если надо сохранить все изменения аналитиков без разбора, проще временно хранить `stage_after_analytics.db` как полный snapshot. Если надо перенести только сценарии в будущую боевую/локальную БД, использовать export/import по `scenario_key`.
+
 ## Что не стоит делать
 
 Не стоит:

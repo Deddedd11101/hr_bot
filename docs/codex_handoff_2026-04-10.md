@@ -266,6 +266,81 @@
   4. проверить;
   5. потом переносить дальше.
 
+## Stage deploy 2026-04-11
+
+Что выкатили:
+
+- ветка: `codex/scenario-workspace-ui-foundation`;
+- commit на stage: `5816ac9`;
+- локальная БД `hr_bot.db` была загружена на stage как `/opt/hr_bot/hr_bot.local-upload.db`;
+- перед заменой stage-БД сделан backup в `/opt/hr_bot/backups/hr_bot.<timestamp>.db`;
+- stage-БД заменена локальной копией;
+- `hr-bot-web` и `hr-bot-worker` перезапущены;
+- `systemctl is-active hr-bot-web` -> `active`;
+- `systemctl is-active hr-bot-worker` -> `active`;
+- Telegram worker стартует без traceback: `HR Telegram bot is running. Press Ctrl+C to stop.`
+
+Фактическое состояние stage-БД после выката:
+
+- `employees: 1`;
+- `employee_messenger_accounts: 1`;
+- `scenario_templates: 12`;
+- `flow_step_templates: 65`;
+- `scenario_progress: 2`;
+- `flow_launch_requests: 2`.
+
+Важный инфраструктурный момент:
+
+- stage-приложение сейчас слушает напрямую порт `8000`;
+- `nginx`, `caddy`, `apache2` на сервере не запущены или не установлены;
+- порт `80` на сервере не слушается;
+- поэтому URL без порта может отдавать `503` извне, но это не ошибка FastAPI;
+- рабочие stage-ссылки сейчас должны быть с `:8000`:
+  - `http://92.51.38.32:8000/app/employees`;
+  - `http://92.51.38.32:8000/app/flows/workspace-v2`;
+  - `http://92.51.38.32:8000/app/employees/1`.
+
+Проверка с сервера:
+
+```bash
+curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8000/app/flows/workspace-v2
+curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8000/app/employees
+curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8000/app/employees/1
+```
+
+Если нужна ссылка без `:8000`, надо отдельно поднимать reverse proxy `80 -> 127.0.0.1:8000`. Это инфраструктурная настройка и не блокирует smoke на тестовом стенде.
+
+CI/CD:
+
+- `CI` сейчас запускается на `push` в `main` и на `pull_request`;
+- `Deploy Stage` запускается после успешного `CI` для `main`;
+- push в `codex/scenario-workspace-ui-foundation` сам по себе stage не деплоит;
+- этот deploy на stage был ручным через SSH с checkout/reset на `origin/codex/scenario-workspace-ui-foundation`.
+
+Новый Telegram token не хранить в git. На stage он задан через systemd drop-in:
+
+- `/etc/systemd/system/hr-bot-web.service.d/10-stage-env.conf`;
+- `/etc/systemd/system/hr-bot-worker.service.d/10-stage-env.conf`.
+
+## Как сохранить stage-БД после работы аналитиков
+
+Перед тем как аналитики начнут работу, можно сделать контрольный backup:
+
+```bash
+cd /opt/hr_bot
+mkdir -p backups
+ts=$(date +%Y%m%d-%H%M%S)
+cp -a hr_bot.db "backups/hr_bot.before-analytics.$ts.db"
+```
+
+После того как аналитики наполнят сценарии/данные на тестовом стенде, скачать БД локально из PowerShell:
+
+```powershell
+scp root@92.51.38.32:/opt/hr_bot/hr_bot.db D:\HRBot\hr_bot\stage_after_analytics.db
+```
+
+Если нужно сохранить именно сценарии, а не всю БД, дальше использовать `tools/scenario_portability.py` по инструкции `docs/scenario_portability.md`.
+
 ## UI и дизайн
 
 - текущие UI-принципы и визуальные паттерны зафиксированы в `docs/ui_design_guidelines.md`;
