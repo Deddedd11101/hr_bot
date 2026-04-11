@@ -44,8 +44,18 @@
             <label class="field settings-field settings-select-field">
                 <span>Привязка к сотруднику/кандидату</span>
                 <span class="employees-filter-label settings-select-shell">
+                    <select name="employee_scope" class="employees-filter-select">
+                        {% for value, label in employee_scope_labels.items() %}
+                            <option value="{{ value }}" {% if scenario.employee_scope == value %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </span>
+            </label>
+            <label class="field settings-field settings-select-field">
+                <span>Конкретная карточка</span>
+                <span class="employees-filter-label settings-select-shell">
                     <select name="target_employee_id" class="employees-filter-select">
-                        <option value="">Для всех сотрудников и кандидатов</option>
+                        <option value="">Не привязывать к конкретной карточке</option>
                         {% for employee_option in employee_options %}
                             <option value="{{ employee_option.id }}" {% if scenario.target_employee_id == employee_option.id %}selected{% endif %}>{{ employee_option.label }}</option>
                         {% endfor %}

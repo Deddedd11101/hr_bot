@@ -80,6 +80,53 @@
         setForm(payload.employee);
     }
 
+    function buildEmployeeUpdatePayload(form) {
+        const payload = Object.assign({}, form);
+        delete payload.chat_id;
+        return payload;
+    }
+
+    function normalizeTimePart(value) {
+        const match = String(value || "").match(/(\d{1,2}):(\d{2})/);
+        if (!match) {
+            return "";
+        }
+        const hours = Number(match[1]);
+        const minutes = Number(match[2]);
+        if (hours > 23 || minutes > 59) {
+            return "";
+        }
+        return String(hours).padStart(2, "0") + ":" + String(minutes).padStart(2, "0");
+    }
+
+    function parseWorkHours(value) {
+        const normalizedValue = String(value || "");
+        const rangeMatch = normalizedValue.match(/^\s*(\d{1,2}:\d{2})?\s*[-–—]\s*(\d{1,2}:\d{2})?\s*$/);
+        if (rangeMatch) {
+            return {
+                start: normalizeTimePart(rangeMatch[1]),
+                end: normalizeTimePart(rangeMatch[2]),
+            };
+        }
+        const parts = normalizedValue.match(/\d{1,2}:\d{2}/g) || [];
+        return {
+            start: normalizeTimePart(parts[0]),
+            end: normalizeTimePart(parts[1]),
+        };
+    }
+
+    function buildWorkHoursValue(currentValue, part, nextValue) {
+        const parsed = parseWorkHours(currentValue);
+        parsed[part] = normalizeTimePart(nextValue);
+        if (parsed.start && parsed.end) {
+            return parsed.start + "-" + parsed.end;
+        }
+        if (parsed.start || parsed.end) {
+            return (parsed.start || "") + "-" + (parsed.end || "");
+        }
+        return "";
+    }
+
     function EmployeeEditApp() {
         const [state, setState] = window.React.useState({
             loading: true,
@@ -168,6 +215,14 @@
             });
         }
 
+        function handleWorkHoursChange(part, value) {
+            setForm(function (prev) {
+                return Object.assign({}, prev, {
+                    work_hours: buildWorkHoursValue(prev ? prev.work_hours : "", part, value),
+                });
+            });
+        }
+
         function handleSubmit(event) {
             event.preventDefault();
             setSaveState({
@@ -183,7 +238,7 @@
                     "Content-Type": "application/json",
                     Accept: "application/json",
                 },
-                body: JSON.stringify(form),
+                body: JSON.stringify(buildEmployeeUpdatePayload(form)),
             })
                 .then(function (response) {
                     if (!response.ok) {
@@ -458,6 +513,7 @@
         const meta = payload.meta;
         const options = payload.options;
         const isCandidate = !!meta.is_candidate;
+        const workHoursParts = parseWorkHours(form.work_hours);
 
         const fileItems = payload.files.map(function (file) {
             return {
@@ -511,15 +567,7 @@
                     e(
                         "div",
                         null,
-                        e("p", { className: "react-page-eyebrow" }, isCandidate ? "Candidate Profile" : "Employee Profile"),
                         e("h2", null, form.full_name || ("Сотрудник #" + form.id)),
-                        e(
-                            "p",
-                            { className: "muted" },
-                            isCandidate
-                                ? "Рабочая React-версия карточки кандидата с основными действиями и обзором файлов, оффера и сценариев."
-                                : "Рабочая React-версия карточки сотрудника с редактированием основных данных и быстрыми операциями."
-                        ),
                         e(
                             "div",
                             { className: "react-overview-row" },
@@ -562,13 +610,14 @@
                                         ),
                                         e(
                                             Field,
-                                            { label: "ID пользователя в канале" },
-                                            e("input", {
-                                                type: "text",
-                                                name: "chat_id",
-                                                value: form.chat_id,
-                                                onChange: handleChange,
-                                            })
+                                            { label: "Telegram-привязка" },
+                                            e(
+                                                "div",
+                                                { className: "react-readonly-field" },
+                                                form.chat_id
+                                                    ? "Привязан к боту"
+                                                    : "Не привязан. Сотрудник должен открыть бота и нажать Start."
+                                            )
                                         ),
                                         e(
                                             Field,
@@ -690,7 +739,9 @@
                                                     Field,
                                                     { label: "Рабочая почта" },
                                                     e("input", {
-                                                        type: "text",
+                                                        type: "email",
+                                                        inputMode: "email",
+                                                        autoComplete: "email",
                                                         name: "work_email",
                                                         value: form.work_email,
                                                         onChange: handleChange,
@@ -699,12 +750,27 @@
                                                 e(
                                                     Field,
                                                     { label: "Рабочие часы" },
-                                                    e("input", {
-                                                        type: "text",
-                                                        name: "work_hours",
-                                                        value: form.work_hours,
-                                                        onChange: handleChange,
-                                                    })
+                                                    e(
+                                                        "div",
+                                                        { className: "react-time-range" },
+                                                        e("input", {
+                                                            type: "time",
+                                                            value: workHoursParts.start,
+                                                            onChange: function (event) {
+                                                                handleWorkHoursChange("start", event.target.value);
+                                                            },
+                                                            "aria-label": "Начало рабочего дня",
+                                                        }),
+                                                        e("span", { className: "react-time-range-separator" }, "-"),
+                                                        e("input", {
+                                                            type: "time",
+                                                            value: workHoursParts.end,
+                                                            onChange: function (event) {
+                                                                handleWorkHoursChange("end", event.target.value);
+                                                            },
+                                                            "aria-label": "Конец рабочего дня",
+                                                        })
+                                                    )
                                                 ),
                                                 e(
                                                     Field,

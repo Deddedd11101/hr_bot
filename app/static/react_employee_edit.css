@@ -1,10 +1,22 @@
 .main > .container:has(#react-employee-edit-root) {
-    max-width: 1480px;
+    max-width: min(1680px, calc(100vw - var(--sidebar-width, 86px) - 32px));
+    transition: max-width 0.28s ease;
 }
 
 .react-detail-page {
+    --color-background: #f4f7f4;
+    --color-panel: #ffffff;
+    --color-panel-muted: #f8fbf8;
+    --color-border: rgba(23, 44, 38, 0.1);
+    --color-foreground: #17312a;
+    --color-muted-foreground: #587066;
+    --color-accent: #1f7a61;
+    --color-accent-foreground: #f7fffb;
+    --color-danger: #b33b4e;
+    --shadow-soft: 0 16px 40px rgba(23, 44, 38, 0.08);
     display: grid;
-    gap: 28px;
+    gap: 16px;
+    color: var(--color-foreground);
 }
 
 .react-detail-header {
@@ -15,16 +27,71 @@
 }
 
 .react-detail-back {
-    color: #4d6c64;
+    display: inline-flex;
+    align-items: center;
+    min-height: 40px;
+    padding: 0 14px;
+    border: 1px solid var(--color-border);
+    border-radius: 10px;
+    background: var(--color-panel);
+    color: var(--color-muted-foreground);
     text-decoration: none;
-    font-weight: 700;
+    font-size: 14px;
+    font-weight: 600;
+    transition: all 0.2s ease;
+}
+
+.react-detail-back:hover {
+    border-radius: 20px;
+    background: var(--color-panel-muted);
+    color: var(--color-foreground);
+}
+
+.react-detail-page .btn-primary,
+.react-detail-page .btn-secondary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 40px;
+    gap: 8px;
+    border-radius: 10px;
+    padding: 0 16px;
+    font-size: 14px;
+    font-weight: 600;
+    text-decoration: none;
+    transition: all 0.2s ease;
+}
+
+.react-detail-page .btn-primary:hover,
+.react-detail-page .btn-secondary:hover {
+    border-radius: 20px;
+}
+
+.react-detail-page .btn-primary {
+    border: 1px solid var(--color-accent);
+    background: var(--color-accent);
+    color: var(--color-accent-foreground);
+}
+
+.react-detail-page .btn-primary:hover {
+    opacity: 0.9;
+}
+
+.react-detail-page .btn-secondary {
+    border: 1px solid var(--color-border);
+    background: var(--color-panel);
+    color: var(--color-foreground);
+}
+
+.react-detail-page .btn-secondary:hover {
+    background: var(--color-panel-muted);
 }
 
 .react-detail-card {
-    background: linear-gradient(180deg, #ffffff 0%, #f7faf8 100%);
-    border: 1px solid rgba(23, 44, 38, 0.08);
-    border-radius: 28px;
-    box-shadow: 0 26px 60px rgba(23, 44, 38, 0.08);
+    background: var(--color-panel);
+    border: 1px solid var(--color-border);
+    border-radius: 10px;
+    box-shadow: var(--shadow-soft);
     overflow: hidden;
 }
 
@@ -46,7 +113,7 @@
 .react-detail-grid {
     padding: 24px 32px 32px;
     display: grid;
-    grid-template-columns: minmax(0, 1.75fr) minmax(360px, 0.9fr);
+    grid-template-columns: minmax(0, 1.85fr) minmax(360px, 0.85fr);
     gap: 28px;
 }
 
@@ -67,13 +134,19 @@
     display: grid;
     gap: 18px;
     padding: 24px;
-    border: 1px solid rgba(23, 44, 38, 0.08);
+    border: 1px solid var(--color-border);
+    border-radius: 10px;
+    background: var(--color-panel);
+    transition: all 0.2s ease;
+}
+
+.react-section:hover {
     border-radius: 20px;
-    background: #fff;
+    background: var(--color-panel-muted);
 }
 
 .react-section-danger {
-    border-color: rgba(140, 47, 57, 0.16);
+    border-color: rgba(179, 59, 78, 0.18);
     background: linear-gradient(180deg, #fff 0%, #fff7f8 100%);
 }
 
@@ -93,11 +166,16 @@
     display: inline-flex;
     align-items: center;
     padding: 7px 12px;
-    border-radius: 999px;
-    background: #eef4f1;
-    color: #35534a;
+    border-radius: 10px;
+    background: rgba(0, 0, 0, 0.05);
+    color: var(--color-muted-foreground);
     font-size: 12px;
-    font-weight: 700;
+    font-weight: 600;
+    transition: all 0.2s ease;
+}
+
+.react-overview-pill:hover {
+    border-radius: 16px;
 }
 
 .react-detail-form {
@@ -121,20 +199,73 @@
 }
 
 .react-field span {
-    font-size: 13px;
-    font-weight: 700;
-    color: #314c44;
+    font-size: 14px;
+    font-weight: 600;
+    color: rgba(23, 49, 42, 0.75);
 }
 
 .react-field input,
 .react-field select,
 .react-field textarea {
-    border: 1px solid rgba(23, 44, 38, 0.12);
-    background: #fff;
-    border-radius: 14px;
+    border: 1px solid var(--color-border);
+    background: var(--color-panel);
+    border-radius: 10px;
     padding: 13px 14px;
     font-size: 14px;
     width: 100%;
+    color: var(--color-foreground);
+    outline: none;
+    transition: all 0.2s ease;
+}
+
+.react-field select {
+    appearance: none;
+    background-image:
+        linear-gradient(45deg, transparent 50%, var(--color-muted-foreground) 50%),
+        linear-gradient(135deg, var(--color-muted-foreground) 50%, transparent 50%);
+    background-position:
+        calc(100% - 18px) 50%,
+        calc(100% - 13px) 50%;
+    background-size: 5px 5px, 5px 5px;
+    background-repeat: no-repeat;
+    padding-right: 34px;
+}
+
+.react-field input:hover,
+.react-field select:hover,
+.react-field textarea:hover {
+    border-radius: 16px;
+    background: var(--color-panel-muted);
+}
+
+.react-field input:focus,
+.react-field select:focus,
+.react-field textarea:focus {
+    border-color: var(--color-accent);
+    box-shadow: 0 0 0 2px rgba(31, 122, 97, 0.3);
+}
+
+.react-field input:disabled,
+.react-field select:disabled,
+.react-field textarea:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+.react-readonly-field {
+    border: 1px solid var(--color-border);
+    background: var(--color-panel-muted);
+    border-radius: 10px;
+    color: var(--color-muted-foreground);
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 1.4;
+    padding: 13px 14px;
+    transition: all 0.2s ease;
+}
+
+.react-readonly-field:hover {
+    border-radius: 16px;
 }
 
 .react-field textarea {
@@ -142,14 +273,33 @@
     min-height: 120px;
 }
 
+.react-time-range {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    align-items: center;
+    gap: 8px;
+}
+
+.react-time-range-separator {
+    color: var(--color-muted-foreground);
+    font-size: 14px;
+    font-weight: 600;
+}
+
 .react-checkbox {
     display: flex;
     gap: 12px;
     align-items: flex-start;
-    border: 1px solid rgba(23, 44, 38, 0.08);
-    border-radius: 16px;
+    border: 1px solid var(--color-border);
+    border-radius: 10px;
     padding: 14px 16px;
-    background: #fbfdfc;
+    background: var(--color-panel-muted);
+    transition: all 0.2s ease;
+}
+
+.react-checkbox:hover {
+    border-radius: 18px;
+    background: var(--color-panel);
 }
 
 .react-checkbox input {
@@ -167,14 +317,20 @@
     display: grid;
     gap: 16px;
     padding: 18px;
-    border: 1px solid rgba(23, 44, 38, 0.08);
-    border-radius: 18px;
-    background: #fbfdfc;
+    border: 1px solid var(--color-border);
+    border-radius: 10px;
+    background: var(--color-panel-muted);
+    transition: all 0.2s ease;
+}
+
+.react-form-section:hover {
+    border-radius: 20px;
+    background: var(--color-panel);
 }
 
 .react-form-section h4 {
     margin: 0;
-    color: #21352f;
+    color: var(--color-foreground);
 }
 
 .react-form-section p {
@@ -183,11 +339,11 @@
 
 .react-save-state {
     font-size: 14px;
-    color: #4f6c64;
+    color: var(--color-muted-foreground);
 }
 
 .react-save-state.is-error {
-    color: #8c2f39;
+    color: var(--color-danger);
 }
 
 .react-ops-grid {
@@ -209,11 +365,11 @@
 
 .react-inline-message {
     font-size: 14px;
-    color: #4f6c64;
+    color: var(--color-muted-foreground);
 }
 
 .react-inline-message.is-error {
-    color: #8c2f39;
+    color: var(--color-danger);
 }
 
 .react-overview-list {
@@ -222,10 +378,16 @@
 }
 
 .react-overview-item {
-    border: 1px solid rgba(23, 44, 38, 0.08);
-    border-radius: 16px;
+    border: 1px solid var(--color-border);
+    border-radius: 10px;
     padding: 14px 16px;
-    background: #fff;
+    background: var(--color-panel);
+    transition: all 0.2s ease;
+}
+
+.react-overview-item:hover {
+    border-radius: 18px;
+    background: var(--color-panel-muted);
 }
 
 .react-overview-item-head {
@@ -240,13 +402,27 @@
 }
 
 .react-overview-link {
-    color: #1b473c;
-    font-weight: 700;
+    display: inline-flex;
+    align-items: center;
+    min-height: 32px;
+    padding: 0 12px;
+    border: 1px solid var(--color-border);
+    border-radius: 10px;
+    background: var(--color-panel);
+    color: var(--color-foreground);
+    font-size: 13px;
+    font-weight: 600;
     text-decoration: none;
+    transition: all 0.2s ease;
+}
+
+.react-overview-link:hover {
+    border-radius: 16px;
+    background: var(--color-panel-muted);
 }
 
 .react-overview-empty {
-    color: #758983;
+    color: var(--color-muted-foreground);
     font-size: 14px;
 }
 
@@ -257,7 +433,7 @@
 }
 
 .react-error-state {
-    color: #8c2f39;
+    color: var(--color-danger);
 }
 
 @media (max-width: 1024px) {

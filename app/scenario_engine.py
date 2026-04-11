@@ -355,6 +355,16 @@ def scenario_anchor_date(employee: Employee, scenario: ScenarioTemplate) -> Opti
 
 
 def matches_role_scope(employee: Employee, scenario: ScenarioTemplate) -> bool:
+    employee_scope = (getattr(scenario, "employee_scope", None) or "all").strip() or "all"
+    is_candidate = (getattr(employee, "employee_stage", None) or "").strip() == "candidate"
+    if employee_scope == "employees" and is_candidate:
+        return False
+    if employee_scope == "candidates" and not is_candidate:
+        return False
+
+    if getattr(scenario, "target_employee_id", None) and scenario.target_employee_id != employee.id:
+        return False
+
     if scenario.role_scope == "all":
         return True
     role_map = {

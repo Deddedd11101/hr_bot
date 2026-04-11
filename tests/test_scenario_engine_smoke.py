@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 
-from app.scenario_engine import resolve_notification_recipients, send_step_attachment
+from app.scenario_engine import matches_role_scope, resolve_notification_recipients, send_step_attachment
 
 
 class FakeBot:
@@ -64,6 +64,18 @@ class ScenarioEngineSmokeTests(unittest.IsolatedAsyncioTestCase):
         )
 
         self.assertEqual(recipients, ["hr-id", "manager-id", "mentor-id"])
+
+    def test_matches_role_scope_respects_candidate_and_employee_scope(self) -> None:
+        candidate = SimpleNamespace(id=1, employee_stage="candidate", desired_position="")
+        employee = SimpleNamespace(id=2, employee_stage="staff", desired_position="")
+
+        candidate_scenario = SimpleNamespace(employee_scope="candidates", target_employee_id=None, role_scope="all")
+        employee_scenario = SimpleNamespace(employee_scope="employees", target_employee_id=None, role_scope="all")
+
+        self.assertTrue(matches_role_scope(candidate, candidate_scenario))
+        self.assertFalse(matches_role_scope(employee, candidate_scenario))
+        self.assertTrue(matches_role_scope(employee, employee_scenario))
+        self.assertFalse(matches_role_scope(candidate, employee_scenario))
 
 
 if __name__ == "__main__":

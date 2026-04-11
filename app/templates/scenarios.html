@@ -14,6 +14,7 @@
             <form method="post" action="{{ collection_path }}" style="margin: 0;">
                 <input type="hidden" name="title" value="{{ new_title }}">
                 <input type="hidden" name="role_scope" value="all">
+                <input type="hidden" name="employee_scope" value="all">
                 <input type="hidden" name="trigger_mode" value="manual_only">
                 <input type="hidden" name="description" value="">
                 <button type="submit" class="btn-primary">{{ create_label }}</button>
@@ -30,6 +31,7 @@
             <th>ID</th>
             <th>{{ collection_title_single }}</th>
             <th>Роль</th>
+            <th>Кому</th>
             <th>Старт</th>
             <th>Описание</th>
             <th></th>
@@ -42,6 +44,7 @@
                 <td>{{ scenario.id }}</td>
                 <td>{{ scenario.title }}</td>
                 <td>{{ role_scope_labels.get(scenario.role_scope, scenario.role_scope) }}</td>
+                <td>{{ employee_scope_labels.get(scenario.employee_scope, scenario.employee_scope) }}</td>
                 <td>{{ trigger_mode_labels.get(scenario.trigger_mode, scenario.trigger_mode) }}</td>
                 <td>{{ scenario.description or '—' }}</td>
                 <td class="table-action-cell table-action-cell-wide">

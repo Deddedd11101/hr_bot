@@ -1,4 +1,5 @@
 import unittest
+from uuid import uuid4
 from datetime import datetime
 
 from fastapi.testclient import TestClient
@@ -6,7 +7,9 @@ from fastapi.testclient import TestClient
 from app.auth import authenticate_account
 from app.database import SessionLocal, init_db
 from app.main import AUTH_COOKIE_NAME, app
-from app.models import Employee, EmployeeMessengerAccount
+from app.messaging.identity import get_primary_chat_id, set_primary_chat_id
+from app.messaging.service import get_or_create_employee_by_chat
+from app.models import Employee, EmployeeMessengerAccount, ScenarioTemplate
 
 
 class EmployeeApiSmokeTests(unittest.TestCase):
@@ -88,6 +91,130 @@ class EmployeeApiSmokeTests(unittest.TestCase):
             self.assertIsNotNone(employee)
             self.assertEqual(employee.telegram_user_id, None)
             self.assertEqual(employee.telegram_username, "hr_team")
+
+    def test_update_employee_api_preserves_chat_id_when_payload_omits_it(self) -> None:
+        with SessionLocal() as db:
+            employee = db.get(Employee, self.employee_id)
+            self.assertIsNotNone(employee)
+            set_primary_chat_id(employee, "777000111", db=db)
+            db.commit()
+
+        response = self.client.post(
+            f"/api/employees/{self.employee_id}",
+            json={
+                "full_name": "Updated API Smoke Employee",
+                "chat_handle": "hr_team",
+                "first_workday": "",
+                "desired_position": "",
+                "birth_date": "",
+                "work_email": "",
+                "work_hours": "",
+                "manager_chat_id": "",
+                "mentor_adaptation_chat_id": "",
+                "mentor_ipr_chat_id": "",
+                "employee_stage": "candidate",
+                "candidate_work_stage": "testing",
+                "salary_expectation": "",
+                "personal_data_consent": False,
+                "employee_data_consent": False,
+                "test_task_due_at": "",
+                "notes": "",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["employee"]["chat_id"], "777000111")
+        self.assertEqual(payload["employee"]["chat_handle"], "hr_team")
+
+        with SessionLocal() as db:
+            employee = db.get(Employee, self.employee_id)
+            self.assertIsNotNone(employee)
+            self.assertEqual(employee.telegram_user_id, "777000111")
+            self.assertEqual(employee.telegram_username, "hr_team")
+
+    def test_bot_start_links_existing_employee_by_public_username(self) -> None:
+        with SessionLocal() as db:
+            employee = db.get(Employee, self.employee_id)
+            self.assertIsNotNone(employee)
+            unique_suffix = uuid4().hex[:12]
+            username = f"codex_link_{unique_suffix}"
+            chat_id = str(900000000000 + (int(unique_suffix, 16) % 100000000000))
+            employee.telegram_username = f"@{username}"
+            db.commit()
+
+            employee, created = get_or_create_employee_by_chat(db, chat_id, username.upper())
+
+            self.assertFalse(created)
+            self.assertEqual(employee.id, self.employee_id)
+            self.assertEqual(get_primary_chat_id(employee, db=db), chat_id)
+            self.assertEqual(employee.telegram_username, username.upper())
+            self.assertEqual(db.query(Employee).filter(Employee.id == self.employee_id).count(), 1)
+
+    def test_bot_start_creates_candidate_when_card_is_missing(self) -> None:
+        with SessionLocal() as db:
+            unique_suffix = uuid4().hex[:12]
+            chat_id = str(910000000000 + (int(unique_suffix, 16) % 100000000000))
+
+            employee, created = get_or_create_employee_by_chat(db, chat_id, f"new_candidate_{unique_suffix}")
+
+            self.assertTrue(created)
+            self.assertEqual(employee.employee_stage, "candidate")
+            self.assertEqual(employee.candidate_work_stage, "testing")
+            self.assertEqual(get_primary_chat_id(employee, db=db), chat_id)
+            created_employee_id = employee.id
+
+        with SessionLocal() as db:
+            db.query(EmployeeMessengerAccount).filter(EmployeeMessengerAccount.employee_id == created_employee_id).delete()
+            employee = db.get(Employee, created_employee_id)
+            if employee is not None:
+                db.delete(employee)
+            db.commit()
+
+    def test_workspace_scenario_settings_api_updates_scope_and_description(self) -> None:
+        scenario_key = f"codex_settings_{uuid4().hex[:12]}"
+        with SessionLocal() as db:
+            scenario = ScenarioTemplate(
+                scenario_key=scenario_key,
+                title="Workspace Settings Smoke",
+                sort_order=999999,
+                scenario_kind="scenario",
+                role_scope="all",
+                employee_scope="all",
+                trigger_mode="manual_only",
+                target_employee_id=None,
+                description=None,
+            )
+            db.add(scenario)
+            db.commit()
+            db.refresh(scenario)
+            scenario_id = scenario.id
+
+        try:
+            response = self.client.post(
+                f"/api/flows/workspace/scenarios/{scenario_id}/settings",
+                json={
+                    "description": "x" * 60,
+                    "role_scope": "analyst",
+                    "employee_scope": "employees",
+                    "trigger_mode": "bot_registration",
+                    "target_employee_id": str(self.employee_id),
+                },
+            )
+
+            self.assertEqual(response.status_code, 200)
+            scenario_payload = response.json()["payload"]["workspace"]["scenario"]
+            self.assertEqual(scenario_payload["description"], "x" * 50)
+            self.assertEqual(scenario_payload["role_scope"], "analyst")
+            self.assertEqual(scenario_payload["employee_scope"], "employees")
+            self.assertEqual(scenario_payload["trigger_mode"], "bot_registration")
+            self.assertEqual(scenario_payload["target_employee_id"], self.employee_id)
+        finally:
+            with SessionLocal() as db:
+                scenario = db.get(ScenarioTemplate, scenario_id)
+                if scenario is not None:
+                    db.delete(scenario)
+                db.commit()
 
     def test_update_employee_api_returns_conflict_for_duplicate_chat_id(self) -> None:
         with SessionLocal() as db:

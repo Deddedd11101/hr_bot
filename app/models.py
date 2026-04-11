@@ -384,6 +384,12 @@ class ScenarioTemplate(Base):
         default="all",
         doc="designer | project_manager | analyst | all",
     )
+    employee_scope: Mapped[str] = mapped_column(
+        String(64),
+        nullable=False,
+        default="all",
+        doc="all | employees | candidates",
+    )
     trigger_mode: Mapped[str] = mapped_column(
         String(64),
         nullable=False,

@@ -10,6 +10,7 @@ from ..notifications import notify_hr_new_employee, notify_hr_test_task_received
 from ..scenario_engine import handle_button_response_by_step_id, handle_file_response, handle_text_response, start_scenario
 from .base import MessengerClient
 from .identity import (
+    find_employee_by_public_chat_handle,
     find_employee_by_channel_user_id,
     get_primary_chat_id,
     get_public_chat_handle,
@@ -138,6 +139,14 @@ def get_or_create_employee_by_chat(db: Session, chat_user_id: str, username: Opt
         db.commit()
         return employee, created
 
+    employee = find_employee_by_public_chat_handle(db, channel="telegram", external_username=username)
+    if employee:
+        set_public_chat_handle(employee, username, db=db)
+        set_primary_chat_id(employee, chat_user_id, db=db)
+        employee.is_flow_scheduled = False
+        db.commit()
+        return employee, created
+
     employee = Employee(
         full_name=None,
         telegram_user_id=None,
@@ -146,6 +155,8 @@ def get_or_create_employee_by_chat(db: Session, chat_user_id: str, username: Opt
         created_at=datetime.utcnow(),
         is_flow_scheduled=False,
         candidate_status="new",
+        employee_stage="candidate",
+        candidate_work_stage="testing",
     )
     set_primary_chat_id(employee, chat_user_id)
     set_public_chat_handle(employee, username)

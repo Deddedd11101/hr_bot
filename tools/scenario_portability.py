@@ -14,6 +14,7 @@ SCENARIO_TEMPLATE_FIELDS = [
     "sort_order",
     "scenario_kind",
     "role_scope",
+    "employee_scope",
     "trigger_mode",
     "target_employee_id",
     "description",
@@ -70,7 +71,7 @@ def _normalize_scenario_keys(raw_values: list[str]) -> list[str]:
 def _load_scenario_row(connection: sqlite3.Connection, scenario_key: str) -> dict[str, Any]:
     row = connection.execute(
         """
-        SELECT scenario_key, title, sort_order, scenario_kind, role_scope, trigger_mode, target_employee_id, description
+        SELECT scenario_key, title, sort_order, scenario_kind, role_scope, employee_scope, trigger_mode, target_employee_id, description
         FROM scenario_templates
         WHERE scenario_key = ?
         """,
@@ -229,6 +230,7 @@ def _delete_existing_scenario(connection: sqlite3.Connection, scenario_key: str)
 
 
 def _upsert_scenario_template(connection: sqlite3.Connection, template: dict[str, Any]) -> None:
+    template = {**template, "employee_scope": template.get("employee_scope") or "all"}
     existing = connection.execute(
         "SELECT id FROM scenario_templates WHERE scenario_key = ?",
         (template["scenario_key"],),
@@ -244,6 +246,7 @@ def _upsert_scenario_template(connection: sqlite3.Connection, template: dict[str
                 sort_order = ?,
                 scenario_kind = ?,
                 role_scope = ?,
+                employee_scope = ?,
                 trigger_mode = ?,
                 target_employee_id = ?,
                 description = ?
@@ -254,6 +257,7 @@ def _upsert_scenario_template(connection: sqlite3.Connection, template: dict[str
                 template.get("sort_order"),
                 template.get("scenario_kind"),
                 template.get("role_scope"),
+                template.get("employee_scope") or "all",
                 template.get("trigger_mode"),
                 template.get("target_employee_id"),
                 template.get("description"),
@@ -265,8 +269,8 @@ def _upsert_scenario_template(connection: sqlite3.Connection, template: dict[str
     connection.execute(
         """
         INSERT INTO scenario_templates (
-            scenario_key, title, sort_order, scenario_kind, role_scope, trigger_mode, target_employee_id, description
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            scenario_key, title, sort_order, scenario_kind, role_scope, employee_scope, trigger_mode, target_employee_id, description
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         values,
     )

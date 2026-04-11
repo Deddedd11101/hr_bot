@@ -37,6 +37,13 @@ type Container =
 
 type WorkspaceItem = WorkspaceStep | WorkspaceBranchSlot;
 type SingleOption = { value: string; label: string };
+type ScenarioSettingsForm = {
+  description: string;
+  role_scope: string;
+  employee_scope: string;
+  trigger_mode: string;
+  target_employee_id: string;
+};
 
 const rootElement = document.getElementById("react-scenario-workspace-v2-root");
 const FALLBACK_RESPONSE_TYPE_LABELS: Record<string, string> = {
@@ -59,7 +66,7 @@ function makeRootContainer(workspace: WorkspaceData): Container {
     sourceKey: null,
     ownerStepId: null,
     title: workspace.scenario.title,
-    subtitle: "Основной поток",
+    subtitle: "",
     crumbLabel: workspace.scenario.title,
     items: workspace.root_steps,
   };
@@ -372,6 +379,9 @@ function App() {
     notify_on_send_recipient_scope: string;
   }>(null);
   const [saveState, setSaveState] = React.useState({ saving: false, message: "", error: false });
+  const [scenarioSettingsForm, setScenarioSettingsForm] = React.useState<ScenarioSettingsForm | null>(null);
+  const [scenarioSettingsState, setScenarioSettingsState] = React.useState({ saving: false, message: "", error: false });
+  const [scenarioSettingsOpen, setScenarioSettingsOpen] = React.useState(false);
   const textRef = React.useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
   const stackRef = React.useRef<Container[]>([]);
@@ -404,6 +414,25 @@ function App() {
   );
   const sendModeOptions = React.useMemo<SingleOption[]>(
     () => Object.entries(payload?.workspace?.send_mode_labels || {}).map(([value, label]) => ({ value, label })),
+    [payload],
+  );
+  const roleScopeOptions = React.useMemo<SingleOption[]>(
+    () => Object.entries(payload?.workspace?.role_scope_labels || {}).map(([value, label]) => ({ value, label })),
+    [payload],
+  );
+  const employeeScopeOptions = React.useMemo<SingleOption[]>(
+    () => Object.entries(payload?.workspace?.employee_scope_labels || {}).map(([value, label]) => ({ value, label })),
+    [payload],
+  );
+  const triggerModeOptions = React.useMemo<SingleOption[]>(
+    () => Object.entries(payload?.workspace?.trigger_mode_labels || {}).map(([value, label]) => ({ value, label })),
+    [payload],
+  );
+  const targetEmployeeOptions = React.useMemo<SingleOption[]>(
+    () => [
+      { value: "", label: "Не привязывать к конкретной карточке" },
+      ...((payload?.workspace?.employee_options || []).map((option) => ({ value: String(option.id), label: option.label })) as SingleOption[]),
+    ],
     [payload],
   );
   const targetFieldOptions = React.useMemo<SingleOption[]>(
@@ -543,6 +572,22 @@ function App() {
     setAttachmentState({ uploading: false, message: "", error: false });
   }, [detailTarget, selectedItemKey, selectedScenarioId]);
 
+  React.useEffect(() => {
+    const scenario = payload?.workspace?.scenario;
+    if (!scenario) {
+      setScenarioSettingsForm(null);
+      return;
+    }
+    setScenarioSettingsForm({
+      description: scenario.description || "",
+      role_scope: scenario.role_scope || "all",
+      employee_scope: scenario.employee_scope || "all",
+      trigger_mode: scenario.trigger_mode || "manual_only",
+      target_employee_id: scenario.target_employee_id ? String(scenario.target_employee_id) : "",
+    });
+    setScenarioSettingsState({ saving: false, message: "", error: false });
+  }, [payload?.workspace?.scenario?.id]);
+
   const handleSave = () => {
     if (!detailTarget || !form) return;
     setSaveState({ saving: true, message: "", error: false });
@@ -581,6 +626,40 @@ function App() {
       })
       .catch((saveError: Error) => {
         setSaveState({ saving: false, message: saveError.message || "Не удалось сохранить шаг", error: true });
+      });
+  };
+
+  const handleSaveScenarioSettings = () => {
+    const scenarioId = payload?.workspace?.scenario?.id;
+    if (!scenarioId || !scenarioSettingsForm) return;
+    setScenarioSettingsState({ saving: true, message: "", error: false });
+    fetch(`/api/flows/workspace/scenarios/${scenarioId}/settings`, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify(scenarioSettingsForm),
+    })
+      .then(async (response) => {
+        if (!response.ok) {
+          const payload = await response.json().catch(() => ({}));
+          throw new Error(payload.detail || "Не удалось сохранить настройки сценария");
+        }
+        return response.json();
+      })
+      .then((result: { message?: string; payload: WorkspacePayload }) => {
+        applyPayload(result.payload);
+        setScenarioSettingsState({ saving: false, message: result.message || "Настройки сохранены", error: false });
+        setScenarioSettingsOpen(false);
+      })
+      .catch((settingsError: Error) => {
+        setScenarioSettingsState({
+          saving: false,
+          message: settingsError.message || "Не удалось сохранить настройки сценария",
+          error: true,
+        });
       });
   };
 
@@ -913,7 +992,7 @@ function App() {
   return (
     <div
       className="relative overflow-hidden"
-      style={{ height: "calc(100vh - 185px)", minHeight: "720px" }}
+      style={{ height: "calc(100vh - 100px)", minHeight: "720px" }}
     >
       {loading ? (
         <div className="pointer-events-none absolute inset-x-0 top-0 z-10 flex justify-center">
@@ -929,8 +1008,7 @@ function App() {
       <section className="flex min-h-0 flex-col overflow-hidden rounded-[10px] border border-[var(--color-border)] bg-[var(--color-panel)] p-4">
         <div className="mb-3">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--color-muted-foreground)]">Workspace V2</p>
-            <h3 className="mt-1 text-[1.65rem] font-semibold">Сценарии</h3>
+            <h3 className="text-[1.65rem] font-semibold">Сценарии</h3>
           </div>
         </div>
         {creatingScenario ? (
@@ -1022,6 +1100,7 @@ function App() {
                 <p className="text-[0.83rem] leading-5 text-[var(--color-muted-foreground)]">{scenario.description || "Без описания"}</p>
                 <div className="flex flex-wrap gap-2 text-[0.72rem] font-medium text-[var(--color-muted-foreground)]">
                   <span className="rounded-[10px] bg-black/5 px-2 py-1 transition-all duration-200 hover:rounded-[16px]">{scenario.role_scope_label}</span>
+                  <span className="rounded-[10px] bg-black/5 px-2 py-1 transition-all duration-200 hover:rounded-[16px]">{scenario.employee_scope_label}</span>
                   <span className="rounded-[10px] bg-black/5 px-2 py-1 transition-all duration-200 hover:rounded-[16px]">{scenario.trigger_mode_label}</span>
                 </div>
               </button>
@@ -1053,16 +1132,147 @@ function App() {
 
         <div className="mb-4 flex items-center justify-between gap-4">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--color-muted-foreground)]">
-              {currentContainer?.subtitle || "Сценарий"}
-            </p>
-            <h3 className="mt-1 text-[1.55rem] font-semibold">{currentContainer?.title || payload?.workspace?.scenario.title}</h3>
+            {currentContainer?.subtitle ? (
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--color-muted-foreground)]">
+                {currentContainer.subtitle}
+              </p>
+            ) : null}
+            <h3 className={currentContainer?.subtitle ? "mt-1 text-[1.55rem] font-semibold" : "text-[1.2rem] font-semibold"}>
+              {currentContainer?.type === "root" ? "Шаги сценария" : currentContainer?.title || payload?.workspace?.scenario.title}
+            </h3>
           </div>
           {currentContainer?.type === "root" ? (
-            <Button variant="secondary" size="sm" onClick={handleAddRootStep}>
-              <Plus className="size-4" />
-              Добавить шаг
-            </Button>
+            <div className="flex flex-wrap items-center gap-2">
+              {scenarioSettingsForm ? (
+                <Popover open={scenarioSettingsOpen} onOpenChange={setScenarioSettingsOpen}>
+                  <PopoverTrigger asChild>
+                    <Button variant="secondary" size="sm">
+                      Настройки
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent align="end" className="p-4" style={{ width: "min(440px, calc(100vw - 32px))" }}>
+                    <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <h4 className="text-base font-semibold">Настройки сценария</h4>
+                        <p className="mt-1 text-sm text-[var(--color-muted-foreground)]">{payload?.workspace?.scenario.title}</p>
+                      </div>
+                      <Button size="sm" onClick={handleSaveScenarioSettings} disabled={scenarioSettingsState.saving} className="min-w-[132px] whitespace-nowrap px-8">
+                        {scenarioSettingsState.saving ? "Сохраняю..." : "Сохранить"}
+                      </Button>
+                    </div>
+                    <div className="flex flex-col gap-4">
+                      <label
+                        className="grid min-w-0"
+                        style={{
+                          gap: "10px",
+                          justifyItems: "stretch",
+                          alignItems: "baseline",
+                          justifyContent: "stretch",
+                          alignContent: "space-between",
+                        }}
+                      >
+                        <span className="text-sm font-semibold text-[var(--color-foreground)]/75">Описание</span>
+                        <div className="relative">
+                          <Textarea
+                            value={scenarioSettingsForm.description}
+                            maxLength={50}
+                            placeholder="Коротко"
+                            className="min-h-[76px] pr-12"
+                            onChange={(event) =>
+                              setScenarioSettingsForm((prev) => (prev ? { ...prev, description: event.target.value.slice(0, 50) } : prev))
+                            }
+                          />
+                          <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[0.58rem] font-semibold text-[var(--color-muted-foreground)]">
+                            {scenarioSettingsForm.description.length}/50
+                          </span>
+                        </div>
+                      </label>
+                      <label
+                        className="grid min-w-0"
+                        style={{
+                          gap: "10px",
+                          justifyItems: "stretch",
+                          alignItems: "baseline",
+                          justifyContent: "stretch",
+                          alignContent: "space-between",
+                        }}
+                      >
+                        <span className="text-sm font-semibold text-[var(--color-foreground)]/75">Должность</span>
+                        <SingleSelectPicker
+                          options={roleScopeOptions}
+                          value={scenarioSettingsForm.role_scope}
+                          placeholder="Должность"
+                          onChange={(nextValue) => setScenarioSettingsForm((prev) => (prev ? { ...prev, role_scope: nextValue } : prev))}
+                        />
+                      </label>
+                      <label
+                        className="grid min-w-0"
+                        style={{
+                          gap: "10px",
+                          justifyItems: "stretch",
+                          alignItems: "baseline",
+                          justifyContent: "stretch",
+                          alignContent: "space-between",
+                        }}
+                      >
+                        <span className="text-sm font-semibold text-[var(--color-foreground)]/75">Аудитория</span>
+                        <SingleSelectPicker
+                          options={employeeScopeOptions}
+                          value={scenarioSettingsForm.employee_scope}
+                          placeholder="Аудитория"
+                          onChange={(nextValue) => setScenarioSettingsForm((prev) => (prev ? { ...prev, employee_scope: nextValue } : prev))}
+                        />
+                      </label>
+                      <label
+                        className="grid min-w-0"
+                        style={{
+                          gap: "10px",
+                          justifyItems: "stretch",
+                          alignItems: "baseline",
+                          justifyContent: "stretch",
+                          alignContent: "space-between",
+                        }}
+                      >
+                        <span className="text-sm font-semibold text-[var(--color-foreground)]/75">Запуск</span>
+                        <SingleSelectPicker
+                          options={triggerModeOptions}
+                          value={scenarioSettingsForm.trigger_mode}
+                          placeholder="Запуск"
+                          onChange={(nextValue) => setScenarioSettingsForm((prev) => (prev ? { ...prev, trigger_mode: nextValue } : prev))}
+                        />
+                      </label>
+                      <label
+                        className="grid min-w-0"
+                        style={{
+                          gap: "10px",
+                          justifyItems: "stretch",
+                          alignItems: "baseline",
+                          justifyContent: "stretch",
+                          alignContent: "space-between",
+                        }}
+                      >
+                        <span className="text-sm font-semibold text-[var(--color-foreground)]/75">Карточка</span>
+                        <SingleSelectPicker
+                          options={targetEmployeeOptions}
+                          value={scenarioSettingsForm.target_employee_id}
+                          placeholder="Любая"
+                          onChange={(nextValue) => setScenarioSettingsForm((prev) => (prev ? { ...prev, target_employee_id: nextValue } : prev))}
+                        />
+                      </label>
+                    </div>
+                    {scenarioSettingsState.message ? (
+                      <p className={`mt-4 text-sm ${scenarioSettingsState.error ? "text-[var(--color-danger)]" : "text-[var(--color-muted-foreground)]"}`}>
+                        {scenarioSettingsState.message}
+                      </p>
+                    ) : null}
+                  </PopoverContent>
+                </Popover>
+              ) : null}
+              <Button variant="secondary" size="sm" onClick={handleAddRootStep}>
+                <Plus className="size-4" />
+                Добавить шаг
+              </Button>
+            </div>
           ) : currentContainer?.type === "chain" ? (
             <Button variant="secondary" size="sm" onClick={handleAddChainStep}>
               <Plus className="size-4" />

@@ -2,6 +2,12 @@
 
 {% block content %}
 <section>
+    {% if active_tab == 'candidates' %}
+        <div class="flash-message flash-success">
+            Кандидаты переехали в новый список сотрудников:
+            <a href="/app/employees?list_kind=candidates">открыть новую версию</a>.
+        </div>
+    {% endif %}
     <div class="card">
         <div class="employees-toolbar">
             <button type="button" class="btn-primary" id="open-create-employee">{{ create_button_label }}</button>

@@ -3,6 +3,7 @@ export type ScenarioSummary = {
   title: string;
   description: string;
   role_scope_label: string;
+  employee_scope_label: string;
   trigger_mode_label: string;
   steps_count: number;
   classic_url: string;
@@ -50,8 +51,13 @@ export type WorkspaceData = {
     id: number;
     title: string;
     description: string;
+    role_scope: string;
     role_scope_label: string;
+    employee_scope: string;
+    employee_scope_label: string;
+    trigger_mode: string;
     trigger_mode_label: string;
+    target_employee_id: number | null;
     classic_url: string;
   };
   root_steps: WorkspaceStep[];
@@ -59,6 +65,9 @@ export type WorkspaceData = {
     steps_count: number;
   };
   response_type_labels: Record<string, string>;
+  role_scope_labels: Record<string, string>;
+  employee_scope_labels: Record<string, string>;
+  trigger_mode_labels: Record<string, string>;
   target_field_labels: Record<string, string>;
   send_mode_labels: Record<string, string>;
   notification_recipient_scope_labels: Record<string, string>;

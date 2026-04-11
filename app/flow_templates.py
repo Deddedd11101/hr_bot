@@ -18,6 +18,16 @@ ROLE_SCOPE_LABELS = {
     ROLE_SCOPE_ANALYST: "Аналитик",
 }
 
+EMPLOYEE_SCOPE_ALL = "all"
+EMPLOYEE_SCOPE_EMPLOYEES = "employees"
+EMPLOYEE_SCOPE_CANDIDATES = "candidates"
+
+EMPLOYEE_SCOPE_LABELS = {
+    EMPLOYEE_SCOPE_ALL: "Для всех сотрудников и кандидатов",
+    EMPLOYEE_SCOPE_EMPLOYEES: "Для всех сотрудников",
+    EMPLOYEE_SCOPE_CANDIDATES: "Для всех кандидатов",
+}
+
 TRIGGER_MODE_LABELS = {
     "manual_only": "Только вручную",
     "bot_registration": "Сразу после регистрации в боте",
@@ -75,6 +85,7 @@ SCENARIO_DEFINITIONS = [
         "scenario_key": "recruitment_hiring",
         "title": "Подбор и найм",
         "role_scope": ROLE_SCOPE_ALL,
+        "employee_scope": EMPLOYEE_SCOPE_CANDIDATES,
         "trigger_mode": "bot_registration",
         "description": "Первичный сценарий кандидата от согласия до сбора ключевых данных.",
         "steps": [
@@ -164,6 +175,7 @@ SCENARIO_DEFINITIONS = [
         "scenario_key": "first_day",
         "title": "Первый рабочий день",
         "role_scope": ROLE_SCOPE_ALL,
+        "employee_scope": EMPLOYEE_SCOPE_EMPLOYEES,
         "trigger_mode": "first_workday",
         "description": "Сценарий первого рабочего дня сотрудника.",
         "steps": [
@@ -183,6 +195,7 @@ SCENARIO_DEFINITIONS = [
         "scenario_key": "first_week",
         "title": "Конец первой недели",
         "role_scope": ROLE_SCOPE_ALL,
+        "employee_scope": EMPLOYEE_SCOPE_EMPLOYEES,
         "trigger_mode": "first_week_friday",
         "description": "Сценарий адаптации к концу первой рабочей недели.",
         "steps": [
@@ -195,6 +208,7 @@ SCENARIO_DEFINITIONS = [
         "scenario_key": "mid_probation",
         "title": "Середина испытательного срока",
         "role_scope": ROLE_SCOPE_ALL,
+        "employee_scope": EMPLOYEE_SCOPE_EMPLOYEES,
         "trigger_mode": "mid_probation",
         "description": "Сценарий середины испытательного срока.",
         "steps": [
@@ -208,6 +222,7 @@ SCENARIO_DEFINITIONS = [
         "scenario_key": "end_probation",
         "title": "Завершение испытательного срока",
         "role_scope": ROLE_SCOPE_ALL,
+        "employee_scope": EMPLOYEE_SCOPE_EMPLOYEES,
         "trigger_mode": "end_probation",
         "description": "Сценарий завершения испытательного срока.",
         "steps": [
@@ -221,6 +236,7 @@ SCENARIO_DEFINITIONS = [
         "scenario_key": "mid_feedback",
         "title": "ОС от коллег (середина ИС)",
         "role_scope": ROLE_SCOPE_ALL,
+        "employee_scope": EMPLOYEE_SCOPE_EMPLOYEES,
         "trigger_mode": "manual_only",
         "description": "Ручная отправка обратной связи от коллег на середине ИС.",
         "steps": [
@@ -231,6 +247,7 @@ SCENARIO_DEFINITIONS = [
         "scenario_key": "end_feedback",
         "title": "ОС от коллег (конец ИС)",
         "role_scope": ROLE_SCOPE_ALL,
+        "employee_scope": EMPLOYEE_SCOPE_EMPLOYEES,
         "trigger_mode": "manual_only",
         "description": "Ручная отправка обратной связи от коллег в конце ИС.",
         "steps": [
@@ -241,6 +258,7 @@ SCENARIO_DEFINITIONS = [
         "scenario_key": "end_summary",
         "title": "Итог испытательного срока",
         "role_scope": ROLE_SCOPE_ALL,
+        "employee_scope": EMPLOYEE_SCOPE_EMPLOYEES,
         "trigger_mode": "manual_only",
         "description": "Ручное итоговое сообщение по завершению ИС.",
         "steps": [
@@ -258,17 +276,22 @@ def seed_flow_templates() -> None:
 
         for scenario in SCENARIO_DEFINITIONS:
             scenario_key = str(scenario["scenario_key"])
+            employee_scope = str(scenario.get("employee_scope") or EMPLOYEE_SCOPE_ALL)
             scenario_row = existing_scenarios.get(scenario_key)
             if not scenario_row:
                 scenario_row = ScenarioTemplate(
                     scenario_key=scenario_key,
                     title=str(scenario["title"]),
                     role_scope=str(scenario["role_scope"]),
+                    employee_scope=employee_scope,
                     trigger_mode=str(scenario["trigger_mode"]),
                     description=str(scenario.get("description") or ""),
                 )
                 db.add(scenario_row)
                 existing_scenarios[scenario_key] = scenario_row
+                changed = True
+            elif employee_scope != EMPLOYEE_SCOPE_ALL and (getattr(scenario_row, "employee_scope", None) or EMPLOYEE_SCOPE_ALL) == EMPLOYEE_SCOPE_ALL:
+                scenario_row.employee_scope = employee_scope
                 changed = True
 
             for step in scenario["steps"]:

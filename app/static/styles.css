@@ -91,7 +91,9 @@ body {
         background-color 0.24s ease,
         border-color 0.24s ease,
         color 0.24s ease,
-        transform 0.24s ease;
+        transform 0.24s ease,
+        gap 0.24s ease,
+        padding 0.24s ease;
 }
 
 .app-logo:hover,
@@ -153,13 +155,24 @@ body {
     pointer-events: none;
     font-size: 14px;
     font-weight: 600;
-    transition: max-width 0.18s ease, opacity 0.16s ease;
+    transform: translateX(-8px);
+    transition:
+        max-width 0.4s ease,
+        opacity 0.38s ease,
+        transform 0.4s ease,
+        visibility 0s linear 0.4s;
 }
 
 .app-shell-expanded .app-nav-label {
     max-width: 180px;
     opacity: 1;
     visibility: visible;
+    transform: translateX(0);
+    transition:
+        max-width 0.34s ease,
+        opacity 0.28s ease 0.04s,
+        transform 0.34s ease 0.02s,
+        visibility 0s;
 }
 
 .app-nav-item-active {
@@ -1400,9 +1413,12 @@ textarea:focus {
     }
 
     .app-nav-label {
+        max-width: 180px;
         opacity: 1;
+        visibility: visible;
         transform: none;
         pointer-events: auto;
+        transition: none;
     }
 
     .main {

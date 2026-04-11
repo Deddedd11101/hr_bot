@@ -19,6 +19,7 @@ from .auth import ROLE_LABELS, authenticate_account, hash_password
 from .config import settings
 from .database import get_session, init_db
 from .flow_templates import (
+    EMPLOYEE_SCOPE_LABELS,
     EMPLOYEE_ROLE_VALUES,
     NOTIFICATION_RECIPIENT_SCOPE_LABELS,
     RESPONSE_TYPE_LABELS,
@@ -59,7 +60,7 @@ from .models import (
     StepButtonNotification,
     SurveyAnswer,
 )
-from .scenario_engine import format_message, get_first_step, get_scenario_steps, start_scenario
+from .scenario_engine import format_message, get_first_step, get_scenario_steps, matches_role_scope, start_scenario
 
 
 AUTH_COOKIE_NAME = "hr_admin_auth"
@@ -157,16 +158,7 @@ def _full_years_between(start: Optional[date], end: date) -> int:
 
 
 def _scenario_matches_employee_role(scenario: ScenarioTemplate, employee: Employee) -> bool:
-    if getattr(scenario, "target_employee_id", None) and scenario.target_employee_id != employee.id:
-        return False
-    if scenario.role_scope == "all":
-        return True
-    role_map = {
-        "designer": "Дизайнер",
-        "project_manager": "Project manager",
-        "analyst": "Аналитик",
-    }
-    return (employee.desired_position or "") == role_map.get(scenario.role_scope, "")
+    return matches_role_scope(employee, scenario)
 
 
 def _load_scenario_editor_data(db: Session, scenario: ScenarioTemplate):
@@ -366,6 +358,10 @@ def _build_scenario_workspace_payload(
                 "title": scenario.title,
                 "description": scenario.description or "",
                 "role_scope_label": ROLE_SCOPE_LABELS.get(scenario.role_scope, scenario.role_scope),
+                "employee_scope_label": EMPLOYEE_SCOPE_LABELS.get(
+                    getattr(scenario, "employee_scope", "all"),
+                    getattr(scenario, "employee_scope", "all"),
+                ),
                 "trigger_mode_label": TRIGGER_MODE_LABELS.get(scenario.trigger_mode, scenario.trigger_mode),
                 "steps_count": steps_count,
                 "classic_url": f"/flows/{scenario.id}",
@@ -385,8 +381,16 @@ def _build_scenario_workspace_payload(
                 "id": selected_scenario.id,
                 "title": selected_scenario.title,
                 "description": selected_scenario.description or "",
+                "role_scope": selected_scenario.role_scope,
                 "role_scope_label": ROLE_SCOPE_LABELS.get(selected_scenario.role_scope, selected_scenario.role_scope),
+                "employee_scope": getattr(selected_scenario, "employee_scope", "all"),
+                "employee_scope_label": EMPLOYEE_SCOPE_LABELS.get(
+                    getattr(selected_scenario, "employee_scope", "all"),
+                    getattr(selected_scenario, "employee_scope", "all"),
+                ),
+                "trigger_mode": selected_scenario.trigger_mode,
                 "trigger_mode_label": TRIGGER_MODE_LABELS.get(selected_scenario.trigger_mode, selected_scenario.trigger_mode),
+                "target_employee_id": getattr(selected_scenario, "target_employee_id", None),
                 "classic_url": f"/flows/{selected_scenario.id}",
             },
             "root_steps": root_steps,
@@ -394,6 +398,9 @@ def _build_scenario_workspace_payload(
                 "steps_count": len(root_steps),
             },
             "response_type_labels": _workspace_response_type_labels(),
+            "role_scope_labels": ROLE_SCOPE_LABELS,
+            "employee_scope_labels": EMPLOYEE_SCOPE_LABELS,
+            "trigger_mode_labels": TRIGGER_MODE_LABELS,
             "target_field_labels": TARGET_FIELD_LABELS,
             "send_mode_labels": SEND_MODE_LABELS,
             "notification_recipient_scope_labels": NOTIFICATION_RECIPIENT_SCOPE_LABELS,
@@ -1347,7 +1354,7 @@ def update_employee_api(
             db,
             employee,
             full_name=str(payload.get("full_name") or ""),
-            chat_id=str(payload.get("chat_id") or ""),
+            chat_id=str(payload.get("chat_id") or get_primary_chat_id(employee, db=db) or ""),
             chat_handle=str(payload.get("chat_handle") or ""),
             first_workday=str(payload.get("first_workday") or ""),
             desired_position=str(payload.get("desired_position") or ""),
@@ -1607,7 +1614,7 @@ def react_employee_edit_page(
             "react_api_url": f"/api/employees/{employee_id}",
             "react_save_url": f"/api/employees/{employee_id}",
             "classic_page_url": f"/employees/{employee_id}/edit",
-            "list_url": "/candidates" if list_kind == "candidates" else "/employees",
+            "list_url": "/app/employees?list_kind=candidates" if list_kind == "candidates" else "/app/employees",
         },
     )
 
@@ -1862,7 +1869,7 @@ def _build_employee_detail_payload(db: Session, employee: Employee) -> dict:
             "status_label": _employee_status_label(employee),
             "candidate_work_stage_label": _candidate_work_stage_label(employee),
             "tenure_years": _full_years_between(employee.first_workday, today),
-            "list_url": "/candidates" if is_candidate else "/employees",
+            "list_url": "/app/employees?list_kind=candidates" if is_candidate else "/app/employees",
             "list_title": "к списку кандидатов" if is_candidate else "к списку сотрудников",
             "classic_edit_url": f"/employees/{employee.id}/edit",
             "react_edit_url": f"/app/employees/{employee.id}",
@@ -2801,6 +2808,7 @@ def _copy_template_entity(db: Session, scenario: ScenarioTemplate) -> ScenarioTe
         sort_order=(last_scenario.sort_order + 10) if last_scenario else 10,
         scenario_kind=scenario.scenario_kind,
         role_scope=scenario.role_scope,
+        employee_scope=getattr(scenario, "employee_scope", "all"),
         target_employee_id=getattr(scenario, "target_employee_id", None),
         trigger_mode=scenario.trigger_mode,
         description=scenario.description,
@@ -2897,6 +2905,7 @@ def _template_list_page(request: Request, kind: str, db: Session):
             "active_tab": meta["active_tab"],
             "scenarios": scenarios,
             "role_scope_labels": ROLE_SCOPE_LABELS,
+            "employee_scope_labels": EMPLOYEE_SCOPE_LABELS,
             "trigger_mode_labels": TRIGGER_MODE_LABELS,
             "collection_title": meta["collection_title"],
             "collection_title_single": meta["collection_title_single"],
@@ -2977,6 +2986,7 @@ def create_workspace_scenario_api(
             "sort_order": next_order,
             "scenario_kind": "scenario",
             "role_scope": "all",
+            "employee_scope": "all",
             "trigger_mode": "manual_only",
             "target_employee_id": None,
             "description": description,
@@ -3028,6 +3038,37 @@ def create_workspace_scenario_api(
     return {
         "message": "Сценарий создан",
         "scenario_id": scenario.id,
+        "payload": _build_scenario_workspace_payload(db, scenario.id),
+    }
+
+
+@app.post("/api/flows/workspace/scenarios/{scenario_id}/settings")
+def update_workspace_scenario_api(
+    request: Request,
+    scenario_id: int,
+    payload: dict = Body(...),
+    db: Session = Depends(get_db),
+):
+    _require_api_auth(request)
+    scenario = db.get(ScenarioTemplate, scenario_id)
+    if not scenario or scenario.scenario_kind != "scenario":
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Сценарий не найден")
+
+    description = str(payload.get("description") or "").strip()
+    role_scope = str(payload.get("role_scope") or "").strip()
+    employee_scope = str(payload.get("employee_scope") or "").strip()
+    trigger_mode = str(payload.get("trigger_mode") or "").strip()
+    target_employee_id = str(payload.get("target_employee_id") or "").strip()
+
+    scenario.description = description[:50] or None
+    scenario.role_scope = role_scope if role_scope in ROLE_SCOPE_LABELS else "all"
+    scenario.employee_scope = employee_scope if employee_scope in EMPLOYEE_SCOPE_LABELS else "all"
+    scenario.trigger_mode = trigger_mode if trigger_mode in TRIGGER_MODE_LABELS else "manual_only"
+    scenario.target_employee_id = int(target_employee_id) if target_employee_id.isdigit() else None
+    db.commit()
+
+    return {
+        "message": "Настройки сценария сохранены",
         "payload": _build_scenario_workspace_payload(db, scenario.id),
     }
 
@@ -3535,6 +3576,7 @@ def _create_template_entity(
     kind: str,
     title: str,
     role_scope: str,
+    employee_scope: str,
     target_employee_id: str,
     trigger_mode: str,
     description: str,
@@ -3556,6 +3598,7 @@ def _create_template_entity(
         title=title.strip() or meta["new_title"],
         sort_order=(last_scenario.sort_order + 10) if last_scenario else 10,
         role_scope=role_scope if role_scope in ROLE_SCOPE_LABELS else "all",
+        employee_scope=employee_scope if employee_scope in EMPLOYEE_SCOPE_LABELS else "all",
         target_employee_id=int(target_employee_id) if (target_employee_id or "").strip().isdigit() else None,
         trigger_mode=trigger_mode if trigger_mode in TRIGGER_MODE_LABELS else "manual_only",
         description=description.strip() or None,
@@ -3571,12 +3614,13 @@ def create_scenario(
     request: Request,
     title: str = Form("Новый сценарий"),
     role_scope: str = Form("all"),
+    employee_scope: str = Form("all"),
     target_employee_id: str = Form(""),
     trigger_mode: str = Form("manual_only"),
     description: str = Form(""),
     db: Session = Depends(get_db),
 ):
-    return _create_template_entity(request, "scenario", title, role_scope, target_employee_id, trigger_mode, description, db)
+    return _create_template_entity(request, "scenario", title, role_scope, employee_scope, target_employee_id, trigger_mode, description, db)
 
 
 @app.post("/surveys")
@@ -3584,12 +3628,13 @@ def create_survey(
     request: Request,
     title: str = Form("Новый опрос"),
     role_scope: str = Form("all"),
+    employee_scope: str = Form("all"),
     target_employee_id: str = Form(""),
     trigger_mode: str = Form("manual_only"),
     description: str = Form(""),
     db: Session = Depends(get_db),
 ):
-    return _create_template_entity(request, "survey", title, role_scope, target_employee_id, trigger_mode, description, db)
+    return _create_template_entity(request, "survey", title, role_scope, employee_scope, target_employee_id, trigger_mode, description, db)
 
 
 def _edit_template_page(
@@ -3614,6 +3659,7 @@ def _edit_template_page(
             "scenario": scenario,
             "steps": editor_data["steps"],
             "role_scope_labels": ROLE_SCOPE_LABELS,
+            "employee_scope_labels": EMPLOYEE_SCOPE_LABELS,
             "trigger_mode_labels": TRIGGER_MODE_LABELS,
             "response_type_labels": RESPONSE_TYPE_LABELS,
             "send_mode_labels": SEND_MODE_LABELS,
@@ -3703,6 +3749,7 @@ async def update_scenario(
     scenario_id: int,
     title: str = Form(...),
     role_scope: str = Form("all"),
+    employee_scope: str = Form("all"),
     target_employee_id: str = Form(""),
     trigger_mode: str = Form("manual_only"),
     description: str = Form(""),
@@ -3774,6 +3821,7 @@ async def update_scenario(
         target_step_id_int = int(target_step_id) if (target_step_id or "").strip().isdigit() else None
         scenario.title = title.strip() or scenario.title
         scenario.role_scope = role_scope if role_scope in ROLE_SCOPE_LABELS else "all"
+        scenario.employee_scope = employee_scope if employee_scope in EMPLOYEE_SCOPE_LABELS else "all"
         scenario.target_employee_id = int(target_employee_id) if (target_employee_id or "").strip().isdigit() else None
         scenario.trigger_mode = "manual_only" if scenario.scenario_kind == "survey" else (trigger_mode if trigger_mode in TRIGGER_MODE_LABELS else "manual_only")
         scenario.description = description.strip() or None

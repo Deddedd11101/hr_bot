@@ -372,6 +372,7 @@ function App() {
   const items = payload?.items || [];
   const meta = payload?.meta;
   const payloadListKind = (meta?.list_kind || listKind) as ListKind;
+  const classicPageUrl = meta?.classic_page_url || (listKind === "candidates" ? "/candidates" : "/employees");
   const visibleItems = React.useMemo(() => {
     let next = items.filter((item) => {
       const currentStatus = payloadListKind === "candidates" ? item.candidate_work_stage_label || "—" : item.status_label || "—";
@@ -494,6 +495,12 @@ function App() {
             <MetaChip icon={<Users className="size-3.5" />} label={`${stats.total} всего`} />
             <MetaChip icon={<MessageCircle className="size-3.5" />} label={`${stats.withChannel} с каналом`} />
             <MetaChip icon={<Sparkles className="size-3.5" />} label={`${visibleItems.length} в выдаче`} />
+            <Button asChild variant="secondary" size="sm">
+              <a href={classicPageUrl}>
+                <ExternalLink className="size-4" />
+                Классическая
+              </a>
+            </Button>
             <Button size="sm" onClick={() => setCreating((prev) => !prev)}>
               {creating ? <X className="size-4" /> : <Plus className="size-4" />}
               {creating ? "Закрыть" : "Добавить"}

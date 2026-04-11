@@ -287,6 +287,38 @@ def _ensure_sqlite_schema() -> None:
                     "ALTER TABLE scenario_templates ADD COLUMN target_employee_id INTEGER"
                 )
             )
+        if scenario_table_columns and "employee_scope" not in scenario_table_columns:
+            conn.execute(
+                text(
+                    "ALTER TABLE scenario_templates ADD COLUMN employee_scope TEXT NOT NULL DEFAULT 'all'"
+                )
+            )
+            conn.execute(
+                text(
+                    """
+                    UPDATE scenario_templates
+                    SET employee_scope = 'candidates'
+                    WHERE scenario_key = 'recruitment_hiring'
+                    """
+                )
+            )
+            conn.execute(
+                text(
+                    """
+                    UPDATE scenario_templates
+                    SET employee_scope = 'employees'
+                    WHERE scenario_key IN (
+                        'first_day',
+                        'first_week',
+                        'mid_probation',
+                        'end_probation',
+                        'mid_feedback',
+                        'end_feedback',
+                        'end_summary'
+                    )
+                    """
+                )
+            )
         if scenario_table_columns and "sort_order" in {row[1] for row in conn.execute(text("PRAGMA table_info(scenario_templates)")).fetchall()}:
             conn.execute(
                 text(

@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from ..models import Employee, EmployeeMessengerAccount
@@ -30,6 +31,11 @@ class EmployeeIdentityConflictError(ValueError):
 def _normalized(value: Optional[str]) -> Optional[str]:
     text = (value or "").strip()
     return text or None
+
+
+def _normalized_public_handle(value: Optional[str]) -> Optional[str]:
+    text = (value or "").strip().lstrip("@").strip()
+    return text.lower() or None
 
 
 def _looks_like_numeric_chat_id(value: Optional[str]) -> bool:
@@ -88,6 +94,43 @@ def find_employee_by_channel_user_id(
 
     if channel == "telegram":
         return db.query(Employee).filter(Employee.telegram_user_id == normalized_user_id).first()
+    return None
+
+
+def find_employee_by_public_chat_handle(
+    db: Session,
+    *,
+    channel: str,
+    external_username: Optional[str],
+) -> Optional[Employee]:
+    normalized_username = _normalized_public_handle(external_username)
+    if not normalized_username:
+        return None
+
+    normalized_account_username = func.lower(func.trim(func.replace(EmployeeMessengerAccount.external_username, "@", "")))
+    accounts = (
+        db.query(EmployeeMessengerAccount)
+        .filter(
+            EmployeeMessengerAccount.channel == channel,
+            EmployeeMessengerAccount.is_active.is_(True),
+            normalized_account_username == normalized_username,
+        )
+        .order_by(EmployeeMessengerAccount.is_primary.desc(), EmployeeMessengerAccount.id.asc())
+        .all()
+    )
+    for account in accounts:
+        employee = db.get(Employee, account.employee_id)
+        if employee:
+            return employee
+
+    if channel == "telegram":
+        normalized_employee_username = func.lower(func.trim(func.replace(Employee.telegram_username, "@", "")))
+        return (
+            db.query(Employee)
+            .filter(normalized_employee_username == normalized_username)
+            .order_by(Employee.id.asc())
+            .first()
+        )
     return None
 
 
