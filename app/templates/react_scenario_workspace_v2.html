@@ -1,7 +1,6 @@
-{% extends "base.html" %}
+{% extends "react_base.html" %}
 
 {% block extra_head %}
-    <link rel="stylesheet" href="/static/workspace_v2/app.css?v=21">
     <style>
         .main:has(#react-scenario-workspace-v2-root) {
             padding-block: 18px 12px;
@@ -36,10 +35,11 @@
         data-api-url="{{ react_api_url }}"
         data-selected-scenario-id="{{ react_selected_scenario_id }}"
         data-classic-list-url="{{ classic_list_url }}"
+        data-workspace-kind="{{ workspace_kind }}"
     ></div>
 </section>
 {% endblock %}
 
 {% block scripts %}
-    <script type="module" src="/static/workspace_v2/scenario-workspace.js?v=37"></script>
+    <script type="module" src="/static/workspace_v2/scenario-workspace.js?v=41"></script>
 {% endblock %}

@@ -1,0 +1,25 @@
+{% extends "react_base.html" %}
+
+{% block extra_head %}
+    <style>
+        .main > .container:has(#react-settings-root) {
+            width: min(1680px, calc(100vw - var(--sidebar-width, 86px) - 32px));
+            max-width: min(1680px, calc(100vw - var(--sidebar-width, 86px) - 32px));
+            transition: width 0.28s ease, max-width 0.28s ease;
+        }
+    </style>
+{% endblock %}
+
+{% block content %}
+<section class="react-page">
+    <div
+        id="react-settings-root"
+        data-api-url="{{ react_api_url }}"
+        data-classic-url="{{ classic_page_url }}"
+    ></div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+    <script type="module" src="/static/workspace_v2/settings.js?v=3"></script>
+{% endblock %}

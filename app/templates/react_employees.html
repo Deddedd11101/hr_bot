@@ -1,7 +1,6 @@
-{% extends "base.html" %}
+{% extends "react_base.html" %}
 
 {% block extra_head %}
-    <link rel="stylesheet" href="/static/workspace_v2/app.css?v=21">
     <style>
         .main > .container:has(#react-employees-root) {
             width: min(1820px, calc(100vw - var(--sidebar-width, 86px) - 32px));
@@ -24,5 +23,5 @@
 {% endblock %}
 
 {% block scripts %}
-    <script type="module" src="/static/workspace_v2/employees-list.js?v=21"></script>
+    <script type="module" src="/static/workspace_v2/employees-list.js?v=24"></script>
 {% endblock %}

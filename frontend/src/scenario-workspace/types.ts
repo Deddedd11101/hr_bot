@@ -49,6 +49,7 @@ export type WorkspaceBranchSlot = {
 export type WorkspaceData = {
   scenario: {
     id: number;
+    scenario_kind: "scenario" | "survey";
     title: string;
     description: string;
     role_scope: string;
@@ -77,7 +78,46 @@ export type WorkspaceData = {
 };
 
 export type WorkspacePayload = {
+  kind: "scenario" | "survey";
+  item_label: string;
   scenarios: ScenarioSummary[];
   selected_scenario_id: number | null;
   workspace: WorkspaceData | null;
+};
+
+export type Container =
+  | {
+      type: "root";
+      key: string;
+      sourceKey: null;
+      ownerStepId: null;
+      title: string;
+      subtitle: string;
+      crumbLabel: string;
+      items: WorkspaceStep[];
+    }
+  | {
+      type: "branches" | "chain";
+      key: string;
+      sourceKey: string;
+      ownerStepId: number;
+      title: string;
+      subtitle: string;
+      crumbLabel: string;
+      items: Array<WorkspaceStep | WorkspaceBranchSlot>;
+    };
+
+export type WorkspaceItem = WorkspaceStep | WorkspaceBranchSlot;
+
+export type SingleOption = {
+  value: string;
+  label: string;
+};
+
+export type ScenarioSettingsForm = {
+  description: string;
+  role_scope: string;
+  employee_scope: string;
+  trigger_mode: string;
+  target_employee_id: string;
 };

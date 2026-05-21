@@ -1,0 +1,156 @@
+{% extends "react_base.html" %}
+
+{% block extra_head %}
+    <style>
+        .main > .container:has(#react-bulk-actions-root) {
+            width: min(1760px, calc(100vw - var(--sidebar-width, 86px) - 32px));
+            max-width: min(1760px, calc(100vw - var(--sidebar-width, 86px) - 32px));
+            transition: width 0.28s ease, max-width 0.28s ease;
+        }
+
+        #react-bulk-actions-root {
+            width: 100%;
+        }
+
+        #react-bulk-actions-root .grid {
+            grid-template-columns: minmax(0, 1fr);
+        }
+
+        #react-bulk-actions-root select,
+        #react-bulk-actions-root input,
+        #react-bulk-actions-root textarea {
+            min-width: 0;
+        }
+
+        #react-bulk-actions-root .bulk-page {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr);
+            gap: 20px;
+            width: min(1540px, 100%);
+            margin-inline: auto;
+        }
+
+        #react-bulk-actions-root .bulk-hero,
+        #react-bulk-actions-root .bulk-panel {
+            min-width: 0;
+            overflow: hidden;
+            border: 1px solid var(--color-border);
+            border-radius: 10px;
+            background: var(--color-panel);
+            box-shadow: var(--shadow-soft);
+        }
+
+        #react-bulk-actions-root .bulk-hero {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 18px;
+            padding: 22px 24px;
+        }
+
+        #react-bulk-actions-root .bulk-panel {
+            padding: 20px;
+        }
+
+        #react-bulk-actions-root .bulk-audience-panel {
+            border-color: rgba(31, 122, 97, 0.18);
+        }
+
+        #react-bulk-actions-root .bulk-target-picker {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr);
+            gap: 18px;
+            border-radius: 10px;
+            background: var(--color-panel-muted);
+            padding: 18px;
+        }
+
+        #react-bulk-actions-root .bulk-target-row {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(260px, 1fr));
+            gap: 16px;
+        }
+
+        #react-bulk-actions-root .bulk-stage-row {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(280px, 1fr));
+            gap: 18px;
+            align-items: start;
+        }
+
+        #react-bulk-actions-root .bulk-field,
+        #react-bulk-actions-root .bulk-choice-field,
+        #react-bulk-actions-root .bulk-card-form,
+        #react-bulk-actions-root .bulk-table-list {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr);
+            gap: 10px;
+            min-width: 0;
+        }
+
+        #react-bulk-actions-root .bulk-card-form {
+            gap: 14px;
+        }
+
+        #react-bulk-actions-root .bulk-chip-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        #react-bulk-actions-root .bulk-actions-grid,
+        #react-bulk-actions-root .bulk-history-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+            gap: 20px;
+            min-width: 0;
+            align-items: start;
+        }
+
+        #react-bulk-actions-root .bulk-action-row {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) 150px 90px auto;
+            gap: 10px;
+            align-items: center;
+            min-width: 0;
+            border-radius: 10px;
+            background: var(--color-panel-muted);
+            padding: 12px;
+            font-size: 0.875rem;
+        }
+
+        @media (max-width: 980px) {
+            #react-bulk-actions-root .bulk-hero {
+                flex-direction: column;
+            }
+
+            #react-bulk-actions-root .bulk-target-row,
+            #react-bulk-actions-root .bulk-stage-row {
+                grid-template-columns: minmax(0, 1fr);
+            }
+
+            #react-bulk-actions-root .bulk-actions-grid,
+            #react-bulk-actions-root .bulk-history-grid {
+                grid-template-columns: minmax(0, 1fr);
+            }
+
+            #react-bulk-actions-root .bulk-action-row {
+                grid-template-columns: minmax(0, 1fr);
+            }
+        }
+    </style>
+{% endblock %}
+
+{% block content %}
+<section class="react-page">
+    <div
+        id="react-bulk-actions-root"
+        data-api-url="{{ react_api_url }}"
+        data-classic-url="{{ classic_page_url }}"
+    ></div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+    <script type="module" src="/static/workspace_v2/bulk-actions.js?v=4"></script>
+{% endblock %}

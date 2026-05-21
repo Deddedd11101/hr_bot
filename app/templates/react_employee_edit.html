@@ -1,8 +1,4 @@
-{% extends "base.html" %}
-
-{% block extra_head %}
-    <link rel="stylesheet" href="/static/react_employee_edit.css?v=2">
-{% endblock %}
+{% extends "react_base.html" %}
 
 {% block content %}
 <section class="react-page">
@@ -17,7 +13,5 @@
 {% endblock %}
 
 {% block scripts %}
-    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <script src="/static/react_employee_edit_page.js?v=2"></script>
+    <script type="module" src="/static/workspace_v2/employee-detail.js"></script>
 {% endblock %}

@@ -18,6 +18,9 @@ export default defineConfig({
       input: {
         "scenario-workspace": path.resolve(__dirname, "./src/scenario-workspace/main.tsx"),
         "employees-list": path.resolve(__dirname, "./src/employees-list/main.tsx"),
+        "employee-detail": path.resolve(__dirname, "./src/employee-detail/main.tsx"),
+        settings: path.resolve(__dirname, "./src/settings/main.tsx"),
+        "bulk-actions": path.resolve(__dirname, "./src/bulk-actions/main.tsx"),
       },
       output: {
         entryFileNames: "[name].js",
