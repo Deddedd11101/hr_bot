@@ -47,8 +47,8 @@ source_of_truth: true
 
 | Method | Path | Surface | Примечания |
 | --- | --- | --- | --- |
-| `GET` | `/candidates` | HTML page | Classic candidate list; прямой fallback route, больше не основной sidebar entry |
-| `GET` | `/employees` | HTML page | Classic employee list; прямой fallback route |
+| `GET` | `/candidates` | Redirect route | Legacy operator entrypoint; теперь ведет на `/app/employees?list_kind=candidates` |
+| `GET` | `/employees` | Redirect route | Legacy operator entrypoint; теперь ведет на `/app/employees` |
 | `GET` | `/app/employees` | React bootstrap page | Default employee/candidate list; поддерживает query `list_kind=candidates` |
 | `GET` | `/app/employees/{employee_id}` | React bootstrap page | Новый employee detail screen |
 | `GET` | `/employees/{employee_id}/edit` | HTML page | Classic employee edit form |
@@ -71,7 +71,7 @@ source_of_truth: true
 
 | Method | Path | Surface | Примечания |
 | --- | --- | --- | --- |
-| `GET` | `/bulk-actions` | HTML page | Единый экран bulk actions |
+| `GET` | `/bulk-actions` | Redirect route | Legacy operator entrypoint; теперь ведет на `/app/bulk-actions` |
 | `GET` | `/app/bulk-actions` | React bootstrap page | React bulk actions; default sidebar entry, classic `/bulk-actions` остается fallback |
 | `POST` | `/bulk-actions/scenarios/schedule` | Form action | Запланировать mass scenario |
 | `POST` | `/bulk-actions/surveys/schedule` | Form action | Запланировать mass survey |
@@ -88,8 +88,8 @@ source_of_truth: true
 | --- | --- | --- | --- |
 | `POST` | `/flows/reorder` | Form action | Reorder classic scenarios |
 | `POST` | `/surveys/reorder` | Form action | Reorder classic surveys |
-| `GET` | `/flows` | HTML page | Classic scenario list |
-| `GET` | `/surveys` | HTML page | Classic survey list |
+| `GET` | `/flows` | Redirect route | Legacy operator entrypoint; теперь ведет на `/app/flows/workspace-v2` |
+| `GET` | `/surveys` | Redirect route | Legacy operator entrypoint; теперь ведет на `/app/surveys/workspace` |
 | `POST` | `/flows` | Form action | Создать scenario |
 | `POST` | `/surveys` | Form action | Создать survey |
 | `GET` | `/flows/{scenario_id}` | HTML page | Classic scenario editor |
@@ -111,7 +111,7 @@ source_of_truth: true
 
 | Method | Path | Surface | Примечания |
 | --- | --- | --- | --- |
-| `GET` | `/settings` | HTML page | HR settings, menu sets, admin accounts |
+| `GET` | `/settings` | Redirect route | Legacy operator entrypoint; теперь ведет на `/app/settings` |
 | `POST` | `/settings` | Form action | Обновить HR settings |
 | `POST` | `/settings/menu-sets` | Form action | Создать menu set |
 | `POST` | `/settings/menu-sets/{menu_set_id}` | Form action | Обновить menu set |
@@ -134,6 +134,6 @@ source_of_truth: true
 
 ## Текущая критика
 
-- HTTP surface намеренно hybrid, но она грязная. Нет жесткой границы вроде “classic UI только read-only, React UI только write-only”; обе поверхности мутируют одни и те же core tables.
+- HTTP surface все еще hybrid, но operator entrypoints уже не конкурируют напрямую: классические `/employees`, `/candidates`, `/bulk-actions`, `/flows`, `/surveys`, `/settings` теперь только redirect routes в React surfaces. Write/read fallback URLs и form handlers пока остаются, поэтому граница все еще не идеальна.
 - Многие operator actions все еще form posts with redirects. Это сохраняет старый UI, но усложняет automated API reasoning и contract drift tracking.
 - Surveys получили React workspace route `/app/surveys/workspace`, но classic `/surveys/*` пока остается fallback и держит export answers.

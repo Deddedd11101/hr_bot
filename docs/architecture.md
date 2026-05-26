@@ -46,6 +46,9 @@ HR Bot — приложение в одном репозитории с неск
   - JSON API для React-списка сотрудников и конструктора сценариев;
   - загрузку и скачивание файлов;
   - сценарии, опросы, настройки и массовые действия для операторов.
+- Важное текущее ограничение:
+  - `app/main.py` все еще совмещает composition root и часть classic route tails;
+  - но React/API slices уже начали выноситься в `app/web/*`, поэтому основной remaining risk теперь не в workspace routes, а в legacy form/editor flows.
 
 ### React-экраны админки
 
@@ -108,6 +111,98 @@ HR Bot — приложение в одном репозитории с неск
 - Потребители: HR-операторы.
 - Контракт: server-rendered HTML, form posts и redirects.
 - Подробная карта: [[web-surface]]
+
+### Web support layer
+
+- Модуль: `app/web/support.py`
+- Отвечает за:
+  - template rendering wrapper с общим `request/current_user/role_labels` контекстом;
+  - login redirect helper;
+  - auth/admin guards для HTML и JSON surfaces.
+- Это не финальная router decomposition, а первый безопасный seam для последующего выноса `employees`, `bulk-actions`, `settings` и `scenario/surveys` из `app/main.py`.
+
+### Employee support layer
+
+- Модуль: `app/web/employees.py`
+- Сейчас отвечает за:
+  - employee list/detail serialization;
+  - employee identity error formatting;
+  - employee create/update/delete/schedule/send helper logic;
+  - employee-stage dictionaries и related labels.
+- Важная граница:
+  - classic employee form handlers пока еще остаются в `app/main.py`;
+  - но React/API employee routes уже вынесены в отдельный router module.
+
+### Employee route layer
+
+- Модуль: `app/web/employee_routes.py`
+- Отвечает за:
+  - `/candidates` и `/employees` redirect entrypoints;
+  - `/app/employees` и `/app/employees/{employee_id}` React bootstrap routes;
+  - `/api/employees*` JSON API для employee list/detail/files/document-links/launch scheduling;
+  - classic employee edit/file/document/profile-photo routes.
+- Это первый полноценный vertical route slice, вынесенный из `app/main.py` через `APIRouter`.
+
+### Bulk actions support layer
+
+- Модуль: `app/web/bulk_actions.py`
+- Отвечает за:
+  - target scope resolution и human-readable recipient labels;
+  - bulk workspace payload serialization;
+  - preview/schedule/launch helper logic для React/API слоя;
+  - shared helpers, которые еще нужны classic bulk form routes.
+
+### Bulk actions route layer
+
+- Модуль: `app/web/bulk_action_routes.py`
+- Отвечает за:
+  - `/bulk-actions` redirect entrypoint;
+  - `/app/bulk-actions` React bootstrap route;
+  - `/api/bulk-actions*` JSON API для preview/schedule/launch/delete;
+  - classic bulk form routes для schedule/launch/send/delete.
+- Важная граница:
+  - `bulk-actions` уже отделен и на React/API surface, и на classic operator form surface;
+  - remaining cleanup теперь не внутри bulk, а в settings и old scenario/survey editor tails.
+
+### Settings support layer
+
+- Модуль: `app/web/settings.py`
+- Отвечает за:
+  - HR settings serialization и bootstrap;
+  - menu sets/buttons serialization и payload application;
+  - settings workspace payload для React surface;
+  - shared helpers, которые еще нужны classic settings form routes.
+
+### Settings route layer
+
+- Модуль: `app/web/settings_routes.py`
+- Отвечает за:
+  - `/settings` redirect entrypoint;
+  - `/app/settings` React bootstrap route;
+  - `/api/settings*` и `/api/accounts*` JSON API.
+- Важная граница:
+  - classic settings form handlers и bulk-save формы пока еще остаются в `app/main.py`;
+  - значит `settings` отделен на React/API surface, но legacy cleanup для form routes еще впереди.
+
+### Scenario workspace support layer
+
+- Модуль: `app/web/scenarios.py`
+- Отвечает за:
+  - workspace payload serialization для scenario/survey React surfaces;
+  - step tree helpers, branch/chain serialization и response labels;
+  - attachment helpers для step files;
+  - template copy/delete helpers, которые уже нужны и React/API workspace, и remaining classic editor tails.
+
+### Scenario workspace route layer
+
+- Модуль: `app/web/scenario_routes.py`
+- Отвечает за:
+  - `/flows` и `/surveys` redirect entrypoints;
+  - `/app/flows/workspace-v2`, `/app/surveys/workspace` и legacy redirect `/app/flows/workspace`;
+  - `/api/flows/workspace*` JSON API для React scenario/survey workspace.
+- Важная граница:
+  - classic editor routes `/flows/{scenario_id}`, `/surveys/{scenario_id}`, classic form POST update/copy/delete и survey export пока еще остаются в `app/main.py`;
+  - значит `scenario/surveys` отделен на React/API workspace surface, но legacy editor cleanup еще впереди.
 
 ### JSON API
 
