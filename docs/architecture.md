@@ -47,8 +47,8 @@ HR Bot — приложение в одном репозитории с неск
   - загрузку и скачивание файлов;
   - сценарии, опросы, настройки и массовые действия для операторов.
 - Важное текущее ограничение:
-  - `app/main.py` все еще совмещает composition root и часть classic route tails;
-  - но React/API slices уже начали выноситься в `app/web/*`, поэтому основной remaining risk теперь не в workspace routes, а в legacy form/editor flows.
+  - `app/main.py` уже сжат до composition-root уровня и в основном держит startup, middleware, login/session pages и `include_router(...)`;
+  - но classic fallback surfaces еще живы как продуктовые/операционные хвосты, поэтому следующий риск теперь не в монолите `main.py`, а в решении, какие legacy pages действительно можно удалять без rollback gap.
 
 ### React-экраны админки
 
@@ -119,7 +119,7 @@ HR Bot — приложение в одном репозитории с неск
   - template rendering wrapper с общим `request/current_user/role_labels` контекстом;
   - login redirect helper;
   - auth/admin guards для HTML и JSON surfaces.
-- Это не финальная router decomposition, а первый безопасный seam для последующего выноса `employees`, `bulk-actions`, `settings` и `scenario/surveys` из `app/main.py`.
+- Этот слой был первым безопасным seam для последующего выноса `employees`, `bulk-actions`, `settings` и `scenario/surveys` из `app/main.py`; сейчас это уже не план, а факт, на котором держится новый composition root.
 
 ### Employee support layer
 
@@ -130,8 +130,8 @@ HR Bot — приложение в одном репозитории с неск
   - employee create/update/delete/schedule/send helper logic;
   - employee-stage dictionaries и related labels.
 - Важная граница:
-  - classic employee form handlers пока еще остаются в `app/main.py`;
-  - но React/API employee routes уже вынесены в отдельный router module.
+  - helper-слой больше не живет рядом с route handlers в `app/main.py`;
+  - employee-specific logic собрана в support module, а route ownership вынесен в `app/web/employee_routes.py`.
 
 ### Employee route layer
 
@@ -179,10 +179,11 @@ HR Bot — приложение в одном репозитории с неск
 - Отвечает за:
   - `/settings` redirect entrypoint;
   - `/app/settings` React bootstrap route;
-  - `/api/settings*` и `/api/accounts*` JSON API.
+  - `/api/settings*` и `/api/accounts*` JSON API;
+  - classic settings/account form routes.
 - Важная граница:
-  - classic settings form handlers и bulk-save формы пока еще остаются в `app/main.py`;
-  - значит `settings` отделен на React/API surface, но legacy cleanup для form routes еще впереди.
+  - `settings` уже отделен и на React/API surface, и на classic operator form surface;
+  - remaining cleanup теперь не внутри settings, а в old scenario/survey editor tails.
 
 ### Scenario workspace support layer
 
@@ -201,8 +202,8 @@ HR Bot — приложение в одном репозитории с неск
   - `/app/flows/workspace-v2`, `/app/surveys/workspace` и legacy redirect `/app/flows/workspace`;
   - `/api/flows/workspace*` JSON API для React scenario/survey workspace.
 - Важная граница:
-  - classic editor routes `/flows/{scenario_id}`, `/surveys/{scenario_id}`, classic form POST update/copy/delete и survey export пока еще остаются в `app/main.py`;
-  - значит `scenario/surveys` отделен на React/API workspace surface, но legacy editor cleanup еще впереди.
+  - один и тот же route module теперь владеет и React/API workspace surface, и classic scenario/survey editor tails;
+  - следующий cleanup уже не про перенос ownership, а про осознанное удаление или сохранение fallback surfaces.
 
 ### JSON API
 

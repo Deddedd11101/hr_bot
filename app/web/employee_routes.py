@@ -13,17 +13,14 @@ from ..database import get_session
 from ..employee_card import render_employee_card_png
 from ..file_storage import build_employee_file_path
 from ..file_storage import build_employee_profile_photo_path
-from ..flow_templates import EMPLOYEE_ROLE_VALUES
 from ..messaging.identity import EmployeeIdentityConflictError, get_primary_chat_id
 from ..models import Employee, EmployeeDocumentLink, EmployeeFile, FlowLaunchRequest
 from .employees import (
     CANDIDATE_WORK_STAGE_VALUES,
     EMPLOYEE_STAGE_VALUES,
     _apply_employee_update,
-    _available_scenarios_for_employee,
     _build_employee_detail_payload,
     _build_employee_views,
-    _candidate_work_stage_label,
     _create_employee_record,
     _delete_employee_record,
     _employee_display_name,
@@ -31,8 +28,6 @@ from .employees import (
     _employee_identity_integrity_detail,
     _employee_list_kind,
     _employee_list_meta,
-    _employee_status_label,
-    _full_years_between,
     _is_employee_identity_integrity_error,
     _launch_employee_flow_now,
     _save_offer_document_link,
@@ -53,7 +48,7 @@ def get_db():
 
 
 def _employee_edit_redirect(employee_id: int, flash_message: str | None = None, flash_type: str = "success") -> RedirectResponse:
-    url = f"/employees/{employee_id}/edit"
+    url = f"/app/employees/{employee_id}"
     if flash_message:
         from urllib.parse import urlencode
 
@@ -102,76 +97,10 @@ def edit_employee_form(
     employee = db.get(Employee, employee_id)
     if not employee:
         return RedirectResponse(url="/employees", status_code=status.HTTP_303_SEE_OTHER)
-    employee_files = (
-        db.query(EmployeeFile)
-        .filter(EmployeeFile.employee_id == employee.id)
-        .order_by(EmployeeFile.id.desc())
-        .all()
-    )
-    employee_document_links = (
-        db.query(EmployeeDocumentLink)
-        .filter(
-            EmployeeDocumentLink.employee_id == employee.id,
-            EmployeeDocumentLink.title == OFFER_DOCUMENT_TITLE,
-        )
-        .order_by(EmployeeDocumentLink.created_at.desc(), EmployeeDocumentLink.id.desc())
-        .all()
-    )
-    scenarios = _available_scenarios_for_employee(db, employee)
-    scenario_by_key = {scenario.scenario_key: scenario for scenario in db.query(ScenarioTemplate).all()}
-    pending_scheduled_launches = (
-        db.query(FlowLaunchRequest)
-        .filter(
-            FlowLaunchRequest.employee_id == employee.id,
-            FlowLaunchRequest.launch_type == "scheduled",
-            FlowLaunchRequest.processed_at.is_(None),
-        )
-        .order_by(FlowLaunchRequest.requested_at.asc(), FlowLaunchRequest.id.asc())
-        .all()
-    )
-    manual_launch_history = (
-        db.query(FlowLaunchRequest)
-        .filter(
-            FlowLaunchRequest.employee_id == employee.id,
-            FlowLaunchRequest.launch_type == "manual",
-            FlowLaunchRequest.processed_at.is_not(None),
-        )
-        .order_by(FlowLaunchRequest.processed_at.desc(), FlowLaunchRequest.id.desc())
-        .all()
-    )
-    employee_role_values = list(EMPLOYEE_ROLE_VALUES)
-    current_position = (employee.desired_position or "").strip()
-    if current_position and current_position not in employee_role_values:
-        employee_role_values.append(current_position)
-    today = datetime.now().date()
-    list_kind = _employee_list_kind(employee)
-    is_candidate = list_kind == "candidates"
-    return render_template(
-        request,
-        templates,
-        "employee_edit.html",
-        {
-            "active_tab": list_kind,
-            "is_candidate": is_candidate,
-            "employee": employee,
-            "employee_files": employee_files,
-            "employee_document_links": employee_document_links,
-            "status": _employee_status_label(employee),
-            "candidate_work_stage_label": _candidate_work_stage_label(employee),
-            "tenure_years": _full_years_between(employee.first_workday, today),
-            "employee_role_values": employee_role_values,
-            "employee_stage_values": EMPLOYEE_STAGE_VALUES,
-            "candidate_work_stage_values": CANDIDATE_WORK_STAGE_VALUES,
-            "scenarios": scenarios,
-            "scheduled_launches": pending_scheduled_launches,
-            "manual_launch_history": manual_launch_history,
-            "scenario_by_key": scenario_by_key,
-            "flash_message": request.query_params.get("flash_message"),
-            "flash_type": request.query_params.get("flash_type", "success"),
-            "list_url": "/candidates" if list_kind == "candidates" else "/employees",
-            "list_title": "к списку кандидатов" if list_kind == "candidates" else "к списку сотрудников",
-            "employee_card_image_url": f"/employees/{employee.id}/card-image",
-        },
+    return _employee_edit_redirect(
+        employee_id,
+        flash_message=request.query_params.get("flash_message"),
+        flash_type=request.query_params.get("flash_type", "success"),
     )
 
 
@@ -302,7 +231,7 @@ def employee_card_image(
     try:
         image_bytes = render_employee_card_png(employee)
     except ImportError:
-        return RedirectResponse(url=f"/employees/{employee_id}/edit", status_code=status.HTTP_303_SEE_OTHER)
+        return _employee_edit_redirect(employee_id, "Не удалось собрать PNG карточки сотрудника.", "error")
     return StreamingResponse(BytesIO(image_bytes), media_type="image/png")
 
 
@@ -473,7 +402,7 @@ async def upload_employee_file(
     if send_to_telegram == "true" and chat_id and settings.TELEGRAM_BOT_TOKEN:
         await _send_file_to_telegram(chat_id, destination, filename)
 
-    return RedirectResponse(url=f"/employees/{employee_id}/edit", status_code=status.HTTP_303_SEE_OTHER)
+    return _employee_edit_redirect(employee_id, "Файл загружен.", "success")
 
 
 @router.get("/employees/{employee_id}/files/{file_id}/download")
@@ -491,7 +420,7 @@ def download_employee_file(
         return RedirectResponse(url="/employees", status_code=status.HTTP_303_SEE_OTHER)
     path = Path(db_file.stored_path)
     if not path.exists():
-        return RedirectResponse(url=f"/employees/{employee_id}/edit", status_code=status.HTTP_303_SEE_OTHER)
+        return _employee_edit_redirect(employee_id, "Файл не найден в хранилище.", "error")
     return FileResponse(
         path=str(path),
         filename=db_file.original_filename,
@@ -515,12 +444,13 @@ async def send_employee_file(
         return RedirectResponse(url="/employees", status_code=status.HTTP_303_SEE_OTHER)
     chat_id = get_primary_chat_id(employee, db=db)
     if not chat_id or not settings.TELEGRAM_BOT_TOKEN:
-        return RedirectResponse(url=f"/employees/{employee_id}/edit", status_code=status.HTTP_303_SEE_OTHER)
+        return _employee_edit_redirect(employee_id, "Нельзя отправить файл: нет Telegram-привязки или токена бота.", "error")
 
     path = Path(db_file.stored_path)
     if path.exists():
         await _send_file_to_telegram(chat_id, path, db_file.original_filename)
-    return RedirectResponse(url=f"/employees/{employee_id}/edit", status_code=status.HTTP_303_SEE_OTHER)
+        return _employee_edit_redirect(employee_id, "Файл отправлен в Telegram.", "success")
+    return _employee_edit_redirect(employee_id, "Файл не найден в хранилище.", "error")
 
 
 @router.post("/employees/{employee_id}/document-links")
@@ -912,7 +842,6 @@ def react_employee_edit_page(
             "employee_id": employee_id,
             "react_api_url": f"/api/employees/{employee_id}",
             "react_save_url": f"/api/employees/{employee_id}",
-            "classic_page_url": f"/employees/{employee_id}/edit",
             "list_url": "/app/employees?list_kind=candidates" if list_kind == "candidates" else "/app/employees",
         },
     )

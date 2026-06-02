@@ -4,6 +4,7 @@ import tailwindcss from "@tailwindcss/vite";
 import path from "node:path";
 
 export default defineConfig({
+  base: "/static/workspace_v2/",
   plugins: [react(), tailwindcss()],
   resolve: {
     alias: {
@@ -16,11 +17,13 @@ export default defineConfig({
     cssCodeSplit: false,
     rollupOptions: {
       input: {
+        "shell-sidebar": path.resolve(__dirname, "./src/shell-sidebar/main.tsx"),
         "scenario-workspace": path.resolve(__dirname, "./src/scenario-workspace/main.tsx"),
         "employees-list": path.resolve(__dirname, "./src/employees-list/main.tsx"),
         "employee-detail": path.resolve(__dirname, "./src/employee-detail/main.tsx"),
         settings: path.resolve(__dirname, "./src/settings/main.tsx"),
         "bulk-actions": path.resolve(__dirname, "./src/bulk-actions/main.tsx"),
+        "design-system": path.resolve(__dirname, "./src/design-system/main.tsx"),
       },
       output: {
         entryFileNames: "[name].js",

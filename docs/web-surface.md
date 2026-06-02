@@ -51,7 +51,7 @@ source_of_truth: true
 | `GET` | `/employees` | Redirect route | Legacy operator entrypoint; теперь ведет на `/app/employees` |
 | `GET` | `/app/employees` | React bootstrap page | Default employee/candidate list; поддерживает query `list_kind=candidates` |
 | `GET` | `/app/employees/{employee_id}` | React bootstrap page | Новый employee detail screen |
-| `GET` | `/employees/{employee_id}/edit` | HTML page | Classic employee edit form |
+| `GET` | `/employees/{employee_id}/edit` | Redirect route | Legacy employee entrypoint; теперь ведет на React detail `/app/employees/{employee_id}` |
 | `POST` | `/employees` | Form action | Создать employee/candidate из classic UI |
 | `POST` | `/employees/{employee_id}` | Form action | Обновить employee/candidate из classic UI |
 | `POST` | `/employees/{employee_id}/delete` | Form action | Удалить employee/candidate |
@@ -90,16 +90,18 @@ source_of_truth: true
 | `POST` | `/surveys/reorder` | Form action | Reorder classic surveys |
 | `GET` | `/flows` | Redirect route | Legacy operator entrypoint; теперь ведет на `/app/flows/workspace-v2` |
 | `GET` | `/surveys` | Redirect route | Legacy operator entrypoint; теперь ведет на `/app/surveys/workspace` |
-| `POST` | `/flows` | Form action | Создать scenario |
-| `POST` | `/surveys` | Form action | Создать survey |
-| `GET` | `/flows/{scenario_id}` | HTML page | Classic scenario editor |
-| `GET` | `/surveys/{scenario_id}` | HTML page | Classic survey editor |
+| `POST` | `/flows` | Form action | Создать scenario; теперь redirect в `/app/flows/workspace-v2` с `scenario_id` и flash message |
+| `POST` | `/surveys` | Form action | Создать survey; теперь redirect в `/app/surveys/workspace` с `scenario_id` и flash message |
+| `GET` | `/flows/{scenario_id}` | Redirect route | Default direct route; теперь ведет в React workspace `/app/flows/workspace-v2?scenario_id=...`. Legacy editor доступен только через `?legacy=1`. |
+| `GET` | `/surveys/{scenario_id}` | Redirect route | Default direct route; теперь ведет в React workspace `/app/surveys/workspace?scenario_id=...`. Legacy editor доступен только через `?legacy=1`. |
+| `POST` | `/flows/{scenario_id}` | Form action | Classic scenario update form. При `?legacy=1` redirect после save остается в legacy editor; без этого флага direct GET уже уводит в React workspace. |
+| `POST` | `/surveys/{scenario_id}` | Form action | Classic survey update form. При `?legacy=1` redirect после save остается в legacy editor; без этого флага direct GET уже уводит в React workspace. |
 | `POST` | `/flows/{scenario_id}` | Form action | Обновить classic scenario |
 | `POST` | `/surveys/{scenario_id}` | Form action | Обновить classic survey |
-| `POST` | `/flows/{scenario_id}/copy` | Form action | Скопировать scenario |
-| `POST` | `/surveys/{scenario_id}/copy` | Form action | Скопировать survey |
-| `POST` | `/flows/{scenario_id}/delete` | Form action | Удалить scenario |
-| `POST` | `/surveys/{scenario_id}/delete` | Form action | Удалить survey |
+| `POST` | `/flows/{scenario_id}/copy` | Form action | Скопировать scenario; теперь redirect в React workspace |
+| `POST` | `/surveys/{scenario_id}/copy` | Form action | Скопировать survey; теперь redirect в React workspace |
+| `POST` | `/flows/{scenario_id}/delete` | Form action | Удалить scenario; теперь redirect в React workspace |
+| `POST` | `/surveys/{scenario_id}/delete` | Form action | Удалить survey; теперь redirect в React workspace |
 | `GET` | `/surveys/{scenario_id}/export` | Export route | Export survey answers |
 | `GET` | `/flows/steps/{step_id}/attachment` | Download route | Скачать step attachment |
 | `POST` | `/flows/steps/{step_id}/attachment/delete` | Form action | Удалить step attachment |
@@ -136,4 +138,5 @@ source_of_truth: true
 
 - HTTP surface все еще hybrid, но operator entrypoints уже не конкурируют напрямую: классические `/employees`, `/candidates`, `/bulk-actions`, `/flows`, `/surveys`, `/settings` теперь только redirect routes в React surfaces. Write/read fallback URLs и form handlers пока остаются, поэтому граница все еще не идеальна.
 - Многие operator actions все еще form posts with redirects. Это сохраняет старый UI, но усложняет automated API reasoning и contract drift tracking.
-- Surveys получили React workspace route `/app/surveys/workspace`, но classic `/surveys/*` пока остается fallback и держит export answers.
+- Surveys получили React workspace route `/app/surveys/workspace`, safe classic create/copy/delete redirects уже возвращают туда, а direct GET `/surveys/{id}` тоже теперь по умолчанию ведет в React workspace. Classic survey editor остался только как явный `?legacy=1` seam; save/delete-attachment/export-error внутри него теперь тоже сохраняют legacy-mode, чтобы rollback surface был самосогласованным.
+- Мертвые classic list pages уже удалены из шаблонов: `scenarios.html`, `mass_actions.html`, `settings.html` больше не используются ни одним GET route. `employee_edit.html` тоже удален: legacy employee direct route теперь просто редиректит в React detail. Из classic HTML pages живым fallback editor остается `scenario_edit.html`, но он уже не default surface и открывается только через `?legacy=1`.

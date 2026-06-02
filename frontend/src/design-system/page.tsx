@@ -3,13 +3,19 @@ import {
   ChevronRight,
   Columns2,
   CircleHelp,
+  Download,
+  ExternalLink,
+  FileText,
   LayoutPanelTop,
   Layers3,
   ListFilter,
+  MessageCircle,
   Moon,
   MousePointer2,
   Palette,
+  Plus,
   Rows3,
+  Send,
   Sun,
 } from "lucide-react";
 import { Toaster as SonnerToaster, toast } from "sonner";
@@ -34,6 +40,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import { EmojiPickerPopover } from "@/components/ui/emoji-picker-popover";
 import {
   Dialog,
   DialogContent,
@@ -59,6 +66,7 @@ import {
   FieldSet,
   FieldTitle,
 } from "@/components/ui/field";
+import { DatePicker, DateTimePicker, TimeSelect } from "@/components/ui/date-picker";
 import { Input } from "@/components/ui/input";
 import { Progress, ProgressLabel, ProgressValue } from "@/components/ui/progress";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -69,6 +77,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
@@ -88,8 +97,13 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-
-const THEME_STORAGE_KEY = "theme";
+import {
+  applyDocumentTheme,
+  readDocumentTheme,
+  readStoredTheme,
+  THEME_CHANGE_EVENT,
+  type AppTheme,
+} from "@/lib/theme";
 
 const sectionLinks = [
   { id: "foundations", label: "Foundations", icon: Palette },
@@ -102,27 +116,36 @@ const tokenGroups = [
   {
     title: "Surface",
     items: [
-      { label: "Background", variable: "--background", value: "#FAFAF9 / #141412" },
-      { label: "Card", variable: "--card", value: "#FFFFFF / #1C1B18" },
-      { label: "Muted", variable: "--muted", value: "#F5F4F2 / #252420" },
-      { label: "Border", variable: "--border", value: "#E8E6E1 / #2E2C28" },
+      { label: "Background", variable: "--background", value: "oklch(0.985 0.001 106.4) / oklch(0.190 0.004 106.8)" },
+      { label: "Card", variable: "--card", value: "oklch(1 0 89.9) / oklch(0.222 0.006 91.6)" },
+      { label: "Muted", variable: "--muted", value: "oklch(0.967 0.003 84.6) / oklch(0.260 0.007 95.3)" },
+      { label: "Border", variable: "--border", value: "oklch(0.925 0.007 88.6) / oklch(0.294 0.008 84.6)" },
     ],
   },
   {
     title: "Text",
     items: [
-      { label: "Foreground", variable: "--foreground", value: "#1A1916 / #F5F3EF" },
-      { label: "Muted foreground", variable: "--muted-foreground", value: "#6B6963 / #8C8880" },
-      { label: "Primary foreground", variable: "--primary-foreground", value: "#FFFFFF" },
+      { label: "Foreground", variable: "--foreground", value: "oklch(0.213 0.006 91.6) / oklch(0.965 0.006 84.6)" },
+      { label: "Muted foreground", variable: "--muted-foreground", value: "oklch(0.521 0.010 91.6) / oklch(0.628 0.013 84.6)" },
+      { label: "Primary foreground", variable: "--primary-foreground", value: "oklch(1 0 0) / oklch(0.190 0.004 106.8)" },
     ],
   },
   {
     title: "Action",
     items: [
-      { label: "Primary", variable: "--primary", value: "#339160 / #4AAD7A" },
-      { label: "Secondary", variable: "--secondary", value: "#F5F4F2 / #252420" },
-      { label: "Ring", variable: "--ring", value: "#339160 / #4AAD7A" },
-      { label: "Destructive", variable: "--destructive", value: "#DC2626 / #EF4444" },
+      { label: "Primary", variable: "--primary", value: "oklch(0.588 0.116 156.9) / oklch(0.675 0.121 158.2)" },
+      { label: "Secondary", variable: "--secondary", value: "oklch(0.967 0.003 84.6) / oklch(0.260 0.007 95.3)" },
+      { label: "Ring", variable: "--ring", value: "oklch(0.588 0.116 156.9) / oklch(0.675 0.121 158.2)" },
+      { label: "Destructive", variable: "--destructive", value: "oklch(0.577 0.245 27.3) / oklch(0.640 0.245 27.3)" },
+    ],
+  },
+  {
+    title: "Semantic",
+    items: [
+      { label: "Success", variable: "--success", value: "oklch(0.627 0.194 145.6) / oklch(0.694 0.195 145.6)" },
+      { label: "Warning", variable: "--warning", value: "oklch(0.703 0.161 73.5) / oklch(0.769 0.161 73.5)" },
+      { label: "Info", variable: "--info", value: "oklch(0.546 0.215 264.1) / oklch(0.618 0.215 264.1)" },
+      { label: "Accent", variable: "--accent", value: "neutral hover token, not green tint" },
     ],
   },
 ] as const;
@@ -166,6 +189,9 @@ const reviewChecks = [
   "Никаких теней как основного depth-сигнала: MVP UI держится на contrast, border и spacing.",
 ];
 
+const sectionLabelClass =
+  "text-[0.72rem] font-bold uppercase tracking-[0.16em] text-muted-foreground";
+
 const exampleCode = {
   button: `<div className="flex flex-wrap gap-2">
   <Button>Сохранить</Button>
@@ -197,24 +223,30 @@ const exampleCode = {
 };
 
 function useDocumentTheme() {
-  const [theme, setTheme] = React.useState<"light" | "dark">("light");
+  const [theme, setTheme] = React.useState<AppTheme>("light");
 
   React.useEffect(() => {
-    const root = document.documentElement;
-    const stored = window.localStorage.getItem(THEME_STORAGE_KEY);
-    const nextTheme = stored === "dark" ? "dark" : "light";
+    const nextTheme = readStoredTheme();
 
-    root.classList.toggle("dark", nextTheme === "dark");
+    applyDocumentTheme(nextTheme, { persist: false });
     setTheme(nextTheme);
+
+    function handleThemeChange() {
+      setTheme(readDocumentTheme());
+    }
+
+    window.addEventListener(THEME_CHANGE_EVENT, handleThemeChange);
+    window.addEventListener("storage", handleThemeChange);
+    return () => {
+      window.removeEventListener(THEME_CHANGE_EVENT, handleThemeChange);
+      window.removeEventListener("storage", handleThemeChange);
+    };
   }, []);
 
   const toggleTheme = React.useCallback(() => {
-    const root = document.documentElement;
-
     setTheme((currentTheme) => {
       const nextTheme = currentTheme === "dark" ? "light" : "dark";
-      root.classList.toggle("dark", nextTheme === "dark");
-      window.localStorage.setItem(THEME_STORAGE_KEY, nextTheme);
+      applyDocumentTheme(nextTheme);
       return nextTheme;
     });
   }, []);
@@ -339,6 +371,20 @@ function ExampleBlock({
   );
 }
 
+function EmojiPickerExample() {
+  const [value, setValue] = React.useState("Добро пожаловать");
+
+  return (
+    <div className="grid gap-2">
+      <p className="text-sm font-semibold">EmojiPickerPopover</p>
+      <div className="flex items-center gap-2 rounded-lg border border-border bg-background p-2">
+        <Input value={value} onChange={(event) => setValue(event.target.value)} />
+        <EmojiPickerPopover onEmojiSelect={(emoji) => setValue((current) => `${current}${emoji}`)} />
+      </div>
+    </div>
+  );
+}
+
 function TokenGroupCard({
   title,
   items,
@@ -419,7 +465,7 @@ function PatternCard({
 function FoundationsSection() {
   return (
     <div className="space-y-6">
-      <div className="grid gap-4 xl:grid-cols-3">
+      <div className="grid gap-4 xl:grid-cols-4">
         {tokenGroups.map((group) => (
           <TokenGroupCard key={group.title} title={group.title} items={group.items} />
         ))}
@@ -482,6 +528,9 @@ function PrimitivesSection() {
   const [radioValue, setRadioValue] = React.useState("operators");
   const [denseMode, setDenseMode] = React.useState(true);
   const [progressValue, setProgressValue] = React.useState(72);
+  const [dateValue, setDateValue] = React.useState("");
+  const [dateTimeValue, setDateTimeValue] = React.useState("");
+  const [timeValue, setTimeValue] = React.useState("");
 
   return (
     <TooltipProvider>
@@ -523,6 +572,9 @@ function PrimitivesSection() {
                 <Badge variant="secondary">Secondary</Badge>
                 <Badge variant="outline">Neutral</Badge>
                 <Badge variant="destructive">Risk</Badge>
+                <span className="rounded-md bg-success/15 px-2 py-1 text-xs font-medium text-success">Success</span>
+                <span className="rounded-md bg-warning/15 px-2 py-1 text-xs font-medium text-warning">Warning</span>
+                <span className="rounded-md bg-info/15 px-2 py-1 text-xs font-medium text-info">Info</span>
               </div>
               <div className="rounded-xl border border-border/70 bg-muted/40 p-3 text-sm text-muted-foreground">
                 Status, scope, compact metadata.
@@ -576,6 +628,24 @@ function PrimitivesSection() {
                   Multiline field example.
               </FieldDescription>
               </Field>
+
+              <div className="grid gap-4 lg:grid-cols-3">
+                <Field>
+                  <FieldLabel>Date picker</FieldLabel>
+                  <DatePicker value={dateValue} onValueChange={setDateValue} />
+                  <FieldDescription>Popover + Calendar.</FieldDescription>
+                </Field>
+                <Field>
+                  <FieldLabel>Time select</FieldLabel>
+                  <TimeSelect value={timeValue} onValueChange={setTimeValue} />
+                  <FieldDescription>Base Select, no native browser popup.</FieldDescription>
+                </Field>
+                <Field>
+                  <FieldLabel>Date time</FieldLabel>
+                  <DateTimePicker value={dateTimeValue} onValueChange={setDateTimeValue} />
+                  <FieldDescription>Calendar plus tokenized time select.</FieldDescription>
+                </Field>
+              </div>
             </FieldGroup>
 
             <div className="space-y-4">
@@ -664,22 +734,36 @@ function PrimitivesSection() {
           </ExampleBlock>
 
           <ExampleBlock title="Feedback and utilities">
-            <div className="flex flex-wrap gap-2">
-              <Dialog>
-                <DialogTrigger render={<Button variant="outline" />}>Открыть modal</DialogTrigger>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>Применить новые правила</DialogTitle>
-                    <DialogDescription>
-                      Confirm action example.
-                    </DialogDescription>
-                  </DialogHeader>
-                  <DialogFooter>
-                    <Button variant="secondary">Отложить</Button>
-                    <Button>Применить</Button>
-                  </DialogFooter>
-                </DialogContent>
-              </Dialog>
+            <div className="grid gap-4">
+              <div className="grid gap-2">
+                <p className="text-sm font-semibold">ScrollArea</p>
+                <ScrollArea className="h-36 rounded-lg border border-border bg-muted/30 p-3">
+                  <div className="grid gap-2 pr-3 text-sm text-muted-foreground">
+                    {Array.from({ length: 8 }).map((_, index) => (
+                      <div key={index} className="rounded-md border border-border bg-card px-3 py-2">
+                        Workspace row {index + 1}
+                      </div>
+                    ))}
+                  </div>
+                </ScrollArea>
+              </div>
+
+              <EmojiPickerExample />
+
+              <div className="flex flex-wrap gap-2">
+                <Dialog>
+                  <DialogTrigger render={<Button variant="outline" />}>Открыть modal</DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Применить новые правила</DialogTitle>
+                      <DialogDescription>Confirm action example.</DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter>
+                      <Button variant="secondary">Отложить</Button>
+                      <Button>Применить</Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
 
               <DropdownMenu>
                 <DropdownMenuTrigger render={<Button variant="outline" />}>
@@ -710,6 +794,7 @@ function PrimitivesSection() {
               >
                 Trigger toast
               </Button>
+              </div>
             </div>
           </ExampleBlock>
         </div>
@@ -886,6 +971,176 @@ function PatternsSection() {
           <RuleList items={principles} />
         </CardContent>
       </Card>
+
+      <ExampleBlock title="Detail page building blocks">
+        <div className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
+          <div className="flex flex-col gap-3">
+            <div className={sectionLabelClass}>Section label</div>
+            <Card className="border border-border/80 bg-card shadow-none ring-0">
+              <CardHeader>
+                <CardTitle className="text-base font-semibold">Сопровождение</CardTitle>
+              </CardHeader>
+              <CardContent className="grid gap-3 pt-0">
+                <div className="grid gap-2 rounded-lg border border-border bg-muted/40 p-3">
+                  <div className="text-sm font-medium">Название поля</div>
+                  <div className="text-sm text-muted-foreground">Значение или shared control</div>
+                </div>
+              </CardContent>
+            </Card>
+            <div className="flex flex-wrap gap-2">
+              <Badge variant="secondary">В штате</Badge>
+              <Badge variant="outline">Стаж: 0 лет</Badge>
+            </div>
+          </div>
+
+          <Card className="border border-border/80 bg-card shadow-none ring-0">
+            <CardHeader>
+              <CardTitle className="text-base font-semibold">Document row</CardTitle>
+            </CardHeader>
+            <CardContent className="pt-0">
+              <div className="grid grid-cols-[34px_minmax(0,1fr)_max-content] items-center gap-3 rounded-lg border border-border bg-background p-2.5">
+                <div className="grid size-[34px] place-items-center rounded-md bg-muted text-muted-foreground">
+                  <FileText className="size-4" />
+                </div>
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-semibold">СТО.pdf</div>
+                  <div className="truncate text-xs text-muted-foreground">От HR · 31.05.2026 17:58</div>
+                </div>
+                <div className="flex items-center justify-end gap-2">
+                  <Button variant="outline" size="icon-sm" aria-label="Скачать" title="Скачать">
+                    <Download />
+                  </Button>
+                  <Button variant="secondary" size="icon-sm" aria-label="Отправить" title="Отправить">
+                    <Send />
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </ExampleBlock>
+
+      <ExampleBlock title="List page item">
+        <Card className="w-full min-w-0 rounded-lg border border-border bg-card shadow-none ring-0 transition-colors hover:bg-accent/60">
+          <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0 space-y-1.5">
+              <div className="flex flex-wrap items-center gap-2">
+                <h3 className="truncate text-[1rem] font-semibold">Востриков Антон Сергеевич</h3>
+                <Badge variant="secondary">В штате</Badge>
+              </div>
+              <div className="text-[0.92rem] text-muted-foreground">Аналитик</div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button variant="outline" size="icon" aria-label="Открыть чат" title="Открыть чат">
+                <MessageCircle />
+              </Button>
+              <Button variant="outline" size="icon" aria-label="Открыть карточку" title="Открыть карточку">
+                <ExternalLink />
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="flex flex-wrap items-center gap-2">
+            <Badge variant="secondary">
+              <MessageCircle data-icon="inline-start" />
+              @AVstrkv
+            </Badge>
+            <Badge variant="secondary">Выход: 19.06.2026</Badge>
+            <Badge variant="secondary">OC от коллег</Badge>
+          </CardContent>
+        </Card>
+      </ExampleBlock>
+
+      <ExampleBlock title="Workspace builder">
+        <div className="grid gap-3 xl:grid-cols-[280px_minmax(0,1fr)_320px]">
+          <Card className="border border-border/80 bg-card shadow-none ring-0">
+            <CardHeader className="gap-3 border-b border-border/70 pb-4">
+              <CardTitle className="text-base font-semibold">Сценарии</CardTitle>
+              <Button variant="outline" className="w-full justify-center border-dashed">
+                <Plus data-icon="inline-start" />
+                Создать сценарий
+              </Button>
+              <Input placeholder="Найти сценарий" />
+            </CardHeader>
+            <CardContent className="grid gap-2 pt-4">
+              <div className="flex items-center gap-2 rounded-lg border border-border bg-background p-2.5">
+                <Checkbox checked aria-label="Выбрать сценарий" />
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm font-semibold">Первичный отбор кандидата</div>
+                  <div className="text-xs text-muted-foreground">Для всех ролей</div>
+                </div>
+              </div>
+              <div className="grid gap-2 rounded-lg border border-border bg-muted/35 p-2.5">
+                <div className="text-sm font-semibold">Стартовый сценарий</div>
+                <div className="flex flex-wrap gap-1.5">
+                  <Badge variant="secondary">Кандидаты</Badge>
+                  <Badge variant="secondary">Автостарт</Badge>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border border-border/80 bg-card shadow-none ring-0">
+            <CardHeader className="flex flex-row items-start justify-between gap-3 border-b border-border/70 pb-4">
+              <div>
+                <Badge variant="secondary">Первичный отбор кандидата</Badge>
+                <CardTitle className="mt-3 text-base font-semibold">Шаги сценария</CardTitle>
+              </div>
+              <Button size="sm">
+                <Plus data-icon="inline-start" />
+                Добавить шаг
+              </Button>
+            </CardHeader>
+            <CardContent className="grid gap-2 pt-4">
+              <Card className="border border-primary/70 bg-muted/40 shadow-none ring-0">
+                <CardContent className="grid gap-2 pt-4">
+                  <div className="font-semibold">Запрос ФИО</div>
+                  <div className="text-sm text-muted-foreground">Напиши, как тебя зовут.</div>
+                  <Badge variant="secondary">Текстовый ответ</Badge>
+                </CardContent>
+              </Card>
+              <Card className="border border-border bg-background shadow-none ring-0">
+                <CardContent className="grid gap-2 pt-4">
+                  <div className="font-semibold">Запрос информации о должности</div>
+                  <div className="flex flex-wrap gap-1.5">
+                    <Badge variant="secondary">Ветвление</Badge>
+                    <Badge variant="secondary">Кнопки: 3</Badge>
+                  </div>
+                </CardContent>
+              </Card>
+            </CardContent>
+          </Card>
+
+          <Card className="border border-border/80 bg-card shadow-none ring-0">
+            <CardHeader className="border-b border-border/70 pb-4">
+              <CardTitle className="text-base font-semibold">Детали</CardTitle>
+            </CardHeader>
+            <CardContent className="grid gap-3 pt-4">
+              <Field>
+                <FieldLabel>Название</FieldLabel>
+                <Input defaultValue="Запрос ФИО" />
+              </Field>
+              <Field>
+                <FieldLabel>Текст</FieldLabel>
+                <Textarea defaultValue="Давай знакомиться. Напиши, как тебя зовут." />
+              </Field>
+              <Field>
+                <FieldLabel>Тип ответа</FieldLabel>
+                <Select defaultValue="text">
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="text">Текстовый ответ</SelectItem>
+                    <SelectItem value="file">Загрузка файла</SelectItem>
+                    <SelectItem value="none">Без ответа</SelectItem>
+                  </SelectContent>
+                </Select>
+              </Field>
+              <Button className="justify-self-end">Сохранить</Button>
+            </CardContent>
+          </Card>
+        </div>
+      </ExampleBlock>
     </div>
   );
 }
@@ -934,7 +1189,7 @@ export function DesignSystemPage() {
         }}
       />
 
-      <Card className="sticky top-4 z-0 border border-border/80 bg-background/96 shadow-none ring-0 backdrop-blur supports-[backdrop-filter]:bg-background/88">
+      <Card className="sticky top-4 z-40 isolate border border-border/80 bg-background/96 shadow-none ring-0 backdrop-blur supports-[backdrop-filter]:bg-background/88">
         <CardHeader className="gap-4 border-b border-border/70 pb-4">
           <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
             <div className="space-y-2.5">

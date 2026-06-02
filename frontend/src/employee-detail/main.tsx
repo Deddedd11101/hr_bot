@@ -13,8 +13,9 @@ if (rootElement) {
             <EmployeeDetailPage
                 apiUrl={rootElement.dataset.apiUrl || ""}
                 saveUrl={rootElement.dataset.saveUrl || ""}
-                classicUrl={rootElement.dataset.classicUrl || ""}
                 listUrl={rootElement.dataset.listUrl || ""}
+                flashMessage={rootElement.dataset.flashMessage || ""}
+                flashType={rootElement.dataset.flashType || ""}
             />
         </React.StrictMode>
     );

@@ -28,19 +28,21 @@ body {
 
 .app-shell {
     --sidebar-width: 86px;
+    --sidebar-expanded-width: 244px;
     display: grid;
     grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
     min-height: 100vh;
-    transition: grid-template-columns 0.22s ease;
 }
 
 .app-shell-expanded {
-    --sidebar-width: 244px;
+    --sidebar-overlay-width: var(--sidebar-expanded-width);
 }
 
 .app-sidebar {
     position: sticky;
     top: 0;
+    left: 0;
+    width: var(--sidebar-width);
     height: 100vh;
     padding: 14px;
     border-right: 1px solid var(--border);
@@ -49,6 +51,16 @@ body {
         linear-gradient(180deg, rgba(255, 255, 255, 0.96) 0%, rgba(248, 250, 249, 0.98) 100%);
     box-shadow: 18px 0 40px rgba(26, 31, 46, 0.04);
     z-index: 20;
+    overflow: hidden;
+    transition:
+        width 0.28s cubic-bezier(0.2, 0.8, 0.2, 1),
+        box-shadow 0.28s ease,
+        background-color 0.28s ease;
+}
+
+.app-shell-expanded .app-sidebar {
+    width: var(--sidebar-expanded-width);
+    box-shadow: 24px 0 56px rgba(26, 31, 46, 0.12);
 }
 
 .app-sidebar-inner {
@@ -147,7 +159,8 @@ body {
 
 .app-nav-label {
     display: inline-block;
-    max-width: 0;
+    width: 0;
+    max-width: 154px;
     overflow: hidden;
     opacity: 0;
     visibility: hidden;
@@ -155,23 +168,23 @@ body {
     pointer-events: none;
     font-size: 14px;
     font-weight: 600;
-    transform: translateX(-8px);
+    transform: translateX(-10px);
     transition:
-        max-width 0.4s ease,
-        opacity 0.38s ease,
-        transform 0.4s ease,
-        visibility 0s linear 0.4s;
+        width 0.24s cubic-bezier(0.2, 0.8, 0.2, 1),
+        opacity 0.26s ease,
+        transform 0.3s ease,
+        visibility 0s linear 0.24s;
 }
 
 .app-shell-expanded .app-nav-label {
-    max-width: 180px;
+    width: 154px;
     opacity: 1;
     visibility: visible;
     transform: translateX(0);
     transition:
-        max-width 0.34s ease,
-        opacity 0.28s ease 0.04s,
-        transform 0.34s ease 0.02s,
+        width 0.28s cubic-bezier(0.2, 0.8, 0.2, 1),
+        opacity 0.3s ease 0.08s,
+        transform 0.32s ease 0.06s,
         visibility 0s;
 }
 
@@ -1381,6 +1394,7 @@ textarea:focus {
 
     .app-sidebar {
         position: static;
+        width: auto;
         height: auto;
         padding: 14px 14px 0;
         border-right: none;
@@ -1413,6 +1427,7 @@ textarea:focus {
     }
 
     .app-nav-label {
+        width: auto;
         max-width: 180px;
         opacity: 1;
         visibility: visible;

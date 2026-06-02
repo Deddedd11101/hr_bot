@@ -155,6 +155,7 @@ def _serialize_workspace_step(
     step: FlowStepTemplate,
     branch_steps_by_parent: dict[int, list[FlowStepTemplate]],
     chain_steps_by_parent: dict[int, list[FlowStepTemplate]],
+    button_notifications_by_step: dict[int, dict[int, StepButtonNotification]],
 ):
     button_options = [item.strip() for item in (step.button_options or "").splitlines() if item.strip()]
     branch_items = []
@@ -173,16 +174,28 @@ def _serialize_workspace_step(
                     "option_index": option_index,
                     "label": label,
                     "has_step": branch_step is not None,
-                    "step": _serialize_workspace_step(branch_step, branch_steps_by_parent, chain_steps_by_parent) if branch_step else None,
+                    "step": _serialize_workspace_step(branch_step, branch_steps_by_parent, chain_steps_by_parent, button_notifications_by_step) if branch_step else None,
                 }
             )
 
     chain_steps = []
     if step.response_type == "chain":
         chain_steps = [
-            _serialize_workspace_step(child, branch_steps_by_parent, chain_steps_by_parent)
+            _serialize_workspace_step(child, branch_steps_by_parent, chain_steps_by_parent, button_notifications_by_step)
             for child in chain_steps_by_parent.get(step.id, [])
         ]
+
+    step_button_notifications = button_notifications_by_step.get(step.id, {})
+    button_notifications = [
+        {
+            "option_index": option_index,
+            "option_label": label,
+            "message_text": getattr(step_button_notifications.get(option_index), "message_text", None) or "",
+            "recipient_ids": getattr(step_button_notifications.get(option_index), "recipient_ids", None) or "",
+            "recipient_scope": getattr(step_button_notifications.get(option_index), "recipient_scope", None) or "",
+        }
+        for option_index, label in enumerate(button_options)
+    ]
 
     return {
         "id": step.id,
@@ -211,6 +224,7 @@ def _serialize_workspace_step(
         "notify_on_send_text": getattr(step, "notify_on_send_text", None) or "",
         "notify_on_send_recipient_ids": getattr(step, "notify_on_send_recipient_ids", None) or "",
         "notify_on_send_recipient_scope": getattr(step, "notify_on_send_recipient_scope", None) or "",
+        "button_notifications": button_notifications,
         "branch_items": branch_items,
         "chain_steps": chain_steps,
     }
@@ -266,7 +280,12 @@ def _build_scenario_workspace_payload(
     if selected_scenario is not None:
         editor_data = _load_scenario_editor_data(db, selected_scenario)
         root_steps = [
-            _serialize_workspace_step(step, editor_data["branch_steps_by_parent"], editor_data["chain_steps_by_parent"])
+            _serialize_workspace_step(
+                step,
+                editor_data["branch_steps_by_parent"],
+                editor_data["chain_steps_by_parent"],
+                editor_data["button_notifications_by_step"],
+            )
             for step in editor_data["steps"]
         ]
         workspace = {
@@ -355,6 +374,39 @@ def _apply_workspace_step_update(step: FlowStepTemplate, payload: dict):
         step.target_field = None
 
     return step
+
+
+def _sync_workspace_button_notifications(db: Session, step: FlowStepTemplate, payload: dict) -> None:
+    if step.response_type not in {"buttons", "branching"}:
+        db.query(StepButtonNotification).filter(StepButtonNotification.step_id == step.id).delete()
+        return
+
+    button_options = [item.strip() for item in (step.button_options or "").splitlines() if item.strip()]
+    submitted_notifications = payload.get("button_notifications") or []
+    submitted_by_index = {}
+    if isinstance(submitted_notifications, list):
+        for item in submitted_notifications:
+            if not isinstance(item, dict):
+                continue
+            raw_index = item.get("option_index")
+            if raw_index is None or not str(raw_index).strip().isdigit():
+                continue
+            submitted_by_index[int(str(raw_index).strip())] = item
+
+    for option_index, _label in enumerate(button_options):
+        notification_payload = submitted_by_index.get(option_index, {})
+        _sync_button_notification(
+            db,
+            step,
+            option_index,
+            str(notification_payload.get("message_text") or ""),
+            str(notification_payload.get("recipient_ids") or ""),
+            str(notification_payload.get("recipient_scope") or ""),
+        )
+
+    for notification in db.query(StepButtonNotification).filter(StepButtonNotification.step_id == step.id).all():
+        if notification.option_index >= len(button_options):
+            db.delete(notification)
 
 
 def _delete_step_attachment_file(step: FlowStepTemplate) -> None:

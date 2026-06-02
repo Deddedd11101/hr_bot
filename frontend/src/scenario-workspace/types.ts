@@ -33,8 +33,17 @@ export type WorkspaceStep = {
   notify_on_send_text: string;
   notify_on_send_recipient_ids: string;
   notify_on_send_recipient_scope: string;
+  button_notifications: WorkspaceButtonNotification[];
   branch_items: WorkspaceBranchSlot[];
   chain_steps: WorkspaceStep[];
+};
+
+export type WorkspaceButtonNotification = {
+  option_index: number;
+  option_label: string;
+  message_text: string;
+  recipient_ids: string;
+  recipient_scope: string;
 };
 
 export type WorkspaceBranchSlot = {

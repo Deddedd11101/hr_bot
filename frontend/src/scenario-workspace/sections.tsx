@@ -1,8 +1,16 @@
 import * as React from "react";
-import EmojiPicker, { type EmojiClickData } from "emoji-picker-react";
-import { ChevronRight, Copy, FileStack, PanelLeft, Paperclip, Plus, Smile, Trash2, X } from "lucide-react";
+import { ChevronRight, Copy, FileStack, PanelLeft, Paperclip, Plus, Trash2, X } from "lucide-react";
 
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import { EmojiPickerPopover } from "@/components/ui/emoji-picker-popover";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -16,10 +24,29 @@ import type {
   ScenarioSettingsForm,
   ScenarioSummary,
   SingleOption,
+  WorkspaceButtonNotification,
   WorkspaceData,
   WorkspaceItem,
   WorkspaceStep,
 } from "./types";
+
+export function WorkspaceFlashNotice(props: { message: string; error: boolean }) {
+  if (!props.message) {
+    return null;
+  }
+
+  return (
+    <div
+      className={`mb-4 rounded-lg border px-4 py-3 text-sm font-medium ${
+        props.error
+          ? "border-destructive/30 bg-destructive/10 text-destructive"
+          : "border-emerald-200 bg-emerald-50 text-emerald-700"
+      }`}
+    >
+      {props.message}
+    </div>
+  );
+}
 
 export function WorkspaceSidebarSection(props: {
   sidebarTitle: string;
@@ -73,14 +100,12 @@ export function WorkspaceSidebarSection(props: {
   } = props;
 
   return (
-    <section className="flex min-h-0 flex-col overflow-hidden rounded-[10px] border border-[var(--color-border)] bg-[var(--color-panel)] p-4">
-      <div className="mb-3">
-        <div>
-          <h3 className="text-[1.65rem] font-semibold">{sidebarTitle}</h3>
-        </div>
-      </div>
+    <Card className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-border bg-card p-4 shadow-none ring-0">
+      <CardHeader className="gap-3 border-b border-border/70 p-0 pb-4">
+        <CardTitle className="text-[1.65rem] font-semibold">{sidebarTitle}</CardTitle>
+      </CardHeader>
       {creatingScenario ? (
-        <div className="mb-3 rounded-[10px] border border-[var(--color-border)] bg-[var(--color-panel-muted)] p-2">
+        <div className="mt-4 rounded-lg border border-border bg-muted/50 p-2">
           <div className="flex items-center gap-2">
             <Input
               value={newScenarioTitle}
@@ -91,112 +116,113 @@ export function WorkspaceSidebarSection(props: {
             <Button size="sm" onClick={onCreateScenario} className="px-3">
               Готово
             </Button>
-            <Button size="sm" variant="ghost" className="w-8 p-0" onClick={onCancelCreateScenario}>
-              <X className="size-4" />
+            <Button size="icon-sm" variant="ghost" onClick={onCancelCreateScenario} aria-label="Отменить создание">
+              <X />
             </Button>
           </div>
         </div>
       ) : (
-        <button
-          type="button"
+        <Button
+          variant="outline"
+          className="mt-4 w-full justify-center border-dashed"
           onClick={onOpenCreateScenario}
-          className="mb-3 flex h-11 w-full items-center justify-center gap-2 rounded-[10px] border border-dashed border-[var(--color-border)] bg-[var(--color-panel-muted)] text-sm font-semibold transition-all duration-200 hover:rounded-[20px] hover:bg-white"
         >
-          <Plus className="size-4" />
+          <Plus data-icon="inline-start" />
           {createItemLabel}
-        </button>
+        </Button>
       )}
       <Input
         placeholder={isSurveyWorkspace ? "Найти опрос" : "Найти сценарий"}
         value={search}
         onChange={(e) => onSearchChange(e.target.value)}
-        className="text-sm"
+        className="mt-3 text-sm"
       />
       <div className="mt-3 flex flex-wrap items-center gap-2">
-        <label className="inline-flex items-center gap-2 rounded-[10px] border border-[var(--color-border)] px-3 py-2 text-xs font-semibold text-[var(--color-muted-foreground)] transition-all duration-200 hover:rounded-[18px]">
-          <input
-            type="checkbox"
+        <label className="inline-flex h-7 items-center gap-2 rounded-lg border border-border bg-background px-2.5 text-xs font-semibold text-muted-foreground">
+          <Checkbox
             checked={scenarios.length > 0 && scenarios.every((scenario) => selectedScenarioIds.includes(scenario.id))}
-            onChange={onToggleSelectAllVisibleScenarios}
+            onCheckedChange={onToggleSelectAllVisibleScenarios}
+            aria-label="Выбрать все сценарии"
           />
           Выбрать все
         </label>
         <Button
-          size="sm"
+          size="icon-sm"
           variant="secondary"
-          className="w-9 p-0"
           title="Копировать выбранные"
+          aria-label="Копировать выбранные"
           onClick={() => onBulkScenarioAction("bulk-copy")}
           disabled={!selectedScenarioIds.length}
         >
-          <Copy className="size-4" />
+          <Copy />
         </Button>
         <Button
-          size="sm"
-          variant="secondary"
-          className="w-9 p-0 text-red-600 hover:bg-red-50 hover:text-red-700"
+          size="icon-sm"
+          variant="destructive"
           title="Удалить выбранные"
+          aria-label="Удалить выбранные"
           onClick={() => onBulkScenarioAction("bulk-delete")}
           disabled={!selectedScenarioIds.length}
         >
-          <Trash2 className="size-4" />
+          <Trash2 />
         </Button>
       </div>
       {sidebarState.message ? (
-        <p className={`mt-3 text-sm ${sidebarState.error ? "text-[var(--color-danger)]" : "text-[var(--color-muted-foreground)]"}`}>
+        <p className={`mt-3 text-sm ${sidebarState.error ? "text-destructive" : "text-muted-foreground"}`}>
           {sidebarState.message}
         </p>
       ) : null}
       <ScrollArea className="mt-4 min-h-0 flex-1">
-        <div className="pr-3" style={{ display: "grid", gap: "0.65rem" }}>
+        <div className="grid gap-2 pr-3">
           {scenarios.map((scenario) => (
-            <button
+            <article
               key={scenario.id}
-              type="button"
+              role="button"
+              tabIndex={0}
               onClick={() => onSelectScenario(scenario.id)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  onSelectScenario(scenario.id);
+                }
+              }}
               draggable
               onDragStart={() => onScenarioDragStart(scenario.id)}
               onDragOver={(event) => event.preventDefault()}
               onDrop={() => onScenarioDrop(scenario.id)}
               onDragEnd={onScenarioDragEnd}
-              className={`flex w-full min-w-0 flex-col gap-2 rounded-[10px] border p-3 text-left transition-all duration-200 hover:rounded-[20px] ${
+              className={`flex w-full min-w-0 cursor-pointer flex-col gap-2 rounded-lg border p-3 text-left transition-colors ${
                 scenario.id === selectedScenarioId
-                  ? "border-[color:var(--color-accent)] bg-[var(--color-panel-muted)] shadow-sm"
-                  : "border-[var(--color-border)] bg-white hover:bg-[var(--color-panel-muted)]"
+                  ? "border-primary/70 bg-muted/50"
+                  : "border-border bg-card hover:bg-accent/60"
               }`}
             >
               <div className="flex items-center justify-between gap-3">
-                <label
-                  className="inline-flex items-center gap-2"
+                <div
+                  className="inline-flex min-w-0 items-center gap-2"
                   onClick={(event) => event.stopPropagation()}
                   onMouseDown={(event) => event.stopPropagation()}
                 >
-                  <input
-                    type="checkbox"
+                  <Checkbox
                     checked={selectedScenarioIds.includes(scenario.id)}
-                    onChange={() => onToggleScenarioSelection(scenario.id)}
+                    onCheckedChange={() => onToggleScenarioSelection(scenario.id)}
+                    aria-label={`Выбрать ${scenario.title}`}
                   />
-                  <span className="text-[0.95rem] font-semibold">{scenario.title}</span>
-                </label>
-                <FileStack className="size-4 text-[var(--color-muted-foreground)]" />
+                  <span className="min-w-0 truncate text-[0.95rem] font-semibold">{scenario.title}</span>
+                </div>
+                <FileStack className="size-4 shrink-0 text-muted-foreground" />
               </div>
-              <p className="text-[0.83rem] leading-5 text-[var(--color-muted-foreground)]">{scenario.description || "Без описания"}</p>
-              <div className="flex flex-wrap gap-2 text-[0.72rem] font-medium text-[var(--color-muted-foreground)]">
-                <span className="rounded-[10px] bg-black/5 px-2 py-1 transition-all duration-200 hover:rounded-[16px]">
-                  {scenario.role_scope_label}
-                </span>
-                <span className="rounded-[10px] bg-black/5 px-2 py-1 transition-all duration-200 hover:rounded-[16px]">
-                  {scenario.employee_scope_label}
-                </span>
-                <span className="rounded-[10px] bg-black/5 px-2 py-1 transition-all duration-200 hover:rounded-[16px]">
-                  {scenario.trigger_mode_label}
-                </span>
+              <p className="text-[0.83rem] leading-5 text-muted-foreground">{scenario.description || "Без описания"}</p>
+              <div className="flex flex-wrap gap-1.5">
+                <Badge variant="secondary">{scenario.role_scope_label}</Badge>
+                <Badge variant="secondary">{scenario.employee_scope_label}</Badge>
+                <Badge variant="secondary">{scenario.trigger_mode_label}</Badge>
               </div>
-            </button>
+            </article>
           ))}
         </div>
       </ScrollArea>
-    </section>
+    </Card>
   );
 }
 
@@ -209,6 +235,7 @@ export function WorkspaceCanvasSection(props: {
   itemLabel: string;
   isSurveyWorkspace: boolean;
   payloadWorkspace: WorkspaceData | null | undefined;
+  exportUrl: string;
   scenarioSettingsForm: ScenarioSettingsForm | null;
   scenarioSettingsOpen: boolean;
   scenarioSettingsState: { saving: boolean; message: string; error: boolean };
@@ -238,6 +265,7 @@ export function WorkspaceCanvasSection(props: {
     itemLabel,
     isSurveyWorkspace,
     payloadWorkspace,
+    exportUrl,
     scenarioSettingsForm,
     scenarioSettingsOpen,
     scenarioSettingsState,
@@ -260,14 +288,14 @@ export function WorkspaceCanvasSection(props: {
   } = props;
 
   return (
-    <section className="flex min-h-0 flex-col overflow-hidden rounded-[10px] border border-[var(--color-border)] bg-[var(--color-panel)] p-4">
-      <div className="mb-3 flex flex-wrap items-center gap-2 text-sm text-[var(--color-muted-foreground)]">
+    <Card className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-border bg-card p-4 shadow-none ring-0">
+      <div className="mb-3 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
         {stack.map((entry, index) => (
           <React.Fragment key={entry.key}>
             {index > 0 ? <ChevronRight className="size-4 shrink-0" /> : null}
             <button
               type="button"
-              className="inline-flex max-w-full items-center gap-2 rounded-[10px] bg-black/5 px-3 py-1.5 text-left font-medium whitespace-normal break-words transition-all duration-200 hover:rounded-[18px] hover:bg-black/8"
+              className="inline-flex max-w-full items-center gap-2 rounded-lg bg-muted px-3 py-1.5 text-left font-medium whitespace-normal break-words transition-colors hover:bg-border"
               onClick={() => onBreadcrumbClick(index)}
             >
               {React.createElement(crumbIcon(entry), { className: "size-4 shrink-0" })}
@@ -280,7 +308,7 @@ export function WorkspaceCanvasSection(props: {
       <div className="mb-4 flex items-center justify-between gap-4">
         <div>
           {currentContainer?.subtitle ? (
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--color-muted-foreground)]">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
               {currentContainer.subtitle}
             </p>
           ) : null}
@@ -290,26 +318,29 @@ export function WorkspaceCanvasSection(props: {
         </div>
         {currentContainer?.type === "root" ? (
           <div className="flex flex-wrap items-center gap-2">
+            {exportUrl ? (
+              <Button render={<a href={exportUrl} />} variant="outline" size="sm">
+                Выгрузить Excel
+              </Button>
+            ) : null}
             {scenarioSettingsForm ? (
               <Popover open={scenarioSettingsOpen} onOpenChange={onScenarioSettingsOpenChange}>
-                <PopoverTrigger asChild>
-                  <Button variant="secondary" size="sm">
-                    Настройки
-                  </Button>
+                <PopoverTrigger render={<Button variant="secondary" size="sm" />}>
+                  Настройки
                 </PopoverTrigger>
-                <PopoverContent align="end" className="p-4" style={{ width: "min(440px, calc(100vw - 32px))" }}>
+                <PopoverContent align="end" className="w-[min(440px,calc(100vw-32px))] p-4">
                   <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
                     <div>
                       <h4 className="text-base font-semibold">Настройки {itemLabel}</h4>
-                      <p className="mt-1 text-sm text-[var(--color-muted-foreground)]">{payloadWorkspace?.scenario.title}</p>
+                      <p className="mt-1 text-sm text-muted-foreground">{payloadWorkspace?.scenario.title}</p>
                     </div>
                     <Button size="sm" onClick={onSaveScenarioSettings} disabled={scenarioSettingsState.saving} className="min-w-[132px] whitespace-nowrap px-8">
                       {scenarioSettingsState.saving ? "Сохраняю..." : "Сохранить"}
                     </Button>
                   </div>
                   <div className="flex flex-col gap-4">
-                    <label className="grid min-w-0" style={{ gap: "10px", justifyItems: "stretch", alignItems: "baseline", justifyContent: "stretch", alignContent: "space-between" }}>
-                      <span className="text-sm font-semibold text-[var(--color-foreground)]/75">Описание</span>
+                    <label className="grid min-w-0 gap-2.5">
+                      <span className="text-sm font-semibold text-foreground/75">Описание</span>
                       <div className="relative">
                         <textarea
                           value={scenarioSettingsForm.description}
@@ -322,13 +353,13 @@ export function WorkspaceCanvasSection(props: {
                             )
                           }
                         />
-                        <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[0.58rem] font-semibold text-[var(--color-muted-foreground)]">
+                        <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[0.58rem] font-semibold text-muted-foreground">
                           {scenarioSettingsForm.description.length}/50
                         </span>
                       </div>
                     </label>
-                    <label className="grid min-w-0" style={{ gap: "10px", justifyItems: "stretch", alignItems: "baseline", justifyContent: "stretch", alignContent: "space-between" }}>
-                      <span className="text-sm font-semibold text-[var(--color-foreground)]/75">Должность</span>
+                    <label className="grid min-w-0 gap-2.5">
+                      <span className="text-sm font-semibold text-foreground/75">Должность</span>
                       <SingleSelectPicker
                         options={roleScopeOptions}
                         value={scenarioSettingsForm.role_scope}
@@ -336,8 +367,8 @@ export function WorkspaceCanvasSection(props: {
                         onChange={(nextValue) => onScenarioSettingsFormChange((prev) => (prev ? { ...prev, role_scope: nextValue } : prev))}
                       />
                     </label>
-                    <label className="grid min-w-0" style={{ gap: "10px", justifyItems: "stretch", alignItems: "baseline", justifyContent: "stretch", alignContent: "space-between" }}>
-                      <span className="text-sm font-semibold text-[var(--color-foreground)]/75">Аудитория</span>
+                    <label className="grid min-w-0 gap-2.5">
+                      <span className="text-sm font-semibold text-foreground/75">Аудитория</span>
                       <SingleSelectPicker
                         options={employeeScopeOptions}
                         value={scenarioSettingsForm.employee_scope}
@@ -346,8 +377,8 @@ export function WorkspaceCanvasSection(props: {
                       />
                     </label>
                     {!isSurveyWorkspace ? (
-                      <label className="grid min-w-0" style={{ gap: "10px", justifyItems: "stretch", alignItems: "baseline", justifyContent: "stretch", alignContent: "space-between" }}>
-                        <span className="text-sm font-semibold text-[var(--color-foreground)]/75">Запуск</span>
+                      <label className="grid min-w-0 gap-2.5">
+                        <span className="text-sm font-semibold text-foreground/75">Запуск</span>
                         <SingleSelectPicker
                           options={triggerModeOptions}
                           value={scenarioSettingsForm.trigger_mode}
@@ -356,8 +387,8 @@ export function WorkspaceCanvasSection(props: {
                         />
                       </label>
                     ) : null}
-                    <label className="grid min-w-0" style={{ gap: "10px", justifyItems: "stretch", alignItems: "baseline", justifyContent: "stretch", alignContent: "space-between" }}>
-                      <span className="text-sm font-semibold text-[var(--color-foreground)]/75">Карточка</span>
+                    <label className="grid min-w-0 gap-2.5">
+                      <span className="text-sm font-semibold text-foreground/75">Карточка</span>
                       <SingleSelectPicker
                         options={targetEmployeeOptions}
                         value={scenarioSettingsForm.target_employee_id}
@@ -367,7 +398,7 @@ export function WorkspaceCanvasSection(props: {
                     </label>
                   </div>
                   {scenarioSettingsState.message ? (
-                    <p className={`mt-4 text-sm ${scenarioSettingsState.error ? "text-[var(--color-danger)]" : "text-[var(--color-muted-foreground)]"}`}>
+                    <p className={`mt-4 text-sm ${scenarioSettingsState.error ? "text-destructive" : "text-muted-foreground"}`}>
                       {scenarioSettingsState.message}
                     </p>
                   ) : null}
@@ -375,20 +406,20 @@ export function WorkspaceCanvasSection(props: {
               </Popover>
             ) : null}
             <Button variant="secondary" size="sm" onClick={onAddRootStep}>
-              <Plus className="size-4" />
+              <Plus data-icon="inline-start" />
               {isSurveyWorkspace ? "Добавить вопрос" : "Добавить шаг"}
             </Button>
           </div>
         ) : currentContainer?.type === "chain" ? (
           <Button variant="secondary" size="sm" onClick={onAddChainStep}>
-            <Plus className="size-4" />
+            <Plus data-icon="inline-start" />
             Добавить шаг
           </Button>
         ) : null}
       </div>
 
       <ScrollArea className="min-h-0 flex-1">
-        <div className="pr-3" style={{ display: "grid", gap: "0.65rem" }}>
+        <div className="grid gap-2 pr-3">
           {currentItems.map((item, index) => {
             const canOpen = !!buildChildContainer(item);
             const active = itemKey(item) === selectedItemKey;
@@ -413,25 +444,21 @@ export function WorkspaceCanvasSection(props: {
                   }
                 }}
                 onDragEnd={onDragStepEnd}
-                className={`flex w-full min-w-0 cursor-pointer flex-col gap-2 rounded-[10px] border p-3 transition-all duration-200 hover:rounded-[20px] ${
+                className={`flex w-full min-w-0 cursor-pointer flex-col gap-2 rounded-lg border p-3 transition-colors ${
                   active
-                    ? "border-[color:var(--color-accent)] bg-[var(--color-panel-muted)] shadow-sm"
-                    : "border-[var(--color-border)] bg-white hover:bg-[var(--color-panel-muted)]"
+                    ? "border-primary/70 bg-muted/50"
+                    : "border-border bg-card hover:bg-accent/60"
                 }`}
               >
-                <div className="space-y-1">
+                <div className="flex flex-col gap-1">
                   <h4 className="text-[0.95rem] font-semibold">{workspaceItemTitle(item, index)}</h4>
-                  <p className="text-[0.83rem] leading-5 text-[var(--color-muted-foreground)]">{summarizeItem(item)}</p>
+                  <p className="text-[0.83rem] leading-5 text-muted-foreground">{summarizeItem(item)}</p>
                 </div>
                 <div className="flex items-center justify-between gap-3">
-                  <div className="flex flex-wrap gap-2 text-[0.72rem] font-medium text-[var(--color-muted-foreground)]">
-                    <span className="rounded-[10px] bg-black/5 px-2 py-1 transition-all duration-200 hover:rounded-[16px]">
-                      {item.kind === "branch_slot" ? "Ветка" : item.response_label}
-                    </span>
+                  <div className="flex flex-wrap gap-1.5">
+                    <Badge variant="secondary">{item.kind === "branch_slot" ? "Ветка" : item.response_label}</Badge>
                     {"button_options" in item && item.button_options.length ? (
-                      <span className="rounded-[10px] bg-black/5 px-2 py-1 transition-all duration-200 hover:rounded-[16px]">
-                        Кнопки: {item.button_options.length}
-                      </span>
+                      <Badge variant="secondary">Кнопки: {item.button_options.length}</Badge>
                     ) : null}
                   </div>
                   {canOpen ? (
@@ -443,7 +470,7 @@ export function WorkspaceCanvasSection(props: {
                         onOpenItem(item);
                       }}
                     >
-                      <PanelLeft className="size-4" />
+                      <PanelLeft data-icon="inline-start" />
                       Открыть
                     </Button>
                   ) : null}
@@ -453,7 +480,7 @@ export function WorkspaceCanvasSection(props: {
           })}
         </div>
       </ScrollArea>
-    </section>
+    </Card>
   );
 }
 
@@ -463,15 +490,15 @@ export function WorkspaceDetailSection({
   children: React.ReactNode;
 }) {
   return (
-    <section
-      className="flex min-h-0 flex-col overflow-hidden rounded-[10px] border border-[var(--color-border)] bg-[var(--color-panel)] p-4"
+    <Card
+      className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-border bg-card p-4 shadow-none ring-0"
       style={{ position: "sticky", top: 0, alignSelf: "stretch" }}
     >
       <div className="mb-3">
-        <p className="text-[1rem] font-medium text-[var(--color-foreground)]/85">Детали</p>
+        <p className="text-[1rem] font-medium text-foreground/85">Детали</p>
       </div>
       {children}
-    </section>
+    </Card>
   );
 }
 
@@ -492,10 +519,10 @@ export function WorkspaceStepDetailPane(props: {
     notify_on_send_text: string;
     notify_on_send_recipient_ids: string;
     notify_on_send_recipient_scope: string;
+    button_notifications: WorkspaceButtonNotification[];
   };
   textRef: React.RefObject<HTMLTextAreaElement | null>;
   fileInputRef: React.RefObject<HTMLInputElement | null>;
-  emojiOpen: boolean;
   payloadWorkspace: WorkspaceData | null | undefined;
   attachmentState: { uploading: boolean; message: string; error: boolean };
   saveState: { saving: boolean; message: string; error: boolean };
@@ -505,7 +532,6 @@ export function WorkspaceStepDetailPane(props: {
   targetFieldOptions: SingleOption[];
   launchScenarioOptions: SingleOption[];
   notificationScopeOptions: SingleOption[];
-  onEmojiOpenChange: (open: boolean) => void;
   onInsertIntoText: (snippet: string) => void;
   onFormChange: (
     updater: (
@@ -522,6 +548,7 @@ export function WorkspaceStepDetailPane(props: {
         notify_on_send_text: string;
         notify_on_send_recipient_ids: string;
         notify_on_send_recipient_scope: string;
+        button_notifications: WorkspaceButtonNotification[];
       } | null,
     ) => {
       title: string;
@@ -536,6 +563,7 @@ export function WorkspaceStepDetailPane(props: {
       notify_on_send_text: string;
       notify_on_send_recipient_ids: string;
       notify_on_send_recipient_scope: string;
+      button_notifications: WorkspaceButtonNotification[];
     } | null,
   ) => void;
   onCreateBranch: () => void;
@@ -554,7 +582,6 @@ export function WorkspaceStepDetailPane(props: {
     form,
     textRef,
     fileInputRef,
-    emojiOpen,
     payloadWorkspace,
     attachmentState,
     saveState,
@@ -564,7 +591,6 @@ export function WorkspaceStepDetailPane(props: {
     targetFieldOptions,
     launchScenarioOptions,
     notificationScopeOptions,
-    onEmojiOpenChange,
     onInsertIntoText,
     onFormChange,
     onCreateBranch,
@@ -584,25 +610,25 @@ export function WorkspaceStepDetailPane(props: {
         <div className="pr-3">
           {selectedItem ? (
             selectedItem.kind === "branch_slot" && !detailTarget ? (
-              <div className="flex flex-col gap-4 rounded-[10px] border border-[var(--color-border)] bg-[var(--color-panel-muted)] p-4">
-                <div className="space-y-1">
+              <div className="flex flex-col gap-4 rounded-lg border border-border bg-muted/50 p-4">
+                <div className="flex flex-col gap-1">
                   <h4 className="text-base font-semibold">{selectedItem.label}</h4>
-                  <p className="text-sm leading-6 text-[var(--color-muted-foreground)]">
+                  <p className="text-sm leading-6 text-muted-foreground">
                     Для этой кнопки ветка пока не создана. Создай её, и после этого можно будет настроить тип ответа,
                     цепочку шагов и дальнейшую логику.
                   </p>
                 </div>
                 <div className="flex items-center gap-3">
                   <Button onClick={onCreateBranch}>
-                    <Plus className="size-4" />
+                    <Plus data-icon="inline-start" />
                     Создать ветку
                   </Button>
                 </div>
               </div>
             ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: "0.95rem" }}>
-                <label style={{ display: "grid", gap: "0.5rem" }}>
-                  <span className="text-sm font-semibold text-[var(--color-foreground)]/75">Название</span>
+              <div className="flex flex-col gap-4">
+                <label className="grid gap-2">
+                  <span className="text-sm font-semibold text-foreground/75">Название</span>
                   <Input
                     value={form?.title || ""}
                     onChange={(event) => onFormChange((prev) => (prev ? { ...prev, title: event.target.value } : prev))}
@@ -610,8 +636,8 @@ export function WorkspaceStepDetailPane(props: {
                   />
                 </label>
 
-                <label style={{ display: "grid", gap: "0.5rem" }}>
-                  <span className="text-sm font-semibold text-[var(--color-foreground)]/75">Текст</span>
+                <label className="grid gap-2">
+                  <span className="text-sm font-semibold text-foreground/75">Текст</span>
                   <div className="relative">
                     <Textarea
                       ref={textRef}
@@ -619,43 +645,22 @@ export function WorkspaceStepDetailPane(props: {
                       value={form?.text || ""}
                       onChange={(event) => onFormChange((prev) => (prev ? { ...prev, text: event.target.value } : prev))}
                     />
-                    <Popover open={emojiOpen} onOpenChange={onEmojiOpenChange}>
-                      <PopoverTrigger asChild>
-                        <button
-                          type="button"
-                          className="absolute bottom-2.5 right-2.5 inline-flex size-8 items-center justify-center rounded-[10px] border border-[var(--color-border)] bg-white text-base transition-all duration-200 hover:rounded-[16px] hover:bg-[var(--color-panel-muted)]"
-                          aria-label="Добавить эмоджи"
-                          title="Добавить эмоджи"
-                        >
-                          <Smile className="size-4" />
-                        </button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto border-none bg-transparent p-0 shadow-none" align="end">
-                        <EmojiPicker
-                          lazyLoadEmojis
-                          skinTonesDisabled
-                          width={320}
-                          height={400}
-                          onEmojiClick={(emojiData: EmojiClickData) => {
-                            onInsertIntoText(emojiData.emoji);
-                            onEmojiOpenChange(false);
-                          }}
-                        />
-                      </PopoverContent>
-                    </Popover>
+                    <div className="absolute right-2.5 bottom-2.5">
+                      <EmojiPickerPopover onEmojiSelect={onInsertIntoText} />
+                    </div>
                   </div>
                 </label>
 
                 <div className="flex flex-wrap items-center gap-2 text-[0.72rem]">
-                  <span className="text-[var(--color-muted-foreground)]">Теги:</span>
-                  <button type="button" onClick={() => onInsertIntoText("{name}")} className="rounded-[10px] border border-[var(--color-border)] px-2.5 py-1.5 font-semibold text-[var(--color-foreground)]/80 transition-all duration-200 hover:rounded-[16px] hover:bg-[var(--color-panel-muted)]">{`{name}`}</button>
-                  <button type="button" onClick={() => onInsertIntoText("{full_name}")} className="rounded-[10px] border border-[var(--color-border)] px-2.5 py-1.5 font-semibold text-[var(--color-foreground)]/80 transition-all duration-200 hover:rounded-[16px] hover:bg-[var(--color-panel-muted)]">{`{full_name}`}</button>
-                  <button type="button" onClick={() => onInsertIntoText("{doc:Оффер}")} className="rounded-[10px] border border-[var(--color-border)] px-2.5 py-1.5 font-semibold text-[var(--color-foreground)]/80 transition-all duration-200 hover:rounded-[16px] hover:bg-[var(--color-panel-muted)]">{`{doc:Оффер}`}</button>
+                  <span className="text-muted-foreground">Теги:</span>
+                  <Button type="button" variant="outline" size="xs" onClick={() => onInsertIntoText("{name}")}>{`{name}`}</Button>
+                  <Button type="button" variant="outline" size="xs" onClick={() => onInsertIntoText("{full_name}")}>{`{full_name}`}</Button>
+                  <Button type="button" variant="outline" size="xs" onClick={() => onInsertIntoText("{doc:Оффер}")}>{`{doc:Оффер}`}</Button>
                 </div>
 
-                <div className="space-y-2">
+                <div className="grid gap-2">
                   <div className="flex items-center justify-between gap-3">
-                    <span className="text-sm font-semibold text-[var(--color-foreground)]/75">Вложение</span>
+                    <span className="text-sm font-semibold text-foreground/75">Вложение</span>
                     <input ref={fileInputRef} type="file" className="hidden" onChange={onAttachmentSelected} />
                     <Button
                       type="button"
@@ -664,15 +669,15 @@ export function WorkspaceStepDetailPane(props: {
                       onClick={() => fileInputRef.current?.click()}
                       disabled={attachmentState.uploading}
                     >
-                      <Paperclip className="size-4" />
+                      <Paperclip data-icon="inline-start" />
                       {detailTarget?.has_attachment ? "Заменить файл" : "Добавить файл"}
                     </Button>
                   </div>
                   {detailTarget?.has_attachment ? (
-                    <div className="flex flex-wrap items-center gap-2 rounded-[10px] border border-[var(--color-border)] bg-[var(--color-panel-muted)] px-3 py-2">
+                    <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-muted/50 px-3 py-2">
                       <a
                         href={`/flows/steps/${detailTarget.id}/attachment`}
-                        className="min-w-0 flex-1 truncate text-sm font-medium text-[var(--color-foreground)] underline-offset-4 hover:underline"
+                        className="min-w-0 flex-1 truncate text-sm font-medium text-foreground underline-offset-4 hover:underline"
                       >
                         {detailTarget.attachment_filename}
                       </a>
@@ -681,13 +686,13 @@ export function WorkspaceStepDetailPane(props: {
                       </Button>
                     </div>
                   ) : null}
-                  <p className={`text-sm ${attachmentState.error ? "text-[var(--color-danger)]" : "text-[var(--color-muted-foreground)]"}`}>
+                  <p className={`text-sm ${attachmentState.error ? "text-destructive" : "text-muted-foreground"}`}>
                     {attachmentState.message || " "}
                   </p>
                 </div>
 
-                <label style={{ display: "grid", gap: "0.5rem" }}>
-                  <span className="text-sm font-semibold text-[var(--color-foreground)]/75">Тип ответа</span>
+                <label className="grid gap-2">
+                  <span className="text-sm font-semibold text-foreground/75">Тип ответа</span>
                   <SingleSelectPicker
                     options={responseTypePickerOptions}
                     value={form?.response_type || "none"}
@@ -699,6 +704,7 @@ export function WorkspaceStepDetailPane(props: {
                               ...prev,
                               response_type: nextValue,
                               button_options: supportsButtonOptions(nextValue) ? prev.button_options : "",
+                              button_notifications: supportsButtonOptions(nextValue) ? prev.button_notifications : [],
                               target_field: supportsTargetField(nextValue) ? prev.target_field : "",
                             }
                           : prev,
@@ -708,19 +714,117 @@ export function WorkspaceStepDetailPane(props: {
                 </label>
 
                 {supportsButtonOptions(form?.response_type || "") ? (
-                  <label style={{ display: "grid", gap: "0.5rem" }}>
-                    <span className="text-sm font-semibold text-[var(--color-foreground)]/75">Кнопки</span>
+                  <label className="grid gap-2">
+                    <span className="text-sm font-semibold text-foreground/75">Кнопки</span>
                     <Textarea
                       className="min-h-[118px] px-3 py-3 text-sm leading-6"
                       value={form?.button_options || ""}
-                      onChange={(event) => onFormChange((prev) => (prev ? { ...prev, button_options: event.target.value } : prev))}
+                      onChange={(event) =>
+                        onFormChange((prev) => {
+                          if (!prev) return prev;
+                          const optionLabels = event.target.value
+                            .split("\n")
+                            .map((item) => item.trim())
+                            .filter(Boolean);
+                          return {
+                            ...prev,
+                            button_options: event.target.value,
+                            button_notifications: optionLabels.map((option_label, option_index) => {
+                              const existing = prev.button_notifications.find((item) => item.option_index === option_index);
+                              return {
+                                option_index,
+                                option_label,
+                                message_text: existing?.message_text || "",
+                                recipient_ids: existing?.recipient_ids || "",
+                                recipient_scope: existing?.recipient_scope || "",
+                              };
+                            }),
+                          };
+                        })
+                      }
                       placeholder="Каждая строка = отдельная кнопка"
                     />
                   </label>
                 ) : null}
 
-                <label style={{ display: "grid", gap: "0.5rem" }}>
-                  <span className="text-sm font-semibold text-[var(--color-foreground)]/75">Режим отправки</span>
+                {supportsButtonOptions(form?.response_type || "") && form?.button_notifications?.length ? (
+                  <details className="rounded-lg border border-border bg-muted/50 p-3">
+                    <summary className="cursor-pointer list-none text-sm font-semibold text-foreground/80">
+                      Уведомления по кнопкам
+                    </summary>
+                    <div className="mt-3 flex flex-col gap-3">
+                      {form.button_notifications.map((notification) => (
+                        <div key={`${notification.option_index}-${notification.option_label}`} className="rounded-lg border border-border bg-card p-3">
+                          <div className="flex flex-col gap-3">
+                            <p className="text-sm font-semibold text-foreground/85">Кнопка: {notification.option_label}</p>
+                            <label className="flex flex-col gap-2">
+                              <span className="text-sm font-semibold text-foreground/75">Текст уведомления</span>
+                              <Textarea
+                                className="min-h-[96px] text-sm"
+                                value={notification.message_text}
+                                onChange={(event) =>
+                                  onFormChange((prev) =>
+                                    prev
+                                      ? {
+                                          ...prev,
+                                          button_notifications: prev.button_notifications.map((item) =>
+                                            item.option_index === notification.option_index ? { ...item, message_text: event.target.value } : item,
+                                          ),
+                                        }
+                                      : prev,
+                                  )
+                                }
+                                placeholder={`Например: Пользователь нажал кнопку "${notification.option_label}".`}
+                              />
+                            </label>
+                            <div className="flex flex-col gap-2">
+                              <span className="text-sm font-semibold text-foreground/75">Получатели уведомления</span>
+                              <NotificationRecipientsPicker
+                                employeeOptions={payloadWorkspace?.employee_options || []}
+                                value={notification.recipient_ids}
+                                onChange={(next) =>
+                                  onFormChange((prev) =>
+                                    prev
+                                      ? {
+                                          ...prev,
+                                          button_notifications: prev.button_notifications.map((item) =>
+                                            item.option_index === notification.option_index ? { ...item, recipient_ids: next } : item,
+                                          ),
+                                        }
+                                      : prev,
+                                  )
+                                }
+                              />
+                            </div>
+                            <label className="flex flex-col gap-2">
+                              <span className="text-sm font-semibold text-foreground/75">Адресаты из карточки сотрудника</span>
+                              <SingleSelectPicker
+                                options={notificationScopeOptions}
+                                value={notification.recipient_scope || ""}
+                                placeholder="Не добавлять адресатов из карточки"
+                                onChange={(nextValue) =>
+                                  onFormChange((prev) =>
+                                    prev
+                                      ? {
+                                          ...prev,
+                                          button_notifications: prev.button_notifications.map((item) =>
+                                            item.option_index === notification.option_index ? { ...item, recipient_scope: nextValue } : item,
+                                          ),
+                                        }
+                                      : prev,
+                                  )
+                                }
+                              />
+                            </label>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </details>
+                ) : null}
+
+                <label className="grid gap-2">
+                  <span className="text-sm font-semibold text-foreground/75">Режим отправки</span>
                   <SingleSelectPicker
                     options={sendModeOptions}
                     value={form?.send_mode || "immediate"}
@@ -740,8 +844,8 @@ export function WorkspaceStepDetailPane(props: {
                 </label>
 
                 {form?.send_mode === "specific_time" ? (
-                  <label style={{ display: "grid", gap: "0.5rem" }}>
-                    <span className="text-sm font-semibold text-[var(--color-foreground)]/75">Время отправки</span>
+                  <label className="grid gap-2">
+                    <span className="text-sm font-semibold text-foreground/75">Время отправки</span>
                     <Input
                       type="time"
                       value={form.send_time}
@@ -751,8 +855,8 @@ export function WorkspaceStepDetailPane(props: {
                   </label>
                 ) : null}
 
-                <label style={{ display: "grid", gap: "0.5rem" }}>
-                  <span className="text-sm font-semibold text-[var(--color-foreground)]/75">Сохранить ответ</span>
+                <label className="grid gap-2">
+                  <span className="text-sm font-semibold text-foreground/75">Сохранить ответ</span>
                   <SingleSelectPicker
                     options={targetFieldOptions}
                     value={form?.target_field || ""}
@@ -761,8 +865,8 @@ export function WorkspaceStepDetailPane(props: {
                   />
                 </label>
 
-                <label style={{ display: "grid", gap: "0.5rem" }}>
-                  <span className="text-sm font-semibold text-[var(--color-foreground)]/75">Переход к сценарию</span>
+                <label className="grid gap-2">
+                  <span className="text-sm font-semibold text-foreground/75">Переход к сценарию</span>
                   <SingleSelectPicker
                     options={launchScenarioOptions}
                     value={form?.launch_scenario_key || ""}
@@ -771,13 +875,13 @@ export function WorkspaceStepDetailPane(props: {
                   />
                 </label>
 
-                <details className="rounded-[10px] border border-[var(--color-border)] bg-[var(--color-panel-muted)] p-3 transition-all duration-200 hover:rounded-[18px]">
-                  <summary className="cursor-pointer list-none text-sm font-semibold text-[var(--color-foreground)]/80">
+                <details className="rounded-lg border border-border bg-muted/50 p-3">
+                  <summary className="cursor-pointer list-none text-sm font-semibold text-foreground/80">
                     Уведомление для шага
                   </summary>
-                  <div className="mt-3 space-y-3">
-                    <label className="block space-y-2">
-                      <span className="text-sm font-semibold text-[var(--color-foreground)]/75">Текст уведомления</span>
+                  <div className="mt-3 flex flex-col gap-3">
+                    <label className="flex flex-col gap-2">
+                      <span className="text-sm font-semibold text-foreground/75">Текст уведомления</span>
                       <Textarea
                         className="min-h-[110px] text-sm"
                         value={form?.notify_on_send_text || ""}
@@ -785,16 +889,16 @@ export function WorkspaceStepDetailPane(props: {
                         placeholder="Например: Пользователю отправлено сообщение этого шага."
                       />
                     </label>
-                    <div className="space-y-2">
-                      <span className="text-sm font-semibold text-[var(--color-foreground)]/75">Получатели уведомления</span>
+                    <div className="flex flex-col gap-2">
+                      <span className="text-sm font-semibold text-foreground/75">Получатели уведомления</span>
                       <NotificationRecipientsPicker
                         employeeOptions={payloadWorkspace?.employee_options || []}
                         value={form?.notify_on_send_recipient_ids || ""}
                         onChange={(next) => onFormChange((prev) => (prev ? { ...prev, notify_on_send_recipient_ids: next } : prev))}
                       />
                     </div>
-                    <label className="block space-y-2">
-                      <span className="text-sm font-semibold text-[var(--color-foreground)]/75">Адресаты из карточки сотрудника</span>
+                    <label className="flex flex-col gap-2">
+                      <span className="text-sm font-semibold text-foreground/75">Адресаты из карточки сотрудника</span>
                       <SingleSelectPicker
                         options={notificationScopeOptions}
                         value={form?.notify_on_send_recipient_scope || ""}
@@ -805,11 +909,11 @@ export function WorkspaceStepDetailPane(props: {
                   </div>
                 </details>
 
-                <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-                  <p className={`text-sm ${saveState.error ? "text-[var(--color-danger)]" : "text-[var(--color-muted-foreground)]"}`}>{saveState.message || " "}</p>
+                <div className="flex flex-col gap-3">
+                  <p className={`text-sm ${saveState.error ? "text-destructive" : "text-muted-foreground"}`}>{saveState.message || " "}</p>
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <Button variant="outline" className="border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700" onClick={onDeleteCurrent}>
-                      <Trash2 className="size-4" />
+                    <Button variant="outline" className="border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={onDeleteCurrent}>
+                      <Trash2 data-icon="inline-start" />
                       Удалить
                     </Button>
                     {openLabel ? (
@@ -825,7 +929,7 @@ export function WorkspaceStepDetailPane(props: {
               </div>
             )
           ) : (
-            <div className="rounded-2xl border border-dashed border-[var(--color-border)] p-4 text-sm text-[var(--color-muted-foreground)]">
+            <div className="rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground">
               Выбери {stepLabel}, ветку или элемент цепочки, чтобы увидеть детали справа.
             </div>
           )}

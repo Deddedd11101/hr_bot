@@ -14,9 +14,12 @@ from app.models import (
     BotMenuSet,
     Employee,
     EmployeeMessengerAccount,
+    FlowStepTemplate,
     HrSettings,
     MassMessageAction,
     ScenarioTemplate,
+    StepButtonNotification,
+    SurveyAnswer,
 )
 
 
@@ -84,6 +87,17 @@ class EmployeeApiSmokeTests(unittest.TestCase):
                 for menu_set in created_menu_sets:
                     db.delete(menu_set)
             db.query(MassMessageAction).filter(MassMessageAction.message_text.like(f"%{self.unique_tag}%")).delete(synchronize_session=False)
+            created_scenarios = db.query(ScenarioTemplate).filter(ScenarioTemplate.title.like(f"codex-%-{self.unique_tag}%")).all()
+            for scenario in created_scenarios:
+                scenario_step_ids = [
+                    row[0]
+                    for row in db.query(FlowStepTemplate.id).filter(FlowStepTemplate.flow_key == scenario.scenario_key).all()
+                ]
+                if scenario_step_ids:
+                    db.query(StepButtonNotification).filter(StepButtonNotification.step_id.in_(scenario_step_ids)).delete(synchronize_session=False)
+                db.query(FlowStepTemplate).filter(FlowStepTemplate.flow_key == scenario.scenario_key).delete(synchronize_session=False)
+                db.query(SurveyAnswer).filter(SurveyAnswer.scenario_key == scenario.scenario_key).delete(synchronize_session=False)
+                db.delete(scenario)
             db.query(EmployeeMessengerAccount).filter(EmployeeMessengerAccount.employee_id == self.employee_id).delete()
             employee = db.get(Employee, self.employee_id)
             if employee is not None:
@@ -122,6 +136,270 @@ class EmployeeApiSmokeTests(unittest.TestCase):
                 response = self.client.get(path, follow_redirects=False)
                 self.assertEqual(response.status_code, 303)
                 self.assertEqual(response.headers.get("location"), expected_location)
+
+    def test_classic_scenario_editor_route_is_served_via_router(self) -> None:
+        with SessionLocal() as db:
+            scenario = ScenarioTemplate(
+                scenario_key=f"codex_scenario_{self.unique_tag}",
+                scenario_kind="scenario",
+                title=f"codex-scenario-{self.unique_tag}",
+                sort_order=10,
+                role_scope="all",
+                employee_scope="all",
+                trigger_mode="manual_only",
+                description="router smoke",
+            )
+            db.add(scenario)
+            db.commit()
+            db.refresh(scenario)
+            scenario_id = scenario.id
+
+        response = self.client.get(f"/flows/{scenario_id}?legacy=1")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(f"codex-scenario-{self.unique_tag}", response.text)
+
+    def test_classic_scenario_get_redirects_to_react_workspace_by_default(self) -> None:
+        with SessionLocal() as db:
+            scenario = ScenarioTemplate(
+                scenario_key=f"codex_scenario_redirect_{self.unique_tag}",
+                scenario_kind="scenario",
+                title=f"codex-scenario-redirect-{self.unique_tag}",
+                sort_order=10,
+                role_scope="all",
+                employee_scope="all",
+                trigger_mode="manual_only",
+                description="redirect smoke",
+            )
+            db.add(scenario)
+            db.commit()
+            db.refresh(scenario)
+            scenario_id = scenario.id
+
+        response = self.client.get(f"/flows/{scenario_id}", follow_redirects=False)
+
+        self.assertEqual(response.status_code, 303)
+        self.assertEqual(response.headers.get("location"), f"/app/flows/workspace-v2?scenario_id={scenario_id}")
+
+    def test_classic_scenario_legacy_update_stays_in_legacy_editor(self) -> None:
+        with SessionLocal() as db:
+            scenario = ScenarioTemplate(
+                scenario_key=f"codex_scenario_legacy_update_{self.unique_tag}",
+                scenario_kind="scenario",
+                title=f"codex-scenario-legacy-update-{self.unique_tag}",
+                sort_order=10,
+                role_scope="all",
+                employee_scope="all",
+                trigger_mode="manual_only",
+                description="legacy update smoke",
+            )
+            db.add(scenario)
+            db.commit()
+            db.refresh(scenario)
+            scenario_id = scenario.id
+
+        response = self.client.post(
+            f"/flows/{scenario_id}?legacy=1",
+            data={
+                "title": f"codex-scenario-legacy-update-{self.unique_tag}",
+                "role_scope": "all",
+                "employee_scope": "all",
+                "target_employee_id": "",
+                "trigger_mode": "manual_only",
+                "description": "legacy update smoke",
+            },
+            follow_redirects=False,
+        )
+
+        self.assertEqual(response.status_code, 303)
+        self.assertEqual(response.headers.get("location"), f"/flows/{scenario_id}?legacy=1")
+
+    def test_classic_survey_get_redirects_to_react_workspace_by_default(self) -> None:
+        with SessionLocal() as db:
+            survey = ScenarioTemplate(
+                scenario_key=f"codex_survey_redirect_{self.unique_tag}",
+                scenario_kind="survey",
+                title=f"codex-survey-redirect-{self.unique_tag}",
+                sort_order=10,
+                role_scope="all",
+                employee_scope="all",
+                trigger_mode="manual_only",
+                description="redirect smoke",
+            )
+            db.add(survey)
+            db.commit()
+            db.refresh(survey)
+            survey_id = survey.id
+
+        response = self.client.get(f"/surveys/{survey_id}", follow_redirects=False)
+
+        self.assertEqual(response.status_code, 303)
+        self.assertEqual(response.headers.get("location"), f"/app/surveys/workspace?scenario_id={survey_id}")
+
+    def test_classic_attachment_delete_stays_in_legacy_editor_when_requested(self) -> None:
+        scenario_key = f"codex_scenario_attachment_{self.unique_tag}"
+        with SessionLocal() as db:
+            scenario = ScenarioTemplate(
+                scenario_key=scenario_key,
+                scenario_kind="scenario",
+                title=f"codex-scenario-attachment-{self.unique_tag}",
+                sort_order=10,
+                role_scope="all",
+                employee_scope="all",
+                trigger_mode="manual_only",
+                description="legacy attachment smoke",
+            )
+            db.add(scenario)
+            db.flush()
+            step = FlowStepTemplate(
+                flow_key=scenario_key,
+                step_key=f"{scenario_key}_step_1",
+                step_title="Шаг с файлом",
+                sort_order=10,
+                default_text="Текст",
+                custom_text=None,
+                response_type="none",
+                button_options=None,
+                send_mode="immediate",
+                send_time=None,
+                day_offset_workdays=0,
+                target_field=None,
+                send_employee_card=False,
+            )
+            db.add(step)
+            db.commit()
+            db.refresh(scenario)
+            db.refresh(step)
+            scenario_id = scenario.id
+            step_id = step.id
+
+        response = self.client.post(
+            f"/flows/steps/{step_id}/attachment/delete?legacy=1",
+            follow_redirects=False,
+        )
+
+        self.assertEqual(response.status_code, 303)
+        self.assertEqual(response.headers.get("location"), f"/flows/{scenario_id}?legacy=1")
+
+    def test_classic_survey_export_route_returns_xlsx(self) -> None:
+        with SessionLocal() as db:
+            survey = ScenarioTemplate(
+                scenario_key=f"codex_survey_{self.unique_tag}",
+                scenario_kind="survey",
+                title=f"codex-survey-{self.unique_tag}",
+                sort_order=10,
+                role_scope="all",
+                employee_scope="all",
+                trigger_mode="manual_only",
+                description="export smoke",
+            )
+            db.add(survey)
+            db.commit()
+            db.refresh(survey)
+            survey_id = survey.id
+
+        response = self.client.get(f"/surveys/{survey_id}/export")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            response.headers.get("content-type", ""),
+        )
+
+    def test_react_scenario_workspace_template_exposes_flash_attrs(self) -> None:
+        response = self.client.get(
+            f"/app/flows/workspace-v2?flash_message=scenario-flash-{self.unique_tag}&flash_type=error"
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(f'data-flash-message="scenario-flash-{self.unique_tag}"', response.text)
+        self.assertIn('data-flash-type="error"', response.text)
+
+    def test_classic_scenario_create_redirects_to_react_workspace(self) -> None:
+        response = self.client.post(
+            "/flows",
+            data={"title": f"codex-scenario-{self.unique_tag}"},
+            follow_redirects=False,
+        )
+
+        self.assertEqual(response.status_code, 303)
+        location = response.headers.get("location", "")
+        self.assertTrue(location.startswith("/app/flows/workspace-v2?"))
+        self.assertIn("scenario_id=", location)
+        self.assertIn("%D0%A1%D1%86%D0%B5%D0%BD%D0%B0%D1%80%D0%B8%D0%B9+%D1%81%D0%BE%D0%B7%D0%B4%D0%B0%D0%BD", location)
+
+    def test_classic_scenario_copy_redirects_to_react_workspace(self) -> None:
+        with SessionLocal() as db:
+            scenario = ScenarioTemplate(
+                scenario_key=f"codex_copy_scenario_{self.unique_tag}",
+                scenario_kind="scenario",
+                title=f"codex-copy-scenario-{self.unique_tag}",
+                sort_order=10,
+                role_scope="all",
+                employee_scope="all",
+                trigger_mode="manual_only",
+                description="copy redirect smoke",
+            )
+            db.add(scenario)
+            db.commit()
+            db.refresh(scenario)
+            scenario_id = scenario.id
+
+        response = self.client.post(f"/flows/{scenario_id}/copy", follow_redirects=False)
+
+        self.assertEqual(response.status_code, 303)
+        location = response.headers.get("location", "")
+        self.assertTrue(location.startswith("/app/flows/workspace-v2?"))
+        self.assertIn("scenario_id=", location)
+        self.assertIn("%D0%A1%D1%86%D0%B5%D0%BD%D0%B0%D1%80%D0%B8%D0%B9+%D1%81%D0%BA%D0%BE%D0%BF%D0%B8%D1%80%D0%BE%D0%B2%D0%B0%D0%BD", location)
+
+    def test_classic_survey_delete_redirects_to_react_workspace(self) -> None:
+        with SessionLocal() as db:
+            survey = ScenarioTemplate(
+                scenario_key=f"codex_delete_survey_{self.unique_tag}",
+                scenario_kind="survey",
+                title=f"codex-delete-survey-{self.unique_tag}",
+                sort_order=10,
+                role_scope="all",
+                employee_scope="all",
+                trigger_mode="manual_only",
+                description="delete redirect smoke",
+            )
+            db.add(survey)
+            db.commit()
+            db.refresh(survey)
+            survey_id = survey.id
+
+        response = self.client.post(f"/surveys/{survey_id}/delete", follow_redirects=False)
+
+        self.assertEqual(response.status_code, 303)
+        location = response.headers.get("location", "")
+        self.assertTrue(location.startswith("/app/surveys/workspace?"))
+        self.assertIn("%D0%9E%D0%BF%D1%80%D0%BE%D1%81+%D1%83%D0%B4%D0%B0%D0%BB%D1%91%D0%BD", location)
+
+    def test_react_employee_detail_template_exposes_flash_attrs(self) -> None:
+        response = self.client.get(
+            f"/app/employees/{self.employee_id}?flash_message=flash-smoke-{self.unique_tag}&flash_type=error"
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(f'data-flash-message="flash-smoke-{self.unique_tag}"', response.text)
+        self.assertIn('data-flash-type="error"', response.text)
+
+    def test_classic_employee_edit_route_redirects_to_react_detail(self) -> None:
+        response = self.client.get(f"/employees/{self.employee_id}/edit", follow_redirects=False)
+
+        self.assertEqual(response.status_code, 303)
+        self.assertEqual(response.headers.get("location"), f"/app/employees/{self.employee_id}")
+
+    def test_classic_employee_action_redirects_back_to_react_detail(self) -> None:
+        response = self.client.post(
+            f"/employees/{self.employee_id}/profile-photo/delete",
+            follow_redirects=False,
+        )
+
+        self.assertEqual(response.status_code, 303)
+        self.assertTrue(response.headers.get("location", "").startswith(f"/app/employees/{self.employee_id}?"))
 
     def test_update_employee_api_accepts_public_chat_handle_without_chat_id(self) -> None:
         response = self.client.post(
@@ -354,7 +632,89 @@ class EmployeeApiSmokeTests(unittest.TestCase):
                 scenario = db.get(ScenarioTemplate, scenario_id)
                 if scenario is not None:
                     db.delete(scenario)
-                db.commit()
+
+    def test_workspace_step_api_updates_button_notifications(self) -> None:
+        scenario_key = f"codex_button_notify_{self.unique_tag}"
+        with SessionLocal() as db:
+            scenario = ScenarioTemplate(
+                scenario_key=scenario_key,
+                title=f"codex-button-notify-{self.unique_tag}",
+                sort_order=10,
+                scenario_kind="scenario",
+                role_scope="all",
+                employee_scope="all",
+                trigger_mode="manual_only",
+            )
+            db.add(scenario)
+            db.flush()
+            step = FlowStepTemplate(
+                flow_key=scenario_key,
+                step_key=f"{scenario_key}_step_1",
+                step_title="Шаг с кнопками",
+                sort_order=10,
+                default_text="Нажми кнопку",
+                custom_text=None,
+                response_type="buttons",
+                button_options="Да\nНет",
+                send_mode="immediate",
+                send_time=None,
+                day_offset_workdays=0,
+                target_field=None,
+                send_employee_card=False,
+            )
+            db.add(step)
+            db.commit()
+            db.refresh(step)
+            step_id = step.id
+
+        response = self.client.post(
+            f"/api/flows/workspace/steps/{step_id}",
+            json={
+                "title": "Шаг с кнопками",
+                "text": "Нажми кнопку",
+                "response_type": "buttons",
+                "button_options": "Да\nНет",
+                "send_mode": "immediate",
+                "send_time": "",
+                "target_field": "",
+                "launch_scenario_key": "",
+                "send_employee_card": False,
+                "notify_on_send_text": "",
+                "notify_on_send_recipient_ids": "",
+                "notify_on_send_recipient_scope": "",
+                "button_notifications": [
+                    {
+                        "option_index": 0,
+                        "message_text": "Нажали Да",
+                        "recipient_ids": str(self.employee_id),
+                        "recipient_scope": "",
+                    },
+                    {
+                        "option_index": 1,
+                        "message_text": "",
+                        "recipient_ids": "",
+                        "recipient_scope": "",
+                    },
+                ],
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()["payload"]["workspace"]["root_steps"][0]
+        self.assertEqual(payload["button_notifications"][0]["message_text"], "Нажали Да")
+        self.assertEqual(payload["button_notifications"][0]["recipient_ids"], str(self.employee_id))
+
+        with SessionLocal() as db:
+            notifications = (
+                db.query(StepButtonNotification)
+                .filter(StepButtonNotification.step_id == step_id)
+                .order_by(StepButtonNotification.option_index.asc())
+                .all()
+            )
+            self.assertEqual(len(notifications), 1)
+            self.assertEqual(notifications[0].option_index, 0)
+            self.assertEqual(notifications[0].message_text, "Нажали Да")
+            self.assertEqual(notifications[0].recipient_ids, str(self.employee_id))
 
     def test_update_employee_api_returns_conflict_for_duplicate_chat_id(self) -> None:
         with SessionLocal() as db:

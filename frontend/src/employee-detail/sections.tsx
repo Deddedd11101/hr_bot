@@ -1,80 +1,369 @@
 import React from "react";
+import {
+    ArrowLeft,
+    CalendarClock,
+    Download,
+    ExternalLink,
+    FileText,
+    Link2,
+    Play,
+    Send,
+    ShieldAlert,
+    Trash2,
+    Upload,
+} from "lucide-react";
 
-function Field(props: any) {
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button, buttonVariants } from "@/components/ui/button";
+import {
+    Card,
+    CardContent,
+    CardFooter,
+    CardHeader,
+    CardTitle,
+} from "@/components/ui/card";
+import {
+    Empty,
+    EmptyHeader,
+    EmptyMedia,
+    EmptyTitle,
+} from "@/components/ui/empty";
+import {
+    Field,
+    FieldContent,
+    FieldGroup,
+    FieldLabel,
+    FieldSet,
+    FieldTitle,
+} from "@/components/ui/field";
+import { Checkbox } from "@/components/ui/checkbox";
+import { DatePicker, DateTimePicker, TimeSelect } from "@/components/ui/date-picker";
+import { Input } from "@/components/ui/input";
+import {
+    Select,
+    SelectContent,
+    SelectGroup,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import { cn } from "@/lib/utils";
+
+type DetailItem = {
+    id: string | number;
+    title: string;
+    subtitle?: string;
+    link?: string | null;
+    linkLabel?: string | null;
+    extraAction?: (() => void) | null;
+    extraActionLabel?: string | null;
+};
+
+const EMPTY_SELECT_VALUE = "__empty__";
+
+function changeFieldValue(handleChange: any, name: string, value: string) {
+    handleChange({ target: { name, value } });
+}
+
+function changeCheckboxValue(handleChange: any, name: string, checked: boolean) {
+    handleChange({
+        target: {
+            name,
+            value: checked,
+            checked,
+            type: "checkbox",
+        },
+    });
+}
+
+function SelectField(props: {
+    name: string;
+    value: string;
+    onChange: any;
+    placeholder: string;
+    options: Array<{ value: string; label: string }> | string[];
+}) {
+    const normalizedOptions = props.options.map(function (item) {
+        return typeof item === "string" ? { value: item, label: item } : item;
+    });
+    const selectItems = [{ value: EMPTY_SELECT_VALUE, label: props.placeholder }].concat(normalizedOptions);
+
     return (
-        <label className="react-field">
-            <span>{props.label}</span>
-            {props.children}
-        </label>
+        <Select
+            items={selectItems}
+            value={props.value || EMPTY_SELECT_VALUE}
+            onValueChange={function (value) {
+                changeFieldValue(props.onChange, props.name, value === EMPTY_SELECT_VALUE ? "" : value);
+            }}
+        >
+            <SelectTrigger className="w-full">
+                <SelectValue placeholder={props.placeholder} />
+            </SelectTrigger>
+            <SelectContent>
+                <SelectGroup>
+                    {selectItems.map(function (option) {
+                        return (
+                            <SelectItem value={option.value} key={option.value}>
+                                {option.label}
+                            </SelectItem>
+                        );
+                    })}
+                </SelectGroup>
+            </SelectContent>
+        </Select>
     );
 }
 
-function OverviewList(props: any) {
+function DetailCard(props: React.ComponentProps<typeof Card>) {
+    const { className, ...rest } = props;
+    return <Card className={cn("employee-detail-card shadow-none ring-0", className)} {...rest} />;
+}
+
+function PlannedField(props: {
+    label: string;
+    value?: string;
+    placeholder?: string;
+    kind?: "input" | "date" | "link" | "select";
+}) {
+    const { label, value, placeholder, kind = "input" } = props;
     return (
-        <section className="react-section">
-            <h4>{props.title}</h4>
-            {props.items.length ? (
-                <div className="react-overview-list">
-                    {props.items.map(function (item: any) {
-                        return (
-                            <article key={item.id} className="react-overview-item">
-                                <div className="react-overview-item-head">
-                                    <div>
-                                        <strong>{item.title}</strong>
-                                        {item.subtitle ? <p className="muted">{item.subtitle}</p> : null}
+        <Field data-disabled>
+            <FieldLabel>{label}</FieldLabel>
+            {kind === "select" ? (
+                <Select
+                    value={EMPTY_SELECT_VALUE}
+                    items={[{ value: EMPTY_SELECT_VALUE, label: placeholder || "Не настроено" }]}
+                >
+                    <SelectTrigger className="w-full" disabled>
+                        <SelectValue placeholder={placeholder || "Не настроено"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectGroup>
+                            <SelectItem value={EMPTY_SELECT_VALUE}>
+                                {placeholder || "Не настроено"}
+                            </SelectItem>
+                        </SelectGroup>
+                    </SelectContent>
+                </Select>
+            ) : kind === "date" ? (
+                <DatePicker disabled value={value || ""} onValueChange={function () {}} />
+            ) : (
+                <Input
+                    disabled
+                    type="text"
+                    value={value || ""}
+                    placeholder={placeholder || "Не настроено"}
+                    readOnly
+                />
+            )}
+        </Field>
+    );
+}
+
+function CheckboxField(props: {
+    name: string;
+    checked: boolean;
+    onChange: (event: React.ChangeEvent<HTMLInputElement>) => void;
+    title: string;
+}) {
+    return (
+        <Field orientation="horizontal" className="employee-check-field">
+            <Checkbox
+                checked={props.checked}
+                onCheckedChange={function (value) {
+                    changeCheckboxValue(props.onChange, props.name, Boolean(value));
+                }}
+            />
+            <FieldContent>
+                <FieldTitle>{props.title}</FieldTitle>
+            </FieldContent>
+        </Field>
+    );
+}
+
+function DocumentList(props: {
+    title: string;
+    items: DetailItem[];
+    emptyTitle: string;
+    children?: React.ReactNode;
+}) {
+    const { title, items, emptyTitle, children } = props;
+    return (
+        <DetailCard>
+            <CardHeader>
+                <CardTitle>{title}</CardTitle>
+            </CardHeader>
+            <CardContent>
+                {children ? <div className="employee-document-tools">{children}</div> : null}
+                {items.length ? (
+                    <div className="employee-document-list">
+                        {items.map(function (item) {
+                            return (
+                                <div className="employee-document-row" key={item.id}>
+                                    <div className="employee-document-icon">
+                                        <FileText />
                                     </div>
-                                    <div className="react-inline-actions">
+                                    <div className="employee-document-meta">
+                                        <div className="employee-document-title">{item.title}</div>
+                                        {item.subtitle ? (
+                                            <div className="employee-document-subtitle">{item.subtitle}</div>
+                                        ) : null}
+                                    </div>
+                                    <div className="employee-document-actions">
                                         {item.link ? (
-                                            <a href={item.link} className="react-overview-link">
-                                                {item.linkLabel || "Открыть"}
+                                            <a
+                                                href={item.link}
+                                                className={buttonVariants({
+                                                    variant: "outline",
+                                                    size: item.linkLabel === "Скачать" ? "icon-sm" : "sm",
+                                                })}
+                                                aria-label={item.linkLabel || "Открыть"}
+                                                title={item.linkLabel || "Открыть"}
+                                            >
+                                                {item.linkLabel === "Скачать" ? (
+                                                    <Download />
+                                                ) : (
+                                                    <ExternalLink data-icon="inline-start" />
+                                                )}
+                                                {item.linkLabel === "Скачать" ? null : item.linkLabel || "Открыть"}
                                             </a>
                                         ) : null}
                                         {item.extraAction ? (
-                                            <button
+                                            <Button
                                                 type="button"
-                                                className="btn-secondary"
+                                                variant="secondary"
+                                                size={item.extraActionLabel === "Отправить в мессенджер" ? "icon-sm" : "sm"}
                                                 onClick={item.extraAction}
+                                                aria-label={item.extraActionLabel || "Отправить"}
+                                                title={item.extraActionLabel || "Отправить"}
                                             >
-                                                {item.extraActionLabel || "Действие"}
-                                            </button>
+                                                <Send data-icon={item.extraActionLabel === "Отправить в мессенджер" ? undefined : "inline-start"} />
+                                                {item.extraActionLabel === "Отправить в мессенджер"
+                                                    ? null
+                                                    : item.extraActionLabel || "Отправить"}
+                                            </Button>
                                         ) : null}
                                     </div>
                                 </div>
-                            </article>
-                        );
-                    })}
-                </div>
-            ) : (
-                <div className="react-overview-empty">{props.emptyText}</div>
-            )}
-        </section>
+                            );
+                        })}
+                    </div>
+                ) : (
+                    <Empty className="employee-empty-state">
+                        <EmptyHeader>
+                            <EmptyMedia variant="icon">
+                                <FileText />
+                            </EmptyMedia>
+                            <EmptyTitle>{emptyTitle}</EmptyTitle>
+                        </EmptyHeader>
+                    </Empty>
+                )}
+            </CardContent>
+        </DetailCard>
     );
 }
 
-export function EmployeeDetailLoading() {
-    return <div className="react-loading-state react-detail-card">Загружаю карточку сотрудника...</div>;
-}
+function ScenarioList(props: { items: DetailItem[] }) {
+    if (!props.items.length) {
+        return (
+            <Empty className="employee-empty-state">
+                <EmptyHeader>
+                    <EmptyMedia variant="icon">
+                        <CalendarClock />
+                    </EmptyMedia>
+                    <EmptyTitle>Запусков нет</EmptyTitle>
+                </EmptyHeader>
+            </Empty>
+        );
+    }
 
-export function EmployeeDetailError(props: any) {
     return (
-        <div className="react-error-state react-detail-card">
-            <p>{props.message || "Не удалось загрузить карточку сотрудника"}</p>
-            <a href={props.listUrl} className="btn-secondary">
-                Вернуться к списку
-            </a>
+        <div className="employee-document-list">
+            {props.items.map(function (item) {
+                return (
+                    <div className="employee-document-row" key={item.id}>
+                        <div className="employee-document-icon">
+                            <CalendarClock />
+                        </div>
+                        <div className="employee-document-meta">
+                            <div className="employee-document-title">{item.title}</div>
+                            <div className="employee-document-subtitle">{item.subtitle}</div>
+                        </div>
+                        <div className="employee-document-actions">
+                            {item.link ? (
+                                <a
+                                    href={item.link}
+                                    className={buttonVariants({ variant: "outline", size: "icon-sm" })}
+                                    aria-label={item.linkLabel || "Открыть"}
+                                    title={item.linkLabel || "Открыть"}
+                                >
+                                    <ExternalLink />
+                                </a>
+                            ) : null}
+                            {item.extraAction ? (
+                                <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon-sm"
+                                    onClick={item.extraAction}
+                                    aria-label={item.extraActionLabel || "Удалить"}
+                                    title={item.extraActionLabel || "Удалить"}
+                                >
+                                    <Trash2 />
+                                </Button>
+                            ) : null}
+                        </div>
+                    </div>
+                );
+            })}
         </div>
     );
 }
 
-export function EmployeeDetailHeader(props: any) {
-    const { meta, classicUrl } = props;
+export function EmployeeDetailLoading() {
     return (
-        <div className="react-detail-header">
-            <a href={meta.list_url} className="react-detail-back">
-                {"← " + meta.list_title}
-            </a>
-            <a href={classicUrl} className="btn-secondary">
-                Классическая карточка
+        <DetailCard className="employee-detail-loading">
+            <CardContent>Загружаю карточку сотрудника...</CardContent>
+        </DetailCard>
+    );
+}
+
+export function EmployeeDetailError(props: { message: string; listUrl: string }) {
+    return (
+        <DetailCard>
+            <CardHeader>
+                <CardTitle>Карточка не загрузилась</CardTitle>
+            </CardHeader>
+            <CardContent>{props.message || "Не удалось загрузить карточку сотрудника"}</CardContent>
+            <CardFooter>
+                <a href={props.listUrl} className={buttonVariants({ variant: "outline" })}>
+                    <ArrowLeft data-icon="inline-start" />
+                    Вернуться к списку
+                </a>
+            </CardFooter>
+        </DetailCard>
+    );
+}
+
+export function EmployeeFlashNotice(props: { message: string; error: boolean }) {
+    if (!props.message) {
+        return null;
+    }
+    return (
+        <Alert variant={props.error ? "destructive" : "default"}>
+            <AlertDescription>{props.message}</AlertDescription>
+        </Alert>
+    );
+}
+
+export function EmployeeDetailHeader(props: { meta: any }) {
+    const { meta } = props;
+    return (
+        <div className="employee-detail-topline">
+            <a href={meta.list_url} className={buttonVariants({ variant: "ghost", size: "sm" })}>
+                <ArrowLeft data-icon="inline-start" />
+                {meta.list_title}
             </a>
         </div>
     );
@@ -84,7 +373,6 @@ export function EmployeeProfileSection(props: any) {
     const {
         form,
         isCandidate,
-        meta,
         options,
         workHoursParts,
         handleChange,
@@ -92,220 +380,266 @@ export function EmployeeProfileSection(props: any) {
         handleSubmit,
         saveState,
     } = props;
-
     return (
-        <div className="react-detail-main">
-            <section className="react-section">
-                <h3>{isCandidate ? "Редактировать кандидата" : "Редактировать сотрудника"}</h3>
-                <form className="react-detail-form" onSubmit={handleSubmit}>
-                    <div className="react-form-section">
-                        <h4>Основное</h4>
-                        <div className="react-detail-form-grid">
-                            <Field label="ФИО">
-                                <input type="text" name="full_name" value={form.full_name} onChange={handleChange} />
-                            </Field>
-                            <Field label="Telegram-привязка">
-                                <div className="react-readonly-field">
-                                    {form.chat_id
-                                        ? "Привязан к боту"
-                                        : "Не привязан. Сотрудник должен открыть бота и нажать Start."}
-                                </div>
-                            </Field>
-                            <Field label="Публичный Telegram @username">
-                                <input
-                                    type="text"
-                                    name="chat_handle"
-                                    value={form.chat_handle || ""}
-                                    onChange={handleChange}
-                                    placeholder="@username"
-                                />
-                            </Field>
-                            <Field label={isCandidate ? "Предварительная дата выхода на работу" : "Дата выхода на работу"}>
-                                <input type="date" name="first_workday" value={form.first_workday} onChange={handleChange} />
-                            </Field>
-                            <Field label={isCandidate ? "Желаемая должность" : "Должность"}>
-                                <select name="desired_position" value={form.desired_position} onChange={handleChange}>
-                                    <option value="">Не указана</option>
-                                    {options.employee_role_values.map(function (role: string) {
-                                        return (
-                                            <option key={role} value={role}>
-                                                {role}
-                                            </option>
-                                        );
-                                    })}
-                                </select>
-                            </Field>
-                            <Field label={isCandidate ? "Ожидания по зарплате" : "Доход / зарплата"}>
-                                <input
-                                    type="text"
-                                    name="salary_expectation"
-                                    value={form.salary_expectation}
-                                    onChange={handleChange}
-                                />
-                            </Field>
-                        </div>
-                    </div>
+        <form className="employee-profile-form" onSubmit={handleSubmit}>
+            <div className="employee-section-label">Профиль</div>
+            <DetailCard>
+                <CardHeader>
+                    <CardTitle>{isCandidate ? "Профиль кандидата" : "Профиль сотрудника"}</CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <FieldGroup className="employee-field-grid">
+                        <Field>
+                            <FieldLabel htmlFor="employee-full-name">ФИО</FieldLabel>
+                            <Input
+                                id="employee-full-name"
+                                type="text"
+                                name="full_name"
+                                value={form.full_name}
+                                onChange={handleChange}
+                            />
+                        </Field>
+                        <Field>
+                            <FieldLabel htmlFor="employee-chat-handle">Telegram username</FieldLabel>
+                            <Input
+                                id="employee-chat-handle"
+                                type="text"
+                                name="chat_handle"
+                                value={form.chat_handle || ""}
+                                onChange={handleChange}
+                                placeholder="@username"
+                            />
+                        </Field>
+                        <Field>
+                            <FieldLabel>{isCandidate ? "Плановая дата выхода" : "Первый день сотрудника"}</FieldLabel>
+                            <DatePicker
+                                value={form.first_workday}
+                                onValueChange={function (value) {
+                                    changeFieldValue(handleChange, "first_workday", value);
+                                }}
+                            />
+                        </Field>
+                        <Field>
+                            <FieldLabel htmlFor="employee-position">
+                                {isCandidate ? "Желаемая должность" : "Должность"}
+                            </FieldLabel>
+                            <SelectField
+                                name="desired_position"
+                                value={form.desired_position}
+                                onChange={handleChange}
+                                placeholder="Не указана"
+                                options={options.employee_role_values}
+                            />
+                        </Field>
+                        <Field>
+                            <FieldLabel>Доход / ожидания</FieldLabel>
+                            <Input
+                                type="text"
+                                name="salary_expectation"
+                                value={form.salary_expectation}
+                                onChange={handleChange}
+                            />
+                        </Field>
+                        <Field>
+                            <FieldLabel>Telegram-привязка</FieldLabel>
+                            <div className="employee-readonly-field">
+                                {form.chat_id ? "Привязан к боту" : "Не привязан. Нужен Start в боте."}
+                            </div>
+                        </Field>
+                    </FieldGroup>
+                </CardContent>
+            </DetailCard>
 
-                    {isCandidate ? (
-                        <div className="react-form-section">
-                            <h4>Этап найма</h4>
-                            <div className="react-detail-form-grid">
-                                <Field label="Текущий этап работы">
-                                    <select
+            {isCandidate ? (
+                <>
+                    <div className="employee-section-label">Найм</div>
+                    <DetailCard>
+                        <CardHeader>
+                            <CardTitle>Найм</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            <FieldGroup className="employee-field-grid">
+                                <Field>
+                                    <FieldLabel>Текущий этап</FieldLabel>
+                                    <SelectField
                                         name="candidate_work_stage"
                                         value={form.candidate_work_stage}
                                         onChange={handleChange}
-                                    >
-                                        <option value="">Не указан</option>
-                                        {options.candidate_work_stage_values.map(function (option: any) {
-                                            return (
-                                                <option key={option.value} value={option.value}>
-                                                    {option.label}
-                                                </option>
-                                            );
-                                        })}
-                                    </select>
+                                        placeholder="Не указан"
+                                        options={options.candidate_work_stage_values}
+                                    />
                                 </Field>
-                                <Field label="Дедлайн тестового задания">
-                                    <input
-                                        type="datetime-local"
-                                        name="test_task_due_at"
+                                <Field>
+                                    <FieldLabel>Дедлайн тестового задания</FieldLabel>
+                                    <DateTimePicker
                                         value={form.test_task_due_at}
+                                        onValueChange={function (value) {
+                                            changeFieldValue(handleChange, "test_task_due_at", value);
+                                        }}
+                                    />
+                                </Field>
+                            </FieldGroup>
+                            <CheckboxField
+                                name="personal_data_consent"
+                                checked={!!form.personal_data_consent}
+                                onChange={handleChange}
+                                title="Согласие на ПДн"
+                            />
+                        </CardContent>
+                    </DetailCard>
+                </>
+            ) : (
+                <>
+                    <div className="employee-section-label">Работа</div>
+                    <DetailCard>
+                        <CardHeader>
+                            <CardTitle>Рабочий профиль</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            <FieldGroup className="employee-field-grid">
+                                <Field>
+                                    <FieldLabel>Дата рождения</FieldLabel>
+                                    <DatePicker
+                                        value={form.birth_date}
+                                        onValueChange={function (value) {
+                                            changeFieldValue(handleChange, "birth_date", value);
+                                        }}
+                                    />
+                                </Field>
+                                <Field>
+                                    <FieldLabel>Рабочая почта</FieldLabel>
+                                    <Input
+                                        type="email"
+                                        inputMode="email"
+                                        autoComplete="email"
+                                        name="work_email"
+                                        value={form.work_email}
                                         onChange={handleChange}
                                     />
                                 </Field>
-                            </div>
-                            <label className="react-checkbox">
-                                <input
-                                    type="checkbox"
-                                    name="personal_data_consent"
-                                    checked={!!form.personal_data_consent}
-                                    onChange={handleChange}
-                                />
-                                <span>Согласие на ПДн (кандидат)</span>
-                            </label>
-                        </div>
-                    ) : (
-                        <React.Fragment>
-                            <div className="react-form-section">
-                                <h4>Профиль сотрудника</h4>
-                                <div className="react-detail-form-grid">
-                                    <Field label="Дата рождения">
-                                        <input type="date" name="birth_date" value={form.birth_date} onChange={handleChange} />
-                                    </Field>
-                                    <Field label="Рабочая почта">
-                                        <input
-                                            type="email"
-                                            inputMode="email"
-                                            autoComplete="email"
-                                            name="work_email"
-                                            value={form.work_email}
-                                            onChange={handleChange}
+                                <Field>
+                                    <FieldLabel>Рабочие часы</FieldLabel>
+                                    <div className="employee-time-range">
+                                        <TimeSelect
+                                            value={workHoursParts.start}
+                                            onValueChange={function (value) {
+                                                handleWorkHoursChange("start", value);
+                                            }}
                                         />
-                                    </Field>
-                                    <Field label="Рабочие часы">
-                                        <div className="react-time-range">
-                                            <input
-                                                type="time"
-                                                value={workHoursParts.start}
-                                                onChange={function (event) {
-                                                    handleWorkHoursChange("start", event.target.value);
-                                                }}
-                                                aria-label="Начало рабочего дня"
-                                            />
-                                            <span className="react-time-range-separator">-</span>
-                                            <input
-                                                type="time"
-                                                value={workHoursParts.end}
-                                                onChange={function (event) {
-                                                    handleWorkHoursChange("end", event.target.value);
-                                                }}
-                                                aria-label="Конец рабочего дня"
-                                            />
-                                        </div>
-                                    </Field>
-                                    <Field label="Статус">
-                                        <select name="employee_stage" value={form.employee_stage} onChange={handleChange}>
-                                            <option value="">Не указан</option>
-                                            {options.employee_stage_values.map(function (option: any) {
-                                                return (
-                                                    <option key={option.value} value={option.value}>
-                                                        {option.label}
-                                                    </option>
-                                                );
-                                            })}
-                                        </select>
-                                    </Field>
-                                </div>
-                            </div>
-                            <div className="react-form-section">
-                                <h4>Роли и сопровождение</h4>
-                                <div className="react-detail-form-grid">
-                                    <Field label="Руководитель сотрудника">
-                                        <input
-                                            type="text"
-                                            name="manager_chat_id"
-                                            value={form.manager_chat_id}
-                                            onChange={handleChange}
+                                        <span>до</span>
+                                        <TimeSelect
+                                            value={workHoursParts.end}
+                                            onValueChange={function (value) {
+                                                handleWorkHoursChange("end", value);
+                                            }}
                                         />
-                                    </Field>
-                                    <Field label="Наставник (адаптация)">
-                                        <input
-                                            type="text"
-                                            name="mentor_adaptation_chat_id"
-                                            value={form.mentor_adaptation_chat_id}
-                                            onChange={handleChange}
-                                        />
-                                    </Field>
-                                    <Field label="Наставник (ИПР)">
-                                        <input
-                                            type="text"
-                                            name="mentor_ipr_chat_id"
-                                            value={form.mentor_ipr_chat_id}
-                                            onChange={handleChange}
-                                        />
-                                    </Field>
-                                </div>
-                            </div>
-                            <label className="react-checkbox">
-                                <input
-                                    type="checkbox"
-                                    name="employee_data_consent"
-                                    checked={!!form.employee_data_consent}
-                                    onChange={handleChange}
-                                />
-                                <span>Согласие на ПДн (сотрудник)</span>
-                            </label>
-                        </React.Fragment>
-                    )}
+                                    </div>
+                                </Field>
+                                <Field>
+                                    <FieldLabel>Статус сотрудника</FieldLabel>
+                                    <SelectField
+                                        name="employee_stage"
+                                        value={form.employee_stage}
+                                        onChange={handleChange}
+                                        placeholder="Не указан"
+                                        options={options.employee_stage_values}
+                                    />
+                                </Field>
+                            </FieldGroup>
+                        </CardContent>
+                    </DetailCard>
 
-                    <div className="react-form-section">
-                        <h4>Заметки</h4>
-                        <Field label="Заметки HR">
-                            <textarea name="notes" value={form.notes} onChange={handleChange} rows={5} />
-                        </Field>
-                        <label className="react-checkbox">
-                            <input
-                                type="checkbox"
-                                name="is_bot_blocked"
-                                checked={!!form.is_bot_blocked}
+                    <div className="employee-section-label">Адаптация</div>
+                    <DetailCard>
+                        <CardHeader>
+                            <CardTitle>Сопровождение</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            <FieldGroup className="employee-field-grid">
+                                <Field>
+                                    <FieldLabel>Руководитель сотрудника</FieldLabel>
+                                    <Input
+                                        type="text"
+                                        name="manager_chat_id"
+                                        value={form.manager_chat_id}
+                                        onChange={handleChange}
+                                        placeholder="Telegram id"
+                                    />
+                                </Field>
+                                <Field>
+                                    <FieldLabel>Наставник адаптации</FieldLabel>
+                                    <Input
+                                        type="text"
+                                        name="mentor_adaptation_chat_id"
+                                        value={form.mentor_adaptation_chat_id}
+                                        onChange={handleChange}
+                                        placeholder="Telegram id"
+                                    />
+                                </Field>
+                                <Field>
+                                    <FieldLabel>Наставник ИПР</FieldLabel>
+                                    <Input
+                                        type="text"
+                                        name="mentor_ipr_chat_id"
+                                        value={form.mentor_ipr_chat_id}
+                                        onChange={handleChange}
+                                        placeholder="Telegram id"
+                                    />
+                                </Field>
+                                <PlannedField
+                                    label="Наставник"
+                                    kind="select"
+                                    placeholder="Выбор сотрудника из списка"
+                                />
+                                <PlannedField label="Задачи на ИС" kind="link" placeholder="Ссылка на файл" />
+                                <PlannedField label="Обратная связь" kind="link" placeholder="Ссылка на файл" />
+                                <PlannedField label="Середина адаптации" kind="date" />
+                                <PlannedField label="Конец адаптации" kind="date" />
+                                <PlannedField
+                                    label="Должность руководителя"
+                                    placeholder="Показывать только для руководителя"
+                                />
+                            </FieldGroup>
+                            <CheckboxField
+                                name="employee_data_consent"
+                                checked={!!form.employee_data_consent}
                                 onChange={handleChange}
+                                title="Согласие на ПДн"
                             />
-                            <span>Заблокировать доступ к чат-боту</span>
-                        </label>
-                    </div>
+                        </CardContent>
+                    </DetailCard>
+                </>
+            )}
 
-                    <div className="react-form-actions">
-                        <span className={saveState.error ? "react-save-state is-error" : "react-save-state"}>
-                            {saveState.message || " "}
-                        </span>
-                        <button type="submit" className="btn-primary" disabled={saveState.saving}>
-                            {saveState.saving ? "Сохраняю..." : "Сохранить"}
-                        </button>
-                    </div>
-                </form>
-            </section>
-        </div>
+            <div className="employee-section-label">Заметки</div>
+            <DetailCard>
+                <CardHeader>
+                    <CardTitle>Заметки и доступ</CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <FieldSet>
+                        <Field>
+                            <FieldLabel>Заметки HR</FieldLabel>
+                            <Textarea name="notes" value={form.notes} onChange={handleChange} rows={5} />
+                        </Field>
+                        <CheckboxField
+                            name="is_bot_blocked"
+                            checked={!!form.is_bot_blocked}
+                            onChange={handleChange}
+                            title="Заблокировать доступ к чат-боту"
+                        />
+                    </FieldSet>
+                </CardContent>
+                <CardFooter className="employee-save-footer">
+                    <span className={cn("employee-save-state", saveState.error && "is-error")}>
+                        {saveState.message || " "}
+                    </span>
+                    <Button type="submit" disabled={saveState.saving}>
+                        {saveState.saving ? "Сохраняю..." : "Сохранить"}
+                    </Button>
+                </CardFooter>
+            </DetailCard>
+        </form>
     );
 }
 
@@ -327,147 +661,229 @@ export function EmployeeOperationsSection(props: any) {
         handleLaunchSubmit,
         handleFileSubmit,
         handleDeleteEmployee,
-        fileItems,
+        employeeFileItems,
+        hrFileItems,
         documentItems,
         launchItems,
     } = props;
+    const scenarioItems = [{ value: EMPTY_SELECT_VALUE, label: "Выберите сценарий" }].concat(
+        payload.options.scenarios.map(function (item: any) {
+            return { value: item.value, label: item.label };
+        }),
+    );
 
     return (
-        <div className="react-detail-side">
-            <section className="react-section">
-                <h4>Операции</h4>
-                <div className={opsState.error ? "react-inline-message is-error" : "react-inline-message"}>
-                    {opsState.message || (opsState.working ? "Выполняю действие..." : " ")}
-                </div>
-                <form className="react-inline-form" onSubmit={handleOfferSubmit}>
-                    <Field label="Ссылка на оффер">
-                        <input
-                            type="text"
-                            value={offerUrl}
-                            onChange={function (event) {
-                                setOfferUrl(event.target.value);
-                            }}
-                            placeholder="https://docs.google.com/..."
-                        />
-                    </Field>
-                    <div className="react-inline-actions">
-                        <button type="submit" className="btn-primary">
-                            Сохранить оффер
-                        </button>
-                        {payload.document_links.length ? (
-                            <button
-                                type="button"
-                                className="btn-secondary"
-                                onClick={function () {
-                                    handleOfferDelete(payload.document_links[0].id);
-                                }}
-                            >
-                                Удалить ссылку
-                            </button>
-                        ) : null}
-                    </div>
-                </form>
-                <form className="react-inline-form" onSubmit={handleScheduleSubmit}>
-                    <Field label="Запланировать сценарий">
-                        <select
-                            value={scheduleForm.flow_key}
-                            onChange={function (event) {
-                                setScheduleForm(function (prev: any) {
-                                    return Object.assign({}, prev, { flow_key: event.target.value });
-                                });
-                            }}
-                        >
-                            <option value="">Выберите сценарий</option>
-                            {payload.options.scenarios.map(function (scenario: any) {
-                                return (
-                                    <option key={scenario.value} value={scenario.value}>
-                                        {scenario.label}
-                                    </option>
-                                );
-                            })}
-                        </select>
-                    </Field>
-                    <Field label="Время отправки">
-                        <input
-                            type="datetime-local"
-                            value={scheduleForm.requested_at}
-                            onChange={function (event) {
-                                setScheduleForm(function (prev: any) {
-                                    return Object.assign({}, prev, { requested_at: event.target.value });
-                                });
-                            }}
-                        />
-                    </Field>
-                    <button type="submit" className="btn-primary">
-                        Запланировать
-                    </button>
-                </form>
-                <form className="react-inline-form" onSubmit={handleLaunchSubmit}>
-                    <Field label="Запустить сценарий сейчас">
-                        <select
-                            value={launchFlowKey}
-                            onChange={function (event) {
-                                setLaunchFlowKey(event.target.value);
-                            }}
-                        >
-                            <option value="">Выберите сценарий</option>
-                            {payload.options.scenarios.map(function (scenario: any) {
-                                return (
-                                    <option key={scenario.value} value={scenario.value}>
-                                        {scenario.label}
-                                    </option>
-                                );
-                            })}
-                        </select>
-                    </Field>
-                    <button type="submit" className="btn-primary">
-                        Запустить
-                    </button>
-                </form>
-                <form className="react-inline-form" onSubmit={handleFileSubmit}>
-                    <Field label="Загрузить файл">
-                        <input
-                            id="react-file-input"
-                            type="file"
-                            onChange={function (event) {
-                                const file = event.target.files && event.target.files[0] ? event.target.files[0] : null;
-                                setFileForm(function (prev: any) {
-                                    return Object.assign({}, prev, { upload: file });
-                                });
-                            }}
-                        />
-                    </Field>
-                    <label className="react-checkbox">
-                        <input
-                            type="checkbox"
-                            checked={!!fileForm.send_to_channel}
-                            onChange={function (event) {
-                                setFileForm(function (prev: any) {
-                                    return Object.assign({}, prev, { send_to_channel: event.target.checked });
-                                });
-                            }}
-                        />
-                        <span>Сразу отправить в мессенджер</span>
-                    </label>
-                    <button type="submit" className="btn-primary">
-                        Загрузить файл
-                    </button>
-                </form>
-            </section>
-            <OverviewList title="Файлы" items={fileItems} emptyText="Файлов пока нет" />
-            <OverviewList title="Оффер" items={documentItems} emptyText="Ссылка на оффер пока не добавлена" />
-            <OverviewList
-                title="Запланированные сценарии"
-                items={launchItems}
-                emptyText="Запланированных сценариев пока нет"
+        <div className="employee-detail-side">
+            {opsState.message || opsState.working ? (
+                <Alert variant={opsState.error ? "destructive" : "default"}>
+                    <AlertDescription>
+                        {opsState.message || (opsState.working ? "Выполняю действие..." : "")}
+                    </AlertDescription>
+                </Alert>
+            ) : null}
+
+            <div className="employee-section-label">Сценарии</div>
+            <DetailCard>
+                <CardHeader>
+                    <CardTitle>Сценарии</CardTitle>
+                </CardHeader>
+                <CardContent className="employee-ops-stack">
+                    <form className="employee-inline-form" onSubmit={handleLaunchSubmit}>
+                        <FieldGroup>
+                            <Field>
+                                <FieldLabel>Запустить сейчас</FieldLabel>
+                                <Select
+                                    items={scenarioItems}
+                                    value={launchFlowKey || EMPTY_SELECT_VALUE}
+                                    onValueChange={function (value) {
+                                        setLaunchFlowKey(value === EMPTY_SELECT_VALUE ? "" : value);
+                                    }}
+                                >
+                                    <SelectTrigger className="w-full">
+                                        <SelectValue placeholder="Выберите сценарий" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectGroup>
+                                            {scenarioItems.map(function (item: any) {
+                                                return (
+                                                    <SelectItem value={item.value} key={item.value}>
+                                                        {item.label}
+                                                    </SelectItem>
+                                                );
+                                            })}
+                                        </SelectGroup>
+                                    </SelectContent>
+                                </Select>
+                            </Field>
+                            <Button type="submit" variant="secondary">
+                                <Play data-icon="inline-start" />
+                                Запустить
+                            </Button>
+                        </FieldGroup>
+                    </form>
+
+                    <form className="employee-inline-form" onSubmit={handleScheduleSubmit}>
+                        <FieldGroup>
+                            <Field>
+                                <FieldLabel>Запланировать</FieldLabel>
+                                <Select
+                                    items={scenarioItems}
+                                    value={scheduleForm.flow_key || EMPTY_SELECT_VALUE}
+                                    onValueChange={function (value) {
+                                        setScheduleForm(function (prev: any) {
+                                            return Object.assign({}, prev, {
+                                                flow_key: value === EMPTY_SELECT_VALUE ? "" : value,
+                                            });
+                                        });
+                                    }}
+                                >
+                                    <SelectTrigger className="w-full">
+                                        <SelectValue placeholder="Выберите сценарий" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectGroup>
+                                            {scenarioItems.map(function (item: any) {
+                                                return (
+                                                    <SelectItem value={item.value} key={item.value}>
+                                                        {item.label}
+                                                    </SelectItem>
+                                                );
+                                            })}
+                                        </SelectGroup>
+                                    </SelectContent>
+                                </Select>
+                            </Field>
+                            <Field>
+                                <FieldLabel>Время отправки</FieldLabel>
+                                <DateTimePicker
+                                    value={scheduleForm.requested_at}
+                                    onValueChange={function (value) {
+                                        setScheduleForm(function (prev: any) {
+                                            return Object.assign({}, prev, { requested_at: value });
+                                        });
+                                    }}
+                                />
+                            </Field>
+                            <Button type="submit" variant="outline">
+                                <CalendarClock data-icon="inline-start" />
+                                Запланировать
+                            </Button>
+                        </FieldGroup>
+                    </form>
+                </CardContent>
+            </DetailCard>
+
+            <div className="employee-section-label">Документы</div>
+            <DocumentList
+                title="Файлы HR"
+                items={hrFileItems}
+                emptyTitle="HR-файлов нет"
+            >
+                    <form className="employee-inline-form" onSubmit={handleFileSubmit}>
+                        <FieldGroup>
+                            <Field>
+                                <FieldLabel>Загрузить файл HR</FieldLabel>
+                                <Input
+                                    id="react-file-input"
+                                    className="employee-file-native"
+                                    type="file"
+                                    onChange={function (event) {
+                                        const file = event.target.files && event.target.files[0] ? event.target.files[0] : null;
+                                        setFileForm(function (prev: any) {
+                                            return Object.assign({}, prev, { upload: file });
+                                        });
+                                    }}
+                                />
+                                <div className="employee-file-picker">
+                                    <label
+                                        htmlFor="react-file-input"
+                                        className={buttonVariants({ variant: "outline", size: "sm" })}
+                                    >
+                                        <Upload data-icon="inline-start" />
+                                        Выбрать файл
+                                    </label>
+                                    <span>{fileForm.upload ? fileForm.upload.name : "Файл не выбран"}</span>
+                                </div>
+                            </Field>
+                            <Button type="submit" variant="secondary">
+                                <Upload data-icon="inline-start" />
+                                Загрузить
+                            </Button>
+                        </FieldGroup>
+                    </form>
+            </DocumentList>
+
+            <DocumentList
+                title="Документы сотрудника"
+                items={employeeFileItems}
+                emptyTitle="Входящих документов нет"
             />
-            <section className="react-section react-section-danger">
-                <h4>Редкие действия</h4>
-                <p className="muted">Используй только если карточку действительно нужно убрать из системы.</p>
-                <button type="button" className="btn-danger" onClick={handleDeleteEmployee}>
-                    Удалить сотрудника
-                </button>
-            </section>
+
+            <DocumentList
+                title="Ссылки HR"
+                items={documentItems}
+                emptyTitle="Ссылок нет"
+            >
+                    <form className="employee-inline-form" onSubmit={handleOfferSubmit}>
+                        <FieldGroup>
+                            <Field>
+                                <FieldLabel>Новая ссылка</FieldLabel>
+                                <Input
+                                    type="url"
+                                    value={offerUrl}
+                                    onChange={function (event) {
+                                        setOfferUrl(event.target.value);
+                                    }}
+                                    placeholder="https://docs.google.com/..."
+                                />
+                            </Field>
+                            <div className="employee-action-row">
+                                <Button type="submit" variant="outline">
+                                    <Link2 data-icon="inline-start" />
+                                    Добавить ссылку
+                                </Button>
+                                {payload.document_links.length ? (
+                                    <Button
+                                        type="button"
+                                        variant="ghost"
+                                        onClick={function () {
+                                            handleOfferDelete(payload.document_links[0].id);
+                                        }}
+                                    >
+                                        <Trash2 data-icon="inline-start" />
+                                        Удалить
+                                    </Button>
+                                ) : null}
+                            </div>
+                        </FieldGroup>
+                    </form>
+            </DocumentList>
+
+            <div className="employee-section-label">Очередь</div>
+            <DetailCard>
+                <CardHeader>
+                    <CardTitle>Запланированные сценарии</CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <ScenarioList items={launchItems} />
+                </CardContent>
+            </DetailCard>
+
+            <div className="employee-section-label">Опасная зона</div>
+            <DetailCard className="employee-danger-card">
+                <CardHeader>
+                    <CardTitle>
+                        <ShieldAlert data-icon="inline-start" />
+                        Редкие действия
+                    </CardTitle>
+                </CardHeader>
+                <CardFooter>
+                    <Button type="button" variant="destructive" onClick={handleDeleteEmployee}>
+                        <Trash2 data-icon="inline-start" />
+                        Удалить сотрудника
+                    </Button>
+                </CardFooter>
+            </DetailCard>
         </div>
     );
 }

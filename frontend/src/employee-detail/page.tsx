@@ -1,5 +1,6 @@
 import React from "react";
 
+import { Badge } from "@/components/ui/badge";
 import {
     buildEmployeeUpdatePayload,
     buildWorkHoursValue,
@@ -8,6 +9,7 @@ import {
 } from "./helpers";
 import {
     EmployeeDetailError,
+    EmployeeFlashNotice,
     EmployeeDetailHeader,
     EmployeeDetailLoading,
     EmployeeOperationsSection,
@@ -17,12 +19,13 @@ import {
 export type EmployeeDetailPageProps = {
     apiUrl: string;
     saveUrl: string;
-    classicUrl: string;
     listUrl: string;
+    flashMessage: string;
+    flashType: string;
 };
 
 export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
-    const { apiUrl, saveUrl, classicUrl, listUrl } = props;
+    const { apiUrl, saveUrl, listUrl, flashMessage, flashType } = props;
 
     const [state, setState] = React.useState({
         loading: true,
@@ -40,6 +43,10 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
         error: false,
         working: false,
     });
+    const [flashState, setFlashState] = React.useState({
+        message: flashMessage || "",
+        error: flashType === "error",
+    });
     const [offerUrl, setOfferUrl] = React.useState("");
     const [scheduleForm, setScheduleForm] = React.useState({
         flow_key: "",
@@ -48,7 +55,6 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
     const [launchFlowKey, setLaunchFlowKey] = React.useState("");
     const [fileForm, setFileForm] = React.useState({
         upload: null as File | null,
-        send_to_channel: false,
     });
 
     React.useEffect(function () {
@@ -94,6 +100,10 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
     }, [apiUrl]);
 
     function setOperationMessage(message: string, isError: boolean) {
+        setFlashState({
+            message: "",
+            error: false,
+        });
         setOpsState({
             message: message,
             error: !!isError,
@@ -314,7 +324,7 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
         const body = new FormData();
         body.append("upload", fileForm.upload);
         body.append("category", "hr_file");
-        body.append("send_to_channel", fileForm.send_to_channel ? "true" : "false");
+        body.append("send_to_channel", "false");
         fetch(apiUrl + "/files", {
             method: "POST",
             credentials: "same-origin",
@@ -330,7 +340,7 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
             })
             .then(function (payload) {
                 updatePayloadState(setState, setForm, payload);
-                setFileForm({ upload: null, send_to_channel: false });
+                setFileForm({ upload: null });
                 const fileInput = document.getElementById("react-file-input") as HTMLInputElement | null;
                 if (fileInput) {
                     fileInput.value = "";
@@ -409,12 +419,19 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
         return {
             id: file.id,
             title: file.original_filename || "Файл",
-            subtitle: file.direction + " · " + file.created_at_label,
+            subtitle: (file.direction === "inbound" ? "От сотрудника" : "От HR") + " · " + file.created_at_label,
+            direction: file.direction,
             link: file.download_url,
             linkLabel: "Скачать",
-            extraAction: file.can_send_to_channel ? function () { handleSendFile(file.id); } : null,
-            extraActionLabel: file.can_send_to_channel ? "Отправить в мессенджер" : null,
+            extraAction: function () { handleSendFile(file.id); },
+            extraActionLabel: "Отправить в мессенджер",
         };
+    });
+    const employeeFileItems = fileItems.filter(function (file: any) {
+        return file.direction === "inbound";
+    });
+    const hrFileItems = fileItems.filter(function (file: any) {
+        return file.direction !== "inbound";
     });
 
     const documentItems = payload.document_links.map(function (item: any) {
@@ -441,57 +458,57 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
 
     return (
         <div className="react-detail-page">
-            <EmployeeDetailHeader meta={meta} classicUrl={classicUrl} />
-            <section className="react-detail-card">
-                <div className="react-detail-card-head">
-                    <div>
-                        <h2>{form.full_name || "Сотрудник #" + form.id}</h2>
-                        <div className="react-overview-row">
-                            <span className="react-overview-pill">{meta.status_label || "Без статуса"}</span>
-                            {isCandidate ? (
-                                <span className="react-overview-pill">
-                                    {meta.candidate_work_stage_label || "Без этапа"}
-                                </span>
-                            ) : (
-                                <span className="react-overview-pill">{"Стаж: " + meta.tenure_years + " лет"}</span>
-                            )}
-                        </div>
+            <EmployeeDetailHeader meta={meta} />
+            <EmployeeFlashNotice message={flashState.message} error={flashState.error} />
+            <section className="employee-detail-hero">
+                <div>
+                    <h1>{form.full_name || "Сотрудник #" + form.id}</h1>
+                    <div className="employee-detail-badges">
+                        <Badge variant="secondary">{meta.status_label || "Без статуса"}</Badge>
+                        {isCandidate ? (
+                            <Badge variant="outline">
+                                {meta.candidate_work_stage_label || "Без этапа"}
+                            </Badge>
+                        ) : (
+                            <Badge variant="outline">{"Стаж: " + meta.tenure_years + " лет"}</Badge>
+                        )}
                     </div>
                 </div>
-                <div className="react-detail-grid">
-                    <EmployeeProfileSection
-                        form={form}
-                        isCandidate={isCandidate}
-                        meta={meta}
-                        options={payload.options}
-                        workHoursParts={workHoursParts}
-                        handleChange={handleChange}
-                        handleWorkHoursChange={handleWorkHoursChange}
-                        handleSubmit={handleSubmit}
-                        saveState={saveState}
-                    />
-                    <EmployeeOperationsSection
-                        opsState={opsState}
-                        offerUrl={offerUrl}
-                        setOfferUrl={setOfferUrl}
-                        payload={payload}
-                        scheduleForm={scheduleForm}
-                        setScheduleForm={setScheduleForm}
-                        launchFlowKey={launchFlowKey}
-                        setLaunchFlowKey={setLaunchFlowKey}
-                        fileForm={fileForm}
-                        setFileForm={setFileForm}
-                        handleOfferSubmit={handleOfferSubmit}
-                        handleOfferDelete={handleOfferDelete}
-                        handleScheduleSubmit={handleScheduleSubmit}
-                        handleLaunchSubmit={handleLaunchSubmit}
-                        handleFileSubmit={handleFileSubmit}
-                        handleDeleteEmployee={handleDeleteEmployee}
-                        fileItems={fileItems}
-                        documentItems={documentItems}
-                        launchItems={launchItems}
-                    />
-                </div>
+            </section>
+            <section className="employee-detail-grid">
+                <EmployeeProfileSection
+                    form={form}
+                    isCandidate={isCandidate}
+                    meta={meta}
+                    options={payload.options}
+                    workHoursParts={workHoursParts}
+                    handleChange={handleChange}
+                    handleWorkHoursChange={handleWorkHoursChange}
+                    handleSubmit={handleSubmit}
+                    saveState={saveState}
+                />
+                <EmployeeOperationsSection
+                    opsState={opsState}
+                    offerUrl={offerUrl}
+                    setOfferUrl={setOfferUrl}
+                    payload={payload}
+                    scheduleForm={scheduleForm}
+                    setScheduleForm={setScheduleForm}
+                    launchFlowKey={launchFlowKey}
+                    setLaunchFlowKey={setLaunchFlowKey}
+                    fileForm={fileForm}
+                    setFileForm={setFileForm}
+                    handleOfferSubmit={handleOfferSubmit}
+                    handleOfferDelete={handleOfferDelete}
+                    handleScheduleSubmit={handleScheduleSubmit}
+                    handleLaunchSubmit={handleLaunchSubmit}
+                    handleFileSubmit={handleFileSubmit}
+                    handleDeleteEmployee={handleDeleteEmployee}
+                    employeeFileItems={employeeFileItems}
+                    hrFileItems={hrFileItems}
+                    documentItems={documentItems}
+                    launchItems={launchItems}
+                />
             </section>
         </div>
     );

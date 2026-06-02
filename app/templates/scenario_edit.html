@@ -17,11 +17,11 @@
             {% if kind == 'scenario' %}
             {% endif %}
             {% if kind == 'survey' %}
-                <a href="/surveys/{{ scenario.id }}/export" class="btn-secondary">Выгрузить Excel</a>
+                <a href="/surveys/{{ scenario.id }}/export?legacy=1" class="btn-secondary">Выгрузить Excel</a>
             {% endif %}
         </div>
     </div>
-    <form method="post" action="{{ collection_path }}/{{ scenario.id }}" class="form" enctype="multipart/form-data">
+    <form method="post" action="{{ collection_path }}/{{ scenario.id }}?legacy=1" class="form" enctype="multipart/form-data">
         <div class="settings-grid scenario-meta-grid">
             <label class="field settings-field">
                 <span>Название {{ item_label_cap.lower() }}</span>
@@ -120,7 +120,7 @@
                                     Текущий файл:
                                                     <a href="/flows/steps/{{ step.id }}/attachment">{{ step.attachment_filename }}</a>
                                 </div>
-                                <button type="button" class="btn-danger btn-inline-danger" data-delete-attachment-url="/flows/steps/{{ step.id }}/attachment/delete" data-delete-attachment-name="{{ step.attachment_filename }}">Удалить</button>
+                                <button type="button" class="btn-danger btn-inline-danger" data-delete-attachment-url="/flows/steps/{{ step.id }}/attachment/delete?legacy=1" data-delete-attachment-name="{{ step.attachment_filename }}">Удалить</button>
                             </div>
                         {% else %}
                             <div class="field-hint">Если выбрать файл, он будет отправляться сразу после сообщения этого шага.</div>
@@ -268,7 +268,7 @@
                                                     Текущий файл:
                                                     <a href="/flows/steps/{{ branch_step.id }}/attachment">{{ branch_step.attachment_filename }}</a>
                                                 </div>
-                                                <button type="button" class="btn-danger btn-inline-danger" data-delete-attachment-url="/flows/steps/{{ branch_step.id }}/attachment/delete" data-delete-attachment-name="{{ branch_step.attachment_filename }}">Удалить</button>
+                                                <button type="button" class="btn-danger btn-inline-danger" data-delete-attachment-url="/flows/steps/{{ branch_step.id }}/attachment/delete?legacy=1" data-delete-attachment-name="{{ branch_step.attachment_filename }}">Удалить</button>
                                             </div>
                                         {% else %}
                                             <div class="field-hint">Если выбрать файл, он будет отправляться сразу после сообщения этой ветки.</div>
@@ -370,7 +370,7 @@
                                                                     Текущий файл:
                                                                     <a href="/flows/steps/{{ chain_step.id }}/attachment">{{ chain_step.attachment_filename }}</a>
                                                                 </div>
-                                                                <button type="button" class="btn-danger btn-inline-danger" data-delete-attachment-url="/flows/steps/{{ chain_step.id }}/attachment/delete" data-delete-attachment-name="{{ chain_step.attachment_filename }}">Удалить</button>
+                                                                <button type="button" class="btn-danger btn-inline-danger" data-delete-attachment-url="/flows/steps/{{ chain_step.id }}/attachment/delete?legacy=1" data-delete-attachment-name="{{ chain_step.attachment_filename }}">Удалить</button>
                                                             </div>
                                                         {% else %}
                                                             <div class="field-hint">Если выбрать файл, он будет отправляться сразу после сообщения этого шага.</div>
@@ -494,7 +494,7 @@
                                                                                     Текущий файл:
                                                                                     <a href="/flows/steps/{{ branch_step.id }}/attachment">{{ branch_step.attachment_filename }}</a>
                                                                                 </div>
-                                                                                <button type="button" class="btn-danger btn-inline-danger" data-delete-attachment-url="/flows/steps/{{ branch_step.id }}/attachment/delete" data-delete-attachment-name="{{ branch_step.attachment_filename }}">Удалить</button>
+                                                                                <button type="button" class="btn-danger btn-inline-danger" data-delete-attachment-url="/flows/steps/{{ branch_step.id }}/attachment/delete?legacy=1" data-delete-attachment-name="{{ branch_step.attachment_filename }}">Удалить</button>
                                                                             </div>
                                                                         {% else %}
                                                                             <div class="field-hint">Если выбрать файл, он будет отправляться сразу после сообщения этой ветки.</div>
@@ -571,7 +571,7 @@
                                                                                                     Текущий файл:
                                                                                                     <a href="/flows/steps/{{ nested_chain_step.id }}/attachment">{{ nested_chain_step.attachment_filename }}</a>
                                                                                                 </div>
-                                                                                                <button type="button" class="btn-danger btn-inline-danger" data-delete-attachment-url="/flows/steps/{{ nested_chain_step.id }}/attachment/delete" data-delete-attachment-name="{{ nested_chain_step.attachment_filename }}">Удалить</button>
+                                                                                        <button type="button" class="btn-danger btn-inline-danger" data-delete-attachment-url="/flows/steps/{{ nested_chain_step.id }}/attachment/delete?legacy=1" data-delete-attachment-name="{{ nested_chain_step.attachment_filename }}">Удалить</button>
                                                                                             </div>
                                                                                         {% else %}
                                                                                                     <div class="field-hint">Если выбрать файл, он будет отправляться сразу после сообщения этого шага.</div>
@@ -635,7 +635,7 @@
                                                                                                                     Текущий файл:
                                                                                                                     <a href="/flows/steps/{{ child_branch_step.id }}/attachment">{{ child_branch_step.attachment_filename }}</a>
                                                                                                                 </div>
-                                                                                                                <button type="button" class="btn-danger btn-inline-danger" data-delete-attachment-url="/flows/steps/{{ child_branch_step.id }}/attachment/delete" data-delete-attachment-name="{{ child_branch_step.attachment_filename }}">Удалить</button>
+                                                                                                        <button type="button" class="btn-danger btn-inline-danger" data-delete-attachment-url="/flows/steps/{{ child_branch_step.id }}/attachment/delete?legacy=1" data-delete-attachment-name="{{ child_branch_step.attachment_filename }}">Удалить</button>
                                                                                                             </div>
                                                                                                         {% else %}
                                                                                                             <div class="field-hint">Если выбрать файл, он будет отправляться сразу после сообщения этой ветки.</div>

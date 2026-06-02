@@ -1,465 +1,301 @@
 .main > .container:has(#react-employee-edit-root) {
+    width: min(1680px, calc(100vw - var(--sidebar-width, 86px) - 32px));
     max-width: min(1680px, calc(100vw - var(--sidebar-width, 86px) - 32px));
-    transition: max-width 0.28s ease;
 }
 
 .react-detail-page {
-    --color-background: #f4f7f4;
-    --color-panel: #ffffff;
-    --color-panel-muted: #f8fbf8;
-    --color-border: rgba(23, 44, 38, 0.1);
-    --color-foreground: #17312a;
-    --color-muted-foreground: #587066;
-    --color-accent: #1f7a61;
-    --color-accent-foreground: #f7fffb;
-    --color-danger: #b33b4e;
-    --shadow-soft: 0 16px 40px rgba(23, 44, 38, 0.08);
-    display: grid;
-    gap: 16px;
-    color: var(--color-foreground);
-}
-
-.react-detail-header {
     display: flex;
+    flex-direction: column;
+    gap: 18px;
+    padding-bottom: 28px;
+    color: var(--foreground);
+}
+
+.employee-detail-topline {
+    display: flex;
+    align-items: center;
     justify-content: space-between;
-    align-items: flex-start;
-    gap: 20px;
 }
 
-.react-detail-back {
-    display: inline-flex;
-    align-items: center;
-    min-height: 40px;
-    padding: 0 14px;
-    border: 1px solid var(--color-border);
-    border-radius: 10px;
-    background: var(--color-panel);
-    color: var(--color-muted-foreground);
-    text-decoration: none;
-    font-size: 14px;
-    font-weight: 600;
-    transition: all 0.2s ease;
+.employee-detail-hero {
+    display: block;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-2xl);
+    background: color-mix(in srgb, var(--card) 92%, transparent);
+    padding: 22px 24px;
 }
 
-.react-detail-back:hover {
-    border-radius: 20px;
-    background: var(--color-panel-muted);
-    color: var(--color-foreground);
+.employee-detail-hero h1 {
+    margin: 0;
+    font-size: clamp(2rem, 3vw, 3.25rem);
+    font-weight: 650;
+    letter-spacing: -0.055em;
+    line-height: 0.95;
 }
 
-.react-detail-page .btn-primary,
-.react-detail-page .btn-secondary {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 40px;
+.employee-detail-badges {
+    display: flex;
+    flex-wrap: wrap;
     gap: 8px;
-    border-radius: 10px;
-    padding: 0 16px;
-    font-size: 14px;
-    font-weight: 600;
-    text-decoration: none;
-    transition: all 0.2s ease;
+    margin-top: 16px;
 }
 
-.react-detail-page .btn-primary:hover,
-.react-detail-page .btn-secondary:hover {
-    border-radius: 20px;
-}
-
-.react-detail-page .btn-primary {
-    border: 1px solid var(--color-accent);
-    background: var(--color-accent);
-    color: var(--color-accent-foreground);
-}
-
-.react-detail-page .btn-primary:hover {
-    opacity: 0.9;
-}
-
-.react-detail-page .btn-secondary {
-    border: 1px solid var(--color-border);
-    background: var(--color-panel);
-    color: var(--color-foreground);
-}
-
-.react-detail-page .btn-secondary:hover {
-    background: var(--color-panel-muted);
-}
-
-.react-detail-card {
-    background: var(--color-panel);
-    border: 1px solid var(--color-border);
-    border-radius: 10px;
-    box-shadow: var(--shadow-soft);
-    overflow: hidden;
-}
-
-.react-detail-card-head {
+.employee-detail-grid {
     display: grid;
-    gap: 14px;
-    padding: 32px 32px 0;
+    grid-template-columns: minmax(0, 1.34fr) minmax(420px, 0.82fr);
+    gap: 18px;
+    align-items: start;
 }
 
-.react-detail-card-head p {
-    margin: 0;
+.employee-profile-form,
+.employee-detail-side {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 12px;
 }
 
-.react-detail-card-head h2,
-.react-detail-card-head h3 {
-    margin: 0;
-}
-
-.react-detail-grid {
-    padding: 24px 32px 32px;
-    display: grid;
-    grid-template-columns: minmax(0, 1.85fr) minmax(360px, 0.85fr);
-    gap: 28px;
-}
-
-.react-detail-main,
-.react-detail-side {
-    display: grid;
-    gap: 24px;
-    align-content: start;
-}
-
-.react-detail-side {
-    position: sticky;
-    top: 24px;
+.employee-detail-side {
     align-self: start;
 }
 
-.react-section {
-    display: grid;
-    gap: 18px;
-    padding: 24px;
-    border: 1px solid var(--color-border);
-    border-radius: 10px;
-    background: var(--color-panel);
-    transition: all 0.2s ease;
+.employee-detail-card {
+    border: 1px solid var(--border);
+    background: color-mix(in srgb, var(--card) 94%, transparent);
 }
 
-.react-section:hover {
-    border-radius: 20px;
-    background: var(--color-panel-muted);
+.employee-detail-card [data-slot="card-header"] {
+    padding-bottom: 12px;
 }
 
-.react-section-danger {
-    border-color: rgba(179, 59, 78, 0.18);
-    background: linear-gradient(180deg, #fff 0%, #fff7f8 100%);
+.employee-detail-card [data-slot="card-content"] {
+    padding-top: 0;
 }
 
-.react-section h3,
-.react-section h4,
-.react-overview-title {
-    margin: 0;
-}
-
-.react-overview-row {
+.employee-detail-card [data-slot="card-title"] {
     display: flex;
-    flex-wrap: wrap;
-    gap: 10px;
-}
-
-.react-overview-pill {
-    display: inline-flex;
     align-items: center;
-    padding: 7px 12px;
-    border-radius: 10px;
-    background: rgba(0, 0, 0, 0.05);
-    color: var(--color-muted-foreground);
-    font-size: 12px;
-    font-weight: 600;
-    transition: all 0.2s ease;
+    gap: 8px;
+    font-size: 1rem;
 }
 
-.react-overview-pill:hover {
-    border-radius: 16px;
-}
-
-.react-detail-form {
-    display: grid;
-    gap: 22px;
-}
-
-.react-detail-form-grid {
+.employee-field-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 18px;
+    gap: 14px 16px;
 }
 
-.react-detail-form-grid.is-single {
-    grid-template-columns: 1fr;
+.employee-field-grid [data-slot="field"] {
+    min-width: 0;
 }
 
-.react-field {
-    display: grid;
-    gap: 8px;
+.employee-section-label {
+    margin-top: 4px;
+    color: var(--muted-foreground);
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
 }
 
-.react-field span {
-    font-size: 14px;
-    font-weight: 600;
-    color: rgba(23, 49, 42, 0.75);
+.employee-section-label + .employee-detail-card {
+    margin-top: -2px;
 }
 
-.react-field input,
-.react-field select,
-.react-field textarea {
-    border: 1px solid var(--color-border);
-    background: var(--color-panel);
-    border-radius: 10px;
-    padding: 13px 14px;
-    font-size: 14px;
-    width: 100%;
-    color: var(--color-foreground);
-    outline: none;
-    transition: all 0.2s ease;
+.employee-readonly-field {
+    display: flex;
+    min-height: 32px;
+    align-items: center;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--muted);
+    padding: 6px 10px;
+    color: var(--muted-foreground);
+    font-size: 0.875rem;
 }
 
-.react-field select {
-    appearance: none;
-    background-image:
-        linear-gradient(45deg, transparent 50%, var(--color-muted-foreground) 50%),
-        linear-gradient(135deg, var(--color-muted-foreground) 50%, transparent 50%);
-    background-position:
-        calc(100% - 18px) 50%,
-        calc(100% - 13px) 50%;
-    background-size: 5px 5px, 5px 5px;
-    background-repeat: no-repeat;
-    padding-right: 34px;
-}
-
-.react-field input:hover,
-.react-field select:hover,
-.react-field textarea:hover {
-    border-radius: 16px;
-    background: var(--color-panel-muted);
-}
-
-.react-field input:focus,
-.react-field select:focus,
-.react-field textarea:focus {
-    border-color: var(--color-accent);
-    box-shadow: 0 0 0 2px rgba(31, 122, 97, 0.3);
-}
-
-.react-field input:disabled,
-.react-field select:disabled,
-.react-field textarea:disabled {
-    cursor: not-allowed;
-    opacity: 0.6;
-}
-
-.react-readonly-field {
-    border: 1px solid var(--color-border);
-    background: var(--color-panel-muted);
-    border-radius: 10px;
-    color: var(--color-muted-foreground);
-    font-size: 14px;
-    font-weight: 600;
-    line-height: 1.4;
-    padding: 13px 14px;
-    transition: all 0.2s ease;
-}
-
-.react-readonly-field:hover {
-    border-radius: 16px;
-}
-
-.react-field textarea {
-    resize: vertical;
-    min-height: 120px;
-}
-
-.react-time-range {
+.employee-time-range {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
-    align-items: center;
     gap: 8px;
+    align-items: center;
 }
 
-.react-time-range-separator {
-    color: var(--color-muted-foreground);
-    font-size: 14px;
-    font-weight: 600;
+.employee-time-range span {
+    color: var(--muted-foreground);
+    font-size: 0.8rem;
 }
 
-.react-checkbox {
-    display: flex;
-    gap: 12px;
-    align-items: flex-start;
-    border: 1px solid var(--color-border);
-    border-radius: 10px;
-    padding: 14px 16px;
-    background: var(--color-panel-muted);
-    transition: all 0.2s ease;
+.employee-check-field {
+    margin-top: 14px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--muted);
+    padding: 10px;
 }
 
-.react-checkbox:hover {
-    border-radius: 18px;
-    background: var(--color-panel);
-}
-
-.react-checkbox input {
-    margin-top: 2px;
-}
-
-.react-form-actions {
-    display: flex;
+.employee-save-footer {
     justify-content: space-between;
     gap: 12px;
-    align-items: center;
 }
 
-.react-form-section {
-    display: grid;
-    gap: 16px;
-    padding: 18px;
-    border: 1px solid var(--color-border);
-    border-radius: 10px;
-    background: var(--color-panel-muted);
-    transition: all 0.2s ease;
+.employee-save-state {
+    min-height: 20px;
+    color: var(--muted-foreground);
+    font-size: 0.875rem;
 }
 
-.react-form-section:hover {
-    border-radius: 20px;
-    background: var(--color-panel);
+.employee-save-state.is-error {
+    color: var(--destructive);
 }
 
-.react-form-section h4 {
-    margin: 0;
-    color: var(--color-foreground);
-}
-
-.react-form-section p {
-    margin: 0;
-}
-
-.react-save-state {
-    font-size: 14px;
-    color: var(--color-muted-foreground);
-}
-
-.react-save-state.is-error {
-    color: var(--color-danger);
-}
-
-.react-ops-grid {
-    display: grid;
-    gap: 16px;
-}
-
-.react-inline-form {
-    display: grid;
+.employee-ops-stack {
+    display: flex;
+    flex-direction: column;
     gap: 14px;
 }
 
-.react-inline-actions {
+.employee-inline-form {
     display: flex;
+    flex-direction: column;
     gap: 10px;
-    flex-wrap: wrap;
-    align-items: center;
 }
 
-.react-inline-message {
-    font-size: 14px;
-    color: var(--color-muted-foreground);
-}
-
-.react-inline-message.is-error {
-    color: var(--color-danger);
-}
-
-.react-overview-list {
-    display: grid;
-    gap: 12px;
-}
-
-.react-overview-item {
-    border: 1px solid var(--color-border);
-    border-radius: 10px;
-    padding: 14px 16px;
-    background: var(--color-panel);
-    transition: all 0.2s ease;
-}
-
-.react-overview-item:hover {
-    border-radius: 18px;
-    background: var(--color-panel-muted);
-}
-
-.react-overview-item-head {
+.employee-action-row,
+.employee-document-actions {
     display: flex;
-    justify-content: space-between;
-    gap: 12px;
-    align-items: flex-start;
-}
-
-.react-overview-item p {
-    margin: 6px 0 0;
-}
-
-.react-overview-link {
-    display: inline-flex;
+    flex-wrap: nowrap;
+    gap: 8px;
     align-items: center;
-    min-height: 32px;
-    padding: 0 12px;
-    border: 1px solid var(--color-border);
-    border-radius: 10px;
-    background: var(--color-panel);
-    color: var(--color-foreground);
-    font-size: 13px;
+    justify-content: flex-end;
+}
+
+.employee-file-native {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    clip-path: inset(50%);
+}
+
+.employee-file-picker {
+    display: flex;
+    min-width: 0;
+    gap: 10px;
+    align-items: center;
+    border: 1px dashed var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--muted);
+    padding: 8px;
+}
+
+.employee-file-picker span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--muted-foreground);
+    font-size: 0.875rem;
+}
+
+.employee-document-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.employee-document-row {
+    display: grid;
+    grid-template-columns: 34px minmax(0, 1fr) max-content;
+    gap: 12px;
+    align-items: center;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--background);
+    padding: 9px;
+}
+
+.employee-document-icon {
+    display: grid;
+    width: 34px;
+    height: 34px;
+    place-items: center;
+    border-radius: var(--radius-md);
+    background: var(--muted);
+    color: var(--muted-foreground);
+}
+
+.employee-document-icon svg {
+    width: 16px;
+    height: 16px;
+}
+
+.employee-document-meta {
+    min-width: 0;
+}
+
+.employee-document-title {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     font-weight: 600;
-    text-decoration: none;
-    transition: all 0.2s ease;
 }
 
-.react-overview-link:hover {
-    border-radius: 16px;
-    background: var(--color-panel-muted);
+.employee-document-subtitle {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--muted-foreground);
+    font-size: 0.8rem;
 }
 
-.react-overview-empty {
-    color: var(--color-muted-foreground);
-    font-size: 14px;
+.employee-empty-state {
+    min-height: 118px;
+    border: 1px dashed var(--border);
+    background: var(--muted);
 }
 
-.react-loading-state,
-.react-error-state {
-    padding: 56px 28px;
-    text-align: center;
+.employee-danger-card {
+    border-color: color-mix(in srgb, var(--destructive) 42%, var(--border));
 }
 
-.react-error-state {
-    color: var(--color-danger);
+.employee-detail-loading {
+    min-height: 260px;
+    justify-content: center;
 }
 
-@media (max-width: 1024px) {
-    .main > .container:has(#react-employee-edit-root) {
-        max-width: 1100px;
-    }
-
-    .react-detail-grid {
+@media (max-width: 1180px) {
+    .employee-detail-grid {
         grid-template-columns: 1fr;
     }
 
-    .react-detail-side {
+    .employee-detail-side {
         position: static;
     }
 }
 
-@media (max-width: 720px) {
-    .react-detail-header,
-    .react-detail-card-head,
-    .react-form-actions,
-    .react-overview-item-head {
-        flex-direction: column;
+@media (max-width: 760px) {
+    .main > .container:has(#react-employee-edit-root) {
+        width: min(100%, calc(100vw - 24px));
+        max-width: min(100%, calc(100vw - 24px));
+    }
+
+    .employee-detail-hero {
+        grid-template-columns: 1fr;
+    }
+
+    .employee-field-grid,
+    .employee-document-row {
+        grid-template-columns: 1fr;
+    }
+
+    .employee-document-actions {
         align-items: stretch;
     }
 
-    .react-detail-form-grid {
-        grid-template-columns: 1fr;
+    .employee-document-actions > * {
+        width: 100%;
     }
 }

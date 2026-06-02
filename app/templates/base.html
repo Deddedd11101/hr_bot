@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <title>HR Bot Admin</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <link rel="stylesheet" href="/static/styles.css?v=5">
+    <link rel="stylesheet" href="/static/styles.css?v=6">
     {% block extra_head %}{% endblock %}
 </head>
 <body>
@@ -23,18 +23,7 @@
                 </a>
 
                 <nav class="app-nav" aria-label="Основная навигация">
-                    <a href="/candidates" class="app-nav-item {% if active_tab == 'candidates' %}app-nav-item-active{% endif %}">
-                        <span class="app-nav-icon" aria-hidden="true">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"></path>
-                                <circle cx="10" cy="7" r="4"></circle>
-                                <path d="M20 8v6"></path>
-                                <path d="M23 11h-6"></path>
-                            </svg>
-                        </span>
-                        <span class="app-nav-label">Кандидаты</span>
-                    </a>
-                    <a href="/app/employees" class="app-nav-item {% if active_tab == 'employees' %}app-nav-item-active{% endif %}">
+                    <a href="/app/employees" class="app-nav-item {% if active_tab in ['employees', 'candidates'] %}app-nav-item-active{% endif %}">
                         <span class="app-nav-icon" aria-hidden="true">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
                                 <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path>
@@ -45,7 +34,7 @@
                         </span>
                         <span class="app-nav-label">Сотрудники</span>
                     </a>
-                    <a href="/bulk-actions" class="app-nav-item {% if active_tab == 'bulk_actions' %}app-nav-item-active{% endif %}">
+                    <a href="/app/bulk-actions" class="app-nav-item {% if active_tab == 'bulk_actions' %}app-nav-item-active{% endif %}">
                         <span class="app-nav-icon" aria-hidden="true">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
                                 <path d="M12 3H5a2 2 0 0 0-2 2v7"></path>
@@ -68,7 +57,7 @@
                         </span>
                         <span class="app-nav-label">Сценарии</span>
                     </a>
-                    <a href="/surveys" class="app-nav-item {% if active_tab == 'surveys' %}app-nav-item-active{% endif %}">
+                    <a href="/app/surveys/workspace" class="app-nav-item {% if active_tab == 'surveys' %}app-nav-item-active{% endif %}">
                         <span class="app-nav-icon" aria-hidden="true">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
                                 <path d="M9 11l3 3L22 4"></path>
@@ -81,7 +70,18 @@
             </div>
 
             <div class="app-sidebar-bottom">
-                <a href="/settings" class="app-nav-item {% if active_tab == 'settings' %}app-nav-item-active{% endif %}">
+                <a href="/app/design-system" class="app-nav-item {% if active_tab == 'design_system' %}app-nav-item-active{% endif %}">
+                    <span class="app-nav-icon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M4 5h16"></path>
+                            <path d="M4 12h16"></path>
+                            <path d="M4 19h10"></path>
+                            <path d="M17 17l3 2-3 2"></path>
+                        </svg>
+                    </span>
+                    <span class="app-nav-label">Дизайн-система</span>
+                </a>
+                <a href="/app/settings" class="app-nav-item {% if active_tab == 'settings' %}app-nav-item-active{% endif %}">
                     <span class="app-nav-icon" aria-hidden="true">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
                             <circle cx="12" cy="12" r="3"></circle>
@@ -90,7 +90,6 @@
                     </span>
                     <span class="app-nav-label">Настройки</span>
                 </a>
-
                 {% if current_user %}
                     <div class="app-role-pill" title="{{ role_labels.get(current_user.role, current_user.role) }}">
                         <span class="app-nav-icon" aria-hidden="true">
@@ -134,7 +133,42 @@
         var sidebar = document.getElementById("app-sidebar");
         if (!shell || !sidebar || window.matchMedia("(max-width: 560px)").matches) return;
 
+        var navLockKey = "app-shell-nav-lock-until";
         var collapseTimer = null;
+        var releaseTimer = null;
+
+        function getNavLockUntil() {
+            var raw = window.sessionStorage.getItem(navLockKey);
+            if (!raw) return 0;
+            var parsed = Number(raw);
+            return Number.isFinite(parsed) ? parsed : 0;
+        }
+
+        function setNavLock(durationMs) {
+            var lockUntil = Date.now() + durationMs;
+            window.sessionStorage.setItem(navLockKey, String(lockUntil));
+            return lockUntil;
+        }
+
+        function isNavLocked() {
+            return getNavLockUntil() > Date.now();
+        }
+
+        function scheduleLockRelease() {
+            if (releaseTimer) {
+                window.clearTimeout(releaseTimer);
+                releaseTimer = null;
+            }
+
+            var remaining = getNavLockUntil() - Date.now();
+            if (remaining <= 0) return;
+
+            releaseTimer = window.setTimeout(function () {
+                if (!sidebar.matches(":hover") && !sidebar.contains(document.activeElement)) {
+                    shell.classList.remove("app-shell-expanded");
+                }
+            }, remaining + 12);
+        }
 
         function expand() {
             if (collapseTimer) {
@@ -145,10 +179,27 @@
         }
 
         function collapse() {
+            if (isNavLocked()) {
+                scheduleLockRelease();
+                return;
+            }
             collapseTimer = window.setTimeout(function () {
                 shell.classList.remove("app-shell-expanded");
-            }, 140);
+            }, 220);
         }
+
+        if (isNavLocked()) {
+            shell.classList.add("app-shell-expanded");
+            scheduleLockRelease();
+        }
+
+        sidebar.querySelectorAll("a.app-nav-item[href], a.app-logo[href]").forEach(function (link) {
+            link.addEventListener("click", function () {
+                expand();
+                setNavLock(2200);
+                scheduleLockRelease();
+            });
+        });
 
         sidebar.addEventListener("mouseenter", expand);
         sidebar.addEventListener("mouseleave", collapse);

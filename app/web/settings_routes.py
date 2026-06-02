@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Body, Depends, Form, HTTPException, Request, status
 from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
@@ -14,7 +14,7 @@ from .settings import (
     _get_or_create_hr_settings,
     _settings_workspace_payload,
 )
-from .support import render_template, require_api_admin, require_api_auth, require_auth
+from .support import render_template, require_admin, require_api_admin, require_api_auth, require_auth
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
@@ -23,6 +23,341 @@ templates = Jinja2Templates(directory="app/templates")
 def get_db():
     with get_session() as db:
         yield db
+
+
+@router.post("/settings")
+def update_settings(
+    request: Request,
+    hr_name: str = Form(""),
+    telegram_user_id: str = Form(""),
+    notification_recipient_ids: str = Form(""),
+    default_menu_set_id: str = Form(""),
+    notify_scenario_completed: str | None = Form(None),
+    notify_test_task_received: str | None = Form(None),
+    notify_user_actions: str | None = Form(None),
+    db: Session = Depends(get_db),
+):
+    auth_redirect = require_auth(request)
+    if auth_redirect:
+        return auth_redirect
+    hr_settings = _get_or_create_hr_settings(db)
+    hr_settings.hr_name = hr_name.strip() or None
+    hr_settings.telegram_user_id = telegram_user_id.strip() or None
+    hr_settings.notification_recipient_ids = notification_recipient_ids.strip() or None
+    hr_settings.default_menu_set_id = int(default_menu_set_id) if default_menu_set_id.strip().isdigit() else None
+    hr_settings.notify_scenario_completed = notify_scenario_completed == "on"
+    hr_settings.notify_test_task_received = notify_test_task_received == "on"
+    hr_settings.notify_user_actions = notify_user_actions == "on"
+    hr_settings.updated_at = datetime.utcnow()
+    db.commit()
+    return RedirectResponse(url="/settings", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/settings/menu-sets")
+def create_menu_set(
+    request: Request,
+    title: str = Form(""),
+    description: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    auth_redirect = require_auth(request)
+    if auth_redirect:
+        return auth_redirect
+    last_set = db.query(BotMenuSet).order_by(BotMenuSet.sort_order.desc(), BotMenuSet.id.desc()).first()
+    next_order = (last_set.sort_order + 10) if last_set else 10
+    db.add(
+        BotMenuSet(
+            title=title.strip() or "Новый набор кнопок",
+            description=description.strip() or None,
+            sort_order=next_order,
+        )
+    )
+    db.commit()
+    return RedirectResponse(url="/settings", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/settings/menu-sets/{menu_set_id}")
+def update_menu_set(
+    request: Request,
+    menu_set_id: int,
+    title: str = Form(""),
+    description: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    auth_redirect = require_auth(request)
+    if auth_redirect:
+        return auth_redirect
+    menu_set = db.get(BotMenuSet, menu_set_id)
+    if menu_set:
+        menu_set.title = title.strip() or menu_set.title
+        menu_set.description = description.strip() or None
+        db.commit()
+    return RedirectResponse(url="/settings", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/settings/menu-sets/{menu_set_id}/delete")
+def delete_menu_set(
+    request: Request,
+    menu_set_id: int,
+    db: Session = Depends(get_db),
+):
+    auth_redirect = require_auth(request)
+    if auth_redirect:
+        return auth_redirect
+    menu_set = db.get(BotMenuSet, menu_set_id)
+    if menu_set:
+        _delete_menu_set_relations(db, menu_set_id)
+        hr_settings = _get_or_create_hr_settings(db)
+        if hr_settings.default_menu_set_id == menu_set_id:
+            hr_settings.default_menu_set_id = None
+        db.delete(menu_set)
+        db.commit()
+    return RedirectResponse(url="/settings", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/settings/menu-sets/{menu_set_id}/buttons")
+def create_menu_button(
+    request: Request,
+    menu_set_id: int,
+    label: str = Form(""),
+    action_type: str = Form("inactive"),
+    scenario_key: str = Form(""),
+    target_menu_set_id: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    auth_redirect = require_auth(request)
+    if auth_redirect:
+        return auth_redirect
+    menu_set = db.get(BotMenuSet, menu_set_id)
+    if not menu_set:
+        return RedirectResponse(url="/settings", status_code=status.HTTP_303_SEE_OTHER)
+    last_button = (
+        db.query(BotMenuButton)
+        .filter(BotMenuButton.menu_set_id == menu_set_id)
+        .order_by(BotMenuButton.sort_order.desc(), BotMenuButton.id.desc())
+        .first()
+    )
+    next_order = (last_button.sort_order + 10) if last_button else 10
+    button = BotMenuButton(
+        menu_set_id=menu_set_id,
+        label=label.strip() or "Новая кнопка",
+        sort_order=next_order,
+        action_type="inactive",
+        scenario_key=None,
+        target_menu_set_id=None,
+    )
+    _apply_menu_button_payload(
+        button,
+        {
+            "label": label,
+            "action_type": action_type,
+            "scenario_key": scenario_key,
+            "target_menu_set_id": target_menu_set_id,
+        },
+    )
+    db.add(button)
+    db.commit()
+    return RedirectResponse(url="/settings", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/settings/menu-buttons/{button_id}")
+def update_menu_button(
+    request: Request,
+    button_id: int,
+    label: str = Form(""),
+    action_type: str = Form("inactive"),
+    scenario_key: str = Form(""),
+    target_menu_set_id: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    auth_redirect = require_auth(request)
+    if auth_redirect:
+        return auth_redirect
+    button = db.get(BotMenuButton, button_id)
+    if button:
+        _apply_menu_button_payload(
+            button,
+            {
+                "label": label,
+                "action_type": action_type,
+                "scenario_key": scenario_key,
+                "target_menu_set_id": target_menu_set_id,
+            },
+        )
+        db.commit()
+    return RedirectResponse(url="/settings", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/settings/menu-sets/{menu_set_id}/buttons/save")
+async def update_menu_set_buttons(
+    request: Request,
+    menu_set_id: int,
+    db: Session = Depends(get_db),
+):
+    auth_redirect = require_auth(request)
+    if auth_redirect:
+        return auth_redirect
+    menu_set = db.get(BotMenuSet, menu_set_id)
+    if not menu_set:
+        return RedirectResponse(url="/settings", status_code=status.HTTP_303_SEE_OTHER)
+
+    request_form = await request.form()
+
+    def form_list(name: str) -> list[str]:
+        return [str(value) for value in request_form.getlist(name)]
+
+    button_ids = form_list("button_id")
+    labels = form_list("label")
+    action_types = form_list("action_type")
+    scenario_keys = form_list("scenario_key")
+    target_menu_set_ids = form_list("target_menu_set_id")
+
+    for index, button_id_raw in enumerate(button_ids):
+        if not button_id_raw.strip().isdigit():
+            continue
+        button = db.get(BotMenuButton, int(button_id_raw))
+        if not button or button.menu_set_id != menu_set_id:
+            continue
+        _apply_menu_button_payload(
+            button,
+            {
+                "label": labels[index].strip() if index < len(labels) else "",
+                "action_type": action_types[index] if index < len(action_types) else "inactive",
+                "scenario_key": scenario_keys[index].strip() if index < len(scenario_keys) else "",
+                "target_menu_set_id": target_menu_set_ids[index].strip() if index < len(target_menu_set_ids) else "",
+            },
+        )
+
+    db.commit()
+    return RedirectResponse(url="/settings", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/settings/menu-buttons/save-all")
+async def update_all_menu_buttons(
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    auth_redirect = require_auth(request)
+    if auth_redirect:
+        return auth_redirect
+
+    request_form = await request.form()
+
+    def form_list(name: str) -> list[str]:
+        return [str(value) for value in request_form.getlist(name)]
+
+    button_ids = form_list("button_id")
+    labels = form_list("label")
+    action_types = form_list("action_type")
+    scenario_keys = form_list("scenario_key")
+    target_menu_set_ids = form_list("target_menu_set_id")
+
+    for index, button_id_raw in enumerate(button_ids):
+        if not button_id_raw.strip().isdigit():
+            continue
+        button = db.get(BotMenuButton, int(button_id_raw))
+        if not button:
+            continue
+        _apply_menu_button_payload(
+            button,
+            {
+                "label": labels[index].strip() if index < len(labels) else "",
+                "action_type": action_types[index] if index < len(action_types) else "inactive",
+                "scenario_key": scenario_keys[index].strip() if index < len(scenario_keys) else "",
+                "target_menu_set_id": target_menu_set_ids[index].strip() if index < len(target_menu_set_ids) else "",
+            },
+        )
+
+    db.commit()
+    return RedirectResponse(url="/settings", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/settings/menu-buttons/{button_id}/delete")
+def delete_menu_button(
+    request: Request,
+    button_id: int,
+    db: Session = Depends(get_db),
+):
+    auth_redirect = require_auth(request)
+    if auth_redirect:
+        return auth_redirect
+    button = db.get(BotMenuButton, button_id)
+    if button:
+        db.delete(button)
+        db.commit()
+    return RedirectResponse(url="/settings", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/accounts")
+def create_account(
+    request: Request,
+    login: str = Form(""),
+    password: str = Form(""),
+    role: str = Form("hr"),
+    is_active: str = Form("true"),
+    db: Session = Depends(get_db),
+):
+    admin_redirect = require_admin(request)
+    if admin_redirect:
+        return admin_redirect
+    normalized_login = login.strip()
+    existing_account = db.query(AdminAccount).filter(AdminAccount.login == normalized_login).first()
+    if normalized_login and not existing_account:
+        now = datetime.utcnow()
+        db.add(
+            AdminAccount(
+                login=normalized_login,
+                password_hash=hash_password(password or "change-me"),
+                role=role if role in ROLE_LABELS else "hr",
+                is_active=is_active == "true",
+                created_at=now,
+                updated_at=now,
+            )
+        )
+        db.commit()
+    return RedirectResponse(url="/settings", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/accounts/{account_id}")
+def update_account(
+    request: Request,
+    account_id: int,
+    login: str = Form(""),
+    password: str = Form(""),
+    role: str = Form("hr"),
+    is_active: str = Form("true"),
+    db: Session = Depends(get_db),
+):
+    admin_redirect = require_admin(request)
+    if admin_redirect:
+        return admin_redirect
+    account = db.get(AdminAccount, account_id)
+    if account:
+        account.login = login.strip() or account.login
+        account.role = role if role in ROLE_LABELS else "hr"
+        account.is_active = is_active == "true"
+        if password.strip():
+            account.password_hash = hash_password(password.strip())
+        account.updated_at = datetime.utcnow()
+        db.commit()
+    return RedirectResponse(url="/settings", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/accounts/{account_id}/delete")
+def delete_account(
+    request: Request,
+    account_id: int,
+    db: Session = Depends(get_db),
+):
+    admin_redirect = require_admin(request)
+    if admin_redirect:
+        return admin_redirect
+    current_user = getattr(request.state, "current_user", None)
+    account = db.get(AdminAccount, account_id)
+    if account and (not current_user or account.id != current_user.id):
+        db.delete(account)
+        db.commit()
+    return RedirectResponse(url="/settings", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @router.get("/settings")

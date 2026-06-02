@@ -3,14 +3,17 @@
 {% block extra_head %}
     <style>
         .main:has(#react-scenario-workspace-v2-root) {
-            padding-block: 18px 12px;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            padding-block: 24px;
         }
 
         .main > .container:has(#react-scenario-workspace-v2-root) {
             width: min(1760px, calc(100vw - var(--sidebar-width, 86px) - 32px));
             max-width: min(1760px, calc(100vw - var(--sidebar-width, 86px) - 32px));
-            height: calc(100vh - 30px);
-            max-height: calc(100vh - 30px);
+            height: min(94vh, calc(100vh - 32px));
+            max-height: min(94vh, calc(100vh - 32px));
             overflow: hidden;
             transition: width 0.28s ease, max-width 0.28s ease;
         }
@@ -18,28 +21,30 @@
         .react-page:has(#react-scenario-workspace-v2-root),
         #react-scenario-workspace-v2-root {
             height: 100%;
+            min-height: 0;
+            overflow: hidden;
+        }
+
+        #react-scenario-workspace-v2-root {
+            display: flex;
+            flex-direction: column;
         }
     </style>
 {% endblock %}
 
 {% block content %}
 <section class="react-page">
-    <div class="react-page-header" style="justify-content: flex-end;">
-        <div class="react-detail-header-actions">
-            <a href="{{ classic_list_url }}" class="btn-secondary">Классический список</a>
-        </div>
-    </div>
-
     <div
         id="react-scenario-workspace-v2-root"
         data-api-url="{{ react_api_url }}"
         data-selected-scenario-id="{{ react_selected_scenario_id }}"
-        data-classic-list-url="{{ classic_list_url }}"
         data-workspace-kind="{{ workspace_kind }}"
+        data-flash-message="{{ request.query_params.get('flash_message', '') }}"
+        data-flash-type="{{ request.query_params.get('flash_type', 'success') }}"
     ></div>
 </section>
 {% endblock %}
 
 {% block scripts %}
-    <script type="module" src="/static/workspace_v2/scenario-workspace.js?v=41"></script>
+    <script type="module" src="/static/workspace_v2/scenario-workspace.js?v=47"></script>
 {% endblock %}

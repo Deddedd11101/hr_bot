@@ -2,7 +2,6 @@ import * as React from "react";
 import {
   ArrowUpDown,
   BriefcaseBusiness,
-  ExternalLink,
   FileClock,
   LayoutGrid,
   List,
@@ -14,9 +13,18 @@ import {
   X,
 } from "lucide-react";
 
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { Skeleton } from "@/components/ui/skeleton";
 
 import {
   candidateStageCreateOptions,
@@ -95,7 +103,6 @@ export function EmployeesListPage({
   const items = payload?.items || [];
   const meta = payload?.meta;
   const payloadListKind = (meta?.list_kind || listKind) as ListKind;
-  const classicPageUrl = meta?.classic_page_url || (listKind === "candidates" ? "/candidates" : "/employees");
 
   const visibleItems = React.useMemo(() => {
     let next = items.filter((item) => {
@@ -195,25 +202,21 @@ export function EmployeesListPage({
 
   return (
     <div className="mx-auto w-full max-w-[1960px] px-1">
-      <section className="flex min-h-0 flex-col overflow-hidden rounded-[10px] border border-[var(--color-border)] bg-[var(--color-panel)] p-4 shadow-[var(--shadow-soft)]">
+      <Card className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-border bg-card p-4 shadow-none ring-0">
         <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
           <div className="flex flex-wrap gap-2">
             {listKindOptions().map((option) => {
               const active = option.value === listKind;
               return (
-                <button
+                <Button
                   key={option.value}
-                  type="button"
+                  variant={active ? "default" : "outline"}
+                  size="sm"
                   onClick={() => setListKind(option.value as ListKind)}
-                  className={`inline-flex items-center gap-2 rounded-[10px] border px-4 py-2.5 text-sm font-medium transition-all duration-200 hover:rounded-[20px] ${
-                    active
-                      ? "border-[var(--color-accent)] bg-[var(--color-panel-muted)]"
-                      : "border-[var(--color-border)] bg-white hover:bg-[var(--color-panel-muted)]"
-                  }`}
                 >
-                  {option.value === "employees" ? <Users className="size-4" /> : <FileClock className="size-4" />}
+                  {option.value === "employees" ? <Users data-icon="inline-start" /> : <FileClock data-icon="inline-start" />}
                   {option.label}
-                </button>
+                </Button>
               );
             })}
           </div>
@@ -221,14 +224,8 @@ export function EmployeesListPage({
             <MetaChip icon={<Users className="size-3.5" />} label={`${stats.total} всего`} />
             <MetaChip icon={<MessageCircle className="size-3.5" />} label={`${stats.withChannel} с каналом`} />
             <MetaChip icon={<Sparkles className="size-3.5" />} label={`${visibleItems.length} в выдаче`} />
-            <Button asChild variant="secondary" size="sm">
-              <a href={classicPageUrl}>
-                <ExternalLink className="size-4" />
-                Классическая
-              </a>
-            </Button>
             <Button size="sm" onClick={() => setCreating((prev) => !prev)}>
-              {creating ? <X className="size-4" /> : <Plus className="size-4" />}
+              {creating ? <X data-icon="inline-start" /> : <Plus data-icon="inline-start" />}
               {creating ? "Закрыть" : "Добавить"}
             </Button>
           </div>
@@ -236,13 +233,7 @@ export function EmployeesListPage({
 
         {creating ? (
           <div
-            className="mb-4 rounded-[10px] border border-[var(--color-border)] bg-[var(--color-panel-muted)] p-3 transition-all duration-200 hover:rounded-[20px]"
-            style={{
-              display: "grid",
-              gap: "12px",
-              gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-              alignItems: "end",
-            }}
+            className="mb-4 grid items-end gap-3 rounded-lg border border-border bg-muted/50 p-3 [grid-template-columns:repeat(auto-fit,minmax(180px,1fr))]"
           >
             <SinglePicker
               value={form.list_kind}
@@ -277,13 +268,18 @@ export function EmployeesListPage({
             <Button onClick={handleCreate} disabled={submitting || !form.full_name.trim()}>
               {submitting ? "Создаю..." : "Готово"}
             </Button>
-            {submitError ? <p className="md:col-span-4 text-sm text-[var(--color-danger)]">{submitError}</p> : null}
+            {submitError ? (
+              <Alert variant="destructive" className="md:col-span-4">
+                <AlertTitle>Не удалось создать запись</AlertTitle>
+                <AlertDescription>{submitError}</AlertDescription>
+              </Alert>
+            ) : null}
           </div>
         ) : null}
 
         <div className="mb-4 flex flex-wrap items-center gap-3">
           <div className="relative min-w-[280px] flex-1">
-            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[var(--color-muted-foreground)]" />
+            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               className="pl-9"
               placeholder={listKind === "candidates" ? "Поиск по кандидатам" : "Поиск по сотрудникам"}
@@ -303,64 +299,58 @@ export function EmployeesListPage({
             onChange={setSortMode}
             icon={<ArrowUpDown className="size-4 opacity-70" />}
           />
-          <div className="flex items-center gap-1 rounded-[10px] border border-[var(--color-border)] bg-white p-1">
-            <button
-              type="button"
+          <div className="flex items-center gap-1 rounded-lg border border-border bg-background p-1">
+            <Button
+              variant={viewMode === "cards" ? "secondary" : "ghost"}
+              size="icon-sm"
               onClick={() => setViewMode("cards")}
-              className={`inline-flex items-center justify-center rounded-[8px] px-3 py-2 transition-all duration-200 hover:rounded-[16px] ${
-                viewMode === "cards" ? "bg-[var(--color-panel-muted)]" : ""
-              }`}
               title="Карточки"
+              aria-label="Карточки"
             >
-              <LayoutGrid className="size-4" />
-            </button>
-            <button
-              type="button"
+              <LayoutGrid />
+            </Button>
+            <Button
+              variant={viewMode === "table" ? "secondary" : "ghost"}
+              size="icon-sm"
               onClick={() => setViewMode("table")}
-              className={`inline-flex items-center justify-center rounded-[8px] px-3 py-2 transition-all duration-200 hover:rounded-[16px] ${
-                viewMode === "table" ? "bg-[var(--color-panel-muted)]" : ""
-              }`}
               title="Таблица"
+              aria-label="Таблица"
             >
-              <List className="size-4" />
-            </button>
+              <List />
+            </Button>
           </div>
         </div>
 
-        <ScrollArea className="min-h-0 flex-1">
+        <div className="min-h-0 flex-1 overflow-auto">
           <div className="relative pr-2">
             {loading ? (
-              <div className="rounded-[10px] border border-[var(--color-border)] bg-[var(--color-panel-muted)] px-4 py-10 text-center text-sm text-[var(--color-muted-foreground)]">
-                Загружаю список…
+              <div className="grid gap-3">
+                {Array.from({ length: 5 }).map((_, index) => (
+                  <Skeleton key={index} className="h-[104px] rounded-lg" />
+                ))}
               </div>
             ) : error ? (
-              <div className="rounded-[10px] border border-[var(--color-border)] bg-[var(--color-panel-muted)] px-4 py-10 text-center text-sm text-[var(--color-danger)]">
-                {error}
-              </div>
+              <Alert variant="destructive">
+                <AlertTitle>Список не загрузился</AlertTitle>
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
             ) : visibleItems.length === 0 ? (
-              <div className="rounded-[10px] border border-[var(--color-border)] bg-[var(--color-panel-muted)] px-4 py-10 text-center text-sm text-[var(--color-muted-foreground)]">
-                {meta?.empty_message || "Список пока пуст."}
-              </div>
+              <Empty className="min-h-[220px] border border-border bg-muted/35">
+                <EmptyHeader>
+                  <EmptyMedia variant="icon">
+                    <Users />
+                  </EmptyMedia>
+                  <EmptyTitle>Нет записей</EmptyTitle>
+                  <EmptyDescription>{meta?.empty_message || "Список пока пуст."}</EmptyDescription>
+                </EmptyHeader>
+              </Empty>
             ) : (
               <div
                 className="transition-opacity duration-200"
-                style={
-                  viewMode === "cards"
-                    ? {
-                        display: "grid",
-                        gap: "12px",
-                        gridTemplateColumns: "repeat(auto-fit, minmax(420px, 1fr))",
-                        alignItems: "start",
-                      }
-                    : {
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: "10px",
-                      }
-                }
+                data-view={viewMode}
               >
                 {viewMode === "table" ? (
-                  <div className="sticky top-0 z-[1] flex items-center gap-3 rounded-[10px] border border-[var(--color-border)] bg-[var(--color-panel)] px-4 py-2 text-[0.72rem] font-semibold uppercase tracking-[0.16em] text-[var(--color-muted-foreground)] shadow-[var(--shadow-soft)]">
+                  <div className="sticky top-0 z-[1] flex items-center gap-3 rounded-lg border border-border bg-card px-4 py-2 text-[0.72rem] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
                     <div className="min-w-0 flex-[1.6]">ФИО</div>
                     <div className="min-w-0 flex-1">Статус</div>
                     <div className="min-w-0 flex-1">Канал</div>
@@ -369,14 +359,22 @@ export function EmployeesListPage({
                     <div className="w-[88px] shrink-0 text-right">Действия</div>
                   </div>
                 ) : null}
-                {visibleItems.map((item) =>
-                  viewMode === "cards" ? <EmployeeCard key={item.id} item={item} /> : <EmployeeTableRow key={item.id} item={item} />
-                )}
+                <div
+                  className={
+                    viewMode === "cards"
+                      ? "grid items-start gap-3 [grid-template-columns:repeat(auto-fit,minmax(420px,1fr))]"
+                      : "flex flex-col gap-2.5"
+                  }
+                >
+                  {visibleItems.map((item) =>
+                    viewMode === "cards" ? <EmployeeCard key={item.id} item={item} /> : <EmployeeTableRow key={item.id} item={item} />
+                  )}
+                </div>
               </div>
             )}
           </div>
-        </ScrollArea>
-      </section>
+        </div>
+      </Card>
     </div>
   );
 }

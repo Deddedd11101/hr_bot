@@ -1,6 +1,7 @@
 import React from "react";
 import { X } from "lucide-react";
 
+import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -20,10 +21,12 @@ import {
 import {
   WorkspaceCanvasSection,
   WorkspaceDetailSection,
+  WorkspaceFlashNotice,
   WorkspaceSidebarSection,
   WorkspaceStepDetailPane,
 } from "./sections";
 import type {
+  WorkspaceButtonNotification,
   Container,
   ScenarioSettingsForm,
   SingleOption,
@@ -34,9 +37,10 @@ const rootElement = document.getElementById("react-scenario-workspace-v2-root");
 
 export function ScenarioWorkspacePage() {
   const apiUrl = rootElement?.getAttribute("data-api-url") || "/api/flows/workspace";
-  const classicListUrl = rootElement?.getAttribute("data-classic-list-url") || "/flows";
   const initialScenarioId = Number(rootElement?.getAttribute("data-selected-scenario-id") || 0) || null;
   const workspaceKind = rootElement?.getAttribute("data-workspace-kind") === "survey" ? "survey" : "scenario";
+  const initialFlashMessage = rootElement?.getAttribute("data-flash-message") || "";
+  const initialFlashType = rootElement?.getAttribute("data-flash-type") || "success";
   const isSurveyWorkspace = workspaceKind === "survey";
   const itemLabel = payloadLabel(workspaceKind);
   const sidebarTitle = isSurveyWorkspace ? "Опросы" : "Сценарии";
@@ -67,6 +71,7 @@ export function ScenarioWorkspacePage() {
     notify_on_send_text: string;
     notify_on_send_recipient_ids: string;
     notify_on_send_recipient_scope: string;
+    button_notifications: WorkspaceButtonNotification[];
   }>(null);
   const [saveState, setSaveState] = React.useState({ saving: false, message: "", error: false });
   const [scenarioSettingsForm, setScenarioSettingsForm] = React.useState<ScenarioSettingsForm | null>(null);
@@ -82,8 +87,10 @@ export function ScenarioWorkspacePage() {
   const [sidebarState, setSidebarState] = React.useState({ message: "", error: false });
   const [dragScenarioId, setDragScenarioId] = React.useState<number | null>(null);
   const [dragStepId, setDragStepId] = React.useState<number | null>(null);
-  const [emojiOpen, setEmojiOpen] = React.useState(false);
   const [attachmentState, setAttachmentState] = React.useState({ uploading: false, message: "", error: false });
+  const [flashState, setFlashState] = React.useState({ message: initialFlashMessage, error: initialFlashType === "error" });
+  const exportUrl =
+    isSurveyWorkspace && payload?.workspace?.scenario?.id ? `/surveys/${payload.workspace.scenario.id}/export` : "";
 
   const currentContainer = stack[stack.length - 1] || null;
   const currentItems = currentContainer?.items || [];
@@ -244,6 +251,12 @@ export function ScenarioWorkspacePage() {
   }, [payload]);
 
   React.useEffect(() => {
+    if (sidebarState.message || saveState.message || scenarioSettingsState.message || attachmentState.message) {
+      setFlashState({ message: "", error: false });
+    }
+  }, [attachmentState.message, saveState.message, scenarioSettingsState.message, sidebarState.message]);
+
+  React.useEffect(() => {
     if (!detailTarget) {
       setForm(null);
       setAttachmentState({ uploading: false, message: "", error: false });
@@ -262,6 +275,7 @@ export function ScenarioWorkspacePage() {
       notify_on_send_text: detailTarget.notify_on_send_text || "",
       notify_on_send_recipient_ids: detailTarget.notify_on_send_recipient_ids || "",
       notify_on_send_recipient_scope: detailTarget.notify_on_send_recipient_scope || "",
+      button_notifications: detailTarget.button_notifications || [],
     });
     setSaveState({ saving: false, message: "", error: false });
     setAttachmentState({ uploading: false, message: "", error: false });
@@ -306,6 +320,7 @@ export function ScenarioWorkspacePage() {
         notify_on_send_text: form.notify_on_send_text,
         notify_on_send_recipient_ids: form.notify_on_send_recipient_ids,
         notify_on_send_recipient_scope: form.notify_on_send_recipient_scope,
+        button_notifications: form.button_notifications,
       }),
     })
       .then(async (response) => {
@@ -672,142 +687,142 @@ export function ScenarioWorkspacePage() {
   };
 
   if (loading && !payload) {
-    return <div className="rounded-[28px] border border-[var(--color-border)] bg-[var(--color-panel)] p-8 shadow-[var(--shadow-soft)]">Собираю новый workspace…</div>;
+    return <Card className="border border-border bg-card p-8 shadow-none ring-0">Собираю новый workspace…</Card>;
   }
 
   if (error) {
     return (
-      <div className="rounded-[28px] border border-[var(--color-border)] bg-[var(--color-panel)] p-8 shadow-[var(--shadow-soft)]">
-        <p className="text-sm text-[var(--color-danger)]">{error}</p>
+      <Card className="border border-border bg-card p-8 shadow-none ring-0">
+        <p className="text-sm text-destructive">{error}</p>
         <div className="mt-4">
-          <a className="inline-flex rounded-xl border border-[var(--color-border)] px-4 py-2 text-sm font-semibold" href={classicListUrl}>
-            Открыть классический список
-          </a>
+          <Button variant="secondary" onClick={() => window.location.reload()}>
+            Повторить загрузку
+          </Button>
         </div>
-      </div>
+      </Card>
     );
   }
 
   return (
-    <div
-      className="relative overflow-hidden"
-      style={{ height: "calc(100vh - 100px)", minHeight: "720px" }}
-    >
-      {loading ? (
-        <div className="pointer-events-none absolute inset-x-0 top-0 z-10 flex justify-center">
-          <div className="rounded-full border border-[var(--color-border)] bg-[var(--color-panel)]/95 px-4 py-2 text-sm font-medium text-[var(--color-muted-foreground)] shadow-sm backdrop-blur">
-            Обновляю workspace…
-          </div>
-        </div>
-      ) : null}
+    <div className="flex h-full min-h-0 flex-col gap-4">
+      <WorkspaceFlashNotice message={flashState.message} error={flashState.error} />
       <div
-        className={`h-full gap-4 transition-opacity ${loading ? "opacity-80" : "opacity-100"}`}
-        style={{ display: "grid", gridTemplateColumns: "392px minmax(0, 1fr) 488px" }}
+        className="relative min-h-0 flex-1 overflow-hidden"
       >
-      <WorkspaceSidebarSection
-        sidebarTitle={sidebarTitle}
-        isSurveyWorkspace={isSurveyWorkspace}
-        createItemLabel={createItemLabel}
-        itemNamePlaceholder={itemNamePlaceholder}
-        creatingScenario={creatingScenario}
-        newScenarioTitle={newScenarioTitle}
-        search={search}
-        scenarios={scenarios}
-        selectedScenarioId={selectedScenarioId}
-        selectedScenarioIds={selectedScenarioIds}
-        sidebarState={sidebarState}
-        onNewScenarioTitleChange={setNewScenarioTitle}
-        onCreateScenario={handleCreateScenario}
-        onOpenCreateScenario={() => setCreatingScenario(true)}
-        onCancelCreateScenario={() => {
-          setCreatingScenario(false);
-          setNewScenarioTitle("");
-        }}
-        onSearchChange={setSearch}
-        onToggleSelectAllVisibleScenarios={toggleSelectAllVisibleScenarios}
-        onBulkScenarioAction={handleBulkScenarioAction}
-        onSelectScenario={setSelectedScenarioId}
-        onScenarioDragStart={setDragScenarioId}
-        onScenarioDrop={handleScenarioDrop}
-        onScenarioDragEnd={() => setDragScenarioId(null)}
-        onToggleScenarioSelection={toggleScenarioSelection}
-      />
+        {loading ? (
+          <div className="pointer-events-none absolute inset-x-0 top-0 z-10 flex justify-center">
+            <div className="rounded-full border border-border bg-card/95 px-4 py-2 text-sm font-medium text-muted-foreground backdrop-blur">
+              Обновляю workspace…
+            </div>
+          </div>
+        ) : null}
+        <div
+          className={`grid h-full grid-cols-[392px_minmax(0,1fr)_488px] gap-4 transition-opacity ${loading ? "opacity-80" : "opacity-100"}`}
+        >
+          <WorkspaceSidebarSection
+            sidebarTitle={sidebarTitle}
+            isSurveyWorkspace={isSurveyWorkspace}
+            createItemLabel={createItemLabel}
+            itemNamePlaceholder={itemNamePlaceholder}
+            creatingScenario={creatingScenario}
+            newScenarioTitle={newScenarioTitle}
+            search={search}
+            scenarios={scenarios}
+            selectedScenarioId={selectedScenarioId}
+            selectedScenarioIds={selectedScenarioIds}
+            sidebarState={sidebarState}
+            onNewScenarioTitleChange={setNewScenarioTitle}
+            onCreateScenario={handleCreateScenario}
+            onOpenCreateScenario={() => setCreatingScenario(true)}
+            onCancelCreateScenario={() => {
+              setCreatingScenario(false);
+              setNewScenarioTitle("");
+            }}
+            onSearchChange={setSearch}
+            onToggleSelectAllVisibleScenarios={toggleSelectAllVisibleScenarios}
+            onBulkScenarioAction={handleBulkScenarioAction}
+            onSelectScenario={setSelectedScenarioId}
+            onScenarioDragStart={setDragScenarioId}
+            onScenarioDrop={handleScenarioDrop}
+            onScenarioDragEnd={() => setDragScenarioId(null)}
+            onToggleScenarioSelection={toggleScenarioSelection}
+          />
 
-      <WorkspaceCanvasSection
-        stack={stack}
-        currentContainer={currentContainer}
-        currentItems={currentItems}
-        selectedItemKey={selectedItemKey}
-        stepTitle={stepTitle}
-        itemLabel={itemLabel}
-        isSurveyWorkspace={isSurveyWorkspace}
-        payloadWorkspace={payload?.workspace}
-        scenarioSettingsForm={scenarioSettingsForm}
-        scenarioSettingsOpen={scenarioSettingsOpen}
-        scenarioSettingsState={scenarioSettingsState}
-        roleScopeOptions={roleScopeOptions}
-        employeeScopeOptions={employeeScopeOptions}
-        triggerModeOptions={triggerModeOptions}
-        targetEmployeeOptions={targetEmployeeOptions}
-        dragStepId={dragStepId}
-        onBreadcrumbClick={(index) => {
-          const next = stack.slice(0, index + 1);
-          setStack(next);
-          setSelectedItemKey(itemKey(next[next.length - 1]?.items?.[0]));
-        }}
-        onScenarioSettingsOpenChange={setScenarioSettingsOpen}
-        onSaveScenarioSettings={handleSaveScenarioSettings}
-        onScenarioSettingsFormChange={setScenarioSettingsForm}
-        onAddRootStep={handleAddRootStep}
-        onAddChainStep={handleAddChainStep}
-        onSelectItem={setSelectedItemKey}
-        onDragStepStart={setDragStepId}
-        onDragStepDrop={handleRootStepDrop}
-        onDragStepEnd={() => setDragStepId(null)}
-        onOpenItem={(item) => {
-          const nextContainer = buildChildContainer(item);
-          if (!nextContainer) return;
-          setStack((prev) => prev.concat(nextContainer));
-          setSelectedItemKey(itemKey(nextContainer.items[0]));
-        }}
-      />
+          <WorkspaceCanvasSection
+            stack={stack}
+            currentContainer={currentContainer}
+            currentItems={currentItems}
+            selectedItemKey={selectedItemKey}
+            stepTitle={stepTitle}
+            itemLabel={itemLabel}
+            isSurveyWorkspace={isSurveyWorkspace}
+            payloadWorkspace={payload?.workspace}
+            exportUrl={exportUrl}
+            scenarioSettingsForm={scenarioSettingsForm}
+            scenarioSettingsOpen={scenarioSettingsOpen}
+            scenarioSettingsState={scenarioSettingsState}
+            roleScopeOptions={roleScopeOptions}
+            employeeScopeOptions={employeeScopeOptions}
+            triggerModeOptions={triggerModeOptions}
+            targetEmployeeOptions={targetEmployeeOptions}
+            dragStepId={dragStepId}
+            onBreadcrumbClick={(index) => {
+              const next = stack.slice(0, index + 1);
+              setStack(next);
+              setSelectedItemKey(itemKey(next[next.length - 1]?.items?.[0]));
+            }}
+            onScenarioSettingsOpenChange={setScenarioSettingsOpen}
+            onSaveScenarioSettings={handleSaveScenarioSettings}
+            onScenarioSettingsFormChange={setScenarioSettingsForm}
+            onAddRootStep={handleAddRootStep}
+            onAddChainStep={handleAddChainStep}
+            onSelectItem={setSelectedItemKey}
+            onDragStepStart={setDragStepId}
+            onDragStepDrop={handleRootStepDrop}
+            onDragStepEnd={() => setDragStepId(null)}
+            onOpenItem={(item) => {
+              const nextContainer = buildChildContainer(item);
+              if (!nextContainer) return;
+              setStack((prev) => prev.concat(nextContainer));
+              setSelectedItemKey(itemKey(nextContainer.items[0]));
+            }}
+          />
 
-      <WorkspaceDetailSection>
-        <WorkspaceStepDetailPane
-          selectedItem={selectedItem}
-          detailTarget={detailTarget}
-          stepLabel={stepLabel}
-          form={form}
-          textRef={textRef}
-          fileInputRef={fileInputRef}
-          emojiOpen={emojiOpen}
-          payloadWorkspace={payload?.workspace}
-          attachmentState={attachmentState}
-          saveState={saveState}
-          openLabel={openLabel}
-          responseTypePickerOptions={responseTypePickerOptions}
-          sendModeOptions={sendModeOptions}
-          targetFieldOptions={targetFieldOptions}
-          launchScenarioOptions={launchScenarioOptions}
-          notificationScopeOptions={notificationScopeOptions}
-          onEmojiOpenChange={setEmojiOpen}
-          onInsertIntoText={insertIntoText}
-          onFormChange={setForm}
-          onCreateBranch={handleCreateBranch}
-          onAttachmentSelected={handleAttachmentSelected}
-          onDeleteAttachment={handleDeleteAttachment}
-          onDeleteCurrent={handleDeleteCurrent}
-          onOpenCurrentChild={() => {
-            const nextContainer = buildChildContainer(selectedItem);
-            if (!nextContainer) return;
-            setStack((prev) => prev.concat(nextContainer));
-            setSelectedItemKey(itemKey(nextContainer.items[0]));
-          }}
-          onSave={handleSave}
-          supportsButtonOptions={supportsButtonOptions}
-          supportsTargetField={supportsTargetField}
-        />
-      </WorkspaceDetailSection>
+          <WorkspaceDetailSection>
+            <WorkspaceStepDetailPane
+              selectedItem={selectedItem}
+              detailTarget={detailTarget}
+              stepLabel={stepLabel}
+              form={form}
+              textRef={textRef}
+              fileInputRef={fileInputRef}
+              payloadWorkspace={payload?.workspace}
+              attachmentState={attachmentState}
+              saveState={saveState}
+              openLabel={openLabel}
+              responseTypePickerOptions={responseTypePickerOptions}
+              sendModeOptions={sendModeOptions}
+              targetFieldOptions={targetFieldOptions}
+              launchScenarioOptions={launchScenarioOptions}
+              notificationScopeOptions={notificationScopeOptions}
+              onInsertIntoText={insertIntoText}
+              onFormChange={setForm}
+              onCreateBranch={handleCreateBranch}
+              onAttachmentSelected={handleAttachmentSelected}
+              onDeleteAttachment={handleDeleteAttachment}
+              onDeleteCurrent={handleDeleteCurrent}
+              onOpenCurrentChild={() => {
+                const nextContainer = buildChildContainer(selectedItem);
+                if (!nextContainer) return;
+                setStack((prev) => prev.concat(nextContainer));
+                setSelectedItemKey(itemKey(nextContainer.items[0]));
+              }}
+              onSave={handleSave}
+              supportsButtonOptions={supportsButtonOptions}
+              supportsTargetField={supportsTargetField}
+            />
+          </WorkspaceDetailSection>
+        </div>
       </div>
     </div>
   );
