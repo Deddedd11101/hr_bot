@@ -3,7 +3,6 @@ from __future__ import annotations
 import hashlib
 import hmac
 import os
-from datetime import datetime
 from typing import Optional
 
 from sqlalchemy.orm import Session
@@ -12,6 +11,7 @@ from sqlalchemy.exc import IntegrityError
 from .config import settings
 from .database import SessionLocal
 from .models import AdminAccount
+from .time_utils import utc_now
 
 
 ROLE_LABELS = {
@@ -79,9 +79,9 @@ def _ensure_account(db: Session, login: str, password: str, role: str) -> None:
     if account:
         if account.role != role:
             account.role = role
-            account.updated_at = datetime.utcnow()
+            account.updated_at = utc_now()
         return
-    now = datetime.utcnow()
+    now = utc_now()
     db.add(
         AdminAccount(
             login=login,

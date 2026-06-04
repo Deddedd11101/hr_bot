@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from datetime import datetime
 from typing import Literal, NamedTuple, Optional
 
 from sqlalchemy.orm import Session
@@ -8,6 +7,7 @@ from sqlalchemy.orm import Session
 from ..models import BotMenuButton, BotMenuSet, Employee, EmployeeFile, HrSettings, ScenarioTemplate
 from ..notifications import notify_hr_test_task_received
 from ..scenario_engine import handle_button_response_by_step_id, handle_file_response, handle_text_response, start_scenario
+from ..time_utils import utc_now
 from .base import MessengerClient
 from .identity import (
     find_employee_by_public_chat_handle,
@@ -209,7 +209,7 @@ async def save_incoming_file(
         stored_path=stored_path,
         mime_type=mime_type,
         file_size=file_size,
-        created_at=datetime.utcnow(),
+        created_at=utc_now(),
     )
     db.add(db_file)
     db.commit()

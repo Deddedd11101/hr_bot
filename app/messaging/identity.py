@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from datetime import datetime
 from typing import Optional
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from ..models import Employee, EmployeeMessengerAccount
+from ..time_utils import utc_now
 
 
 class EmployeeIdentityConflictError(ValueError):
@@ -256,7 +256,7 @@ def upsert_employee_channel_account(
         )
         .first()
     )
-    now = datetime.utcnow()
+    now = utc_now()
     if not account:
         account = EmployeeMessengerAccount(
             employee_id=employee.id,

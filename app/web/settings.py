@@ -1,16 +1,15 @@
-from datetime import datetime
-
 from sqlalchemy.orm import Session
 
 from ..auth import ROLE_LABELS
 from ..models import AdminAccount, BotMenuButton, BotMenuSet, Employee, HrSettings, ScenarioTemplate
+from ..time_utils import utc_now
 
 
 def _get_or_create_hr_settings(db: Session) -> HrSettings:
     settings_row = db.get(HrSettings, 1)
     if settings_row:
         return settings_row
-    now = datetime.utcnow()
+    now = utc_now()
     settings_row = HrSettings(
         id=1,
         hr_name=None,

@@ -22,6 +22,7 @@ from ..flow_templates import (
     TRIGGER_MODE_LABELS,
 )
 from ..models import Employee, FlowStepTemplate, ScenarioTemplate, StepButtonNotification, SurveyAnswer
+from ..time_utils import utc_now
 from .scenarios import (
     _apply_workspace_step_update,
     _build_scenario_workspace_payload,
@@ -114,7 +115,7 @@ def create_workspace_scenario_api(
             .first()
         )
         next_order = ((last_scenario.sort_order or 0) + 10) if last_scenario else 10
-        now = datetime.utcnow()
+        now = utc_now()
         scenario_key = _generate_workspace_scenario_key(kind)
 
         table_info = db.execute(text("PRAGMA table_info(scenario_templates)")).fetchall()
@@ -372,7 +373,7 @@ def create_workspace_root_step_api(
 
     step = FlowStepTemplate(
         flow_key=scenario.scenario_key,
-        step_key=f"{scenario.scenario_key}_step_{int(datetime.utcnow().timestamp())}",
+        step_key=f"{scenario.scenario_key}_step_{int(utc_now().timestamp())}",
         step_title=title,
         sort_order=next_order,
         default_text="Новый вопрос опроса." if scenario.scenario_kind == "survey" else "Новое сообщение сценария.",
@@ -537,7 +538,7 @@ def create_workspace_chain_step_api(
 
     chain_step = FlowStepTemplate(
         flow_key=parent_step.flow_key,
-        step_key=f"{parent_step.step_key}__chain_{int(datetime.utcnow().timestamp())}",
+        step_key=f"{parent_step.step_key}__chain_{int(utc_now().timestamp())}",
         parent_step_id=parent_step.id,
         branch_option_index=None,
         step_title=title,
@@ -806,7 +807,7 @@ def _create_template_entity(
         .first()
     )
     scenario = ScenarioTemplate(
-        scenario_key=f"custom_{kind}_{int(datetime.utcnow().timestamp())}",
+        scenario_key=f"custom_{kind}_{int(utc_now().timestamp())}",
         scenario_kind=kind,
         title=title.strip() or meta["new_title"],
         sort_order=(last_scenario.sort_order + 10) if last_scenario else 10,
@@ -1187,7 +1188,7 @@ async def update_scenario(
             db.add(
                 FlowStepTemplate(
                     flow_key=scenario.scenario_key,
-                    step_key=f"{scenario.scenario_key}_step_{int(datetime.utcnow().timestamp())}",
+                    step_key=f"{scenario.scenario_key}_step_{int(utc_now().timestamp())}",
                     step_title="Новый вопрос" if scenario.scenario_kind == "survey" else "Новый шаг",
                     sort_order=next_order,
                     default_text="Новое сообщение опроса." if scenario.scenario_kind == "survey" else "Новое сообщение сценария.",
@@ -1869,3 +1870,5 @@ def export_survey_results(
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f'attachment; filename=\"{filename}\"'},
     )
+
+

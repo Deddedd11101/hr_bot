@@ -15,6 +15,7 @@ from ..file_storage import build_employee_file_path
 from ..file_storage import build_employee_profile_photo_path
 from ..messaging.identity import EmployeeIdentityConflictError, get_primary_chat_id
 from ..models import Employee, EmployeeDocumentLink, EmployeeFile, FlowLaunchRequest
+from ..time_utils import utc_now
 from .employees import (
     CANDIDATE_WORK_STAGE_VALUES,
     EMPLOYEE_STAGE_VALUES,
@@ -393,7 +394,7 @@ async def upload_employee_file(
         stored_path=str(destination),
         mime_type=upload.content_type,
         file_size=len(content),
-        created_at=datetime.utcnow(),
+        created_at=utc_now(),
     )
     db.add(db_file)
     db.commit()
@@ -748,7 +749,7 @@ async def upload_employee_file_api(
         stored_path=str(destination),
         mime_type=upload.content_type,
         file_size=len(content),
-        created_at=datetime.utcnow(),
+        created_at=utc_now(),
     )
     db.add(db_file)
     db.commit()
@@ -845,3 +846,5 @@ def react_employee_edit_page(
             "list_url": "/app/employees?list_kind=candidates" if list_kind == "candidates" else "/app/employees",
         },
     )
+
+

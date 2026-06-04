@@ -11,6 +11,7 @@ from ..messaging import create_telegram_messenger
 from ..mass_targeting import build_legacy_target_statuses, serialize_target_values
 from ..models import MassMessageAction, MassScenarioAction, ScenarioTemplate
 from ..scenario_engine import start_scenario
+from ..time_utils import utc_now
 from .bulk_actions import (
     _bulk_target_recipients,
     _bulk_workspace_payload,
@@ -101,7 +102,7 @@ async def bulk_schedule_scenario(
             target_role_scope=target_role_scope,
             target_employee_id=target_employee_id,
             recipient_count=len(recipients),
-            created_at=datetime.utcnow(),
+            created_at=utc_now(),
         )
     )
     db.commit()
@@ -150,7 +151,7 @@ async def bulk_schedule_survey(
             target_role_scope=target_role_scope,
             target_employee_id=target_employee_id,
             recipient_count=len(recipients),
-            created_at=datetime.utcnow(),
+            created_at=utc_now(),
         )
     )
     db.commit()
@@ -189,8 +190,8 @@ async def bulk_launch_scenario(
             MassScenarioAction(
                 flow_key=scenario.scenario_key,
                 scenario_kind="scenario",
-                requested_at=datetime.utcnow(),
-                processed_at=datetime.utcnow(),
+                requested_at=utc_now(),
+                processed_at=utc_now(),
                 launch_type="manual",
                 target_all=target_all,
                 target_statuses=serialize_target_values(build_legacy_target_statuses(target_employee_stages, target_candidate_stages)),
@@ -199,7 +200,7 @@ async def bulk_launch_scenario(
                 target_role_scope=target_role_scope,
                 target_employee_id=target_employee_id,
                 recipient_count=started_count,
-                created_at=datetime.utcnow(),
+                created_at=utc_now(),
             )
         )
         db.commit()
@@ -249,8 +250,8 @@ async def bulk_launch_survey(
             MassScenarioAction(
                 flow_key=scenario.scenario_key,
                 scenario_kind="survey",
-                requested_at=datetime.utcnow(),
-                processed_at=datetime.utcnow(),
+                requested_at=utc_now(),
+                processed_at=utc_now(),
                 launch_type="manual",
                 target_all=target_all,
                 target_statuses=serialize_target_values(build_legacy_target_statuses(target_employee_stages, target_candidate_stages)),
@@ -259,7 +260,7 @@ async def bulk_launch_survey(
                 target_role_scope=target_role_scope,
                 target_employee_id=target_employee_id,
                 recipient_count=started_count,
-                created_at=datetime.utcnow(),
+                created_at=utc_now(),
             )
         )
         db.commit()
@@ -303,7 +304,7 @@ async def bulk_schedule_message(
             target_role_scope=target_role_scope,
             target_employee_id=target_employee_id,
             recipient_count=len(recipients),
-            created_at=datetime.utcnow(),
+            created_at=utc_now(),
         )
     )
     db.commit()
@@ -336,8 +337,8 @@ async def bulk_send_message(
         db.add(
             MassMessageAction(
                 message_text=message_text,
-                requested_at=datetime.utcnow(),
-                processed_at=datetime.utcnow(),
+                requested_at=utc_now(),
+                processed_at=utc_now(),
                 launch_type="manual",
                 target_all=target_all,
                 target_statuses=serialize_target_values(build_legacy_target_statuses(target_employee_stages, target_candidate_stages)),
@@ -346,7 +347,7 @@ async def bulk_send_message(
                 target_role_scope=target_role_scope,
                 target_employee_id=target_employee_id,
                 recipient_count=sent_count,
-                created_at=datetime.utcnow(),
+                created_at=utc_now(),
             )
         )
         db.commit()
@@ -451,7 +452,7 @@ def bulk_schedule_scenario_api(
             target_role_scope=target_role_scope,
             target_employee_id=target_employee_id,
             recipient_count=len(recipients),
-            created_at=datetime.utcnow(),
+            created_at=utc_now(),
         )
     )
     db.commit()
@@ -490,7 +491,7 @@ def bulk_schedule_survey_api(
             target_role_scope=target_role_scope,
             target_employee_id=target_employee_id,
             recipient_count=len(recipients),
-            created_at=datetime.utcnow(),
+            created_at=utc_now(),
         )
     )
     db.commit()
@@ -524,7 +525,7 @@ def bulk_schedule_message_api(
             target_role_scope=target_role_scope,
             target_employee_id=target_employee_id,
             recipient_count=len(recipients),
-            created_at=datetime.utcnow(),
+            created_at=utc_now(),
         )
     )
     db.commit()
@@ -565,8 +566,8 @@ async def bulk_launch_scenario_api(
             MassScenarioAction(
                 flow_key=scenario.scenario_key,
                 scenario_kind="scenario",
-                requested_at=datetime.utcnow(),
-                processed_at=datetime.utcnow(),
+                requested_at=utc_now(),
+                processed_at=utc_now(),
                 launch_type="manual",
                 target_all=target_all,
                 target_statuses=serialize_target_values(build_legacy_target_statuses(target_employee_stages, target_candidate_stages)),
@@ -575,7 +576,7 @@ async def bulk_launch_scenario_api(
                 target_role_scope=target_role_scope,
                 target_employee_id=target_employee_id,
                 recipient_count=started_count,
-                created_at=datetime.utcnow(),
+                created_at=utc_now(),
             )
         )
         db.commit()
@@ -620,8 +621,8 @@ async def bulk_launch_survey_api(
             MassScenarioAction(
                 flow_key=scenario.scenario_key,
                 scenario_kind="survey",
-                requested_at=datetime.utcnow(),
-                processed_at=datetime.utcnow(),
+                requested_at=utc_now(),
+                processed_at=utc_now(),
                 launch_type="manual",
                 target_all=target_all,
                 target_statuses=serialize_target_values(build_legacy_target_statuses(target_employee_stages, target_candidate_stages)),
@@ -630,7 +631,7 @@ async def bulk_launch_survey_api(
                 target_role_scope=target_role_scope,
                 target_employee_id=target_employee_id,
                 recipient_count=started_count,
-                created_at=datetime.utcnow(),
+                created_at=utc_now(),
             )
         )
         db.commit()
@@ -666,8 +667,8 @@ async def bulk_send_message_api(
         db.add(
             MassMessageAction(
                 message_text=message_text,
-                requested_at=datetime.utcnow(),
-                processed_at=datetime.utcnow(),
+                requested_at=utc_now(),
+                processed_at=utc_now(),
                 launch_type="manual",
                 target_all=target_all,
                 target_statuses=serialize_target_values(build_legacy_target_statuses(target_employee_stages, target_candidate_stages)),
@@ -676,7 +677,7 @@ async def bulk_send_message_api(
                 target_role_scope=target_role_scope,
                 target_employee_id=target_employee_id,
                 recipient_count=sent_count,
-                created_at=datetime.utcnow(),
+                created_at=utc_now(),
             )
         )
         db.commit()
@@ -715,3 +716,5 @@ def delete_bulk_message_action_api(
     db.delete(action)
     db.commit()
     return {"message": "Запланированная отправка удалена.", "payload": _bulk_workspace_payload(db)}
+
+

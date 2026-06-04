@@ -1,6 +1,6 @@
 import unittest
 from uuid import uuid4
-from datetime import datetime
+from datetime import UTC, datetime
 
 from fastapi.testclient import TestClient
 
@@ -41,8 +41,8 @@ class EmployeeApiSmokeTests(unittest.TestCase):
                 full_name="API Smoke Employee",
                 telegram_user_id=None,
                 telegram_username=None,
-                first_workday=datetime.utcnow().date(),
-                created_at=datetime.utcnow(),
+                first_workday=datetime.now(UTC).date(),
+                created_at=datetime.now(UTC).replace(tzinfo=None),
                 is_flow_scheduled=False,
                 candidate_status="new",
                 employee_stage="candidate",
@@ -722,8 +722,8 @@ class EmployeeApiSmokeTests(unittest.TestCase):
                 full_name="Existing Chat Owner",
                 telegram_user_id="777888999",
                 telegram_username="existing_owner",
-                first_workday=datetime.utcnow().date(),
-                created_at=datetime.utcnow(),
+                first_workday=datetime.now(UTC).date(),
+                created_at=datetime.now(UTC).replace(tzinfo=None),
                 is_flow_scheduled=False,
                 candidate_status="new",
                 employee_stage="candidate",
@@ -867,3 +867,4 @@ class EmployeeApiSmokeTests(unittest.TestCase):
         self.assertEqual(delete_response.status_code, 200)
         deleted_workspace = delete_response.json()
         self.assertFalse(any(item["id"] == created_menu_set["id"] for item in deleted_workspace["menu_sets"]))
+

@@ -18,7 +18,7 @@ def render_template(
     payload["request"] = request
     payload["current_user"] = getattr(request.state, "current_user", None)
     payload["role_labels"] = ROLE_LABELS
-    return templates.TemplateResponse(template_name, payload)
+    return templates.TemplateResponse(request, template_name, payload)
 
 
 def redirect_login() -> RedirectResponse:

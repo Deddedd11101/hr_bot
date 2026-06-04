@@ -17,6 +17,7 @@ from .messaging.identity import get_primary_chat_id
 from .messaging import as_messenger
 from .models import Employee, EmployeeDocumentLink, EmployeeFile, FlowLaunchRequest, FlowStepTemplate, OnboardingEvent, ScenarioProgress, ScenarioTemplate, StepButtonNotification, SurveyAnswer
 from .notifications import notify_hr_stage
+from .time_utils import utc_now
 
 
 CALLBACK_PREFIX = "scenario:"
@@ -206,12 +207,12 @@ def store_survey_answer(
             employee_id=employee.id,
             scenario_key=scenario.scenario_key,
             step_key=step.step_key,
-            answered_at=datetime.utcnow(),
+            answered_at=utc_now(),
         )
         db.add(answer)
     answer.answer_value = (answer_value or "").strip() or None
     answer.file_name = (file_name or "").strip() or None
-    answer.answered_at = datetime.utcnow()
+    answer.answered_at = utc_now()
 
 
 def apply_status_from_recruitment_choice(
@@ -244,7 +245,7 @@ def get_or_create_progress(db: Session, employee_id: int, scenario_key: str) -> 
     )
     if progress:
         return progress
-    now = datetime.utcnow()
+    now = utc_now()
     progress = ScenarioProgress(
         employee_id=employee_id,
         scenario_key=scenario_key,
@@ -261,7 +262,7 @@ def get_or_create_progress(db: Session, employee_id: int, scenario_key: str) -> 
 
 
 def reset_progress(db: Session, employee_id: int, scenario_key: str) -> ScenarioProgress:
-    now = datetime.utcnow()
+    now = utc_now()
     progress = get_or_create_progress(db, employee_id, scenario_key)
     progress.current_step_key = None
     progress.waiting_for_response = False
@@ -680,13 +681,13 @@ async def send_step(
     progress = get_or_create_progress(db, employee.id, scenario.scenario_key)
     progress.current_step_key = step.step_key
     progress.waiting_for_response = step.response_type in {"text", "file", "buttons", "branching"}
-    progress.updated_at = datetime.utcnow()
+    progress.updated_at = utc_now()
 
     db.add(
         OnboardingEvent(
             employee_id=employee.id,
-            scheduled_at=scheduled_at or datetime.utcnow(),
-            sent_at=datetime.utcnow(),
+            scheduled_at=scheduled_at or utc_now(),
+            sent_at=utc_now(),
             event_key=step.step_key,
             message=message_text,
         )
@@ -700,8 +701,8 @@ async def send_step(
         next_step = resolve_followup_step(db, scenario.scenario_key, step)
         if not next_step:
             progress.is_completed = True
-            progress.completed_at = datetime.utcnow()
-            progress.updated_at = datetime.utcnow()
+            progress.completed_at = utc_now()
+            progress.updated_at = utc_now()
             db.commit()
             try:
                 await notify_hr_stage(messenger, employee, step.step_key)
@@ -725,11 +726,11 @@ async def advance_after_response(
     messenger = as_messenger(messenger_or_bot)
     progress = get_or_create_progress(db, employee.id, scenario.scenario_key)
     progress.waiting_for_response = False
-    progress.updated_at = datetime.utcnow()
+    progress.updated_at = utc_now()
     next_step = resolve_followup_step(db, scenario.scenario_key, current_step)
     if not next_step:
         progress.is_completed = True
-        progress.completed_at = datetime.utcnow()
+        progress.completed_at = utc_now()
         db.commit()
         return
 
@@ -799,7 +800,7 @@ async def handle_button_response(messenger_or_bot: Any, db: Session, employee: E
     if step.target_field in {"personal_data_consent", "employee_data_consent"} and not getattr(employee, step.target_field):
         progress.waiting_for_response = False
         progress.is_completed = True
-        progress.completed_at = datetime.utcnow()
+        progress.completed_at = utc_now()
         db.commit()
         try:
             await notify_hr_stage(messenger, employee, "recruitment_consent_no")
@@ -823,8 +824,8 @@ async def handle_button_response(messenger_or_bot: Any, db: Session, employee: E
             if branch_step.response_type == "launch_scenario" and branch_step.launch_scenario_key:
                 progress.waiting_for_response = False
                 progress.is_completed = True
-                progress.completed_at = datetime.utcnow()
-                progress.updated_at = datetime.utcnow()
+                progress.completed_at = utc_now()
+                progress.updated_at = utc_now()
                 db.commit()
                 await start_scenario(messenger, db, employee, branch_step.launch_scenario_key)
             return True
@@ -894,3 +895,5 @@ async def start_scenario(messenger_or_bot: Any, db: Session, employee: Employee,
     db.commit()
     await send_step(messenger, db, employee, scenario, first_step)
     return True
+
+

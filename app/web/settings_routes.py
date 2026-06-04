@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from ..auth import ROLE_LABELS, hash_password
 from ..database import get_session
 from ..models import AdminAccount, BotMenuButton, BotMenuSet
+from ..time_utils import utc_now
 from .settings import (
     _apply_menu_button_payload,
     _delete_menu_set_relations,
@@ -48,7 +49,7 @@ def update_settings(
     hr_settings.notify_scenario_completed = notify_scenario_completed == "on"
     hr_settings.notify_test_task_received = notify_test_task_received == "on"
     hr_settings.notify_user_actions = notify_user_actions == "on"
-    hr_settings.updated_at = datetime.utcnow()
+    hr_settings.updated_at = utc_now()
     db.commit()
     return RedirectResponse(url="/settings", status_code=status.HTTP_303_SEE_OTHER)
 
@@ -303,7 +304,7 @@ def create_account(
     normalized_login = login.strip()
     existing_account = db.query(AdminAccount).filter(AdminAccount.login == normalized_login).first()
     if normalized_login and not existing_account:
-        now = datetime.utcnow()
+        now = utc_now()
         db.add(
             AdminAccount(
                 login=normalized_login,
@@ -338,7 +339,7 @@ def update_account(
         account.is_active = is_active == "true"
         if password.strip():
             account.password_hash = hash_password(password.strip())
-        account.updated_at = datetime.utcnow()
+        account.updated_at = utc_now()
         db.commit()
     return RedirectResponse(url="/settings", status_code=status.HTTP_303_SEE_OTHER)
 
@@ -430,7 +431,7 @@ def update_hr_settings_api(
     hr_settings.notify_scenario_completed = bool(payload.get("notify_scenario_completed"))
     hr_settings.notify_test_task_received = bool(payload.get("notify_test_task_received"))
     hr_settings.notify_user_actions = bool(payload.get("notify_user_actions"))
-    hr_settings.updated_at = datetime.utcnow()
+    hr_settings.updated_at = utc_now()
     db.commit()
     return _settings_workspace_payload(db, current_user)
 
@@ -585,7 +586,7 @@ def create_account_api(
     existing_account = db.query(AdminAccount).filter(AdminAccount.login == normalized_login).first()
     if existing_account:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Аккаунт с таким логином уже есть")
-    now = datetime.utcnow()
+    now = utc_now()
     db.add(
         AdminAccount(
             login=normalized_login,
@@ -621,7 +622,7 @@ def update_account_api(
     password = str(payload.get("password") or "").strip()
     if password:
         account.password_hash = hash_password(password)
-    account.updated_at = datetime.utcnow()
+    account.updated_at = utc_now()
     db.commit()
     return _settings_workspace_payload(db, current_user)
 
@@ -641,3 +642,5 @@ def delete_account_api(
     db.delete(account)
     db.commit()
     return _settings_workspace_payload(db, current_user)
+
+

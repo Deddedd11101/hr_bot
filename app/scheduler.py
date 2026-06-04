@@ -18,6 +18,7 @@ from .messaging import as_messenger
 from .messaging.identity import get_primary_chat_id
 from .models import Employee, FlowLaunchRequest, FlowStepTemplate, MassMessageAction, MassScenarioAction, OnboardingEvent, ScenarioTemplate
 from .scenario_engine import SINGLE_STEP_REQUEST_PREFIX, add_workdays, format_message, get_scenario_steps, get_step_by_key, matches_role_scope, scenario_anchor_date, send_step, start_scenario
+from .time_utils import utc_now
 
 
 def _get_tz():
@@ -243,7 +244,7 @@ async def schedule_all_employees(scheduler: AsyncIOScheduler, bot) -> None:
         for action in pending_mass_scenario_actions:
             scenario = db.query(ScenarioTemplate).filter(ScenarioTemplate.scenario_key == action.flow_key).first()
             if not scenario or getattr(scenario, "scenario_kind", "scenario") != getattr(action, "scenario_kind", "scenario"):
-                action.processed_at = datetime.utcnow()
+                action.processed_at = utc_now()
                 continue
             recipients = _mass_target_employees(
                 db,
@@ -264,7 +265,7 @@ async def schedule_all_employees(scheduler: AsyncIOScheduler, bot) -> None:
                 if started:
                     started_count += 1
             action.recipient_count = started_count
-            action.processed_at = datetime.utcnow()
+            action.processed_at = utc_now()
 
         pending_mass_message_actions = _load_pending_mass_message_actions(db)
         for action in pending_mass_message_actions:
@@ -282,17 +283,17 @@ async def schedule_all_employees(scheduler: AsyncIOScheduler, bot) -> None:
                 if await _send_mass_message(db, bot, employee, action.message_text, action.requested_at):
                     sent_count += 1
             action.recipient_count = sent_count
-            action.processed_at = datetime.utcnow()
+            action.processed_at = utc_now()
 
         pending_requests = _load_pending_flow_requests(db)
         for request in pending_requests:
             employee = db.get(Employee, request.employee_id)
             scenario = db.query(ScenarioTemplate).filter(ScenarioTemplate.scenario_key == request.flow_key).first()
             if not employee or not scenario:
-                request.processed_at = datetime.utcnow()
+                request.processed_at = utc_now()
                 continue
             if employee.is_bot_blocked:
-                request.processed_at = datetime.utcnow()
+                request.processed_at = utc_now()
                 continue
             if not get_primary_chat_id(employee, db=db):
                 continue
@@ -301,7 +302,7 @@ async def schedule_all_employees(scheduler: AsyncIOScheduler, bot) -> None:
                 step = get_step_by_key(db, scenario.scenario_key, step_key)
                 if step:
                     await send_step(bot, db, employee, scenario, step, scheduled_at=request.requested_at)
-                request.processed_at = datetime.utcnow()
+                request.processed_at = utc_now()
                 continue
             sent_keys = _load_sent_event_keys(db, employee.id)
             schedule_employee_scenario(
@@ -314,7 +315,9 @@ async def schedule_all_employees(scheduler: AsyncIOScheduler, bot) -> None:
                 manual=True,
                 skip_step_key=request.skip_step_key,
             )
-            request.processed_at = datetime.utcnow()
+            request.processed_at = utc_now()
 
         if employees or pending_requests:
             db.commit()
+
+

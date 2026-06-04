@@ -1,5 +1,5 @@
 import unittest
-from datetime import datetime
+from datetime import UTC, datetime
 from uuid import uuid4
 
 from app.database import SessionLocal, init_db
@@ -30,7 +30,7 @@ class P0BehaviourTests(unittest.IsolatedAsyncioTestCase):
                 telegram_user_id=None,
                 telegram_username=None,
                 first_workday=None,
-                created_at=datetime.utcnow(),
+                created_at=datetime.now(UTC).replace(tzinfo=None),
                 is_flow_scheduled=False,
                 candidate_status="new",
                 employee_stage="candidate",
@@ -41,7 +41,7 @@ class P0BehaviourTests(unittest.IsolatedAsyncioTestCase):
                 telegram_user_id=None,
                 telegram_username=None,
                 first_workday=None,
-                created_at=datetime.utcnow(),
+                created_at=datetime.now(UTC).replace(tzinfo=None),
                 is_flow_scheduled=False,
                 candidate_status="new",
                 employee_stage="candidate",
@@ -52,7 +52,7 @@ class P0BehaviourTests(unittest.IsolatedAsyncioTestCase):
                 telegram_user_id=None,
                 telegram_username=None,
                 first_workday=None,
-                created_at=datetime.utcnow(),
+                created_at=datetime.now(UTC).replace(tzinfo=None),
                 is_flow_scheduled=False,
                 candidate_status="new",
                 employee_stage="staff",
@@ -63,7 +63,7 @@ class P0BehaviourTests(unittest.IsolatedAsyncioTestCase):
                 telegram_user_id=None,
                 telegram_username=None,
                 first_workday=None,
-                created_at=datetime.utcnow(),
+                created_at=datetime.now(UTC).replace(tzinfo=None),
                 is_flow_scheduled=False,
                 is_bot_blocked=True,
                 candidate_status="new",
@@ -179,3 +179,4 @@ class P0BehaviourTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(state, "saved")
         self.assertIsNotNone(employee)
         self.assertIsNotNone(db_file)
+

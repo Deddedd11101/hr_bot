@@ -21,6 +21,7 @@ from ..messaging.identity import (
 )
 from ..models import Employee, EmployeeDocumentLink, EmployeeFile, FlowLaunchRequest, ScenarioTemplate
 from ..scenario_engine import get_first_step, get_scenario_steps, matches_role_scope, start_scenario
+from ..time_utils import utc_now
 
 OFFER_DOCUMENT_TITLE = "Оффер"
 
@@ -290,7 +291,7 @@ def _create_employee_record(
         full_name=full_name.strip() or None,
         telegram_user_id=None,
         first_workday=first_day,
-        created_at=datetime.utcnow(),
+        created_at=utc_now(),
         is_flow_scheduled=False,
         candidate_status="new",
         employee_stage=_parse_employee_stage_for_create(employee_stage, list_kind),
@@ -308,7 +309,7 @@ def _create_employee_record(
         FlowLaunchRequest(
             employee_id=employee.id,
             flow_key="recruitment_hiring",
-            requested_at=datetime.utcnow(),
+            requested_at=utc_now(),
             processed_at=None,
         )
     )
@@ -446,7 +447,7 @@ def _save_offer_document_link(db: Session, employee_id: int, url: str) -> tuple[
             employee_id=employee_id,
             title=OFFER_DOCUMENT_TITLE,
             url=url_value,
-            created_at=datetime.utcnow(),
+            created_at=utc_now(),
         )
         db.add(link_row)
     db.commit()
@@ -698,3 +699,5 @@ def _build_employee_detail_payload(db: Session, employee: Employee) -> dict:
             for launch_request in manual_launch_history
         ],
     }
+
+
