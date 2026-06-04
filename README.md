@@ -38,6 +38,7 @@
 
 - админка: `app.main:app`
 - Telegram-бот: `app.bot_runner`
+- карта документации и Obsidian vault: `docs/README.md`
 - настройки окружения: `.env`
 - пример настроек: `.env.example`
 - база данных по умолчанию: `hr_bot.db`
@@ -86,8 +87,10 @@ python -m venv .venv
 ### 3. Запустить админку
 
 ```powershell
-.\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
+
+`--reload` не является основной командой для этого проекта. Используй его только как optional dev-mode, если он стабильно работает в текущем окружении.
 
 ### 4. Запустить Telegram-бота
 
@@ -112,8 +115,10 @@ python3 -m venv .venv
 ### 3. Запустить админку
 
 ```bash
-.venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
+.venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
+
+`--reload` не является основной командой для этого проекта. Используй его только как optional dev-mode, если он стабильно работает в текущем окружении.
 
 ### 4. Запустить Telegram-бота
 

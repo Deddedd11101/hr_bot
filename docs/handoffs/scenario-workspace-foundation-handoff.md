@@ -1,4 +1,11 @@
-# Codex Handoff — 2026-04-09
+---
+title: Передача контекста по foundation scenario workspace
+date: 2026-04-09
+status: archived
+task_tokens: []
+---
+
+# Передача контекста по foundation scenario workspace
 
 Этот файл фиксирует контекст по основным изменениям за последние пару дней, чтобы можно было быстро продолжать работу без чтения длинного треда.
 
@@ -228,4 +235,3 @@ cd D:\HRBot\hr_bot
 
 - сценарии: `http://127.0.0.1:8000/app/flows/workspace-v2`
 - сотрудники: `http://127.0.0.1:8000/app/employees`
-

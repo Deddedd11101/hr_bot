@@ -8,7 +8,7 @@ task_tokens:
 
 # UI/UX-гайдлайны
 
-Документ фиксирует текущий UI-контракт для новых React-экранов. Попытка использовать отдельную `/app/ui-kit` страницу как source of truth была отменена: она не решила проблему хаоса в страницах и была удалена из runtime.
+Документ фиксирует текущий UI-контракт для новых React-экранов. Отдельная `/app/ui-kit` витрина действительно была неудачным экспериментом и удалена из runtime, но это не отменяет потребность в живом source of truth: теперь эту роль должен выполнять `/app/design-system` как baseline реальных shared primitives, page patterns и review rules.
 
 ## UI stack
 
@@ -30,31 +30,68 @@ task_tokens:
 
 ### Темная палитра
 
-- `background`: `#121212`
-- `card`, `popover`: `#1D1D1F`
-- `foreground`: `#E5E5E5`
-- `muted-foreground`: `#8E8E93`
-- `border`, `input`: `#38383A`
-- `primary`, `accent`: `#93EB05`
-- `destructive`: `#FF453A`
-- `muted` / hover surface: `#2C2C2E`
+- `background`: `#141412`
+- `card`, `popover`: `#1C1B18`
+- `foreground`: `#F5F3EF`
+- `muted`: `#252420`
+- `muted-foreground`: `#8C8880`
+- `border`, `input`: `#2E2C28`
+- `primary`: `#4AAD7A`
+- `accent`: `#113824`
+- `destructive`: `#EF4444`
 
 ### Светлая палитра
 
-- `background`: `#FFFFFF`
+- `background`: `#FAFAF9`
 - `card`, `popover`: `#FFFFFF`
-- `foreground`: `#1D1D1F`
-- `muted`: `#F5F5F7`
-- `muted-foreground`: `#6E6E73`
-- `border`, `input`: `#D8D8DC`
-- `primary`, `accent`: `#93EB05`
+- `foreground`: `#1A1916`
+- `muted`: `#F5F4F2`
+- `muted-foreground`: `#6B6963`
+- `border`, `input`: `#E8E6E1`
+- `primary`: `#339160`
+- `accent`: `#F0FAF4`
 
 ### Жесткие правила темы
 
 - `panel background` для outer wrappers всегда `transparent`.
 - Тени отключены глобально (`shadow-*` не используются как визуальный сигнал).
-- Focus ring нейтральный (`ring` не должен быть кислотно-зеленым).
+- Focus ring идет через primary palette, без случайных сторонних цветов.
 - Компоненты не должны иметь hardcoded white/black фоны вместо semantic tokens.
+- Эта палитра считается locked baseline. Не менять без явного продуктового решения.
+
+## `/app/design-system` как live baseline
+
+`/app/design-system` теперь должен быть не декоративной презентацией, а рабочим эталоном для frontend-решений.
+
+Минимальный состав baseline:
+
+- `Foundations`: semantic tokens, type scale, spacing, radius, policy по depth/shadows.
+- `Primitives`: реальные shared UI API (`Button`, `Input`, `Textarea`, `Select`, `Checkbox`, `Switch`, `Badge`, `Card`, `Table`, `Breadcrumb`, `Tabs`, `Dialog`, `Dropdown`, `Tooltip`, `Progress`, `Avatar`, `Skeleton`).
+- `Patterns`: repeatable operator layouts (`list`, `detail`, `settings`, `workspace`).
+- `Review rules`: явные anti-patterns и checklist для ручного review и будущего watchdog.
+
+Жесткое правило:
+
+- если новый экран нельзя объяснить через primitives и patterns из `/app/design-system`, это не “гибкость”, а сигнал о drift или дыре в shared API.
+
+## Shell sidebar contract
+
+Глобальный sidebar для `/app/*` страниц живет не в React component catalog, а в shell-слое:
+
+- markup: `app/templates/react_base.html`
+- styling: `app/static/react_shell.css`
+
+Это не исключение из дизайн-системы, а часть UI contract. Для shell sidebar действуют отдельные жесткие правила:
+
+- он использует ту же locked palette, что и React UI;
+- он остается структурным и нейтральным, без glossy gradients и кислотных accent-hover паттернов;
+- hover не должен менять геометрию элемента скачком;
+- active state строится через soft accent tint и border, а не через тень или агрессивный pill morph;
+- expand/collapse анимация должна быть плавной и предсказуемой, без нервного схлопывания на микродвижении курсора;
+- sidebar открывается только явным trigger, а не hover-hotzone или auto-peek логикой;
+- expanded panel всегда overlay поверх content и не имеет права сдвигать рабочую область страницы;
+- nav click не должен мгновенно схлопывать sidebar при переходе между `/app/*` страницами; выбранный раздел должен оставаться раскрытым через навигацию;
+- dark mode обязан поддерживаться на том же уровне, что и page content.
 
 ## Foundation и поведение `div`
 
@@ -113,6 +150,7 @@ task_tokens:
 - Рисовать цвета напрямую в компонентах вместо semantic tokens.
 - Возвращать тени как основной depth-механизм.
 - Использовать нестабильные кастомные `div`-паттерны вне foundation contract.
+- Превращать `/app/design-system` в оторванную showcase-страницу, которая не соответствует реальным shared компонентам.
 
 ## Связанные файлы
 

@@ -14,8 +14,16 @@ stage_copy.db
 storage/media_library/
 storage/employee_files/
 storage/scenario_step_files/
+backups/
+exports/
+stage_snapshots/
+.edge-debug/
+.tmp_pycache/
+tmp_*.png
+tmp_*.db
 
 # Editor / OS noise
 .idea/
 .vscode/
 Thumbs.db
+docs/.obsidian/
