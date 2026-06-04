@@ -643,6 +643,8 @@ async def send_step(
     auto_follow: bool = True,
 ) -> None:
     messenger = as_messenger(messenger_or_bot)
+    if employee.is_bot_blocked:
+        return
     chat_id = get_primary_chat_id(employee, db=db)
     if not chat_id:
         return
@@ -742,6 +744,8 @@ async def advance_after_response(
 
 
 async def handle_text_response(messenger_or_bot: Any, db: Session, employee: Employee, message: Message) -> bool:
+    if employee.is_bot_blocked:
+        return False
     progress = get_waiting_progress(db, employee.id)
     if not progress or not progress.current_step_key:
         return False
@@ -761,6 +765,8 @@ async def handle_text_response(messenger_or_bot: Any, db: Session, employee: Emp
 
 
 async def handle_button_response(messenger_or_bot: Any, db: Session, employee: Employee, scenario_key: str, step_key: str, option_index: int) -> bool:
+    if employee.is_bot_blocked:
+        return False
     messenger = as_messenger(messenger_or_bot)
     progress = get_waiting_progress_for_step(db, employee.id, scenario_key, step_key)
     if not progress:
@@ -852,6 +858,8 @@ async def handle_file_response(
     employee: Employee,
     uploaded_file: EmployeeFile,
 ) -> bool:
+    if employee.is_bot_blocked:
+        return False
     progress = get_waiting_progress(db, employee.id)
     if not progress or not progress.current_step_key:
         return False
@@ -874,6 +882,8 @@ async def handle_file_response(
 
 async def start_scenario(messenger_or_bot: Any, db: Session, employee: Employee, scenario_key: str) -> bool:
     messenger = as_messenger(messenger_or_bot)
+    if employee.is_bot_blocked:
+        return False
     scenario = db.query(ScenarioTemplate).filter(ScenarioTemplate.scenario_key == scenario_key).first()
     if not scenario or not matches_role_scope(employee, scenario):
         return False

@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Optional
+from typing import Literal, NamedTuple, Optional
 
 from sqlalchemy.orm import Session
 
 from ..models import BotMenuButton, BotMenuSet, Employee, EmployeeFile, HrSettings, ScenarioTemplate
-from ..notifications import notify_hr_new_employee, notify_hr_test_task_received
+from ..notifications import notify_hr_test_task_received
 from ..scenario_engine import handle_button_response_by_step_id, handle_file_response, handle_text_response, start_scenario
 from .base import MessengerClient
 from .identity import (
@@ -16,8 +16,16 @@ from .identity import (
     get_public_chat_handle,
     set_primary_chat_id,
     set_public_chat_handle,
-    sync_legacy_telegram_account,
 )
+
+
+UNKNOWN_USER_TEXT = "Ваш аккаунт пока не привязан к HR-боту. Обратитесь в HR."
+BLOCKED_USER_TEXT = "Доступ к HR-боту отключен. Обратитесь в HR."
+
+
+class InboundAccess(NamedTuple):
+    employee: Optional[Employee]
+    state: Literal["ok", "unknown", "blocked"]
 
 
 def detect_category_from_caption(caption: Optional[str]) -> str:
@@ -35,15 +43,19 @@ def detect_category_from_caption(caption: Optional[str]) -> str:
     return "candidate_file"
 
 
-async def start_registration_scenarios(messenger: MessengerClient, db: Session, employee: Employee) -> None:
-    scenarios = (
-        db.query(ScenarioTemplate)
-        .filter(ScenarioTemplate.trigger_mode == "bot_registration")
-        .order_by(ScenarioTemplate.id)
-        .all()
-    )
-    for scenario in scenarios:
-        await start_scenario(messenger, db, employee, scenario.scenario_key)
+def _sync_employee_after_inbound(db: Session, employee: Employee, chat_user_id: str, username: Optional[str]) -> None:
+    changed = False
+    if get_public_chat_handle(employee, db=db) != username:
+        set_public_chat_handle(employee, username, db=db)
+        changed = True
+    if get_primary_chat_id(employee, db=db) != chat_user_id:
+        set_primary_chat_id(employee, chat_user_id, db=db)
+        changed = True
+    if employee.is_flow_scheduled:
+        employee.is_flow_scheduled = False
+        changed = True
+    if changed:
+        db.commit()
 
 
 def default_menu_set(db: Session) -> Optional[BotMenuSet]:
@@ -89,6 +101,8 @@ async def send_menu(messenger: MessengerClient, db: Session, employee: Employee,
 
 
 async def handle_menu_button(messenger: MessengerClient, db: Session, employee: Employee, text: str) -> bool:
+    if employee.is_bot_blocked:
+        return False
     menu_set = current_menu_set(db, employee)
     if not menu_set:
         return False
@@ -128,79 +142,47 @@ async def handle_menu_button(messenger: MessengerClient, db: Session, employee: 
     return True
 
 
-def get_or_create_employee_by_chat(db: Session, chat_user_id: str, username: Optional[str]) -> tuple[Employee, bool]:
+def resolve_inbound_access(db: Session, chat_user_id: str, username: Optional[str]) -> InboundAccess:
     employee = find_employee_by_channel_user_id(db, channel="telegram", external_user_id=chat_user_id)
-    created = False
     if employee:
-        if get_public_chat_handle(employee, db=db) != username:
-            set_public_chat_handle(employee, username, db=db)
-        set_primary_chat_id(employee, chat_user_id, db=db)
-        employee.is_flow_scheduled = False
-        db.commit()
-        return employee, created
+        _sync_employee_after_inbound(db, employee, chat_user_id, username)
+        return InboundAccess(employee, "blocked" if employee.is_bot_blocked else "ok")
 
     employee = find_employee_by_public_chat_handle(db, channel="telegram", external_username=username)
     if employee:
-        set_public_chat_handle(employee, username, db=db)
-        set_primary_chat_id(employee, chat_user_id, db=db)
-        employee.is_flow_scheduled = False
-        db.commit()
-        return employee, created
-
-    employee = Employee(
-        full_name=None,
-        telegram_user_id=None,
-        telegram_username=None,
-        first_workday=None,
-        created_at=datetime.utcnow(),
-        is_flow_scheduled=False,
-        candidate_status="new",
-        employee_stage="candidate",
-        candidate_work_stage="testing",
-    )
-    set_primary_chat_id(employee, chat_user_id)
-    set_public_chat_handle(employee, username)
-    db.add(employee)
-    db.commit()
-    db.refresh(employee)
-    sync_legacy_telegram_account(db, employee)
-    db.commit()
-    created = True
-    return employee, created
+        _sync_employee_after_inbound(db, employee, chat_user_id, username)
+        return InboundAccess(employee, "blocked" if employee.is_bot_blocked else "ok")
+    return InboundAccess(None, "unknown")
 
 
-async def ensure_employee_for_chat(
-    messenger: MessengerClient,
-    db: Session,
-    chat_user_id: str,
-    username: Optional[str],
-) -> tuple[Employee, bool]:
-    employee, created = get_or_create_employee_by_chat(db, chat_user_id, username)
-    if created:
-        try:
-            await notify_hr_new_employee(messenger, employee)
-        except Exception:
-            pass
-        await start_registration_scenarios(messenger, db, employee)
-    return employee, created
+def get_or_create_employee_by_chat(db: Session, chat_user_id: str, username: Optional[str]) -> tuple[Optional[Employee], bool]:
+    access = resolve_inbound_access(db, chat_user_id, username)
+    return access.employee, False
+
+
+async def send_access_state_message(messenger: MessengerClient, chat_user_id: str, state: Literal["unknown", "blocked"]) -> None:
+    if state == "blocked":
+        await messenger.send_text(chat_id=chat_user_id, text=BLOCKED_USER_TEXT)
+        return
+    await messenger.send_text(chat_id=chat_user_id, text=UNKNOWN_USER_TEXT)
 
 
 async def handle_start_command(messenger: MessengerClient, db: Session, chat_user_id: str, username: Optional[str]) -> None:
-    employee, created = await ensure_employee_for_chat(messenger, db, chat_user_id, username)
-    if created:
-        await send_menu(messenger, db, employee, "Меню готово. Выберите действие.")
+    access = resolve_inbound_access(db, chat_user_id, username)
+    if access.state != "ok" or access.employee is None:
+        await send_access_state_message(messenger, chat_user_id, access.state)
         return
 
+    employee = access.employee
     await messenger.send_text(
         chat_id=chat_user_id,
-        text="Привет! Я HR-бот.\nЯ обновил привязку вашего Telegram и перепланировал уведомления.",
+        text="Привет! Я HR-бот.",
     )
     await send_menu(messenger, db, employee, "Меню обновлено. Выберите действие.")
 
 
-async def save_incoming_document(
+async def save_incoming_file(
     db: Session,
-    messenger: MessengerClient,
     chat_user_id: str,
     username: Optional[str],
     *,
@@ -211,8 +193,11 @@ async def save_incoming_document(
     file_size: Optional[int],
     external_file_id: Optional[str] = None,
     external_unique_id: Optional[str] = None,
-) -> tuple[Employee, EmployeeFile, bool]:
-    employee, created = await ensure_employee_for_chat(messenger, db, chat_user_id, username)
+) -> tuple[Optional[Employee], Optional[EmployeeFile], Literal["saved", "unknown", "blocked"]]:
+    access = resolve_inbound_access(db, chat_user_id, username)
+    if access.state != "ok" or access.employee is None:
+        return None, None, access.state
+    employee = access.employee
 
     db_file = EmployeeFile(
         employee_id=employee.id,
@@ -229,7 +214,7 @@ async def save_incoming_document(
     db.add(db_file)
     db.commit()
     db.refresh(db_file)
-    return employee, db_file, created
+    return employee, db_file, "saved"
 
 
 async def handle_saved_document(
@@ -252,17 +237,17 @@ async def handle_text_event(
     chat_user_id: str,
     username: Optional[str],
     text: str,
-) -> bool:
-    employee = find_employee_by_channel_user_id(db, channel="telegram", external_user_id=chat_user_id)
-    if not employee:
-        return False
-    if get_public_chat_handle(employee, db=db) != username:
-        set_public_chat_handle(employee, username, db=db)
-        db.commit()
+) -> Literal["handled", "ignored", "unknown", "blocked"]:
+    access = resolve_inbound_access(db, chat_user_id, username)
+    if access.state != "ok" or access.employee is None:
+        return access.state
+    employee = access.employee
     handled = await handle_text_response(messenger, db, employee, type("MessageStub", (), {"text": text})())
     if handled:
-        return True
-    return await handle_menu_button(messenger, db, employee, text)
+        return "handled"
+    if await handle_menu_button(messenger, db, employee, text):
+        return "handled"
+    return "ignored"
 
 
 async def handle_button_event(
@@ -272,17 +257,15 @@ async def handle_button_event(
     username: Optional[str],
     step_id: int,
     option_index: int,
-) -> Optional[bool]:
-    employee = find_employee_by_channel_user_id(db, channel="telegram", external_user_id=chat_user_id)
-    if not employee:
-        return None
-    if get_public_chat_handle(employee, db=db) != username:
-        set_public_chat_handle(employee, username, db=db)
-        db.commit()
-    return await handle_button_response_by_step_id(
+) -> Literal["handled", "ignored", "unknown", "blocked"]:
+    access = resolve_inbound_access(db, chat_user_id, username)
+    if access.state != "ok" or access.employee is None:
+        return access.state
+    handled = await handle_button_response_by_step_id(
         messenger,
         db,
-        employee,
+        access.employee,
         step_id,
         option_index,
     )
+    return "handled" if handled else "ignored"

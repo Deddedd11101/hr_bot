@@ -15,13 +15,15 @@ from .database import SessionLocal, init_db
 from .file_storage import build_employee_file_path
 from .messaging import create_telegram_messenger
 from .messaging.service import (
+    BLOCKED_USER_TEXT,
+    UNKNOWN_USER_TEXT,
     detect_category_from_caption,
-    ensure_employee_for_chat,
     handle_button_event,
     handle_saved_document,
     handle_start_command,
     handle_text_event,
-    save_incoming_document,
+    resolve_inbound_access,
+    save_incoming_file,
 )
 from .scenario_engine import CALLBACK_PREFIX
 from .scheduler import schedule_all_employees
@@ -55,14 +57,25 @@ async def on_document(message: Message, bot: Bot) -> None:
     with SessionLocal() as db:
         messenger = create_telegram_messenger(settings.TELEGRAM_BOT_TOKEN)
         username = _telegram_username(user)
-        employee, _ = await ensure_employee_for_chat(messenger, db, str(user.id), username)
+        access = resolve_inbound_access(db, str(user.id), username)
+        if access.state == "unknown":
+            await messenger.send_text(chat_id=str(user.id), text=UNKNOWN_USER_TEXT)
+            await messenger.close()
+            return
+        if access.state == "blocked":
+            await messenger.send_text(chat_id=str(user.id), text=BLOCKED_USER_TEXT)
+            await messenger.close()
+            return
+        employee = access.employee
+        if employee is None:
+            await messenger.close()
+            return
         file_info = await bot.get_file(document.file_id)
         original_name = document.file_name or f"{document.file_unique_id}.bin"
         destination = build_employee_file_path(employee.id, original_name)
         await bot.download_file(file_info.file_path, destination=destination)
-        employee, db_file, _ = await save_incoming_document(
+        employee, db_file, save_state = await save_incoming_file(
             db,
-            messenger,
             str(user.id),
             username,
             original_name=original_name,
@@ -73,12 +86,59 @@ async def on_document(message: Message, bot: Bot) -> None:
             external_file_id=document.file_id,
             external_unique_id=document.file_unique_id,
         )
+        if save_state != "saved" or employee is None or db_file is None:
+            await messenger.close()
+            return
         handled = await handle_saved_document(messenger, db, employee, db_file)
         await messenger.close()
         if handled:
             return
 
-    await message.answer("Файл получен и сохранен в вашей карточке.")
+
+async def on_photo(message: Message, bot: Bot) -> None:
+    photos = message.photo or []
+    user = message.from_user
+    if not photos or not user:
+        return
+
+    with SessionLocal() as db:
+        messenger = create_telegram_messenger(settings.TELEGRAM_BOT_TOKEN)
+        username = _telegram_username(user)
+        access = resolve_inbound_access(db, str(user.id), username)
+        if access.state == "unknown":
+            await messenger.send_text(chat_id=str(user.id), text=UNKNOWN_USER_TEXT)
+            await messenger.close()
+            return
+        if access.state == "blocked":
+            await messenger.send_text(chat_id=str(user.id), text=BLOCKED_USER_TEXT)
+            await messenger.close()
+            return
+        employee = access.employee
+        if employee is None:
+            await messenger.close()
+            return
+        photo = photos[-1]
+        file_info = await bot.get_file(photo.file_id)
+        original_name = f"{photo.file_unique_id}.jpg"
+        destination = build_employee_file_path(employee.id, original_name)
+        await bot.download_file(file_info.file_path, destination=destination)
+        employee, db_file, save_state = await save_incoming_file(
+            db,
+            str(user.id),
+            username,
+            original_name=original_name,
+            stored_path=str(destination),
+            category=detect_category_from_caption(message.caption),
+            mime_type="image/jpeg",
+            file_size=photo.file_size,
+            external_file_id=photo.file_id,
+            external_unique_id=photo.file_unique_id,
+        )
+        if save_state != "saved" or employee is None or db_file is None:
+            await messenger.close()
+            return
+        await handle_saved_document(messenger, db, employee, db_file)
+        await messenger.close()
 
 
 async def on_candidate_text(message: Message) -> None:
@@ -91,9 +151,14 @@ async def on_candidate_text(message: Message) -> None:
         username = _telegram_username(user)
         handled = await handle_text_event(messenger, db, str(user.id), username, message.text)
         await messenger.close()
-        if handled:
+        if handled == "handled":
             return
-    await message.answer("Сообщение получено. Если это ответ на шаг сценария, HR обработает его в админке.")
+        if handled == "unknown":
+            await message.answer(UNKNOWN_USER_TEXT)
+            return
+        if handled == "blocked":
+            await message.answer(BLOCKED_USER_TEXT)
+            return
 
 
 async def on_scenario_button(callback: CallbackQuery) -> None:
@@ -113,10 +178,13 @@ async def on_scenario_button(callback: CallbackQuery) -> None:
             int(option_index),
         )
         await messenger.close()
-        if handled is None:
-            await callback.answer("Карточка сотрудника не найдена.", show_alert=True)
+        if handled == "unknown":
+            await callback.answer(UNKNOWN_USER_TEXT, show_alert=True)
             return
-    if handled:
+        if handled == "blocked":
+            await callback.answer(BLOCKED_USER_TEXT, show_alert=True)
+            return
+    if handled == "handled":
         await callback.answer("Принято")
     else:
         await callback.answer()
@@ -144,6 +212,7 @@ async def main() -> None:
         lambda message: message.text is not None and not message.text.startswith("/"),
     )
     dp.message.register(on_document, lambda message: message.document is not None)
+    dp.message.register(on_photo, lambda message: bool(message.photo))
 
     scheduler = AsyncIOScheduler(timezone=settings.TIMEZONE)
     scheduler.start()

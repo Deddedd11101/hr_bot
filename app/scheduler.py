@@ -6,19 +6,18 @@ from typing import Optional
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from pytz import timezone as tz_get
-from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from .config import settings
 from .database import SessionLocal
+from .mass_targeting import (
+    deserialize_target_values,
+    mass_target_employee_query,
+)
 from .messaging import as_messenger
 from .messaging.identity import get_primary_chat_id
 from .models import Employee, FlowLaunchRequest, FlowStepTemplate, MassMessageAction, MassScenarioAction, OnboardingEvent, ScenarioTemplate
 from .scenario_engine import SINGLE_STEP_REQUEST_PREFIX, add_workdays, format_message, get_scenario_steps, get_step_by_key, matches_role_scope, scenario_anchor_date, send_step, start_scenario
-
-
-MASS_TARGET_NONE = "__none__"
-MASS_TARGET_OPTIONS = {MASS_TARGET_NONE, "candidate", "adaptation", "ipr", "staff"}
 
 
 def _get_tz():
@@ -71,52 +70,33 @@ def _load_scenarios(db: Session) -> list[ScenarioTemplate]:
     return list(db.query(ScenarioTemplate).all())
 
 
-def _deserialize_mass_target_statuses(value: Optional[str]) -> list[str]:
-    if not value:
-        return []
-    normalized: list[str] = []
-    for item in value.split(","):
-        key = item.strip()
-        if key and key in MASS_TARGET_OPTIONS and key not in normalized:
-            normalized.append(key)
-    return normalized
-
-
 def _mass_target_employees(
     db: Session,
     target_all: bool,
-    target_statuses: list[str],
+    target_employee_stages: list[str],
+    target_candidate_stages: list[str],
     target_employee_id: Optional[int] = None,
     target_role_scope: Optional[str] = None,
+    legacy_target_statuses: Optional[list[str]] = None,
 ) -> list[Employee]:
-    query = db.query(Employee)
-    if target_employee_id:
-        return query.filter(Employee.id == target_employee_id).order_by(Employee.id.asc()).all()
-    if (target_role_scope or "").strip() and target_role_scope != "all":
-        role_map = {
-            "designer": "Дизайнер",
-            "project_manager": "Project manager",
-            "analyst": "Аналитик",
-        }
-        target_position = role_map.get(target_role_scope)
-        if not target_position:
-            return []
-        return query.filter(Employee.desired_position == target_position).order_by(Employee.id.asc()).all()
-    if target_all:
-        return query.order_by(Employee.id.asc()).all()
-    if not target_statuses:
-        return []
-    conditions = []
-    for value in target_statuses:
-        if value == MASS_TARGET_NONE:
-            conditions.append(Employee.employee_stage.is_(None))
-            conditions.append(Employee.employee_stage == "")
-        else:
-            conditions.append(Employee.employee_stage == value)
-    return query.filter(or_(*conditions)).order_by(Employee.id.asc()).all()
+    return (
+        mass_target_employee_query(
+            db,
+            target_all=target_all,
+            target_employee_stages=target_employee_stages,
+            target_candidate_stages=target_candidate_stages,
+            target_employee_id=target_employee_id,
+            target_role_scope=target_role_scope,
+            legacy_target_statuses=legacy_target_statuses,
+        )
+        .order_by(Employee.id.asc())
+        .all()
+    )
 
 
 async def _send_mass_message(db: Session, bot, employee: Employee, message_text: str, requested_at: datetime) -> bool:
+    if employee.is_bot_blocked:
+        return False
     messenger = as_messenger(bot)
     chat_id = get_primary_chat_id(employee, db=db)
     if not chat_id:
@@ -164,6 +144,8 @@ async def run_scheduled_step(bot, employee_id: int, scenario_key: str, step_key:
         )
         if not employee or not scenario or not step:
             return
+        if employee.is_bot_blocked:
+            return
         if not get_primary_chat_id(employee, db=db):
             return
         await send_step(bot, db, employee, scenario, step, scheduled_at=scheduled_at)
@@ -179,6 +161,8 @@ def schedule_employee_scenario(
     manual: bool,
     skip_step_key: Optional[str] = None,
 ) -> None:
+    if employee.is_bot_blocked:
+        return
     if not matches_role_scope(employee, scenario):
         return
 
@@ -247,6 +231,8 @@ async def schedule_all_employees(scheduler: AsyncIOScheduler, bot) -> None:
         ]
 
         for employee in employees:
+            if employee.is_bot_blocked:
+                continue
             sent_keys = _load_sent_event_keys(db, employee.id)
             for scenario in scheduled_scenarios:
                 schedule_employee_scenario(db, scheduler, bot, employee, scenario, sent_keys, manual=False)
@@ -262,9 +248,11 @@ async def schedule_all_employees(scheduler: AsyncIOScheduler, bot) -> None:
             recipients = _mass_target_employees(
                 db,
                 action.target_all,
-                _deserialize_mass_target_statuses(action.target_statuses),
+                deserialize_target_values(getattr(action, "target_employee_stages", None), kind="employee"),
+                deserialize_target_values(getattr(action, "target_candidate_stages", None), kind="candidate"),
                 getattr(action, "target_employee_id", None),
                 getattr(action, "target_role_scope", None),
+                deserialize_target_values(action.target_statuses, kind="legacy"),
             )
             started_count = 0
             for employee in recipients:
@@ -283,9 +271,11 @@ async def schedule_all_employees(scheduler: AsyncIOScheduler, bot) -> None:
             recipients = _mass_target_employees(
                 db,
                 action.target_all,
-                _deserialize_mass_target_statuses(action.target_statuses),
+                deserialize_target_values(getattr(action, "target_employee_stages", None), kind="employee"),
+                deserialize_target_values(getattr(action, "target_candidate_stages", None), kind="candidate"),
                 getattr(action, "target_employee_id", None),
                 getattr(action, "target_role_scope", None),
+                deserialize_target_values(action.target_statuses, kind="legacy"),
             )
             sent_count = 0
             for employee in recipients:
@@ -299,6 +289,9 @@ async def schedule_all_employees(scheduler: AsyncIOScheduler, bot) -> None:
             employee = db.get(Employee, request.employee_id)
             scenario = db.query(ScenarioTemplate).filter(ScenarioTemplate.scenario_key == request.flow_key).first()
             if not employee or not scenario:
+                request.processed_at = datetime.utcnow()
+                continue
+            if employee.is_bot_blocked:
                 request.processed_at = datetime.utcnow()
                 continue
             if not get_primary_chat_id(employee, db=db):

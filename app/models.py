@@ -43,6 +43,9 @@ class Employee(Base):
     is_flow_scheduled: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, doc="Запланирован ли флоу первого дня."
     )
+    is_bot_blocked: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, doc="Заблокирован ли доступ сотрудника к чат-боту."
+    )
     desired_position: Mapped[Optional[str]] = mapped_column(
         String(255),
         nullable=True,
@@ -320,6 +323,8 @@ class MassScenarioAction(Base):
     launch_type: Mapped[str] = mapped_column(String(32), nullable=False, default="manual")
     target_all: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     target_statuses: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    target_employee_stages: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    target_candidate_stages: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     target_role_scope: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     target_employee_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     recipient_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
@@ -338,6 +343,8 @@ class MassMessageAction(Base):
     launch_type: Mapped[str] = mapped_column(String(32), nullable=False, default="manual")
     target_all: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     target_statuses: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    target_employee_stages: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    target_candidate_stages: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     target_role_scope: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     target_employee_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     recipient_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

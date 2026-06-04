@@ -64,6 +64,7 @@ def _ensure_sqlite_schema() -> None:
             "candidate_status": "TEXT",
             "candidate_work_stage": "TEXT",
             "employee_stage": "TEXT",
+            "is_bot_blocked": "BOOLEAN NOT NULL DEFAULT 0",
             "birth_date": "DATE",
             "manager_telegram_id": "TEXT",
             "mentor_adaptation_telegram_id": "TEXT",
@@ -129,6 +130,7 @@ def _ensure_sqlite_schema() -> None:
                         birth_date DATE,
                         created_at DATETIME NOT NULL,
                         is_flow_scheduled BOOLEAN NOT NULL,
+                        is_bot_blocked BOOLEAN NOT NULL DEFAULT 0,
                         desired_position TEXT,
                         work_email TEXT,
                         work_hours TEXT,
@@ -164,6 +166,7 @@ def _ensure_sqlite_schema() -> None:
                         birth_date,
                         created_at,
                         is_flow_scheduled,
+                        is_bot_blocked,
                         desired_position,
                         work_email,
                         work_hours,
@@ -192,6 +195,7 @@ def _ensure_sqlite_schema() -> None:
                         NULL,
                         created_at,
                         is_flow_scheduled,
+                        0,
                         desired_position,
                         NULL,
                         NULL,
@@ -473,6 +477,10 @@ def _ensure_sqlite_schema() -> None:
             conn.execute(text("ALTER TABLE mass_scenario_actions ADD COLUMN target_employee_id INTEGER"))
         if mass_scenario_columns and "target_role_scope" not in mass_scenario_columns:
             conn.execute(text("ALTER TABLE mass_scenario_actions ADD COLUMN target_role_scope TEXT"))
+        if mass_scenario_columns and "target_employee_stages" not in mass_scenario_columns:
+            conn.execute(text("ALTER TABLE mass_scenario_actions ADD COLUMN target_employee_stages TEXT"))
+        if mass_scenario_columns and "target_candidate_stages" not in mass_scenario_columns:
+            conn.execute(text("ALTER TABLE mass_scenario_actions ADD COLUMN target_candidate_stages TEXT"))
 
         mass_message_columns = {
             row[1] for row in conn.execute(text("PRAGMA table_info(mass_message_actions)")).fetchall()
@@ -484,6 +492,10 @@ def _ensure_sqlite_schema() -> None:
             conn.execute(
                 text("CREATE INDEX IF NOT EXISTS ix_bot_menu_buttons_menu_set_id ON bot_menu_buttons (menu_set_id)")
             )
+        if mass_message_columns and "target_employee_stages" not in mass_message_columns:
+            conn.execute(text("ALTER TABLE mass_message_actions ADD COLUMN target_employee_stages TEXT"))
+        if mass_message_columns and "target_candidate_stages" not in mass_message_columns:
+            conn.execute(text("ALTER TABLE mass_message_actions ADD COLUMN target_candidate_stages TEXT"))
 
         mass_scenario_actions_info = conn.execute(text("PRAGMA table_info(mass_scenario_actions)")).fetchall()
         if not mass_scenario_actions_info:
@@ -499,6 +511,8 @@ def _ensure_sqlite_schema() -> None:
                         launch_type VARCHAR(32) NOT NULL DEFAULT 'manual',
                         target_all BOOLEAN NOT NULL DEFAULT 0,
                         target_statuses VARCHAR(255),
+                        target_employee_stages VARCHAR(255),
+                        target_candidate_stages VARCHAR(255),
                         recipient_count INTEGER NOT NULL DEFAULT 0,
                         created_at DATETIME NOT NULL,
                         PRIMARY KEY (id)
@@ -525,6 +539,8 @@ def _ensure_sqlite_schema() -> None:
                         launch_type VARCHAR(32) NOT NULL DEFAULT 'manual',
                         target_all BOOLEAN NOT NULL DEFAULT 0,
                         target_statuses VARCHAR(255),
+                        target_employee_stages VARCHAR(255),
+                        target_candidate_stages VARCHAR(255),
                         recipient_count INTEGER NOT NULL DEFAULT 0,
                         created_at DATETIME NOT NULL,
                         PRIMARY KEY (id)
