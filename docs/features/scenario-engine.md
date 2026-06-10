@@ -38,9 +38,10 @@ Scenario engine превращает scenario templates плюс employee state 
 1. Найти scenario и первый step.
 2. Отрендерить step text с employee context.
 3. Отправить text, optional employee card, optional attachment и optional buttons.
-4. Сохранить progress в `scenario_progress`.
+4. Сохранить progress в `scenario_progress`, включая короткую историю предыдущих интерактивных шагов.
 5. Если user response не нужен, auto-advance к следующему step или schedule follow-up delivery.
 6. Если response нужен, ждать text/file/button input и применить result к employee state.
+7. Для активного интерактивного шага runtime поддерживает default `Назад`: для text/file это reply button, для button/branching — inline button. Откат возвращает только на предыдущий интерактивный шаг в рамках текущего незавершенного сценария.
 
 ## Известные ограничения
 
@@ -48,6 +49,7 @@ Scenario engine превращает scenario templates плюс employee state 
 - Step notifications прикреплены на уровне step, button notifications — отдельно.
 - Empty или placeholder step content может утечь в user dialog, если templates смоделированы неаккуратно.
 - Candidate и employee behavior все еще используют один engine и data model. Это удобно, но продуктово нечисто.
+- `Назад` пока не является полноценным time-travel: он не откатывает уже совершенные side effects и не resurrect'ит сценарий, который уже был terminally completed ответом вроде отказа на consent step.
 
 ## Связанная работа
 

@@ -47,6 +47,7 @@ from .models import (
 )
 from .scenario_engine import format_message, get_first_step, get_scenario_steps, matches_role_scope, start_scenario
 from .web.bulk_action_routes import router as bulk_action_router
+from .web.document_routes import router as document_router
 from .web.bulk_actions import (
     MASS_TARGET_CANDIDATE_STAGE_OPTIONS,
     MASS_TARGET_EMPLOYEE_STAGE_OPTIONS,
@@ -65,6 +66,7 @@ from .web.bulk_actions import (
     _bulk_scenario_options,
     _format_dt,
 )
+from .web.dashboard_routes import router as dashboard_router
 from .web.employee_routes import router as employee_router
 from .web.employees import (
     CANDIDATE_WORK_STAGE_VALUES,
@@ -126,6 +128,10 @@ OPENAPI_TAGS = [
         "description": "React admin API for employee and candidate lists, detail cards, files, schedules, and launches.",
     },
     {
+        "name": "Dashboard",
+        "description": "Read-only operational dashboard API for upcoming actions, fresh links, inbound files, and attention items.",
+    },
+    {
         "name": "Flows and surveys",
         "description": "React workspace API for scenario and survey metadata, steps, branching, ordering, and attachments.",
     },
@@ -136,6 +142,10 @@ OPENAPI_TAGS = [
     {
         "name": "Settings",
         "description": "React settings API for HR settings, bot menu sets, and menu buttons.",
+    },
+    {
+        "name": "Documents",
+        "description": "React document library API for shared bot files and links.",
     },
     {
         "name": "Admin accounts",
@@ -156,6 +166,8 @@ app = FastAPI(
 templates = Jinja2Templates(directory="app/templates")
 
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
+app.include_router(dashboard_router)
+app.include_router(document_router)
 app.include_router(employee_router)
 app.include_router(bulk_action_router)
 app.include_router(scenario_router)
@@ -163,6 +175,8 @@ app.include_router(settings_router)
 
 
 def _api_tag_for_path(path: str) -> str:
+    if path.startswith("/api/dashboard"):
+        return "Dashboard"
     if path.startswith("/api/employees"):
         return "Employees"
     if path.startswith("/api/flows"):
@@ -171,6 +185,8 @@ def _api_tag_for_path(path: str) -> str:
         return "Bulk actions"
     if path.startswith("/api/settings"):
         return "Settings"
+    if path.startswith("/api/documents"):
+        return "Documents"
     if path.startswith("/api/accounts"):
         return "Admin accounts"
     return "API"
@@ -242,7 +258,7 @@ def on_startup():
 @app.get("/login")
 def login_page(request: Request):
     if getattr(request.state, "current_user", None):
-        return RedirectResponse(url="/app/employees?list_kind=candidates", status_code=status.HTTP_303_SEE_OTHER)
+        return RedirectResponse(url="/app/dashboard", status_code=status.HTTP_303_SEE_OTHER)
     return _render(request, "login.html", {"error_message": None})
 
 
@@ -260,7 +276,7 @@ def login_submit(
             "login.html",
             {"error_message": "Неверный логин или пароль."},
         )
-    response = RedirectResponse(url="/app/employees?list_kind=candidates", status_code=status.HTTP_303_SEE_OTHER)
+    response = RedirectResponse(url="/app/dashboard", status_code=status.HTTP_303_SEE_OTHER)
     response.set_cookie(
         AUTH_COOKIE_NAME,
         str(account.id),
@@ -282,7 +298,7 @@ def index(request: Request):
     auth_redirect = _require_auth(request)
     if auth_redirect:
         return auth_redirect
-    return RedirectResponse(url="/app/employees?list_kind=candidates", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(url="/app/dashboard", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @app.get("/swagger", include_in_schema=False)

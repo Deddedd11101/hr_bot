@@ -11,9 +11,12 @@ from ..models import AdminAccount, BotMenuButton, BotMenuSet
 from ..time_utils import utc_now
 from .settings import (
     _apply_menu_button_payload,
+    _apply_menu_set_payload,
     _delete_menu_set_relations,
     _get_or_create_hr_settings,
+    _menu_target_conflicts,
     _settings_workspace_payload,
+    _validate_menu_button_payload_refs,
 )
 from .support import render_template, require_admin, require_api_admin, require_api_auth, require_auth
 
@@ -59,6 +62,11 @@ def create_menu_set(
     request: Request,
     title: str = Form(""),
     description: str = Form(""),
+    role_scope: str = Form("all"),
+    employee_scope: str = Form("all"),
+    target_employee_id: str = Form(""),
+    target_employee_stages: list[str] = Form([]),
+    target_candidate_stages: list[str] = Form([]),
     db: Session = Depends(get_db),
 ):
     auth_redirect = require_auth(request)
@@ -66,13 +74,24 @@ def create_menu_set(
         return auth_redirect
     last_set = db.query(BotMenuSet).order_by(BotMenuSet.sort_order.desc(), BotMenuSet.id.desc()).first()
     next_order = (last_set.sort_order + 10) if last_set else 10
-    db.add(
-        BotMenuSet(
-            title=title.strip() or "Новый набор кнопок",
-            description=description.strip() or None,
-            sort_order=next_order,
-        )
+    menu_set = BotMenuSet(
+        title=title.strip() or "Новый набор кнопок",
+        description=description.strip() or None,
+        sort_order=next_order,
     )
+    _apply_menu_set_payload(
+        menu_set,
+        {
+            "title": title,
+            "description": description,
+            "role_scope": role_scope,
+            "employee_scope": employee_scope,
+            "target_employee_id": target_employee_id,
+            "target_employee_stages": target_employee_stages,
+            "target_candidate_stages": target_candidate_stages,
+        },
+    )
+    db.add(menu_set)
     db.commit()
     return RedirectResponse(url="/settings", status_code=status.HTTP_303_SEE_OTHER)
 
@@ -83,6 +102,11 @@ def update_menu_set(
     menu_set_id: int,
     title: str = Form(""),
     description: str = Form(""),
+    role_scope: str = Form("all"),
+    employee_scope: str = Form("all"),
+    target_employee_id: str = Form(""),
+    target_employee_stages: list[str] = Form([]),
+    target_candidate_stages: list[str] = Form([]),
     db: Session = Depends(get_db),
 ):
     auth_redirect = require_auth(request)
@@ -90,8 +114,18 @@ def update_menu_set(
         return auth_redirect
     menu_set = db.get(BotMenuSet, menu_set_id)
     if menu_set:
-        menu_set.title = title.strip() or menu_set.title
-        menu_set.description = description.strip() or None
+        _apply_menu_set_payload(
+            menu_set,
+            {
+                "title": title,
+                "description": description,
+                "role_scope": role_scope,
+                "employee_scope": employee_scope,
+                "target_employee_id": target_employee_id,
+                "target_employee_stages": target_employee_stages,
+                "target_candidate_stages": target_candidate_stages,
+            },
+        )
         db.commit()
     return RedirectResponse(url="/settings", status_code=status.HTTP_303_SEE_OTHER)
 
@@ -386,6 +420,30 @@ def react_settings_page(request: Request):
     )
 
 
+@router.get("/bot-menu")
+def bot_menu_page(request: Request):
+    auth_redirect = require_auth(request)
+    if auth_redirect:
+        return auth_redirect
+    return RedirectResponse(url="/app/bot-menu", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.get("/app/bot-menu")
+def react_bot_menu_page(request: Request):
+    auth_redirect = require_auth(request)
+    if auth_redirect:
+        return auth_redirect
+    return render_template(
+        request,
+        templates,
+        "react_bot_menu.html",
+        {
+            "active_tab": "bot_menu",
+            "react_api_url": "/api/settings/workspace",
+        },
+    )
+
+
 @router.get("/design-system")
 def design_system_page(request: Request):
     auth_redirect = require_auth(request)
@@ -443,15 +501,26 @@ def create_menu_set_api(
     db: Session = Depends(get_db),
 ):
     current_user = require_api_auth(request)
+    target_employee_ids = [
+        int(str(value))
+        for value in payload.get("target_employee_ids") or []
+        if str(value or "").isdigit()
+    ]
+    conflicts = _menu_target_conflicts(db, None, target_employee_ids)
+    if conflicts:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Некоторые сотрудники или кандидаты уже привязаны к другим наборам меню.",
+        )
     last_set = db.query(BotMenuSet).order_by(BotMenuSet.sort_order.desc(), BotMenuSet.id.desc()).first()
     next_order = (last_set.sort_order + 10) if last_set else 10
-    db.add(
-        BotMenuSet(
-            title=str(payload.get("title") or "").strip() or "Новый набор кнопок",
-            description=str(payload.get("description") or "").strip() or None,
-            sort_order=next_order,
-        )
+    menu_set = BotMenuSet(
+        title=str(payload.get("title") or "").strip() or "Новый набор кнопок",
+        description=str(payload.get("description") or "").strip() or None,
+        sort_order=next_order,
     )
+    _apply_menu_set_payload(menu_set, payload)
+    db.add(menu_set)
     db.commit()
     return _settings_workspace_payload(db, current_user)
 
@@ -467,8 +536,18 @@ def update_menu_set_api(
     menu_set = db.get(BotMenuSet, menu_set_id)
     if not menu_set:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Набор кнопок не найден")
-    menu_set.title = str(payload.get("title") or "").strip() or menu_set.title
-    menu_set.description = str(payload.get("description") or "").strip() or None
+    target_employee_ids = [
+        int(str(value))
+        for value in payload.get("target_employee_ids") or []
+        if str(value or "").isdigit()
+    ]
+    conflicts = _menu_target_conflicts(db, menu_set_id, target_employee_ids)
+    if conflicts:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Некоторые сотрудники или кандидаты уже привязаны к другим наборам меню.",
+        )
+    _apply_menu_set_payload(menu_set, payload)
     db.commit()
     return _settings_workspace_payload(db, current_user)
 
@@ -519,6 +598,9 @@ def create_menu_button_api(
         target_menu_set_id=None,
     )
     _apply_menu_button_payload(button, payload)
+    validation_error = _validate_menu_button_payload_refs(db, button)
+    if validation_error:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=validation_error)
     db.add(button)
     db.commit()
     return _settings_workspace_payload(db, current_user)
@@ -536,6 +618,9 @@ def update_menu_button_api(
     if not button:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Кнопка не найдена")
     _apply_menu_button_payload(button, payload)
+    validation_error = _validate_menu_button_payload_refs(db, button)
+    if validation_error:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=validation_error)
     db.commit()
     return _settings_workspace_payload(db, current_user)
 
@@ -554,6 +639,9 @@ def update_menu_buttons_bulk_api(
         button = db.get(BotMenuButton, int(button_id))
         if button:
             _apply_menu_button_payload(button, item)
+            validation_error = _validate_menu_button_payload_refs(db, button)
+            if validation_error:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=validation_error)
     db.commit()
     return _settings_workspace_payload(db, current_user)
 

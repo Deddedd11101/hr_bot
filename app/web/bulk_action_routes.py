@@ -688,19 +688,42 @@ async def bulk_send_message_api(
     return {"message": f"Сообщение отправлено {sent_count} получателям.", "payload": _bulk_workspace_payload(db)}
 
 
+def _delete_scheduled_mass_scenario_action(
+    request: Request,
+    action_id: int,
+    expected_kind: str | None,
+    db: Session,
+):
+    require_api_auth(request)
+    action = db.get(MassScenarioAction, action_id)
+    if (
+        not action
+        or action.launch_type != "scheduled"
+        or action.processed_at is not None
+        or (expected_kind and action.scenario_kind != expected_kind)
+    ):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Запланированный запуск не найден")
+    db.delete(action)
+    db.commit()
+    return {"message": "Запланированный запуск удален.", "payload": _bulk_workspace_payload(db)}
+
+
 @router.delete("/api/bulk-actions/scenarios/{action_id}")
 def delete_bulk_scenario_action_api(
     request: Request,
     action_id: int,
     db: Session = Depends(get_db),
 ):
-    require_api_auth(request)
-    action = db.get(MassScenarioAction, action_id)
-    if not action or action.launch_type != "scheduled" or action.processed_at is not None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Запланированный запуск не найден")
-    db.delete(action)
-    db.commit()
-    return {"message": "Запланированный запуск удален.", "payload": _bulk_workspace_payload(db)}
+    return _delete_scheduled_mass_scenario_action(request, action_id, "scenario", db)
+
+
+@router.delete("/api/bulk-actions/surveys/{action_id}")
+def delete_bulk_survey_action_api(
+    request: Request,
+    action_id: int,
+    db: Session = Depends(get_db),
+):
+    return _delete_scheduled_mass_scenario_action(request, action_id, "survey", db)
 
 
 @router.delete("/api/bulk-actions/messages/{action_id}")

@@ -38,6 +38,7 @@ from .scenarios import (
     _save_step_attachment,
     _sync_button_notification,
     _sync_workspace_button_notifications,
+    _sync_workspace_step_send_notifications,
     _delete_step_tree,
     _workspace_item_label,
     _workspace_node_kind,
@@ -335,12 +336,13 @@ def update_workspace_step_api(
     if not scenario:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Сценарий не найден")
 
-    _apply_workspace_step_update(step, payload)
-    _sync_workspace_button_notifications(db, step, payload)
+    _apply_workspace_step_update(step, payload, scenario.scenario_kind)
+    _sync_workspace_button_notifications(db, step, payload, scenario.scenario_kind)
+    _sync_workspace_step_send_notifications(db, step, payload, scenario.scenario_kind)
     db.commit()
 
     return {
-        "message": "Шаг сохранён",
+        "message": "Вопрос сохранён" if scenario.scenario_kind == "survey" else "Шаг сохранён",
         "payload": _build_scenario_workspace_payload(db, scenario.id, kind=scenario.scenario_kind),
         "step_id": step.id,
     }
@@ -376,9 +378,9 @@ def create_workspace_root_step_api(
         step_key=f"{scenario.scenario_key}_step_{int(utc_now().timestamp())}",
         step_title=title,
         sort_order=next_order,
-        default_text="Новый вопрос опроса." if scenario.scenario_kind == "survey" else "Новое сообщение сценария.",
+        default_text="Новый вопрос" if scenario.scenario_kind == "survey" else "Новое сообщение сценария.",
         custom_text=None,
-        response_type="none",
+        response_type="text" if scenario.scenario_kind == "survey" else "none",
         button_options=None,
         send_mode="immediate",
         send_time=None,
@@ -1822,44 +1824,28 @@ def export_survey_results(
     workbook = Workbook()
     sheet = workbook.active
     sheet.title = "Результаты"
-    columns = ["ID сотрудника", "ФИО", "Telegram", "Username"]
-    step_columns = []
+    step_labels: dict[str, str] = {}
     for step in steps:
         label = (step.custom_text if step.custom_text is not None else step.default_text or "").strip()
         if not label:
             label = (step.step_title or step.step_key).strip() or step.step_key
         label = " ".join(label.split())
-        if len(label) > 120:
-            label = f"{label[:117]}..."
-        if step.parent_step_id:
-            label = f"{label} ({step.step_key})"
-        step_columns.append((step.step_key, label))
-    sheet.append(columns + [label for _, label in step_columns])
+        if len(label) > 240:
+            label = f"{label[:237]}..."
+        step_labels[step.step_key] = label
 
-    employee_ids = sorted({answer.employee_id for answer in answers})
-    answer_map: dict[tuple[int, str], SurveyAnswer] = {}
+    sheet.append(["Пользователь ФИО", "Вопрос", "Ответ"])
+
     for answer in answers:
-        answer_map[(answer.employee_id, answer.step_key)] = answer
-
-    for employee_id in employee_ids:
-        employee = db.get(Employee, employee_id)
+        employee = db.get(Employee, answer.employee_id)
         if not employee:
             continue
-        row = [
-            employee.id,
+        answer_value = answer.file_name or answer.answer_value or ""
+        sheet.append([
             employee.full_name or "",
-            employee.telegram_user_id or "",
-            getattr(employee, "telegram_username", None) or "",
-        ]
-        for step_key, _label in step_columns:
-            answer = answer_map.get((employee.id, step_key))
-            if not answer:
-                row.append("")
-            elif answer.file_name:
-                row.append(answer.file_name)
-            else:
-                row.append(answer.answer_value or "")
-        sheet.append(row)
+            step_labels.get(answer.step_key, answer.step_key),
+            answer_value,
+        ])
 
     output = BytesIO()
     workbook.save(output)

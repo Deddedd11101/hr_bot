@@ -20,7 +20,7 @@ from ..messaging.identity import (
     sync_legacy_telegram_account,
 )
 from ..models import Employee, EmployeeDocumentLink, EmployeeFile, FlowLaunchRequest, ScenarioTemplate
-from ..scenario_engine import get_first_step, get_scenario_steps, matches_role_scope, start_scenario
+from ..scenario_engine import add_workdays, get_first_step, get_scenario_steps, matches_role_scope, start_scenario
 from ..time_utils import utc_now
 
 OFFER_DOCUMENT_TITLE = "Оффер"
@@ -160,6 +160,58 @@ def _all_employee_options(db: Session) -> list[dict]:
         }
         for employee in employees
     ]
+
+
+def _staff_employee_options(db: Session, current_employee_id: int | None = None) -> list[dict]:
+    employees = (
+        db.query(Employee)
+        .filter(Employee.employee_stage == "staff")
+        .order_by(Employee.full_name.asc(), Employee.id.asc())
+        .all()
+    )
+    return [
+        {
+            "value": str(employee.id),
+            "label": _employee_display_name(employee),
+        }
+        for employee in employees
+        if current_employee_id is None or employee.id != current_employee_id
+    ]
+
+
+def _parse_optional_date(value: str) -> date | None:
+    normalized = (value or "").strip()
+    return datetime.strptime(normalized, "%Y-%m-%d").date() if normalized else None
+
+
+def _parse_optional_int(value: str) -> int | None:
+    normalized = (value or "").strip()
+    if not normalized:
+        return None
+    try:
+        parsed = int(normalized)
+    except ValueError:
+        return None
+    return parsed if parsed > 0 else None
+
+
+def _resolve_staff_employee_reference(
+    db: Session,
+    *,
+    employee: Employee,
+    related_employee_id: int | None,
+    field_title: str,
+) -> Employee | None:
+    if related_employee_id is None:
+        return None
+    if employee.id is not None and related_employee_id == employee.id:
+        raise ValueError(f"{field_title} не может совпадать с текущим сотрудником.")
+    related_employee = db.get(Employee, related_employee_id)
+    if not related_employee:
+        raise ValueError(f"{field_title} не найден в базе сотрудников.")
+    if (related_employee.employee_stage or "").strip() != "staff":
+        raise ValueError(f"{field_title} должен быть выбран из сотрудников в штате.")
+    return related_employee
 
 
 def _available_scenarios_for_employee(db: Session, employee: Employee) -> list[ScenarioTemplate]:
@@ -330,9 +382,13 @@ def _apply_employee_update(
     birth_date: str,
     work_email: str,
     work_hours: str,
-    manager_chat_id: str,
-    mentor_adaptation_chat_id: str,
-    mentor_ipr_chat_id: str,
+    manager_employee_id: str,
+    mentor_adaptation_employee_id: str,
+    mentor_ipr_employee_id: str,
+    adaptation_tasks_url: str,
+    adaptation_feedback_url: str,
+    adaptation_midpoint: str,
+    adaptation_end: str,
     employee_stage: str,
     candidate_work_stage: str,
     salary_expectation: str,
@@ -343,8 +399,8 @@ def _apply_employee_update(
     notes: str,
 ) -> Employee:
     is_candidate = _employee_list_kind(employee) == "candidates"
-    first_day = datetime.strptime(first_workday, "%Y-%m-%d").date() if first_workday else None
-    parsed_birth_date = datetime.strptime(birth_date, "%Y-%m-%d").date() if birth_date else None
+    first_day = _parse_optional_date(first_workday)
+    parsed_birth_date = _parse_optional_date(birth_date)
 
     employee.full_name = full_name.strip() or None
     _apply_employee_telegram_identity(employee, chat_id=chat_id, chat_handle=chat_handle, db=db)
@@ -368,12 +424,39 @@ def _apply_employee_update(
             else None
         )
     else:
+        manager_employee = _resolve_staff_employee_reference(
+            db,
+            employee=employee,
+            related_employee_id=_parse_optional_int(manager_employee_id),
+            field_title="Руководитель сотрудника",
+        )
+        mentor_adaptation_employee = _resolve_staff_employee_reference(
+            db,
+            employee=employee,
+            related_employee_id=_parse_optional_int(mentor_adaptation_employee_id),
+            field_title="Наставник адаптации",
+        )
+        mentor_ipr_employee = _resolve_staff_employee_reference(
+            db,
+            employee=employee,
+            related_employee_id=_parse_optional_int(mentor_ipr_employee_id),
+            field_title="Наставник ИПР",
+        )
         employee.birth_date = parsed_birth_date
         employee.work_email = work_email.strip() or None
         employee.work_hours = work_hours.strip() or None
-        employee.manager_telegram_id = manager_chat_id.strip() or None
-        employee.mentor_adaptation_telegram_id = mentor_adaptation_chat_id.strip() or None
-        employee.mentor_ipr_telegram_id = mentor_ipr_chat_id.strip() or None
+        employee.manager_employee_id = manager_employee.id if manager_employee else None
+        employee.mentor_adaptation_employee_id = mentor_adaptation_employee.id if mentor_adaptation_employee else None
+        employee.mentor_ipr_employee_id = mentor_ipr_employee.id if mentor_ipr_employee else None
+        employee.manager_telegram_id = get_primary_chat_id(manager_employee, db=db) if manager_employee else None
+        employee.mentor_adaptation_telegram_id = (
+            get_primary_chat_id(mentor_adaptation_employee, db=db) if mentor_adaptation_employee else None
+        )
+        employee.mentor_ipr_telegram_id = get_primary_chat_id(mentor_ipr_employee, db=db) if mentor_ipr_employee else None
+        employee.adaptation_tasks_url = adaptation_tasks_url.strip() or None
+        employee.adaptation_feedback_url = adaptation_feedback_url.strip() or None
+        employee.adaptation_midpoint = _parse_optional_date(adaptation_midpoint)
+        employee.adaptation_end = _parse_optional_date(adaptation_end)
         normalized_stage = employee_stage.strip()
         employee.employee_stage = normalized_stage if normalized_stage in EMPLOYEE_STAGE_VALUES else None
         employee.employee_data_consent = employee_data_consent
@@ -394,6 +477,7 @@ def _serialize_employee_file(file_row: EmployeeFile, employee_id: int, can_send_
         "created_at_label": file_row.created_at.strftime("%d.%m.%Y %H:%M") if file_row.created_at else "—",
         "download_url": f"/employees/{employee_id}/files/{file_row.id}/download",
         "send_url": f"/employees/{employee_id}/files/{file_row.id}/send",
+        "delete_url": f"/api/employees/{employee_id}/files/{file_row.id}",
         "can_send_to_channel": can_send_to_channel,
     }
 
@@ -479,6 +563,25 @@ def _delete_employee_record(db: Session, employee: Employee) -> str:
     db.delete(employee)
     db.commit()
     return redirect_url
+
+
+def _promote_candidate_to_adaptation(db: Session, employee: Employee) -> Employee:
+    normalized_stage = (employee.employee_stage or "").strip()
+    if normalized_stage != "candidate":
+        raise ValueError("В адаптацию можно перевести только кандидата.")
+    if not employee.first_workday:
+        raise ValueError("Для перевода в адаптацию сначала укажите первый день сотрудника.")
+
+    employee.employee_stage = "adaptation"
+    employee.candidate_work_stage = None
+    employee.current_menu_set_id = None
+    if employee.adaptation_midpoint is None:
+        employee.adaptation_midpoint = add_workdays(employee.first_workday, settings.PROBATION_WORKDAYS // 2)
+    if employee.adaptation_end is None:
+        employee.adaptation_end = add_workdays(employee.first_workday, settings.PROBATION_WORKDAYS)
+    db.commit()
+    db.refresh(employee)
+    return employee
 
 
 def _schedule_employee_flow_request(
@@ -662,9 +765,13 @@ def _build_employee_detail_payload(db: Session, employee: Employee) -> dict:
             "birth_date": employee.birth_date.isoformat() if employee.birth_date else "",
             "work_email": employee.work_email or "",
             "work_hours": employee.work_hours or "",
-            "manager_chat_id": employee.manager_telegram_id or "",
-            "mentor_adaptation_chat_id": employee.mentor_adaptation_telegram_id or "",
-            "mentor_ipr_chat_id": employee.mentor_ipr_telegram_id or "",
+            "manager_employee_id": str(employee.manager_employee_id or ""),
+            "mentor_adaptation_employee_id": str(employee.mentor_adaptation_employee_id or ""),
+            "mentor_ipr_employee_id": str(employee.mentor_ipr_employee_id or ""),
+            "adaptation_tasks_url": employee.adaptation_tasks_url or "",
+            "adaptation_feedback_url": employee.adaptation_feedback_url or "",
+            "adaptation_midpoint": employee.adaptation_midpoint.isoformat() if employee.adaptation_midpoint else "",
+            "adaptation_end": employee.adaptation_end.isoformat() if employee.adaptation_end else "",
             "employee_stage": employee.employee_stage or "",
             "candidate_work_stage": employee.candidate_work_stage or "",
             "salary_expectation": employee.salary_expectation or "",
@@ -686,6 +793,7 @@ def _build_employee_detail_payload(db: Session, employee: Employee) -> dict:
                 {"value": value, "label": label}
                 for value, label in CANDIDATE_WORK_STAGE_VALUES.items()
             ],
+            "staff_employee_values": _staff_employee_options(db, employee.id),
             "scenarios": [{"value": scenario.scenario_key, "label": scenario.title} for scenario in scenarios],
         },
         "files": [_serialize_employee_file(file_row, employee.id, bool(primary_chat_id)) for file_row in employee_files],

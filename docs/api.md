@@ -30,7 +30,7 @@ source_of_truth: true
 - Raw OpenAPI schema доступна на `/openapi.json`.
 - Схема намеренно ограничена JSON API routes с prefix `/api/*`.
 - Browser surfaces, React bootstrap pages, redirects, classic form handlers, download/export routes и `/login` не включаются в Swagger; их source of truth остается [[web-surface]].
-- API routes группируются по доменным тегам: `Employees`, `Flows and surveys`, `Bulk actions`, `Settings`, `Admin accounts`.
+- API routes группируются по доменным тегам: `Dashboard`, `Employees`, `Flows and surveys`, `Bulk actions`, `Settings`, `Admin accounts`.
 - Swagger UI настроен на collapsed sections, включает client-side filter и сохраняет authorization state в браузере.
 
 Это осознанная граница: Swagger должен быть контрактом для React/admin API и интеграционных проверок, а не полной картой всех HTTP URL приложения.
@@ -46,6 +46,31 @@ source_of_truth: true
 - Account management routes дополнительно проходят `_require_api_admin()` и возвращают `403`, если текущий account не `admin`.
 
 ## Общие формы ответов
+
+### Payload dashboard workspace
+
+Возвращается из `GET /api/dashboard/workspace`.
+
+- `meta`
+  - `recent_days`
+  - `upcoming_days`
+  - `stat_upcoming_days`
+  - `generated_at`
+- `stats`
+  - `candidates_without_channel`
+  - `recent_telegram_links`
+  - `recent_inbound_files`
+  - `scheduled_next_7_days`
+- `upcoming_events`
+  - normalized individual scenario launches, mass scenario/survey launches and mass messages
+- `telegram_links`
+  - свежие active Telegram-привязки кандидатов
+- `inbound_files`
+  - свежие inbound employee files
+- `attention_items`
+  - записи без канала, просроченные тестовые и blocked bot state
+- `module_links`
+  - быстрые переходы в существующие operator modules
 
 ### Ответ списка сотрудников
 
@@ -146,6 +171,12 @@ source_of_truth: true
 - `scheduled_message_actions`
 - `manual_message_history`
 
+## API dashboard workspace
+
+| Method | Path | Назначение | Основные inputs | Response | Side effects | Частые errors |
+| --- | --- | --- | --- | --- | --- | --- |
+| `GET` | `/api/dashboard/workspace` | Вернуть read-only payload главного оперативного дашборда. | Нет | Dashboard workspace payload | Нет | `401` |
+
 ## API списка и карточки сотрудников
 
 | Method | Path | Назначение | Основные inputs | Response | Side effects | Частые errors |
@@ -153,7 +184,8 @@ source_of_truth: true
 | `GET` | `/api/employees` | Вернуть React-list сотрудников или кандидатов. | Query: `list_kind=employees|candidates` | Employee list response с `items[]` | Нет | `401` |
 | `POST` | `/api/employees` | Создать карточку сотрудника или кандидата. | JSON: `full_name`, `chat_id`, `chat_handle`, `first_workday`, `employee_stage`, `candidate_work_stage`, `list_kind` | Employee list response с созданным `item` | Создает `employees`, sync messenger identity, создает pending `flow_launch_requests` для `recruitment_hiring` | `401`, `409` при messenger identity conflict, не нормализованный `500` при malformed date |
 | `GET` | `/api/employees/{employee_id}` | Вернуть полный employee detail payload. | Path: `employee_id` | Employee detail payload | Нет | `401`, `404` если employee не найден |
-| `POST` | `/api/employees/{employee_id}` | Обновить карточку сотрудника или кандидата из React. | JSON fields: `full_name`, `chat_id`, `chat_handle`, `first_workday`, `desired_position`, `birth_date`, `work_email`, `work_hours`, `manager_chat_id`, `mentor_adaptation_chat_id`, `mentor_ipr_chat_id`, `employee_stage`, `candidate_work_stage`, `salary_expectation`, `personal_data_consent`, `employee_data_consent`, `is_bot_blocked`, `test_task_due_at`, `notes` | Employee detail payload | Обновляет `employees`, sync messenger identity | `401`, `404`, `409` при messenger identity conflict, не нормализованный `500` при malformed dates |
+| `POST` | `/api/employees/{employee_id}` | Обновить карточку сотрудника или кандидата из React. | JSON fields: `full_name`, `chat_id`, `chat_handle`, `first_workday`, `desired_position`, `birth_date`, `work_email`, `work_hours`, `manager_employee_id`, `mentor_adaptation_employee_id`, `mentor_ipr_employee_id`, `adaptation_tasks_url`, `adaptation_feedback_url`, `adaptation_midpoint`, `adaptation_end`, `employee_stage`, `candidate_work_stage`, `salary_expectation`, `personal_data_consent`, `employee_data_consent`, `is_bot_blocked`, `test_task_due_at`, `notes` | Employee detail payload | Обновляет `employees`, sync messenger identity и legacy manager/mentor chat ids из выбранных staff relations | `401`, `404`, `409` при messenger identity conflict, `400` при invalid staff relation/date |
+| `POST` | `/api/employees/{employee_id}/promote-to-adaptation` | Явно перевести кандидата в адаптацию через HR-действие. | Path: `employee_id` | Employee detail payload | Меняет `employee_stage` c `candidate` на `adaptation`, очищает `candidate_work_stage`, seed-ит `adaptation_midpoint` / `adaptation_end` от `first_workday`, сбрасывает `current_menu_set_id` | `401`, `404`, `400` если employee не candidate или не указан `first_workday` |
 | `POST` | `/api/employees/{employee_id}/document-links` | Создать или обновить offer link сотрудника. | JSON: `url` | `{ item, payload }`, где `payload` — employee detail payload | Создает или обновляет `employee_document_links` с title `Оффер` | `401`, `404`, `400` если URL пустой |
 | `DELETE` | `/api/employees/{employee_id}/document-links/{link_id}` | Удалить offer link entry. | Path: `employee_id`, `link_id` | Employee detail payload | Удаляет одну строку `employee_document_links` | `401`, `404` |
 | `POST` | `/api/employees/{employee_id}/schedule` | Поставить будущий запуск сценария в очередь. | JSON: `flow_key`, `requested_at` в формате `%Y-%m-%dT%H:%M` | Employee detail payload | Создает `flow_launch_requests` с `launch_type="scheduled"` | `401`, `404`, `400` если bot blocked, scenario missing, role mismatch, missing/invalid datetime |

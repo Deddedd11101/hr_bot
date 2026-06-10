@@ -45,3 +45,10 @@ def build_step_attachment_path(scenario_key: str, step_key: str, original_filena
     safe_name = _safe_filename(original_filename)
     safe_step_key = _safe_filename(step_key)
     return step_dir / f"{safe_step_key}_{uuid4().hex}_{safe_name}"
+
+
+def build_document_library_file_path(original_filename: str) -> Path:
+    root = ensure_storage_dir().parent / "document_library"
+    root.mkdir(parents=True, exist_ok=True)
+    safe_name = _safe_filename(original_filename)
+    return root / f"{uuid4().hex}_{safe_name}"

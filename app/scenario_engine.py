@@ -6,7 +6,7 @@ from datetime import date, datetime, time, timedelta
 from pathlib import Path
 from typing import Any, Optional
 
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, Message, ReplyKeyboardMarkup
 from pytz import timezone as tz_get
 from sqlalchemy.orm import Session
 
@@ -15,21 +15,24 @@ from .employee_card import render_employee_card_png
 from .flow_templates import EMPLOYEE_ROLE_VALUES
 from .messaging.identity import get_primary_chat_id
 from .messaging import as_messenger
-from .models import Employee, EmployeeDocumentLink, EmployeeFile, FlowLaunchRequest, FlowStepTemplate, OnboardingEvent, ScenarioProgress, ScenarioTemplate, StepButtonNotification, SurveyAnswer
+from .models import Employee, EmployeeDocumentLink, EmployeeFile, FlowLaunchRequest, FlowStepTemplate, OnboardingEvent, ScenarioProgress, ScenarioTemplate, StepButtonNotification, StepSendNotification, SurveyAnswer
 from .notifications import notify_hr_stage
 from .time_utils import utc_now
 
 
 CALLBACK_PREFIX = "scenario:"
+BACK_CALLBACK_DATA = f"{CALLBACK_PREFIX}back"
+SCENARIO_BACK_BUTTON_TEXT = "Назад"
 RECRUITMENT_SCENARIO_KEY = "recruitment_hiring"
 FIRST_DAY_SCENARIO_KEY = "first_day"
 PROBATION_SCENARIO_KEYS = {"mid_probation", "end_probation"}
 DOCUMENT_TAG_RE = re.compile(r"\{doc:([^}]+)\}")
 SINGLE_STEP_REQUEST_PREFIX = "__single_step__:"
+INTERACTIVE_RESPONSE_TYPES = {"text", "file", "buttons", "branching"}
 NOTIFICATION_SCOPE_TO_EMPLOYEE_FIELD = {
-    "manager": "manager_telegram_id",
-    "mentor_adaptation": "mentor_adaptation_telegram_id",
-    "mentor_ipr": "mentor_ipr_telegram_id",
+    "manager": ("manager_employee_id", "manager_telegram_id"),
+    "mentor_adaptation": ("mentor_adaptation_employee_id", "mentor_adaptation_telegram_id"),
+    "mentor_ipr": ("mentor_ipr_employee_id", "mentor_ipr_telegram_id"),
 }
 
 
@@ -250,6 +253,7 @@ def get_or_create_progress(db: Session, employee_id: int, scenario_key: str) -> 
         employee_id=employee_id,
         scenario_key=scenario_key,
         current_step_key=None,
+        step_history=None,
         waiting_for_response=False,
         is_completed=False,
         started_at=now,
@@ -265,6 +269,7 @@ def reset_progress(db: Session, employee_id: int, scenario_key: str) -> Scenario
     now = utc_now()
     progress = get_or_create_progress(db, employee_id, scenario_key)
     progress.current_step_key = None
+    progress.step_history = None
     progress.waiting_for_response = False
     progress.is_completed = False
     progress.started_at = now
@@ -304,6 +309,33 @@ def get_waiting_progress_for_step(
         .order_by(ScenarioProgress.updated_at.desc())
         .first()
     )
+
+
+def step_requires_response(step: FlowStepTemplate | None) -> bool:
+    if not step:
+        return False
+    return step.response_type in INTERACTIVE_RESPONSE_TYPES
+
+
+def _deserialize_step_history(progress: ScenarioProgress) -> list[str]:
+    raw_value = (progress.step_history or "").strip()
+    if not raw_value:
+        return []
+    result: list[str] = []
+    for line in raw_value.splitlines():
+        step_key = line.strip()
+        if step_key:
+            result.append(step_key)
+    return result
+
+
+def _serialize_step_history(progress: ScenarioProgress, history: list[str]) -> None:
+    normalized = [item.strip() for item in history if item and item.strip()]
+    progress.step_history = "\n".join(normalized) if normalized else None
+
+
+def progress_has_back_step(progress: ScenarioProgress | None) -> bool:
+    return bool(progress and _deserialize_step_history(progress))
 
 
 def _get_tz():
@@ -349,9 +381,9 @@ def scenario_anchor_date(employee: Employee, scenario: ScenarioTemplate) -> Opti
     if scenario.trigger_mode == "first_week_friday":
         return next_friday(employee.first_workday)
     if scenario.trigger_mode == "mid_probation":
-        return add_workdays(employee.first_workday, settings.PROBATION_WORKDAYS // 2)
+        return employee.adaptation_midpoint or add_workdays(employee.first_workday, settings.PROBATION_WORKDAYS // 2)
     if scenario.trigger_mode == "end_probation":
-        return add_workdays(employee.first_workday, settings.PROBATION_WORKDAYS)
+        return employee.adaptation_end or add_workdays(employee.first_workday, settings.PROBATION_WORKDAYS)
     return employee.first_workday
 
 
@@ -426,13 +458,56 @@ def _split_notification_recipients(value: Optional[str]) -> list[str]:
     return recipients
 
 
-def resolve_notification_recipients(employee: Employee, explicit_ids: Optional[str], recipient_scope: Optional[str]) -> list[str]:
-    recipients = _split_notification_recipients(explicit_ids)
+def _resolve_explicit_notification_recipient(db: Session | None, raw_value: str) -> str | None:
+    normalized = (raw_value or "").strip()
+    if not normalized:
+        return None
+    if normalized.startswith("employee:") and db is not None:
+        employee_id_raw = normalized.split(":", 1)[1].strip()
+        if employee_id_raw.isdigit():
+            linked_employee = db.get(Employee, int(employee_id_raw))
+            if linked_employee:
+                linked_chat_id = get_primary_chat_id(linked_employee, db=db)
+                if linked_chat_id:
+                    return linked_chat_id
+        return None
+    return normalized
+
+
+def _resolve_related_employee_chat_id(
+    db: Session | None,
+    employee: Employee,
+    relation_field: str,
+    legacy_chat_field: str,
+) -> str | None:
+    related_employee_id = getattr(employee, relation_field, None)
+    if db is not None and related_employee_id:
+        related_employee = db.get(Employee, related_employee_id)
+        if related_employee:
+            related_chat_id = get_primary_chat_id(related_employee, db=db)
+            if related_chat_id:
+                return related_chat_id
+    legacy_chat_id = (getattr(employee, legacy_chat_field, None) or "").strip()
+    return legacy_chat_id or None
+
+
+def resolve_notification_recipients(
+    db: Session | None,
+    employee: Employee,
+    explicit_ids: Optional[str],
+    recipient_scope: Optional[str],
+) -> list[str]:
+    recipients: list[str] = []
+    for raw_value in _split_notification_recipients(explicit_ids):
+        resolved_value = _resolve_explicit_notification_recipient(db, raw_value)
+        if resolved_value and resolved_value not in recipients:
+            recipients.append(resolved_value)
     for scope_key in _split_notification_recipients(recipient_scope):
-        employee_field = NOTIFICATION_SCOPE_TO_EMPLOYEE_FIELD.get(scope_key)
-        if not employee_field:
+        employee_fields = NOTIFICATION_SCOPE_TO_EMPLOYEE_FIELD.get(scope_key)
+        if not employee_fields:
             continue
-        employee_chat_id = (getattr(employee, employee_field, None) or "").strip()
+        relation_field, legacy_chat_field = employee_fields
+        employee_chat_id = _resolve_related_employee_chat_id(db, employee, relation_field, legacy_chat_field)
         if employee_chat_id and employee_chat_id not in recipients:
             recipients.append(employee_chat_id)
     return recipients
@@ -448,7 +523,7 @@ async def send_custom_notification(
     step_time: Optional[str],
 ) -> None:
     messenger = as_messenger(messenger_or_bot)
-    recipients = resolve_notification_recipients(employee, recipient_ids, recipient_scope)
+    recipients = resolve_notification_recipients(db, employee, recipient_ids, recipient_scope)
     message_template = (message_template or "").strip()
     if not recipients or not message_template:
         return
@@ -463,23 +538,33 @@ async def send_custom_notification(
             continue
 
 
-def get_button_notification(db: Session, step_id: int, option_index: int) -> Optional[StepButtonNotification]:
+def get_step_send_notifications(db: Session, step_id: int) -> list[StepSendNotification]:
+    return (
+        db.query(StepSendNotification)
+        .filter(StepSendNotification.step_id == step_id)
+        .order_by(StepSendNotification.rule_index.asc(), StepSendNotification.id.asc())
+        .all()
+    )
+
+
+def get_button_notifications(db: Session, step_id: int, option_index: int) -> list[StepButtonNotification]:
     return (
         db.query(StepButtonNotification)
         .filter(
             StepButtonNotification.step_id == step_id,
             StepButtonNotification.option_index == option_index,
         )
-        .order_by(StepButtonNotification.id.asc())
-        .first()
+        .order_by(StepButtonNotification.rule_index.asc(), StepButtonNotification.id.asc())
+        .all()
     )
 
 
-def step_reply_markup(step: FlowStepTemplate) -> Optional[InlineKeyboardMarkup]:
-    if step.response_type not in {"buttons", "branching"} or not step.button_options:
+def step_reply_markup(step: FlowStepTemplate, include_back: bool = False) -> Optional[InlineKeyboardMarkup]:
+    if step.response_type not in {"text", "buttons", "branching"}:
         return None
     buttons = []
-    for index, option in enumerate([item.strip() for item in step.button_options.splitlines() if item.strip()]):
+    options = [item.strip() for item in (step.button_options or "").splitlines() if item.strip()]
+    for index, option in enumerate(options):
         buttons.append(
             [
                 InlineKeyboardButton(
@@ -488,7 +573,18 @@ def step_reply_markup(step: FlowStepTemplate) -> Optional[InlineKeyboardMarkup]:
                 )
             ]
         )
+    if include_back and (options or step.response_type in {"buttons", "branching"}):
+        buttons.append([InlineKeyboardButton(text=SCENARIO_BACK_BUTTON_TEXT, callback_data=BACK_CALLBACK_DATA)])
     return InlineKeyboardMarkup(inline_keyboard=buttons) if buttons else None
+
+
+def step_back_keyboard(step: FlowStepTemplate, include_back: bool = False) -> Optional[ReplyKeyboardMarkup]:
+    if not include_back or step.response_type not in {"text", "file"}:
+        return None
+    return ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text=SCENARIO_BACK_BUTTON_TEXT)]],
+        resize_keyboard=True,
+    )
 
 
 def step_has_sendable_content(step: FlowStepTemplate) -> bool:
@@ -539,7 +635,7 @@ async def send_employee_card_image(messenger_or_bot: Any, chat_id: str, employee
 
 async def send_step_buttons(messenger_or_bot: Any, chat_id: str, step: FlowStepTemplate) -> None:
     messenger = as_messenger(messenger_or_bot)
-    reply_markup = step_reply_markup(step)
+    reply_markup = step_reply_markup(step, include_back=False)
     if not reply_markup:
         return
     await messenger.send_text(
@@ -650,39 +746,44 @@ async def send_step(
     if not chat_id:
         return
 
+    progress = get_or_create_progress(db, employee.id, scenario.scenario_key)
+    include_back = progress_has_back_step(progress)
+    previous_step_key = progress.current_step_key
+    if previous_step_key and previous_step_key != step.step_key:
+        previous_step = get_step_by_key(db, scenario.scenario_key, previous_step_key)
+        if step_requires_response(previous_step):
+            history = _deserialize_step_history(progress)
+            if not history or history[-1] != previous_step_key:
+                history.append(previous_step_key)
+                _serialize_step_history(progress, history)
+
     anchor_date = scenario_anchor_date(employee, scenario) or datetime.now(_get_tz()).date()
     message_text = format_message(db, resolve_step_message_template(step), employee, anchor_date, step.send_time)
     has_attachment = bool((getattr(step, "attachment_path", None) or "").strip())
     send_employee_card = bool(getattr(step, "send_employee_card", False))
-    reply_markup = step_reply_markup(step)
+    reply_markup = step_reply_markup(step, include_back=include_back)
+    back_keyboard = step_back_keyboard(step, include_back=include_back)
     inline_buttons_after_attachment = (has_attachment or send_employee_card) and reply_markup is not None
 
     if message_text.strip():
         await messenger.send_text(
             chat_id=chat_id,
             text=message_text,
-            reply_markup=None if inline_buttons_after_attachment else reply_markup,
+            reply_markup=None if inline_buttons_after_attachment else (reply_markup or back_keyboard),
         )
     if send_employee_card:
         await send_employee_card_image(messenger, chat_id, employee)
     await send_step_attachment(messenger, chat_id, step)
     if inline_buttons_after_attachment:
-        await send_step_buttons(messenger, chat_id, step)
-    await send_custom_notification(
-        messenger,
-        db,
-        employee,
-        getattr(step, "notify_on_send_text", None),
-        getattr(step, "notify_on_send_recipient_ids", None),
-        getattr(step, "notify_on_send_recipient_scope", None),
-        step.send_time,
-    )
+        await messenger.send_text(
+            chat_id=chat_id,
+            text="Выберите вариант ответа:",
+            reply_markup=reply_markup,
+        )
 
-    progress = get_or_create_progress(db, employee.id, scenario.scenario_key)
     progress.current_step_key = step.step_key
-    progress.waiting_for_response = step.response_type in {"text", "file", "buttons", "branching"}
+    progress.waiting_for_response = step_requires_response(step)
     progress.updated_at = utc_now()
-
     db.add(
         OnboardingEvent(
             employee_id=employee.id,
@@ -693,6 +794,29 @@ async def send_step(
         )
     )
     db.commit()
+
+    step_send_notifications = get_step_send_notifications(db, step.id)
+    if step_send_notifications:
+        for step_send_notification in step_send_notifications:
+            await send_custom_notification(
+                messenger,
+                db,
+                employee,
+                step_send_notification.message_text,
+                step_send_notification.recipient_ids,
+                step_send_notification.recipient_scope,
+                step.send_time,
+            )
+    else:
+        await send_custom_notification(
+            messenger,
+            db,
+            employee,
+            getattr(step, "notify_on_send_text", None),
+            getattr(step, "notify_on_send_recipient_ids", None),
+            getattr(step, "notify_on_send_recipient_scope", None),
+            step.send_time,
+        )
 
     if step.response_type == "launch_scenario" or not auto_follow:
         return
@@ -774,7 +898,10 @@ async def handle_button_response(messenger_or_bot: Any, db: Session, employee: E
         return False
     scenario = db.query(ScenarioTemplate).filter(ScenarioTemplate.scenario_key == scenario_key).first()
     step = get_step_by_key(db, scenario_key, step_key) if scenario else None
-    if not scenario or not step or step.response_type not in {"buttons", "branching"}:
+    if not scenario or not step:
+        return False
+    allows_survey_option_buttons = is_survey(scenario) and step.response_type == "text" and bool((step.button_options or "").strip())
+    if step.response_type not in {"buttons", "branching"} and not allows_survey_option_buttons:
         return False
     options = [item.strip() for item in (step.button_options or "").splitlines() if item.strip()]
     if option_index < 0 or option_index >= len(options):
@@ -784,8 +911,8 @@ async def handle_button_response(messenger_or_bot: Any, db: Session, employee: E
     if not apply_response_to_employee(db, employee, step, selected_value):
         return False
     apply_status_from_recruitment_choice(db, employee, scenario, step, selected_value)
-    button_notification = get_button_notification(db, step.id, option_index)
-    if button_notification:
+    button_notifications = get_button_notifications(db, step.id, option_index)
+    for button_notification in button_notifications:
         await send_custom_notification(
             messenger,
             db,
@@ -878,6 +1005,45 @@ async def handle_file_response(
     employee.candidate_status = step.step_key
     db.commit()
     await advance_after_response(messenger_or_bot, db, employee, scenario, step)
+    return True
+
+
+async def handle_back_response(messenger_or_bot: Any, db: Session, employee: Employee) -> bool:
+    if employee.is_bot_blocked:
+        return False
+    messenger = as_messenger(messenger_or_bot)
+    progress = get_waiting_progress(db, employee.id)
+    if not progress or not progress.current_step_key:
+        return False
+    scenario = db.query(ScenarioTemplate).filter(ScenarioTemplate.scenario_key == progress.scenario_key).first()
+    if not scenario:
+        return False
+
+    history = _deserialize_step_history(progress)
+    previous_step: Optional[FlowStepTemplate] = None
+    while history:
+        previous_step = get_step_by_key(db, scenario.scenario_key, history.pop())
+        if step_requires_response(previous_step):
+            break
+        previous_step = None
+
+    if not previous_step:
+        chat_id = get_primary_chat_id(employee, db=db)
+        if chat_id:
+            await messenger.send_text(chat_id=chat_id, text="Это первый шаг сценария, назад идти некуда.")
+        _serialize_step_history(progress, [])
+        progress.updated_at = utc_now()
+        db.commit()
+        return True
+
+    _serialize_step_history(progress, history)
+    progress.current_step_key = previous_step.step_key
+    progress.waiting_for_response = True
+    progress.is_completed = False
+    progress.completed_at = None
+    progress.updated_at = utc_now()
+    db.commit()
+    await send_step(messenger, db, employee, scenario, previous_step, auto_follow=False)
     return True
 
 

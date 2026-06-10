@@ -18,6 +18,7 @@ from .messaging.service import (
     BLOCKED_USER_TEXT,
     UNKNOWN_USER_TEXT,
     detect_category_from_caption,
+    handle_back_event,
     handle_button_event,
     handle_saved_document,
     handle_start_command,
@@ -166,17 +167,25 @@ async def on_scenario_button(callback: CallbackQuery) -> None:
     if not user or not callback.data or not callback.data.startswith(CALLBACK_PREFIX):
         return
 
-    _, step_id, option_index = callback.data.split(":", 2)
     with SessionLocal() as db:
         messenger = create_telegram_messenger(settings.TELEGRAM_BOT_TOKEN)
-        handled = await handle_button_event(
-            messenger,
-            db,
-            str(user.id),
-            _telegram_username(user),
-            int(step_id),
-            int(option_index),
-        )
+        if callback.data == f"{CALLBACK_PREFIX}back":
+            handled = await handle_back_event(
+                messenger,
+                db,
+                str(user.id),
+                _telegram_username(user),
+            )
+        else:
+            _, step_id, option_index = callback.data.split(":", 2)
+            handled = await handle_button_event(
+                messenger,
+                db,
+                str(user.id),
+                _telegram_username(user),
+                int(step_id),
+                int(option_index),
+            )
         await messenger.close()
         if handled == "unknown":
             await callback.answer(UNKNOWN_USER_TEXT, show_alert=True)

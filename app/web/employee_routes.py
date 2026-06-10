@@ -31,6 +31,7 @@ from .employees import (
     _employee_list_meta,
     _is_employee_identity_integrity_error,
     _launch_employee_flow_now,
+    _promote_candidate_to_adaptation,
     _save_offer_document_link,
     _schedule_employee_flow_request,
     _send_file_to_telegram,
@@ -117,9 +118,13 @@ def update_employee(
     birth_date: str = Form(""),
     work_email: str = Form(""),
     work_hours: str = Form(""),
-    manager_telegram_id: str = Form(""),
-    mentor_adaptation_telegram_id: str = Form(""),
-    mentor_ipr_telegram_id: str = Form(""),
+    manager_employee_id: str = Form(""),
+    mentor_adaptation_employee_id: str = Form(""),
+    mentor_ipr_employee_id: str = Form(""),
+    adaptation_tasks_url: str = Form(""),
+    adaptation_feedback_url: str = Form(""),
+    adaptation_midpoint: str = Form(""),
+    adaptation_end: str = Form(""),
     employee_stage: str = Form(""),
     candidate_work_stage: str = Form(""),
     salary_expectation: str = Form(""),
@@ -148,9 +153,13 @@ def update_employee(
             birth_date=birth_date,
             work_email=work_email,
             work_hours=work_hours,
-            manager_chat_id=manager_telegram_id,
-            mentor_adaptation_chat_id=mentor_adaptation_telegram_id,
-            mentor_ipr_chat_id=mentor_ipr_telegram_id,
+            manager_employee_id=manager_employee_id,
+            mentor_adaptation_employee_id=mentor_adaptation_employee_id,
+            mentor_ipr_employee_id=mentor_ipr_employee_id,
+            adaptation_tasks_url=adaptation_tasks_url,
+            adaptation_feedback_url=adaptation_feedback_url,
+            adaptation_midpoint=adaptation_midpoint,
+            adaptation_end=adaptation_end,
             employee_stage=employee_stage,
             candidate_work_stage=candidate_work_stage,
             salary_expectation=salary_expectation,
@@ -168,6 +177,9 @@ def update_employee(
         if _is_employee_identity_integrity_error(exc):
             return _employee_edit_redirect(employee_id, _employee_identity_integrity_detail(telegram_user_id), "error")
         raise
+    except ValueError as exc:
+        db.rollback()
+        return _employee_edit_redirect(employee_id, str(exc), "error")
     return RedirectResponse(
         url="/candidates" if _employee_list_kind(employee) == "candidates" else "/employees",
         status_code=status.HTTP_303_SEE_OTHER,
@@ -588,9 +600,13 @@ def update_employee_api(
             birth_date=str(payload.get("birth_date") or ""),
             work_email=str(payload.get("work_email") or ""),
             work_hours=str(payload.get("work_hours") or ""),
-            manager_chat_id=str(payload.get("manager_chat_id") or ""),
-            mentor_adaptation_chat_id=str(payload.get("mentor_adaptation_chat_id") or ""),
-            mentor_ipr_chat_id=str(payload.get("mentor_ipr_chat_id") or ""),
+            manager_employee_id=str(payload.get("manager_employee_id") or ""),
+            mentor_adaptation_employee_id=str(payload.get("mentor_adaptation_employee_id") or ""),
+            mentor_ipr_employee_id=str(payload.get("mentor_ipr_employee_id") or ""),
+            adaptation_tasks_url=str(payload.get("adaptation_tasks_url") or ""),
+            adaptation_feedback_url=str(payload.get("adaptation_feedback_url") or ""),
+            adaptation_midpoint=str(payload.get("adaptation_midpoint") or ""),
+            adaptation_end=str(payload.get("adaptation_end") or ""),
             employee_stage=str(payload.get("employee_stage") or ""),
             candidate_work_stage=str(payload.get("candidate_work_stage") or ""),
             salary_expectation=str(payload.get("salary_expectation") or ""),
@@ -611,6 +627,9 @@ def update_employee_api(
                 detail=_employee_identity_integrity_detail(str(payload.get("chat_id") or "")),
             )
         raise
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
     return _build_employee_detail_payload(db, employee)
 
 
@@ -720,6 +739,24 @@ async def launch_flow_api(
     return _build_employee_detail_payload(db, employee)
 
 
+@router.post("/api/employees/{employee_id}/promote-to-adaptation")
+def promote_employee_to_adaptation_api(
+    request: Request,
+    employee_id: int,
+    db: Session = Depends(get_db),
+):
+    require_api_auth(request)
+    employee = db.get(Employee, employee_id)
+    if not employee:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Сотрудник не найден")
+    try:
+        employee = _promote_candidate_to_adaptation(db, employee)
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    return _build_employee_detail_payload(db, employee)
+
+
 @router.post("/api/employees/{employee_id}/files")
 async def upload_employee_file_api(
     request: Request,
@@ -780,6 +817,33 @@ async def send_employee_file_api(
     path = Path(db_file.stored_path)
     if path.exists():
         await _send_file_to_telegram(chat_id, path, db_file.original_filename)
+    return _build_employee_detail_payload(db, employee)
+
+
+@router.delete("/api/employees/{employee_id}/files/{file_id}")
+def delete_employee_file_api(
+    request: Request,
+    employee_id: int,
+    file_id: int,
+    db: Session = Depends(get_db),
+):
+    require_api_auth(request)
+    employee = db.get(Employee, employee_id)
+    db_file = db.get(EmployeeFile, file_id)
+    if not employee:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Сотрудник не найден")
+    if not db_file or db_file.employee_id != employee_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Файл не найден")
+
+    path = Path(db_file.stored_path)
+    try:
+        if path.exists():
+            path.unlink()
+    except OSError:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Не удалось удалить файл из хранилища")
+
+    db.delete(db_file)
+    db.commit()
     return _build_employee_detail_payload(db, employee)
 
 

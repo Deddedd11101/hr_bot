@@ -39,9 +39,15 @@ source_of_truth: true
 | Method | Path | Surface | Примечания |
 | --- | --- | --- | --- |
 | `GET` | `/login` | HTML page | Login screen |
-| `POST` | `/login` | Form action | Аутентифицирует admin account, ставит auth cookie и ведет на `/app/employees?list_kind=candidates` |
+| `POST` | `/login` | Form action | Аутентифицирует admin account, ставит auth cookie и ведет на `/app/dashboard` |
 | `POST` | `/logout` | Form action | Очищает auth cookie |
-| `GET` | `/` | Redirecting page | Основная operator landing page после auth; сейчас ведет на `/app/employees?list_kind=candidates` |
+| `GET` | `/` | Redirecting page | Основная operator landing page после auth; сейчас ведет на `/app/dashboard` |
+
+## Оперативный дашборд
+
+| Method | Path | Surface | Примечания |
+| --- | --- | --- | --- |
+| `GET` | `/app/dashboard` | React bootstrap page | Default operator entry. Показывает ближайшие события, свежие Telegram-привязки, входящие документы, attention items и module links. |
 
 ## Операторская поверхность сотрудников и кандидатов
 
@@ -114,6 +120,7 @@ source_of_truth: true
 | Method | Path | Surface | Примечания |
 | --- | --- | --- | --- |
 | `GET` | `/settings` | Redirect route | Legacy operator entrypoint; теперь ведет на `/app/settings` |
+| `GET` | `/bot-menu` | Redirect route | Shortcut surface; ведет на `/app/bot-menu` |
 | `POST` | `/settings` | Form action | Обновить HR settings |
 | `POST` | `/settings/menu-sets` | Form action | Создать menu set |
 | `POST` | `/settings/menu-sets/{menu_set_id}` | Form action | Обновить menu set |
@@ -126,7 +133,8 @@ source_of_truth: true
 | `POST` | `/accounts` | Form action | Создать admin account |
 | `POST` | `/accounts/{account_id}` | Form action | Обновить admin account |
 | `POST` | `/accounts/{account_id}/delete` | Form action | Удалить admin account |
-| `GET` | `/app/settings` | React bootstrap page | React settings/accounts/menu sets; default sidebar entry, classic `/settings` остается fallback |
+| `GET` | `/app/settings` | React bootstrap page | React settings/accounts. Menu sets и audience targeting больше не редактируются здесь, чтобы системные настройки не смешивались с bot UX rules. |
+| `GET` | `/app/bot-menu` | React bootstrap page | React surface для menu sets, audience targeting и переходов между наборами. |
 
 ## Статические ассеты
 
@@ -136,7 +144,7 @@ source_of_truth: true
 
 ## Текущая критика
 
-- HTTP surface все еще hybrid, но operator entrypoints уже не конкурируют напрямую: классические `/employees`, `/candidates`, `/bulk-actions`, `/flows`, `/surveys`, `/settings` теперь только redirect routes в React surfaces. Write/read fallback URLs и form handlers пока остаются, поэтому граница все еще не идеальна.
+- HTTP surface все еще hybrid, но operator entrypoints уже не конкурируют напрямую: классические `/employees`, `/candidates`, `/bulk-actions`, `/flows`, `/surveys`, `/settings` и shortcut `/bot-menu` теперь только redirect routes в React surfaces. Write/read fallback URLs и form handlers пока остаются, поэтому граница все еще не идеальна.
 - Многие operator actions все еще form posts with redirects. Это сохраняет старый UI, но усложняет automated API reasoning и contract drift tracking.
 - Surveys получили React workspace route `/app/surveys/workspace`, safe classic create/copy/delete redirects уже возвращают туда, а direct GET `/surveys/{id}` тоже теперь по умолчанию ведет в React workspace. Classic survey editor остался только как явный `?legacy=1` seam; save/delete-attachment/export-error внутри него теперь тоже сохраняют legacy-mode, чтобы rollback surface был самосогласованным.
 - Мертвые classic list pages уже удалены из шаблонов: `scenarios.html`, `mass_actions.html`, `settings.html` больше не используются ни одним GET route. `employee_edit.html` тоже удален: legacy employee direct route теперь просто редиректит в React detail. Из classic HTML pages живым fallback editor остается `scenario_edit.html`, но он уже не default surface и открывается только через `?legacy=1`.

@@ -64,11 +64,18 @@ def _ensure_sqlite_schema() -> None:
             "candidate_status": "TEXT",
             "candidate_work_stage": "TEXT",
             "employee_stage": "TEXT",
+            "manager_employee_id": "INTEGER",
+            "mentor_adaptation_employee_id": "INTEGER",
+            "mentor_ipr_employee_id": "INTEGER",
             "is_bot_blocked": "BOOLEAN NOT NULL DEFAULT 0",
             "birth_date": "DATE",
             "manager_telegram_id": "TEXT",
             "mentor_adaptation_telegram_id": "TEXT",
             "mentor_ipr_telegram_id": "TEXT",
+            "adaptation_tasks_url": "TEXT",
+            "adaptation_feedback_url": "TEXT",
+            "adaptation_midpoint": "DATE",
+            "adaptation_end": "DATE",
             "personal_data_consent": "BOOLEAN NOT NULL DEFAULT 0",
             "employee_data_consent": "BOOLEAN NOT NULL DEFAULT 0",
             "test_task_link": "TEXT",
@@ -140,9 +147,16 @@ def _ensure_sqlite_schema() -> None:
                         candidate_status TEXT,
                         candidate_work_stage TEXT,
                         employee_stage TEXT,
+                        manager_employee_id INTEGER,
+                        mentor_adaptation_employee_id INTEGER,
+                        mentor_ipr_employee_id INTEGER,
                         manager_telegram_id TEXT,
                         mentor_adaptation_telegram_id TEXT,
                         mentor_ipr_telegram_id TEXT,
+                        adaptation_tasks_url TEXT,
+                        adaptation_feedback_url TEXT,
+                        adaptation_midpoint DATE,
+                        adaptation_end DATE,
                         personal_data_consent BOOLEAN NOT NULL DEFAULT 0,
                         employee_data_consent BOOLEAN NOT NULL DEFAULT 0,
                         test_task_link TEXT,
@@ -176,9 +190,16 @@ def _ensure_sqlite_schema() -> None:
                         candidate_status,
                         candidate_work_stage,
                         employee_stage,
+                        manager_employee_id,
+                        mentor_adaptation_employee_id,
+                        mentor_ipr_employee_id,
                         manager_telegram_id,
                         mentor_adaptation_telegram_id,
                         mentor_ipr_telegram_id,
+                        adaptation_tasks_url,
+                        adaptation_feedback_url,
+                        adaptation_midpoint,
+                        adaptation_end,
                         personal_data_consent,
                         employee_data_consent,
                         test_task_link,
@@ -205,6 +226,13 @@ def _ensure_sqlite_schema() -> None:
                         candidate_status,
                         NULL,
                         employee_stage,
+                        NULL,
+                        NULL,
+                        NULL,
+                        NULL,
+                        NULL,
+                        NULL,
+                        NULL,
                         NULL,
                         NULL,
                         NULL,
@@ -252,6 +280,7 @@ def _ensure_sqlite_schema() -> None:
                         flow_key VARCHAR(64) NOT NULL,
                         step_id INTEGER NOT NULL,
                         option_index INTEGER NOT NULL,
+                        rule_index INTEGER NOT NULL DEFAULT 0,
                         message_text VARCHAR(4096),
                         recipient_ids VARCHAR(2048),
                         recipient_scope VARCHAR(255),
@@ -263,6 +292,33 @@ def _ensure_sqlite_schema() -> None:
             conn.execute(text("CREATE INDEX IF NOT EXISTS ix_step_button_notifications_id ON step_button_notifications (id)"))
             conn.execute(text("CREATE INDEX IF NOT EXISTS ix_step_button_notifications_flow_key ON step_button_notifications (flow_key)"))
             conn.execute(text("CREATE INDEX IF NOT EXISTS ix_step_button_notifications_step_id ON step_button_notifications (step_id)"))
+        else:
+            button_notification_column_names = {row[1] for row in button_notification_columns}
+            if "rule_index" not in button_notification_column_names:
+                conn.execute(text("ALTER TABLE step_button_notifications ADD COLUMN rule_index INTEGER NOT NULL DEFAULT 0"))
+                conn.execute(text("UPDATE step_button_notifications SET rule_index = 0 WHERE rule_index IS NULL"))
+
+        step_send_notification_columns = conn.execute(text("PRAGMA table_info(step_send_notifications)")).fetchall()
+        if not step_send_notification_columns:
+            conn.execute(
+                text(
+                    """
+                    CREATE TABLE step_send_notifications (
+                        id INTEGER NOT NULL,
+                        flow_key VARCHAR(64) NOT NULL,
+                        step_id INTEGER NOT NULL,
+                        rule_index INTEGER NOT NULL DEFAULT 0,
+                        message_text VARCHAR(4096),
+                        recipient_ids VARCHAR(2048),
+                        recipient_scope VARCHAR(255),
+                        PRIMARY KEY (id)
+                    )
+                    """
+                )
+            )
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_step_send_notifications_id ON step_send_notifications (id)"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_step_send_notifications_flow_key ON step_send_notifications (flow_key)"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_step_send_notifications_step_id ON step_send_notifications (step_id)"))
 
         scenario_table_columns = {
             row[1] for row in conn.execute(text("PRAGMA table_info(scenario_templates)")).fetchall()
@@ -344,6 +400,7 @@ def _ensure_sqlite_schema() -> None:
                         employee_id INTEGER NOT NULL,
                         scenario_key VARCHAR(64) NOT NULL,
                         current_step_key VARCHAR(128),
+                        step_history TEXT,
                         waiting_for_response BOOLEAN NOT NULL DEFAULT 0,
                         is_completed BOOLEAN NOT NULL DEFAULT 0,
                         started_at DATETIME NOT NULL,
@@ -367,6 +424,10 @@ def _ensure_sqlite_schema() -> None:
                     "CREATE INDEX IF NOT EXISTS ix_scenario_progress_scenario_key ON scenario_progress (scenario_key)"
                 )
             )
+        else:
+            progress_columns = {row[1] for row in progress_table_info}
+            if "step_history" not in progress_columns:
+                conn.execute(text("ALTER TABLE scenario_progress ADD COLUMN step_history TEXT"))
 
         survey_answers_info = conn.execute(text("PRAGMA table_info(survey_answers)")).fetchall()
         if not survey_answers_info:
@@ -443,12 +504,32 @@ def _ensure_sqlite_schema() -> None:
                         title VARCHAR(255) NOT NULL,
                         description VARCHAR(1024),
                         sort_order INTEGER NOT NULL DEFAULT 0,
+                        role_scope VARCHAR(64) NOT NULL DEFAULT 'all',
+                        employee_scope VARCHAR(64) NOT NULL DEFAULT 'all',
+                        target_employee_id INTEGER,
+                        target_employee_ids VARCHAR(1024),
+                        target_employee_stages VARCHAR(255),
+                        target_candidate_stages VARCHAR(255),
                         PRIMARY KEY (id)
                     )
                     """
                 )
             )
             conn.execute(text("CREATE INDEX IF NOT EXISTS ix_bot_menu_sets_id ON bot_menu_sets (id)"))
+        else:
+            menu_sets_columns = {row[1] for row in menu_sets_info}
+            menu_sets_required = {
+                "role_scope": "VARCHAR(64) NOT NULL DEFAULT 'all'",
+                "employee_scope": "VARCHAR(64) NOT NULL DEFAULT 'all'",
+                "target_employee_id": "INTEGER",
+                "target_employee_ids": "VARCHAR(1024)",
+                "target_employee_stages": "VARCHAR(255)",
+                "target_candidate_stages": "VARCHAR(255)",
+                "system_tag": "VARCHAR(255)",
+            }
+            for col, ddl in menu_sets_required.items():
+                if col not in menu_sets_columns:
+                    conn.execute(text(f"ALTER TABLE bot_menu_sets ADD COLUMN {col} {ddl}"))
 
         menu_buttons_info = conn.execute(text("PRAGMA table_info(bot_menu_buttons)")).fetchall()
         if not menu_buttons_info:
@@ -463,12 +544,44 @@ def _ensure_sqlite_schema() -> None:
                         action_type VARCHAR(32) NOT NULL DEFAULT 'inactive',
                         scenario_key VARCHAR(64),
                         target_menu_set_id INTEGER,
+                        document_item_id INTEGER,
                         PRIMARY KEY (id)
                     )
                     """
                 )
             )
             conn.execute(text("CREATE INDEX IF NOT EXISTS ix_bot_menu_buttons_id ON bot_menu_buttons (id)"))
+        else:
+            menu_buttons_columns = {row[1] for row in menu_buttons_info}
+            if "document_item_id" not in menu_buttons_columns:
+                conn.execute(text("ALTER TABLE bot_menu_buttons ADD COLUMN document_item_id INTEGER"))
+
+        document_library_info = conn.execute(text("PRAGMA table_info(document_library_items)")).fetchall()
+        if not document_library_info:
+            conn.execute(
+                text(
+                    """
+                    CREATE TABLE document_library_items (
+                        id INTEGER NOT NULL,
+                        title VARCHAR(255) NOT NULL,
+                        description VARCHAR(1024),
+                        category VARCHAR(255),
+                        item_kind VARCHAR(16) NOT NULL DEFAULT 'file',
+                        external_url VARCHAR(2048),
+                        original_filename VARCHAR(255),
+                        stored_path VARCHAR(1024),
+                        mime_type VARCHAR(128),
+                        file_size INTEGER,
+                        is_active BOOLEAN NOT NULL DEFAULT 1,
+                        sort_order INTEGER NOT NULL DEFAULT 0,
+                        created_at DATETIME NOT NULL,
+                        updated_at DATETIME NOT NULL,
+                        PRIMARY KEY (id)
+                    )
+                    """
+                )
+            )
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_document_library_items_id ON document_library_items (id)"))
 
         mass_scenario_columns = {
             row[1] for row in conn.execute(text("PRAGMA table_info(mass_scenario_actions)")).fetchall()

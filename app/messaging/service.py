@@ -4,9 +4,18 @@ from typing import Literal, NamedTuple, Optional
 
 from sqlalchemy.orm import Session
 
-from ..models import BotMenuButton, BotMenuSet, Employee, EmployeeFile, HrSettings, ScenarioTemplate
+from ..flow_templates import EMPLOYEE_SCOPE_CANDIDATES, EMPLOYEE_SCOPE_EMPLOYEES
+from ..mass_targeting import ROLE_SCOPE_TO_POSITION
+from ..models import BotMenuButton, BotMenuSet, DocumentLibraryItem, Employee, EmployeeFile, HrSettings, ScenarioTemplate
 from ..notifications import notify_hr_test_task_received
-from ..scenario_engine import handle_button_response_by_step_id, handle_file_response, handle_text_response, start_scenario
+from ..scenario_engine import (
+    SCENARIO_BACK_BUTTON_TEXT,
+    handle_back_response,
+    handle_button_response_by_step_id,
+    handle_file_response,
+    handle_text_response,
+    start_scenario,
+)
 from ..time_utils import utc_now
 from .base import MessengerClient
 from .identity import (
@@ -65,16 +74,77 @@ def default_menu_set(db: Session) -> Optional[BotMenuSet]:
     return db.query(BotMenuSet).order_by(BotMenuSet.sort_order, BotMenuSet.id).first()
 
 
+def _deserialize_menu_target_employee_ids(menu_set: BotMenuSet) -> list[int]:
+    raw_value = (menu_set.target_employee_ids or "").strip()
+    target_ids: list[int] = []
+    if raw_value:
+        for item in raw_value.split(","):
+            item = item.strip()
+            if item.isdigit():
+                employee_id = int(item)
+                if employee_id not in target_ids:
+                    target_ids.append(employee_id)
+    if target_ids:
+        return target_ids
+    if menu_set.target_employee_id:
+        return [menu_set.target_employee_id]
+    return []
+
+
+def menu_set_matches_employee(employee: Employee, menu_set: BotMenuSet) -> bool:
+    target_employee_ids = _deserialize_menu_target_employee_ids(menu_set)
+    if target_employee_ids:
+        return employee.id in target_employee_ids
+
+    normalized_employee_stage = (employee.employee_stage or "").strip()
+    normalized_employee_scope = (menu_set.employee_scope or "all").strip()
+    if normalized_employee_scope == EMPLOYEE_SCOPE_CANDIDATES and normalized_employee_stage != "candidate":
+        return False
+    if normalized_employee_scope == EMPLOYEE_SCOPE_EMPLOYEES and normalized_employee_stage == "candidate":
+        return False
+
+    normalized_role_scope = (menu_set.role_scope or "all").strip()
+    if normalized_role_scope and normalized_role_scope != "all":
+        target_position = ROLE_SCOPE_TO_POSITION.get(normalized_role_scope)
+        if not target_position or (employee.desired_position or "").strip() != target_position:
+            return False
+
+    return True
+
+
+def _menu_set_score(employee: Employee, menu_set: BotMenuSet, default_menu_set_id: Optional[int]) -> tuple[int, int, int]:
+    score = 0
+    if _deserialize_menu_target_employee_ids(menu_set):
+        score += 100
+    if (menu_set.employee_scope or "all").strip() != "all":
+        score += 20
+    if (menu_set.role_scope or "all").strip() != "all":
+        score += 20
+    if default_menu_set_id and menu_set.id == default_menu_set_id:
+        score += 5
+    return score, -menu_set.sort_order, -menu_set.id
+
+
+def resolve_menu_set(db: Session, employee: Employee) -> Optional[BotMenuSet]:
+    hr_settings = db.get(HrSettings, 1)
+    default_menu_set_id = hr_settings.default_menu_set_id if hr_settings else None
+    menu_sets = db.query(BotMenuSet).order_by(BotMenuSet.sort_order, BotMenuSet.id).all()
+    matching_sets = [menu_set for menu_set in menu_sets if menu_set_matches_employee(employee, menu_set)]
+    if not matching_sets:
+        return None
+    return max(matching_sets, key=lambda item: _menu_set_score(employee, item, default_menu_set_id))
+
+
 def current_menu_set(db: Session, employee: Employee) -> Optional[BotMenuSet]:
     if employee.current_menu_set_id:
         current_set = db.get(BotMenuSet, employee.current_menu_set_id)
-        if current_set:
+        if current_set and menu_set_matches_employee(employee, current_set):
             return current_set
-    default_set = default_menu_set(db)
-    if default_set:
-        employee.current_menu_set_id = default_set.id
+    next_set = resolve_menu_set(db, employee)
+    if next_set:
+        employee.current_menu_set_id = next_set.id
         db.commit()
-    return default_set
+    return next_set
 
 
 def menu_button_labels(db: Session, employee: Employee) -> list[str]:
@@ -133,9 +203,38 @@ async def handle_menu_button(messenger: MessengerClient, db: Session, employee: 
         if not target_set:
             await send_menu(messenger, db, employee, "Этот раздел меню сейчас недоступен.")
             return True
+        if not menu_set_matches_employee(employee, target_set):
+            await send_menu(messenger, db, employee, "Этот раздел меню вам недоступен.")
+            return True
         employee.current_menu_set_id = target_set.id
         db.commit()
         await send_menu(messenger, db, employee, target_set.description or f"Открыт раздел «{target_set.title}».")
+        return True
+
+    if button.action_type == "send_document" and button.document_item_id:
+        item = db.get(DocumentLibraryItem, button.document_item_id)
+        if not item or not item.is_active:
+            await send_menu(messenger, db, employee, "Этот документ сейчас недоступен.")
+            return True
+        chat_id = get_primary_chat_id(employee, db=db)
+        if not chat_id:
+            return True
+        if (item.item_kind or "").strip() == "link":
+            link = (item.external_url or "").strip()
+            if not link:
+                await send_menu(messenger, db, employee, "Ссылка для этого документа не настроена.")
+                return True
+            message_parts = [item.title.strip()]
+            if (item.description or "").strip():
+                message_parts.append(item.description.strip())
+            message_parts.append(link)
+            await messenger.send_text(chat_id=chat_id, text="\n\n".join(message_parts))
+            return True
+        path_value = (item.stored_path or "").strip()
+        if not path_value:
+            await send_menu(messenger, db, employee, "Файл для этого документа не найден.")
+            return True
+        await messenger.send_document_path(chat_id=chat_id, path=path_value, filename=item.original_filename or None)
         return True
 
     await send_menu(messenger, db, employee, "Эта кнопка пока неактивна.")
@@ -242,6 +341,9 @@ async def handle_text_event(
     if access.state != "ok" or access.employee is None:
         return access.state
     employee = access.employee
+    if text.strip() == SCENARIO_BACK_BUTTON_TEXT:
+        if await handle_back_response(messenger, db, employee):
+            return "handled"
     handled = await handle_text_response(messenger, db, employee, type("MessageStub", (), {"text": text})())
     if handled:
         return "handled"
@@ -268,4 +370,17 @@ async def handle_button_event(
         step_id,
         option_index,
     )
+    return "handled" if handled else "ignored"
+
+
+async def handle_back_event(
+    messenger: MessengerClient,
+    db: Session,
+    chat_user_id: str,
+    username: Optional[str],
+) -> Literal["handled", "ignored", "unknown", "blocked"]:
+    access = resolve_inbound_access(db, chat_user_id, username)
+    if access.state != "ok" or access.employee is None:
+        return access.state
+    handled = await handle_back_response(messenger, db, access.employee)
     return "handled" if handled else "ignored"
