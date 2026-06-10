@@ -74,14 +74,28 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
                 if (!isMounted) {
                     return;
                 }
+                const normalizedPayload = Object.assign({}, payload, {
+                    options: Object.assign(
+                        {
+                            employee_role_values: [],
+                            employee_stage_values: [],
+                            candidate_work_stage_values: [],
+                            staff_employee_values: [],
+                            scenarios: [],
+                        },
+                        payload.options || {},
+                    ),
+                });
                 setState({
                     loading: false,
                     error: "",
-                    payload: payload,
+                    payload: normalizedPayload,
                 });
-                setForm(payload.employee);
-                setOfferUrl(payload.document_links.length ? (payload.document_links[0].url || "") : "");
-                setLaunchFlowKey(payload.options.scenarios.length ? payload.options.scenarios[0].value : "");
+                setForm(normalizedPayload.employee);
+                setOfferUrl("");
+                setLaunchFlowKey(
+                    normalizedPayload.options.scenarios.length ? normalizedPayload.options.scenarios[0].value : "",
+                );
             })
             .catch(function (error) {
                 if (!isMounted) {
@@ -193,7 +207,7 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
             })
             .then(function (payload) {
                 updatePayloadState(setState, setForm, payload.payload);
-                setOfferUrl(payload.item ? payload.item.url : offerUrl);
+                setOfferUrl("");
                 setOperationMessage("Ссылка на оффер сохранена", false);
             })
             .catch(function (error) {
@@ -376,6 +390,33 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
             });
     }
 
+    function handleDeleteFile(fileId: number) {
+        if (!window.confirm("Удалить этот файл?")) {
+            return;
+        }
+        setOpsState({ message: "", error: false, working: true });
+        fetch(apiUrl + "/files/" + fileId, {
+            method: "DELETE",
+            credentials: "same-origin",
+            headers: { Accept: "application/json" },
+        })
+            .then(function (response) {
+                if (!response.ok) {
+                    return response.json().catch(function () { return {}; }).then(function (payload) {
+                        throw new Error(payload.detail || "Не удалось удалить файл");
+                    });
+                }
+                return response.json();
+            })
+            .then(function (payload) {
+                updatePayloadState(setState, setForm, payload);
+                setOperationMessage("Файл удален", false);
+            })
+            .catch(function (error) {
+                setOperationMessage(error.message || "Не удалось удалить файл", true);
+            });
+    }
+
     function handleDeleteEmployee() {
         if (!window.confirm("Удалить этого сотрудника?")) {
             return;
@@ -402,6 +443,33 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
             });
     }
 
+    function handlePromoteToAdaptation() {
+        if (!window.confirm("Перевести кандидата в адаптацию?")) {
+            return;
+        }
+        setOpsState({ message: "", error: false, working: true });
+        fetch(apiUrl + "/promote-to-adaptation", {
+            method: "POST",
+            credentials: "same-origin",
+            headers: { Accept: "application/json" },
+        })
+            .then(function (response) {
+                if (!response.ok) {
+                    return response.json().catch(function () { return {}; }).then(function (payload) {
+                        throw new Error(payload.detail || "Не удалось перевести кандидата в адаптацию");
+                    });
+                }
+                return response.json();
+            })
+            .then(function (payload) {
+                updatePayloadState(setState, setForm, payload);
+                setOperationMessage("Кандидат переведен в адаптацию", false);
+            })
+            .catch(function (error) {
+                setOperationMessage(error.message || "Не удалось перевести кандидата в адаптацию", true);
+            });
+    }
+
     if (state.loading || !form) {
         return <EmployeeDetailLoading />;
     }
@@ -423,8 +491,10 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
             direction: file.direction,
             link: file.download_url,
             linkLabel: "Скачать",
-            extraAction: function () { handleSendFile(file.id); },
-            extraActionLabel: "Отправить в мессенджер",
+            extraAction: file.can_send_to_channel ? function () { handleSendFile(file.id); } : null,
+            extraActionLabel: file.can_send_to_channel ? "Отправить в мессенджер" : null,
+            deleteAction: function () { handleDeleteFile(file.id); },
+            deleteActionLabel: "Удалить файл",
         };
     });
     const employeeFileItems = fileItems.filter(function (file: any) {
@@ -441,6 +511,8 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
             subtitle: item.scenario_tag,
             link: item.url,
             linkLabel: "Открыть",
+            deleteAction: function () { handleOfferDelete(item.id); },
+            deleteActionLabel: "Удалить ссылку",
         };
     });
 
@@ -453,6 +525,17 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
             linkLabel: "Сценарий",
             extraAction: function () { handleScheduledDelete(item.id); },
             extraActionLabel: "Удалить",
+        };
+    });
+    const manualLaunchItems = payload.manual_launch_history.map(function (item: any) {
+        return {
+            id: "manual-" + item.id,
+            title: item.scenario_title,
+            subtitle: item.processed_at_label && item.processed_at_label !== "—"
+                ? "Запущен: " + item.processed_at_label
+                : "Запрошен: " + item.requested_at_label,
+            link: item.scenario_url,
+            linkLabel: "Сценарий",
         };
     });
 
@@ -492,6 +575,7 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
                     offerUrl={offerUrl}
                     setOfferUrl={setOfferUrl}
                     payload={payload}
+                    form={form}
                     scheduleForm={scheduleForm}
                     setScheduleForm={setScheduleForm}
                     launchFlowKey={launchFlowKey}
@@ -503,11 +587,14 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
                     handleScheduleSubmit={handleScheduleSubmit}
                     handleLaunchSubmit={handleLaunchSubmit}
                     handleFileSubmit={handleFileSubmit}
+                    handlePromoteToAdaptation={handlePromoteToAdaptation}
                     handleDeleteEmployee={handleDeleteEmployee}
                     employeeFileItems={employeeFileItems}
                     hrFileItems={hrFileItems}
                     documentItems={documentItems}
                     launchItems={launchItems}
+                    manualLaunchItems={manualLaunchItems}
+                    isCandidate={isCandidate}
                 />
             </section>
         </div>

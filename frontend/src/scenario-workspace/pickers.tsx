@@ -37,9 +37,10 @@ export function NotificationRecipientsPicker({
   }, [employeeOptions, search]);
 
   const toggleRecipient = (employeeId: string) => {
-    const nextIds = selectedIds.includes(employeeId)
-      ? selectedIds.filter((value) => value !== employeeId)
-      : selectedIds.concat(employeeId);
+    const token = `employee:${employeeId}`;
+    const nextIds = selectedIds.includes(token)
+      ? selectedIds.filter((value) => value !== token)
+      : selectedIds.concat(token);
     onChange(nextIds.join(","));
   };
 
@@ -66,7 +67,7 @@ export function NotificationRecipientsPicker({
         <div className="h-72 overflow-auto">
           <div className="flex flex-col gap-1 p-2">
             {filteredEmployees.map((option) => {
-              const checked = selectedIds.includes(String(option.id));
+              const checked = selectedIds.includes(`employee:${String(option.id)}`);
               return (
                 <button
                   key={option.id}

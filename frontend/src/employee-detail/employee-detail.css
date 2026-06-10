@@ -1,6 +1,6 @@
 .main > .container:has(#react-employee-edit-root) {
-    width: min(1680px, calc(100vw - var(--sidebar-width, 86px) - 32px));
-    max-width: min(1680px, calc(100vw - var(--sidebar-width, 86px) - 32px));
+    width: 100%;
+    max-width: var(--admin-page-max-width);
 }
 
 .react-detail-page {
@@ -20,7 +20,7 @@
 .employee-detail-hero {
     display: block;
     border: 1px solid var(--border);
-    border-radius: var(--radius-2xl);
+    border-radius: var(--admin-page-radius, var(--radius-xl));
     background: color-mix(in srgb, var(--card) 92%, transparent);
     padding: 22px 24px;
 }
@@ -89,19 +89,6 @@
     min-width: 0;
 }
 
-.employee-section-label {
-    margin-top: 4px;
-    color: var(--muted-foreground);
-    font-size: 0.72rem;
-    font-weight: 700;
-    letter-spacing: 0.16em;
-    text-transform: uppercase;
-}
-
-.employee-section-label + .employee-detail-card {
-    margin-top: -2px;
-}
-
 .employee-readonly-field {
     display: flex;
     min-height: 32px;
@@ -161,7 +148,18 @@
     gap: 10px;
 }
 
-.employee-action-row,
+.employee-action-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    justify-content: flex-end;
+}
+
+.employee-action-row > * {
+    max-width: 100%;
+}
+
 .employee-document-actions {
     display: flex;
     flex-wrap: nowrap;
@@ -198,6 +196,17 @@
     white-space: nowrap;
     color: var(--muted-foreground);
     font-size: 0.875rem;
+}
+
+.employee-document-tools {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.employee-document-tools [data-slot="field-group"] {
+    gap: 12px;
 }
 
 .employee-document-list {

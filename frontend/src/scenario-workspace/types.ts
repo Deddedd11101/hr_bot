@@ -33,9 +33,24 @@ export type WorkspaceStep = {
   notify_on_send_text: string;
   notify_on_send_recipient_ids: string;
   notify_on_send_recipient_scope: string;
+  step_send_notifications: WorkspaceStepSendNotificationRule[];
   button_notifications: WorkspaceButtonNotification[];
   branch_items: WorkspaceBranchSlot[];
   chain_steps: WorkspaceStep[];
+};
+
+export type WorkspaceStepSendNotificationRule = {
+  rule_index: number;
+  message_text: string;
+  recipient_ids: string;
+  recipient_scope: string;
+};
+
+export type WorkspaceButtonNotificationRule = {
+  rule_index: number;
+  message_text: string;
+  recipient_ids: string;
+  recipient_scope: string;
 };
 
 export type WorkspaceButtonNotification = {
@@ -44,6 +59,7 @@ export type WorkspaceButtonNotification = {
   message_text: string;
   recipient_ids: string;
   recipient_scope: string;
+  rules: WorkspaceButtonNotificationRule[];
 };
 
 export type WorkspaceBranchSlot = {

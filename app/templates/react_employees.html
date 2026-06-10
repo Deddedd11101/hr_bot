@@ -3,8 +3,8 @@
 {% block extra_head %}
     <style>
         .main > .container:has(#react-employees-root) {
-            width: min(1820px, calc(100vw - var(--sidebar-width, 86px) - 32px));
-            max-width: min(1820px, calc(100vw - var(--sidebar-width, 86px) - 32px));
+            width: 100%;
+            max-width: var(--admin-page-max-width);
             transition: width 0.28s ease, max-width 0.28s ease;
         }
     </style>
@@ -23,5 +23,5 @@
 {% endblock %}
 
 {% block scripts %}
-    <script type="module" src="/static/workspace_v2/employees-list.js?v=29"></script>
+    <script type="module" src="/static/workspace_v2/employees-list.js?v=30"></script>
 {% endblock %}

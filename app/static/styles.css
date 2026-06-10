@@ -670,15 +670,6 @@ body {
     margin: 48px auto 0;
 }
 
-.auth-error {
-    color: #b91c1c;
-    background: rgba(185, 28, 28, 0.08);
-    border: 1px solid rgba(185, 28, 28, 0.18);
-    border-radius: 10px;
-    padding: 10px 12px;
-    font-size: 13px;
-}
-
 .flash-message {
     margin-bottom: 16px;
     border-radius: 10px;

@@ -58,6 +58,8 @@ type DetailItem = {
     linkLabel?: string | null;
     extraAction?: (() => void) | null;
     extraActionLabel?: string | null;
+    deleteAction?: (() => void) | null;
+    deleteActionLabel?: string | null;
 };
 
 const EMPTY_SELECT_VALUE = "__empty__";
@@ -118,47 +120,6 @@ function SelectField(props: {
 function DetailCard(props: React.ComponentProps<typeof Card>) {
     const { className, ...rest } = props;
     return <Card className={cn("employee-detail-card shadow-none ring-0", className)} {...rest} />;
-}
-
-function PlannedField(props: {
-    label: string;
-    value?: string;
-    placeholder?: string;
-    kind?: "input" | "date" | "link" | "select";
-}) {
-    const { label, value, placeholder, kind = "input" } = props;
-    return (
-        <Field data-disabled>
-            <FieldLabel>{label}</FieldLabel>
-            {kind === "select" ? (
-                <Select
-                    value={EMPTY_SELECT_VALUE}
-                    items={[{ value: EMPTY_SELECT_VALUE, label: placeholder || "Не настроено" }]}
-                >
-                    <SelectTrigger className="w-full" disabled>
-                        <SelectValue placeholder={placeholder || "Не настроено"} />
-                    </SelectTrigger>
-                    <SelectContent>
-                        <SelectGroup>
-                            <SelectItem value={EMPTY_SELECT_VALUE}>
-                                {placeholder || "Не настроено"}
-                            </SelectItem>
-                        </SelectGroup>
-                    </SelectContent>
-                </Select>
-            ) : kind === "date" ? (
-                <DatePicker disabled value={value || ""} onValueChange={function () {}} />
-            ) : (
-                <Input
-                    disabled
-                    type="text"
-                    value={value || ""}
-                    placeholder={placeholder || "Не настроено"}
-                    readOnly
-                />
-            )}
-        </Field>
-    );
 }
 
 function CheckboxField(props: {
@@ -242,6 +203,18 @@ function DocumentList(props: {
                                                 {item.extraActionLabel === "Отправить в мессенджер"
                                                     ? null
                                                     : item.extraActionLabel || "Отправить"}
+                                            </Button>
+                                        ) : null}
+                                        {item.deleteAction ? (
+                                            <Button
+                                                type="button"
+                                                variant="ghost"
+                                                size="icon-sm"
+                                                onClick={item.deleteAction}
+                                                aria-label={item.deleteActionLabel || "Удалить"}
+                                                title={item.deleteActionLabel || "Удалить"}
+                                            >
+                                                <Trash2 />
                                             </Button>
                                         ) : null}
                                     </div>
@@ -382,7 +355,6 @@ export function EmployeeProfileSection(props: any) {
     } = props;
     return (
         <form className="employee-profile-form" onSubmit={handleSubmit}>
-            <div className="employee-section-label">Профиль</div>
             <DetailCard>
                 <CardHeader>
                     <CardTitle>{isCandidate ? "Профиль кандидата" : "Профиль сотрудника"}</CardTitle>
@@ -452,7 +424,6 @@ export function EmployeeProfileSection(props: any) {
 
             {isCandidate ? (
                 <>
-                    <div className="employee-section-label">Найм</div>
                     <DetailCard>
                         <CardHeader>
                             <CardTitle>Найм</CardTitle>
@@ -490,7 +461,6 @@ export function EmployeeProfileSection(props: any) {
                 </>
             ) : (
                 <>
-                    <div className="employee-section-label">Работа</div>
                     <DetailCard>
                         <CardHeader>
                             <CardTitle>Рабочий профиль</CardTitle>
@@ -549,7 +519,6 @@ export function EmployeeProfileSection(props: any) {
                         </CardContent>
                     </DetailCard>
 
-                    <div className="employee-section-label">Адаптация</div>
                     <DetailCard>
                         <CardHeader>
                             <CardTitle>Сопровождение</CardTitle>
@@ -558,47 +527,74 @@ export function EmployeeProfileSection(props: any) {
                             <FieldGroup className="employee-field-grid">
                                 <Field>
                                     <FieldLabel>Руководитель сотрудника</FieldLabel>
-                                    <Input
-                                        type="text"
-                                        name="manager_chat_id"
-                                        value={form.manager_chat_id}
+                                    <SelectField
+                                        name="manager_employee_id"
+                                        value={form.manager_employee_id}
                                         onChange={handleChange}
-                                        placeholder="Telegram id"
+                                        placeholder="Не выбран"
+                                        options={options.staff_employee_values}
                                     />
                                 </Field>
                                 <Field>
                                     <FieldLabel>Наставник адаптации</FieldLabel>
-                                    <Input
-                                        type="text"
-                                        name="mentor_adaptation_chat_id"
-                                        value={form.mentor_adaptation_chat_id}
+                                    <SelectField
+                                        name="mentor_adaptation_employee_id"
+                                        value={form.mentor_adaptation_employee_id}
                                         onChange={handleChange}
-                                        placeholder="Telegram id"
+                                        placeholder="Не выбран"
+                                        options={options.staff_employee_values}
                                     />
                                 </Field>
                                 <Field>
                                     <FieldLabel>Наставник ИПР</FieldLabel>
-                                    <Input
-                                        type="text"
-                                        name="mentor_ipr_chat_id"
-                                        value={form.mentor_ipr_chat_id}
+                                    <SelectField
+                                        name="mentor_ipr_employee_id"
+                                        value={form.mentor_ipr_employee_id}
                                         onChange={handleChange}
-                                        placeholder="Telegram id"
+                                        placeholder="Не выбран"
+                                        options={options.staff_employee_values}
                                     />
                                 </Field>
-                                <PlannedField
-                                    label="Наставник"
-                                    kind="select"
-                                    placeholder="Выбор сотрудника из списка"
-                                />
-                                <PlannedField label="Задачи на ИС" kind="link" placeholder="Ссылка на файл" />
-                                <PlannedField label="Обратная связь" kind="link" placeholder="Ссылка на файл" />
-                                <PlannedField label="Середина адаптации" kind="date" />
-                                <PlannedField label="Конец адаптации" kind="date" />
-                                <PlannedField
-                                    label="Должность руководителя"
-                                    placeholder="Показывать только для руководителя"
-                                />
+                                <Field>
+                                    <FieldLabel>Задачи на ИС</FieldLabel>
+                                    <Input
+                                        type="url"
+                                        inputMode="url"
+                                        name="adaptation_tasks_url"
+                                        value={form.adaptation_tasks_url}
+                                        onChange={handleChange}
+                                        placeholder="https://..."
+                                    />
+                                </Field>
+                                <Field>
+                                    <FieldLabel>Обратная связь</FieldLabel>
+                                    <Input
+                                        type="url"
+                                        inputMode="url"
+                                        name="adaptation_feedback_url"
+                                        value={form.adaptation_feedback_url}
+                                        onChange={handleChange}
+                                        placeholder="https://..."
+                                    />
+                                </Field>
+                                <Field>
+                                    <FieldLabel>Середина адаптации</FieldLabel>
+                                    <DatePicker
+                                        value={form.adaptation_midpoint}
+                                        onValueChange={function (value) {
+                                            changeFieldValue(handleChange, "adaptation_midpoint", value);
+                                        }}
+                                    />
+                                </Field>
+                                <Field>
+                                    <FieldLabel>Конец адаптации</FieldLabel>
+                                    <DatePicker
+                                        value={form.adaptation_end}
+                                        onValueChange={function (value) {
+                                            changeFieldValue(handleChange, "adaptation_end", value);
+                                        }}
+                                    />
+                                </Field>
                             </FieldGroup>
                             <CheckboxField
                                 name="employee_data_consent"
@@ -611,7 +607,6 @@ export function EmployeeProfileSection(props: any) {
                 </>
             )}
 
-            <div className="employee-section-label">Заметки</div>
             <DetailCard>
                 <CardHeader>
                     <CardTitle>Заметки и доступ</CardTitle>
@@ -649,6 +644,7 @@ export function EmployeeOperationsSection(props: any) {
         offerUrl,
         setOfferUrl,
         payload,
+        form,
         scheduleForm,
         setScheduleForm,
         launchFlowKey,
@@ -660,12 +656,16 @@ export function EmployeeOperationsSection(props: any) {
         handleScheduleSubmit,
         handleLaunchSubmit,
         handleFileSubmit,
+        handlePromoteToAdaptation,
         handleDeleteEmployee,
         employeeFileItems,
         hrFileItems,
         documentItems,
         launchItems,
+        manualLaunchItems,
+        isCandidate,
     } = props;
+    const canPromoteToAdaptation = isCandidate && !!String(form?.first_workday || "").trim();
     const scenarioItems = [{ value: EMPTY_SELECT_VALUE, label: "Выберите сценарий" }].concat(
         payload.options.scenarios.map(function (item: any) {
             return { value: item.value, label: item.label };
@@ -682,7 +682,33 @@ export function EmployeeOperationsSection(props: any) {
                 </Alert>
             ) : null}
 
-            <div className="employee-section-label">Сценарии</div>
+            {isCandidate ? (
+                <DetailCard>
+                    <CardHeader>
+                        <CardTitle>Переход в адаптацию</CardTitle>
+                    </CardHeader>
+                    <CardContent className="employee-ops-stack">
+                        <p className="text-sm text-muted-foreground">
+                            Переводит кандидата в статус адаптации и подготавливает даты адаптационного периода.
+                        </p>
+                        {!canPromoteToAdaptation ? (
+                            <p className="text-sm text-muted-foreground">
+                                Сначала укажите реальный первый день сотрудника в карточке.
+                            </p>
+                        ) : null}
+                        <Button
+                            type="button"
+                            variant="secondary"
+                            onClick={handlePromoteToAdaptation}
+                            disabled={!canPromoteToAdaptation}
+                        >
+                            <Play data-icon="inline-start" />
+                            Перевести в адаптацию
+                        </Button>
+                    </CardContent>
+                </DetailCard>
+            ) : null}
+
             <DetailCard>
                 <CardHeader>
                     <CardTitle>Сценарии</CardTitle>
@@ -773,7 +799,6 @@ export function EmployeeOperationsSection(props: any) {
                 </CardContent>
             </DetailCard>
 
-            <div className="employee-section-label">Документы</div>
             <DocumentList
                 title="Файлы HR"
                 items={hrFileItems}
@@ -842,24 +867,11 @@ export function EmployeeOperationsSection(props: any) {
                                     <Link2 data-icon="inline-start" />
                                     Добавить ссылку
                                 </Button>
-                                {payload.document_links.length ? (
-                                    <Button
-                                        type="button"
-                                        variant="ghost"
-                                        onClick={function () {
-                                            handleOfferDelete(payload.document_links[0].id);
-                                        }}
-                                    >
-                                        <Trash2 data-icon="inline-start" />
-                                        Удалить
-                                    </Button>
-                                ) : null}
                             </div>
                         </FieldGroup>
                     </form>
             </DocumentList>
 
-            <div className="employee-section-label">Очередь</div>
             <DetailCard>
                 <CardHeader>
                     <CardTitle>Запланированные сценарии</CardTitle>
@@ -869,7 +881,15 @@ export function EmployeeOperationsSection(props: any) {
                 </CardContent>
             </DetailCard>
 
-            <div className="employee-section-label">Опасная зона</div>
+            <DetailCard>
+                <CardHeader>
+                    <CardTitle>История ручных запусков</CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <ScenarioList items={manualLaunchItems} />
+                </CardContent>
+            </DetailCard>
+
             <DetailCard className="employee-danger-card">
                 <CardHeader>
                     <CardTitle>

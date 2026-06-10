@@ -180,7 +180,8 @@
                         <div class="notification-editor">
                         <div class="button-notification-list" data-button-notification-list>
                             {% for option_label in (step.button_options or '').splitlines() if option_label.strip() %}
-                                {% set button_notification = step_button_notifications.get(loop.index0) %}
+                                {% set button_notification_rules = step_button_notifications.get(loop.index0, []) %}
+                                {% set button_notification = button_notification_rules[0] if button_notification_rules else None %}
                                 <div class="card button-notification-card" data-button-notification-card data-option-index="{{ loop.index0 }}" style="box-shadow: none;">
                                     <input type="hidden" name="button_notification_parent_step_id" value="{{ step.id }}">
                                     <input type="hidden" name="button_notification_parent_step_ref" value="">

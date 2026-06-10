@@ -10,6 +10,14 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { EmojiPickerPopover } from "@/components/ui/emoji-picker-popover";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -17,7 +25,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 
-import { buildChildContainer, crumbIcon, itemKey, summarizeItem, workspaceItemTitle } from "./model";
+import { buildChildContainer, crumbIcon, itemKey, parseRecipientIds, summarizeItem, workspaceItemTitle } from "./model";
 import { NotificationRecipientsPicker, SingleSelectPicker } from "./pickers";
 import type {
   Container,
@@ -25,9 +33,11 @@ import type {
   ScenarioSummary,
   SingleOption,
   WorkspaceButtonNotification,
+  WorkspaceButtonNotificationRule,
   WorkspaceData,
   WorkspaceItem,
   WorkspaceStep,
+  WorkspaceStepSendNotificationRule,
 } from "./types";
 
 export function WorkspaceFlashNotice(props: { message: string; error: boolean }) {
@@ -40,7 +50,7 @@ export function WorkspaceFlashNotice(props: { message: string; error: boolean })
       className={`mb-4 rounded-lg border px-4 py-3 text-sm font-medium ${
         props.error
           ? "border-destructive/30 bg-destructive/10 text-destructive"
-          : "border-emerald-200 bg-emerald-50 text-emerald-700"
+          : "border-primary/30 bg-primary/5 text-foreground"
       }`}
     >
       {props.message}
@@ -100,7 +110,7 @@ export function WorkspaceSidebarSection(props: {
   } = props;
 
   return (
-    <Card className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-border bg-card p-4 shadow-none ring-0">
+    <Card className="flex min-h-0 flex-col overflow-hidden border border-border bg-card p-4 shadow-none ring-0">
       <CardHeader className="gap-3 border-b border-border/70 p-0 pb-4">
         <CardTitle className="text-[1.65rem] font-semibold">{sidebarTitle}</CardTitle>
       </CardHeader>
@@ -132,7 +142,7 @@ export function WorkspaceSidebarSection(props: {
         </Button>
       )}
       <Input
-        placeholder={isSurveyWorkspace ? "Найти опрос" : "Найти сценарий"}
+        placeholder={isSurveyWorkspace ? "Найти" : "Найти сценарий"}
         value={search}
         onChange={(e) => onSearchChange(e.target.value)}
         className="mt-3 text-sm"
@@ -288,7 +298,7 @@ export function WorkspaceCanvasSection(props: {
   } = props;
 
   return (
-    <Card className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-border bg-card p-4 shadow-none ring-0">
+    <Card className="flex min-h-0 flex-col overflow-hidden border border-border bg-card p-4 shadow-none ring-0">
       <div className="mb-3 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
         {stack.map((entry, index) => (
           <React.Fragment key={entry.key}>
@@ -323,7 +333,7 @@ export function WorkspaceCanvasSection(props: {
                 Выгрузить Excel
               </Button>
             ) : null}
-            {scenarioSettingsForm ? (
+            {!isSurveyWorkspace && scenarioSettingsForm ? (
               <Popover open={scenarioSettingsOpen} onOpenChange={onScenarioSettingsOpenChange}>
                 <PopoverTrigger render={<Button variant="secondary" size="sm" />}>
                   Настройки
@@ -407,7 +417,7 @@ export function WorkspaceCanvasSection(props: {
             ) : null}
             <Button variant="secondary" size="sm" onClick={onAddRootStep}>
               <Plus data-icon="inline-start" />
-              {isSurveyWorkspace ? "Добавить вопрос" : "Добавить шаг"}
+              {isSurveyWorkspace ? "Добавить" : "Добавить шаг"}
             </Button>
           </div>
         ) : currentContainer?.type === "chain" ? (
@@ -458,7 +468,9 @@ export function WorkspaceCanvasSection(props: {
                   <div className="flex flex-wrap gap-1.5">
                     <Badge variant="secondary">{item.kind === "branch_slot" ? "Ветка" : item.response_label}</Badge>
                     {"button_options" in item && item.button_options.length ? (
-                      <Badge variant="secondary">Кнопки: {item.button_options.length}</Badge>
+                      <Badge variant="secondary">
+                        {isSurveyWorkspace ? `Ответы: ${item.button_options.length}` : `Кнопки: ${item.button_options.length}`}
+                      </Badge>
                     ) : null}
                   </div>
                   {canOpen ? (
@@ -491,7 +503,7 @@ export function WorkspaceDetailSection({
 }) {
   return (
     <Card
-      className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-border bg-card p-4 shadow-none ring-0"
+      className="flex min-h-0 flex-col overflow-hidden border border-border bg-card p-4 shadow-none ring-0"
       style={{ position: "sticky", top: 0, alignSelf: "stretch" }}
     >
       <div className="mb-3">
@@ -506,6 +518,7 @@ export function WorkspaceStepDetailPane(props: {
   selectedItem: WorkspaceItem | null;
   detailTarget: WorkspaceStep | null;
   stepLabel: string;
+  isSurveyWorkspace: boolean;
   form: null | {
     title: string;
     text: string;
@@ -519,6 +532,7 @@ export function WorkspaceStepDetailPane(props: {
     notify_on_send_text: string;
     notify_on_send_recipient_ids: string;
     notify_on_send_recipient_scope: string;
+    step_send_notifications: WorkspaceStepSendNotificationRule[];
     button_notifications: WorkspaceButtonNotification[];
   };
   textRef: React.RefObject<HTMLTextAreaElement | null>;
@@ -531,7 +545,6 @@ export function WorkspaceStepDetailPane(props: {
   sendModeOptions: SingleOption[];
   targetFieldOptions: SingleOption[];
   launchScenarioOptions: SingleOption[];
-  notificationScopeOptions: SingleOption[];
   onInsertIntoText: (snippet: string) => void;
   onFormChange: (
     updater: (
@@ -548,6 +561,7 @@ export function WorkspaceStepDetailPane(props: {
         notify_on_send_text: string;
         notify_on_send_recipient_ids: string;
         notify_on_send_recipient_scope: string;
+        step_send_notifications: WorkspaceStepSendNotificationRule[];
         button_notifications: WorkspaceButtonNotification[];
       } | null,
     ) => {
@@ -563,6 +577,7 @@ export function WorkspaceStepDetailPane(props: {
       notify_on_send_text: string;
       notify_on_send_recipient_ids: string;
       notify_on_send_recipient_scope: string;
+      step_send_notifications: WorkspaceStepSendNotificationRule[];
       button_notifications: WorkspaceButtonNotification[];
     } | null,
   ) => void;
@@ -586,11 +601,11 @@ export function WorkspaceStepDetailPane(props: {
     attachmentState,
     saveState,
     openLabel,
+    isSurveyWorkspace,
     responseTypePickerOptions,
     sendModeOptions,
     targetFieldOptions,
     launchScenarioOptions,
-    notificationScopeOptions,
     onInsertIntoText,
     onFormChange,
     onCreateBranch,
@@ -602,6 +617,159 @@ export function WorkspaceStepDetailPane(props: {
     supportsButtonOptions,
     supportsTargetField,
   } = props;
+  const [notificationRuleEditor, setNotificationRuleEditor] = React.useState<null | {
+    option_index: number;
+    option_label: string;
+    rule_index: number | null;
+    message_text: string;
+    recipient_ids: string;
+  }>(null);
+  const [stepNotificationRuleEditor, setStepNotificationRuleEditor] = React.useState<null | {
+    rule_index: number | null;
+    message_text: string;
+    recipient_ids: string;
+  }>(null);
+
+  React.useEffect(() => {
+    setNotificationRuleEditor(null);
+    setStepNotificationRuleEditor(null);
+  }, [detailTarget?.id, selectedItem?.kind]);
+
+  const employeeLabelById = React.useMemo(() => {
+    const entries = (payloadWorkspace?.employee_options || []).map((option) => [String(option.id), option.label]);
+    return Object.fromEntries(entries) as Record<string, string>;
+  }, [payloadWorkspace]);
+
+  const saveNotificationRule = () => {
+    if (!notificationRuleEditor) return;
+    const normalizedMessageText = notificationRuleEditor.message_text.trim();
+    const normalizedRecipientIds = notificationRuleEditor.recipient_ids.trim();
+    if (!normalizedMessageText || !normalizedRecipientIds) {
+      return;
+    }
+    onFormChange((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        button_notifications: prev.button_notifications.map((item) => {
+          if (item.option_index !== notificationRuleEditor.option_index) {
+            return item;
+          }
+          const currentRules = item.rules || [];
+          const nextRuleIndex =
+            notificationRuleEditor.rule_index ??
+            (currentRules.length ? Math.max(...currentRules.map((rule) => rule.rule_index)) + 1 : 0);
+          const nextRules = notificationRuleEditor.rule_index === null
+            ? currentRules.concat([
+                {
+                  rule_index: nextRuleIndex,
+                  message_text: normalizedMessageText,
+                  recipient_ids: normalizedRecipientIds,
+                  recipient_scope: "",
+                },
+              ])
+            : currentRules.map((rule) =>
+                rule.rule_index === notificationRuleEditor.rule_index
+                  ? {
+                      ...rule,
+                      message_text: normalizedMessageText,
+                      recipient_ids: normalizedRecipientIds,
+                      recipient_scope: "",
+                    }
+                  : rule,
+              );
+          return {
+            ...item,
+            message_text: nextRules[0]?.message_text || "",
+            recipient_ids: nextRules[0]?.recipient_ids || "",
+            recipient_scope: nextRules[0]?.recipient_scope || "",
+            rules: nextRules.sort((left, right) => left.rule_index - right.rule_index),
+          };
+        }),
+      };
+    });
+    setNotificationRuleEditor(null);
+  };
+
+  const deleteNotificationRule = (optionIndex: number, ruleIndex: number) => {
+    onFormChange((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        button_notifications: prev.button_notifications.map((item) => {
+          if (item.option_index !== optionIndex) {
+            return item;
+          }
+          const nextRules = (item.rules || []).filter((rule) => rule.rule_index !== ruleIndex);
+          return {
+            ...item,
+            message_text: nextRules[0]?.message_text || "",
+            recipient_ids: nextRules[0]?.recipient_ids || "",
+            recipient_scope: nextRules[0]?.recipient_scope || "",
+            rules: nextRules,
+          };
+        }),
+      };
+    });
+  };
+
+  const saveStepNotificationRule = () => {
+    if (!stepNotificationRuleEditor) return;
+    const normalizedMessageText = stepNotificationRuleEditor.message_text.trim();
+    const normalizedRecipientIds = stepNotificationRuleEditor.recipient_ids.trim();
+    if (!normalizedMessageText || !normalizedRecipientIds) {
+      return;
+    }
+    onFormChange((prev) => {
+      if (!prev) return prev;
+      const currentRules = prev.step_send_notifications || [];
+      const nextRuleIndex =
+        stepNotificationRuleEditor.rule_index ??
+        (currentRules.length ? Math.max(...currentRules.map((rule) => rule.rule_index)) + 1 : 0);
+      const nextRules = stepNotificationRuleEditor.rule_index === null
+        ? currentRules.concat([
+            {
+              rule_index: nextRuleIndex,
+              message_text: normalizedMessageText,
+              recipient_ids: normalizedRecipientIds,
+              recipient_scope: "",
+            },
+          ])
+        : currentRules.map((rule) =>
+            rule.rule_index === stepNotificationRuleEditor.rule_index
+              ? {
+                  ...rule,
+                  message_text: normalizedMessageText,
+                  recipient_ids: normalizedRecipientIds,
+                  recipient_scope: "",
+                }
+              : rule,
+          );
+      const sortedRules = nextRules.sort((left, right) => left.rule_index - right.rule_index);
+      return {
+        ...prev,
+        notify_on_send_text: sortedRules[0]?.message_text || "",
+        notify_on_send_recipient_ids: sortedRules[0]?.recipient_ids || "",
+        notify_on_send_recipient_scope: sortedRules[0]?.recipient_scope || "",
+        step_send_notifications: sortedRules,
+      };
+    });
+    setStepNotificationRuleEditor(null);
+  };
+
+  const deleteStepNotificationRule = (ruleIndex: number) => {
+    onFormChange((prev) => {
+      if (!prev) return prev;
+      const nextRules = (prev.step_send_notifications || []).filter((rule) => rule.rule_index !== ruleIndex);
+      return {
+        ...prev,
+        notify_on_send_text: nextRules[0]?.message_text || "",
+        notify_on_send_recipient_ids: nextRules[0]?.recipient_ids || "",
+        notify_on_send_recipient_scope: nextRules[0]?.recipient_scope || "",
+        step_send_notifications: nextRules,
+      };
+    });
+  };
 
   return (
     <>
@@ -627,29 +795,58 @@ export function WorkspaceStepDetailPane(props: {
               </div>
             ) : (
               <div className="flex flex-col gap-4">
-                <label className="grid gap-2">
-                  <span className="text-sm font-semibold text-foreground/75">Название</span>
-                  <Input
-                    value={form?.title || ""}
-                    onChange={(event) => onFormChange((prev) => (prev ? { ...prev, title: event.target.value } : prev))}
-                    className="h-10 text-sm"
-                  />
-                </label>
-
-                <label className="grid gap-2">
-                  <span className="text-sm font-semibold text-foreground/75">Текст</span>
-                  <div className="relative">
-                    <Textarea
-                      ref={textRef}
-                      className="min-h-[140px] px-3 py-3 pr-12 text-sm leading-6"
-                      value={form?.text || ""}
-                      onChange={(event) => onFormChange((prev) => (prev ? { ...prev, text: event.target.value } : prev))}
-                    />
-                    <div className="absolute right-2.5 bottom-2.5">
-                      <EmojiPickerPopover onEmojiSelect={onInsertIntoText} />
+                {isSurveyWorkspace ? (
+                  <label className="grid gap-2">
+                    <span className="text-sm font-semibold text-foreground/75">Вопрос</span>
+                    <div className="relative">
+                      <Textarea
+                        ref={textRef}
+                        className="min-h-[140px] px-3 py-3 pr-12 text-sm leading-6"
+                        value={form?.text || form?.title || ""}
+                        onChange={(event) =>
+                          onFormChange((prev) =>
+                            prev
+                              ? {
+                                  ...prev,
+                                  title: event.target.value,
+                                  text: event.target.value,
+                                }
+                              : prev,
+                          )
+                        }
+                      />
+                      <div className="absolute right-2.5 bottom-2.5">
+                        <EmojiPickerPopover onEmojiSelect={onInsertIntoText} />
+                      </div>
                     </div>
-                  </div>
-                </label>
+                  </label>
+                ) : (
+                  <>
+                    <label className="grid gap-2">
+                      <span className="text-sm font-semibold text-foreground/75">Название</span>
+                      <Input
+                        value={form?.title || ""}
+                        onChange={(event) => onFormChange((prev) => (prev ? { ...prev, title: event.target.value } : prev))}
+                        className="h-10 text-sm"
+                      />
+                    </label>
+
+                    <label className="grid gap-2">
+                      <span className="text-sm font-semibold text-foreground/75">Текст</span>
+                      <div className="relative">
+                        <Textarea
+                          ref={textRef}
+                          className="min-h-[140px] px-3 py-3 pr-12 text-sm leading-6"
+                          value={form?.text || ""}
+                          onChange={(event) => onFormChange((prev) => (prev ? { ...prev, text: event.target.value } : prev))}
+                        />
+                        <div className="absolute right-2.5 bottom-2.5">
+                          <EmojiPickerPopover onEmojiSelect={onInsertIntoText} />
+                        </div>
+                      </div>
+                    </label>
+                  </>
+                )}
 
                 <div className="flex flex-wrap items-center gap-2 text-[0.72rem]">
                   <span className="text-muted-foreground">Теги:</span>
@@ -691,31 +888,35 @@ export function WorkspaceStepDetailPane(props: {
                   </p>
                 </div>
 
-                <label className="grid gap-2">
-                  <span className="text-sm font-semibold text-foreground/75">Тип ответа</span>
-                  <SingleSelectPicker
-                    options={responseTypePickerOptions}
-                    value={form?.response_type || "none"}
-                    placeholder="Выбери тип ответа"
-                    onChange={(nextValue) =>
-                      onFormChange((prev) =>
-                        prev
-                          ? {
-                              ...prev,
-                              response_type: nextValue,
-                              button_options: supportsButtonOptions(nextValue) ? prev.button_options : "",
-                              button_notifications: supportsButtonOptions(nextValue) ? prev.button_notifications : [],
-                              target_field: supportsTargetField(nextValue) ? prev.target_field : "",
-                            }
-                          : prev,
-                      )
-                    }
-                  />
-                </label>
-
-                {supportsButtonOptions(form?.response_type || "") ? (
+                {!isSurveyWorkspace ? (
                   <label className="grid gap-2">
-                    <span className="text-sm font-semibold text-foreground/75">Кнопки</span>
+                    <span className="text-sm font-semibold text-foreground/75">Тип ответа</span>
+                    <SingleSelectPicker
+                      options={responseTypePickerOptions}
+                      value={form?.response_type || "none"}
+                      placeholder="Выбери тип ответа"
+                      onChange={(nextValue) =>
+                        onFormChange((prev) =>
+                          prev
+                            ? {
+                                ...prev,
+                                response_type: nextValue,
+                                button_options: supportsButtonOptions(nextValue) ? prev.button_options : "",
+                                button_notifications: supportsButtonOptions(nextValue) ? prev.button_notifications : [],
+                                target_field: supportsTargetField(nextValue) ? prev.target_field : "",
+                              }
+                            : prev,
+                        )
+                      }
+                    />
+                  </label>
+                ) : null}
+
+                {isSurveyWorkspace || supportsButtonOptions(form?.response_type || "") ? (
+                  <label className="grid gap-2">
+                    <span className="text-sm font-semibold text-foreground/75">
+                      {isSurveyWorkspace ? "Варианты ответа" : "Кнопки"}
+                    </span>
                     <Textarea
                       className="min-h-[118px] px-3 py-3 text-sm leading-6"
                       value={form?.button_options || ""}
@@ -729,6 +930,7 @@ export function WorkspaceStepDetailPane(props: {
                           return {
                             ...prev,
                             button_options: event.target.value,
+                            response_type: isSurveyWorkspace ? "text" : prev.response_type,
                             button_notifications: optionLabels.map((option_label, option_index) => {
                               const existing = prev.button_notifications.find((item) => item.option_index === option_index);
                               return {
@@ -737,17 +939,18 @@ export function WorkspaceStepDetailPane(props: {
                                 message_text: existing?.message_text || "",
                                 recipient_ids: existing?.recipient_ids || "",
                                 recipient_scope: existing?.recipient_scope || "",
+                                rules: existing?.rules || [],
                               };
                             }),
                           };
                         })
                       }
-                      placeholder="Каждая строка = отдельная кнопка"
+                      placeholder={isSurveyWorkspace ? "Каждая строка = отдельный вариант ответа" : "Каждая строка = отдельная кнопка"}
                     />
                   </label>
                 ) : null}
 
-                {supportsButtonOptions(form?.response_type || "") && form?.button_notifications?.length ? (
+                {!isSurveyWorkspace && supportsButtonOptions(form?.response_type || "") && form?.button_notifications?.length ? (
                   <details className="rounded-lg border border-border bg-muted/50 p-3">
                     <summary className="cursor-pointer list-none text-sm font-semibold text-foreground/80">
                       Уведомления по кнопкам
@@ -756,66 +959,88 @@ export function WorkspaceStepDetailPane(props: {
                       {form.button_notifications.map((notification) => (
                         <div key={`${notification.option_index}-${notification.option_label}`} className="rounded-lg border border-border bg-card p-3">
                           <div className="flex flex-col gap-3">
-                            <p className="text-sm font-semibold text-foreground/85">Кнопка: {notification.option_label}</p>
-                            <label className="flex flex-col gap-2">
-                              <span className="text-sm font-semibold text-foreground/75">Текст уведомления</span>
-                              <Textarea
-                                className="min-h-[96px] text-sm"
-                                value={notification.message_text}
-                                onChange={(event) =>
-                                  onFormChange((prev) =>
-                                    prev
-                                      ? {
-                                          ...prev,
-                                          button_notifications: prev.button_notifications.map((item) =>
-                                            item.option_index === notification.option_index ? { ...item, message_text: event.target.value } : item,
-                                          ),
-                                        }
-                                      : prev,
-                                  )
+                            <div className="flex items-center justify-between gap-3">
+                              <p className="text-sm font-semibold text-foreground/85">Кнопка: {notification.option_label}</p>
+                              <Button
+                                type="button"
+                                variant="secondary"
+                                size="sm"
+                                onClick={() =>
+                                  setNotificationRuleEditor({
+                                    option_index: notification.option_index,
+                                    option_label: notification.option_label,
+                                    rule_index: null,
+                                    message_text: "",
+                                    recipient_ids: "",
+                                  })
                                 }
-                                placeholder={`Например: Пользователь нажал кнопку "${notification.option_label}".`}
-                              />
-                            </label>
-                            <div className="flex flex-col gap-2">
-                              <span className="text-sm font-semibold text-foreground/75">Получатели уведомления</span>
-                              <NotificationRecipientsPicker
-                                employeeOptions={payloadWorkspace?.employee_options || []}
-                                value={notification.recipient_ids}
-                                onChange={(next) =>
-                                  onFormChange((prev) =>
-                                    prev
-                                      ? {
-                                          ...prev,
-                                          button_notifications: prev.button_notifications.map((item) =>
-                                            item.option_index === notification.option_index ? { ...item, recipient_ids: next } : item,
-                                          ),
-                                        }
-                                      : prev,
-                                  )
-                                }
-                              />
+                              >
+                                <Plus data-icon="inline-start" />
+                                Добавить правило
+                              </Button>
                             </div>
-                            <label className="flex flex-col gap-2">
-                              <span className="text-sm font-semibold text-foreground/75">Адресаты из карточки сотрудника</span>
-                              <SingleSelectPicker
-                                options={notificationScopeOptions}
-                                value={notification.recipient_scope || ""}
-                                placeholder="Не добавлять адресатов из карточки"
-                                onChange={(nextValue) =>
-                                  onFormChange((prev) =>
-                                    prev
-                                      ? {
-                                          ...prev,
-                                          button_notifications: prev.button_notifications.map((item) =>
-                                            item.option_index === notification.option_index ? { ...item, recipient_scope: nextValue } : item,
-                                          ),
-                                        }
-                                      : prev,
-                                  )
-                                }
-                              />
-                            </label>
+                            {(notification.rules || []).length ? (
+                              <div className="flex flex-col gap-2">
+                                {notification.rules.map((rule) => {
+                                  const selectedIds = parseRecipientIds(rule.recipient_ids);
+                                  const recipientSummary = selectedIds.length
+                                    ? selectedIds
+                                        .map((id) => {
+                                          const employeeId = id.startsWith("employee:") ? id.split(":")[1] : id;
+                                          return employeeLabelById[employeeId] || `Сотрудник #${employeeId}`;
+                                        })
+                                        .join(", ")
+                                    : "Получатели не выбраны";
+                                  return (
+                                    <div
+                                      key={`${notification.option_index}-${rule.rule_index}`}
+                                      className="rounded-lg border border-border/80 bg-muted/30 p-3"
+                                    >
+                                      <div className="flex items-start justify-between gap-3">
+                                        <div className="min-w-0 space-y-2">
+                                          <p className="text-sm leading-6 text-foreground/85">
+                                            {rule.message_text || "Без текста уведомления"}
+                                          </p>
+                                          <p className="text-xs leading-5 text-muted-foreground">
+                                            {recipientSummary}
+                                          </p>
+                                        </div>
+                                        <div className="flex shrink-0 items-center gap-1">
+                                          <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={() =>
+                                              setNotificationRuleEditor({
+                                                option_index: notification.option_index,
+                                                option_label: notification.option_label,
+                                                rule_index: rule.rule_index,
+                                                message_text: rule.message_text,
+                                                recipient_ids: rule.recipient_ids,
+                                              })
+                                            }
+                                          >
+                                            Изменить
+                                          </Button>
+                                          <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="icon-sm"
+                                            onClick={() => deleteNotificationRule(notification.option_index, rule.rule_index)}
+                                            aria-label="Удалить правило"
+                                            title="Удалить правило"
+                                          >
+                                            <Trash2 />
+                                          </Button>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            ) : (
+                              <p className="text-sm text-muted-foreground">Правил пока нет.</p>
+                            )}
                           </div>
                         </div>
                       ))}
@@ -823,27 +1048,29 @@ export function WorkspaceStepDetailPane(props: {
                   </details>
                 ) : null}
 
-                <label className="grid gap-2">
-                  <span className="text-sm font-semibold text-foreground/75">Режим отправки</span>
-                  <SingleSelectPicker
-                    options={sendModeOptions}
-                    value={form?.send_mode || "immediate"}
-                    placeholder="Выбери режим отправки"
-                    onChange={(nextValue) =>
-                      onFormChange((prev) =>
-                        prev
-                          ? {
-                              ...prev,
-                              send_mode: nextValue,
-                              send_time: nextValue === "specific_time" ? prev.send_time : "",
-                            }
-                          : prev,
-                      )
-                    }
-                  />
-                </label>
+                {!isSurveyWorkspace ? (
+                  <label className="grid gap-2">
+                    <span className="text-sm font-semibold text-foreground/75">Режим отправки</span>
+                    <SingleSelectPicker
+                      options={sendModeOptions}
+                      value={form?.send_mode || "immediate"}
+                      placeholder="Выбери режим отправки"
+                      onChange={(nextValue) =>
+                        onFormChange((prev) =>
+                          prev
+                            ? {
+                                ...prev,
+                                send_mode: nextValue,
+                                send_time: nextValue === "specific_time" ? prev.send_time : "",
+                              }
+                            : prev,
+                        )
+                      }
+                    />
+                  </label>
+                ) : null}
 
-                {form?.send_mode === "specific_time" ? (
+                {!isSurveyWorkspace && form?.send_mode === "specific_time" ? (
                   <label className="grid gap-2">
                     <span className="text-sm font-semibold text-foreground/75">Время отправки</span>
                     <Input
@@ -855,59 +1082,110 @@ export function WorkspaceStepDetailPane(props: {
                   </label>
                 ) : null}
 
-                <label className="grid gap-2">
-                  <span className="text-sm font-semibold text-foreground/75">Сохранить ответ</span>
-                  <SingleSelectPicker
-                    options={targetFieldOptions}
-                    value={form?.target_field || ""}
-                    placeholder="Не сохранять"
-                    onChange={(nextValue) => onFormChange((prev) => (prev ? { ...prev, target_field: nextValue } : prev))}
-                  />
-                </label>
-
-                <label className="grid gap-2">
-                  <span className="text-sm font-semibold text-foreground/75">Переход к сценарию</span>
-                  <SingleSelectPicker
-                    options={launchScenarioOptions}
-                    value={form?.launch_scenario_key || ""}
-                    placeholder="Не выполнять переход"
-                    onChange={(nextValue) => onFormChange((prev) => (prev ? { ...prev, launch_scenario_key: nextValue } : prev))}
-                  />
-                </label>
-
-                <details className="rounded-lg border border-border bg-muted/50 p-3">
-                  <summary className="cursor-pointer list-none text-sm font-semibold text-foreground/80">
-                    Уведомление для шага
-                  </summary>
-                  <div className="mt-3 flex flex-col gap-3">
-                    <label className="flex flex-col gap-2">
-                      <span className="text-sm font-semibold text-foreground/75">Текст уведомления</span>
-                      <Textarea
-                        className="min-h-[110px] text-sm"
-                        value={form?.notify_on_send_text || ""}
-                        onChange={(event) => onFormChange((prev) => (prev ? { ...prev, notify_on_send_text: event.target.value } : prev))}
-                        placeholder="Например: Пользователю отправлено сообщение этого шага."
-                      />
-                    </label>
-                    <div className="flex flex-col gap-2">
-                      <span className="text-sm font-semibold text-foreground/75">Получатели уведомления</span>
-                      <NotificationRecipientsPicker
-                        employeeOptions={payloadWorkspace?.employee_options || []}
-                        value={form?.notify_on_send_recipient_ids || ""}
-                        onChange={(next) => onFormChange((prev) => (prev ? { ...prev, notify_on_send_recipient_ids: next } : prev))}
-                      />
-                    </div>
-                    <label className="flex flex-col gap-2">
-                      <span className="text-sm font-semibold text-foreground/75">Адресаты из карточки сотрудника</span>
+                {!isSurveyWorkspace ? (
+                  <>
+                    <label className="grid gap-2">
+                      <span className="text-sm font-semibold text-foreground/75">Сохранить ответ</span>
                       <SingleSelectPicker
-                        options={notificationScopeOptions}
-                        value={form?.notify_on_send_recipient_scope || ""}
-                        placeholder="Не добавлять адресатов из карточки"
-                        onChange={(nextValue) => onFormChange((prev) => (prev ? { ...prev, notify_on_send_recipient_scope: nextValue } : prev))}
+                        options={targetFieldOptions}
+                        value={form?.target_field || ""}
+                        placeholder="Не сохранять"
+                        onChange={(nextValue) => onFormChange((prev) => (prev ? { ...prev, target_field: nextValue } : prev))}
                       />
                     </label>
-                  </div>
-                </details>
+
+                    <label className="grid gap-2">
+                      <span className="text-sm font-semibold text-foreground/75">Переход к сценарию</span>
+                      <SingleSelectPicker
+                        options={launchScenarioOptions}
+                        value={form?.launch_scenario_key || ""}
+                        placeholder="Не выполнять переход"
+                        onChange={(nextValue) => onFormChange((prev) => (prev ? { ...prev, launch_scenario_key: nextValue } : prev))}
+                      />
+                    </label>
+
+                    <details className="rounded-lg border border-border bg-muted/50 p-3">
+                      <summary className="cursor-pointer list-none text-sm font-semibold text-foreground/80">
+                        Уведомление для шага
+                      </summary>
+                      <div className="mt-3 flex flex-col gap-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        className="ml-auto"
+                        onClick={() =>
+                          setStepNotificationRuleEditor({
+                                rule_index: null,
+                                message_text: "",
+                                recipient_ids: "",
+                              })
+                            }
+                          >
+                            <Plus data-icon="inline-start" />
+                            Добавить правило
+                          </Button>
+                        </div>
+                        {(form?.step_send_notifications || []).length ? (
+                          <div className="flex flex-col gap-2">
+                            {form?.step_send_notifications.map((rule) => {
+                              const selectedIds = parseRecipientIds(rule.recipient_ids);
+                              const recipientSummary = selectedIds.length
+                                ? selectedIds
+                                    .map((id) => {
+                                      const employeeId = id.startsWith("employee:") ? id.split(":")[1] : id;
+                                      return employeeLabelById[employeeId] || `Сотрудник #${employeeId}`;
+                                    })
+                                    .join(", ")
+                                : "Получатели не выбраны";
+                              return (
+                                <div key={`step-notify-${rule.rule_index}`} className="rounded-lg border border-border/80 bg-card p-3">
+                                  <div className="flex items-start justify-between gap-3">
+                                    <div className="min-w-0 space-y-2">
+                                      <p className="text-sm leading-6 text-foreground/85">
+                                        {rule.message_text || "Без текста уведомления"}
+                                      </p>
+                                      <p className="text-xs leading-5 text-muted-foreground">{recipientSummary}</p>
+                                    </div>
+                                    <div className="flex shrink-0 items-center gap-1">
+                                      <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() =>
+                                          setStepNotificationRuleEditor({
+                                            rule_index: rule.rule_index,
+                                            message_text: rule.message_text,
+                                            recipient_ids: rule.recipient_ids,
+                                          })
+                                        }
+                                      >
+                                        Изменить
+                                      </Button>
+                                      <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="icon-sm"
+                                        onClick={() => deleteStepNotificationRule(rule.rule_index)}
+                                        aria-label="Удалить правило"
+                                        title="Удалить правило"
+                                      >
+                                        <Trash2 />
+                                      </Button>
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <p className="text-sm text-muted-foreground">Правил пока нет.</p>
+                        )}
+                      </div>
+                    </details>
+                  </>
+                ) : null}
 
                 <div className="flex flex-col gap-3">
                   <p className={`text-sm ${saveState.error ? "text-destructive" : "text-muted-foreground"}`}>{saveState.message || " "}</p>
@@ -935,6 +1213,100 @@ export function WorkspaceStepDetailPane(props: {
           )}
         </div>
       </ScrollArea>
+      <Dialog open={!!notificationRuleEditor} onOpenChange={(open) => (!open ? setNotificationRuleEditor(null) : undefined)}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>
+              {notificationRuleEditor?.rule_index === null ? "Новое правило уведомления" : "Изменить правило уведомления"}
+            </DialogTitle>
+            <DialogDescription>
+              {notificationRuleEditor ? `Кнопка: ${notificationRuleEditor.option_label}` : ""}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4">
+            <label className="grid gap-2">
+              <span className="text-sm font-semibold text-foreground/75">Получатели</span>
+              <NotificationRecipientsPicker
+                employeeOptions={payloadWorkspace?.employee_options || []}
+                value={notificationRuleEditor?.recipient_ids || ""}
+                onChange={(next) =>
+                  setNotificationRuleEditor((prev) => (prev ? { ...prev, recipient_ids: next } : prev))
+                }
+              />
+            </label>
+            <label className="grid gap-2">
+              <span className="text-sm font-semibold text-foreground/75">Текст уведомления</span>
+              <Textarea
+                className="min-h-[120px] text-sm"
+                value={notificationRuleEditor?.message_text || ""}
+                onChange={(event) =>
+                  setNotificationRuleEditor((prev) => (prev ? { ...prev, message_text: event.target.value } : prev))
+                }
+                placeholder="Например: Пользователь нажал кнопку."
+              />
+            </label>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setNotificationRuleEditor(null)}>
+              Отмена
+            </Button>
+            <Button
+              onClick={saveNotificationRule}
+              disabled={
+                !notificationRuleEditor?.message_text.trim() || !parseRecipientIds(notificationRuleEditor?.recipient_ids || "").length
+              }
+            >
+              Сохранить правило
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={!!stepNotificationRuleEditor} onOpenChange={(open) => (!open ? setStepNotificationRuleEditor(null) : undefined)}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>
+              {stepNotificationRuleEditor?.rule_index === null ? "Новое правило уведомления" : "Изменить правило уведомления"}
+            </DialogTitle>
+            <DialogDescription>Это уведомление отправится сразу после отправки текущего шага.</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4">
+            <label className="grid gap-2">
+              <span className="text-sm font-semibold text-foreground/75">Получатели</span>
+              <NotificationRecipientsPicker
+                employeeOptions={payloadWorkspace?.employee_options || []}
+                value={stepNotificationRuleEditor?.recipient_ids || ""}
+                onChange={(next) =>
+                  setStepNotificationRuleEditor((prev) => (prev ? { ...prev, recipient_ids: next } : prev))
+                }
+              />
+            </label>
+            <label className="grid gap-2">
+              <span className="text-sm font-semibold text-foreground/75">Текст уведомления</span>
+              <Textarea
+                className="min-h-[120px] text-sm"
+                value={stepNotificationRuleEditor?.message_text || ""}
+                onChange={(event) =>
+                  setStepNotificationRuleEditor((prev) => (prev ? { ...prev, message_text: event.target.value } : prev))
+                }
+                placeholder="Например: Пользователю отправлен шаг."
+              />
+            </label>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setStepNotificationRuleEditor(null)}>
+              Отмена
+            </Button>
+            <Button
+              onClick={saveStepNotificationRule}
+              disabled={
+                !stepNotificationRuleEditor?.message_text.trim() || !parseRecipientIds(stepNotificationRuleEditor?.recipient_ids || "").length
+              }
+            >
+              Сохранить правило
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

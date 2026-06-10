@@ -1,10 +1,26 @@
+function normalizeEmployeeDetailPayload(payload: any) {
+    return Object.assign({}, payload, {
+        options: Object.assign(
+            {
+                employee_role_values: [],
+                employee_stage_values: [],
+                candidate_work_stage_values: [],
+                staff_employee_values: [],
+                scenarios: [],
+            },
+            payload && payload.options ? payload.options : {},
+        ),
+    });
+}
+
 export function updatePayloadState(setState: any, setForm: any, payload: any) {
+    const normalizedPayload = normalizeEmployeeDetailPayload(payload);
     setState({
         loading: false,
         error: "",
-        payload: payload,
+        payload: normalizedPayload,
     });
-    setForm(payload.employee);
+    setForm(normalizedPayload.employee);
 }
 
 export function buildEmployeeUpdatePayload(form: any) {

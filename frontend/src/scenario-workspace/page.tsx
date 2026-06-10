@@ -31,6 +31,7 @@ import type {
   ScenarioSettingsForm,
   SingleOption,
   WorkspacePayload,
+  WorkspaceStepSendNotificationRule,
 } from "./types";
 
 const rootElement = document.getElementById("react-scenario-workspace-v2-root");
@@ -44,8 +45,8 @@ export function ScenarioWorkspacePage() {
   const isSurveyWorkspace = workspaceKind === "survey";
   const itemLabel = payloadLabel(workspaceKind);
   const sidebarTitle = isSurveyWorkspace ? "Опросы" : "Сценарии";
-  const stepTitle = isSurveyWorkspace ? "Вопросы опроса" : "Шаги сценария";
-  const createItemLabel = isSurveyWorkspace ? "Создать опрос" : "Создать сценарий";
+  const stepTitle = isSurveyWorkspace ? "Вопросы" : "Шаги сценария";
+  const createItemLabel = isSurveyWorkspace ? "Создать" : "Создать сценарий";
   const itemNamePlaceholder = isSurveyWorkspace ? "Название опроса" : "Название сценария";
   const newItemTitle = isSurveyWorkspace ? "Новый опрос" : "Новый сценарий";
   const newStepTitle = isSurveyWorkspace ? "Новый вопрос" : "Новый шаг";
@@ -71,6 +72,7 @@ export function ScenarioWorkspacePage() {
     notify_on_send_text: string;
     notify_on_send_recipient_ids: string;
     notify_on_send_recipient_scope: string;
+    step_send_notifications: WorkspaceStepSendNotificationRule[];
     button_notifications: WorkspaceButtonNotification[];
   }>(null);
   const [saveState, setSaveState] = React.useState({ saving: false, message: "", error: false });
@@ -141,13 +143,6 @@ export function ScenarioWorkspacePage() {
       { value: "", label: "Не выполнять переход" },
       ...((payload?.workspace?.available_scenarios || []).map((option) => ({ value: option.value, label: option.label })) as SingleOption[]),
     ],
-    [payload],
-  );
-  const notificationScopeOptions = React.useMemo<SingleOption[]>(
-    () =>
-      Object.entries(payload?.workspace?.notification_recipient_scope_labels || { "": "Не добавлять адресатов из карточки" }).map(
-        ([value, label]) => ({ value, label }),
-      ),
     [payload],
   );
 
@@ -265,7 +260,10 @@ export function ScenarioWorkspacePage() {
     setForm({
       title: detailTarget.title || "",
       text: detailTarget.text || "",
-      response_type: detailTarget.response_type === "buttons" ? "branching" : detailTarget.response_type || "none",
+      response_type:
+        !isSurveyWorkspace && detailTarget.response_type === "buttons"
+          ? "branching"
+          : detailTarget.response_type || "none",
       button_options: detailTarget.button_options.join("\n"),
       send_mode: detailTarget.send_mode || "immediate",
       send_time: detailTarget.send_time || "",
@@ -275,11 +273,12 @@ export function ScenarioWorkspacePage() {
       notify_on_send_text: detailTarget.notify_on_send_text || "",
       notify_on_send_recipient_ids: detailTarget.notify_on_send_recipient_ids || "",
       notify_on_send_recipient_scope: detailTarget.notify_on_send_recipient_scope || "",
+      step_send_notifications: detailTarget.step_send_notifications || [],
       button_notifications: detailTarget.button_notifications || [],
     });
     setSaveState({ saving: false, message: "", error: false });
     setAttachmentState({ uploading: false, message: "", error: false });
-  }, [detailTarget, selectedItemKey, selectedScenarioId]);
+  }, [detailTarget, isSurveyWorkspace, selectedItemKey, selectedScenarioId]);
 
   React.useEffect(() => {
     const scenario = payload?.workspace?.scenario;
@@ -308,8 +307,8 @@ export function ScenarioWorkspacePage() {
         Accept: "application/json",
       },
       body: JSON.stringify({
-        title: form.title,
-        text: form.text,
+        title: isSurveyWorkspace ? (form.text || form.title) : form.title,
+        text: isSurveyWorkspace ? (form.text || form.title) : form.text,
         response_type: form.response_type,
         button_options: form.button_options,
         send_mode: form.send_mode,
@@ -320,6 +319,7 @@ export function ScenarioWorkspacePage() {
         notify_on_send_text: form.notify_on_send_text,
         notify_on_send_recipient_ids: form.notify_on_send_recipient_ids,
         notify_on_send_recipient_scope: form.notify_on_send_recipient_scope,
+        step_send_notifications: form.step_send_notifications,
         button_notifications: form.button_notifications,
       }),
     })
@@ -717,7 +717,7 @@ export function ScenarioWorkspacePage() {
           </div>
         ) : null}
         <div
-          className={`grid h-full grid-cols-[392px_minmax(0,1fr)_488px] gap-4 transition-opacity ${loading ? "opacity-80" : "opacity-100"}`}
+          className={`grid h-full grid-cols-[392px_minmax(0,1fr)_488px] gap-4 transition-opacity max-[1400px]:grid-cols-[320px_minmax(0,1fr)_400px] ${loading ? "opacity-80" : "opacity-100"}`}
         >
           <WorkspaceSidebarSection
             sidebarTitle={sidebarTitle}
@@ -800,11 +800,11 @@ export function ScenarioWorkspacePage() {
               attachmentState={attachmentState}
               saveState={saveState}
               openLabel={openLabel}
+              isSurveyWorkspace={isSurveyWorkspace}
               responseTypePickerOptions={responseTypePickerOptions}
               sendModeOptions={sendModeOptions}
               targetFieldOptions={targetFieldOptions}
               launchScenarioOptions={launchScenarioOptions}
-              notificationScopeOptions={notificationScopeOptions}
               onInsertIntoText={insertIntoText}
               onFormChange={setForm}
               onCreateBranch={handleCreateBranch}

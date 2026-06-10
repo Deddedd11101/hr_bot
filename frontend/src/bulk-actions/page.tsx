@@ -1,9 +1,25 @@
 import React from "react";
-import { AlertTriangle, CalendarClock, ExternalLink, Play, Send, Trash2 } from "lucide-react";
+import { AlertTriangle, CalendarClock, Play, Send, Trash2 } from "lucide-react";
 
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import { DateTimePicker } from "@/components/ui/date-picker";
+import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
+import { Field, FieldContent, FieldGroup, FieldLabel, FieldTitle } from "@/components/ui/field";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
+import { cn } from "@/lib/utils";
 
 type Option = { value: string; label: string };
 type EmployeeOption = { id: number; label: string; kind: string };
@@ -46,8 +62,9 @@ type Preview = {
 
 export type BulkActionsPageProps = {
   apiUrl: string;
-  classicUrl: string;
 };
+
+const EMPTY_SELECT_VALUE = "__empty__";
 
 const defaultTargets: TargetState = {
   target_role_scope: "",
@@ -73,54 +90,79 @@ async function requestJson<T>(path: string, options: RequestInit = {}) {
   return response.json() as Promise<T>;
 }
 
-function SelectField({
+function AppSelect({
   value,
   onChange,
-  children,
+  options,
+  placeholder = "Не выбрано",
+  allowEmpty = true,
 }: {
   value: string;
   onChange: (value: string) => void;
-  children: React.ReactNode;
+  options: Option[];
+  placeholder?: string;
+  allowEmpty?: boolean;
 }) {
+  const items = allowEmpty ? [{ value: EMPTY_SELECT_VALUE, label: placeholder }].concat(options) : options;
+  const currentValue = value || (allowEmpty ? EMPTY_SELECT_VALUE : options[0]?.value || "");
+
   return (
-    <select
-      value={value}
-      onChange={(event) => onChange(event.target.value)}
-      className="h-10 w-full min-w-0 rounded-[10px] border border-[var(--color-border)] bg-white px-3 text-sm transition-all duration-200 hover:rounded-[18px] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]/20"
+    <Select
+      items={items}
+      value={currentValue}
+      onValueChange={(nextValue) => {
+        const normalizedValue = String(nextValue);
+        onChange(normalizedValue === EMPTY_SELECT_VALUE ? "" : normalizedValue);
+      }}
     >
-      {children}
-    </select>
+      <SelectTrigger className="w-full">
+        <SelectValue placeholder={placeholder} />
+      </SelectTrigger>
+      <SelectContent align="start" alignItemWithTrigger={false}>
+        <SelectGroup>
+          {items.map((item) => (
+            <SelectItem value={item.value} key={item.value}>
+              {item.label}
+            </SelectItem>
+          ))}
+        </SelectGroup>
+      </SelectContent>
+    </Select>
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <label className="bulk-field">
-      <span className="text-sm font-semibold text-[var(--color-foreground)]/75">{label}</span>
-      {children}
-    </label>
-  );
-}
-
-function Panel({
+function SurfaceCard({
   title,
-  subtitle,
+  description,
   children,
-  className = "",
+  className,
 }: {
   title: string;
-  subtitle: string;
+  description?: string;
   children: React.ReactNode;
   className?: string;
 }) {
   return (
-    <section className={`bulk-panel ${className}`}>
-      <div className="mb-5">
-        <h2 className="text-xl font-semibold">{title}</h2>
-        <p className="mt-1 text-sm text-[var(--color-muted-foreground)]">{subtitle}</p>
-      </div>
-      {children}
-    </section>
+    <Card className={cn("border border-border/80 bg-card shadow-none ring-0", className)}>
+      <CardHeader className="border-b border-border/70 pb-4">
+        <CardTitle className="text-base font-semibold">{title}</CardTitle>
+        {description ? <CardDescription>{description}</CardDescription> : null}
+      </CardHeader>
+      <CardContent className="grid gap-4 pt-5">{children}</CardContent>
+    </Card>
+  );
+}
+
+function StatusAlert({ message, type }: { message: string; type: "success" | "error" }) {
+  if (!message) return null;
+  return (
+    <Alert
+      variant={type === "error" ? "destructive" : "default"}
+      className={type === "success" ? "border-primary/30 bg-primary/5" : undefined}
+    >
+      <AlertTitle>{type === "success" ? "Готово" : "Ошибка"}</AlertTitle>
+      <AlertDescription>{message}</AlertDescription>
+    </Alert>
   );
 }
 
@@ -136,26 +178,29 @@ function MultiCheck({
   onChange: (values: string[]) => void;
 }) {
   return (
-    <div className="bulk-choice-field">
-      <span className="text-sm font-semibold text-[var(--color-foreground)]/75">{label}</span>
-      <div className="bulk-chip-list">
-        {options.map((option) => {
-          const checked = values.includes(option.value);
-          return (
-            <button
-              key={option.value}
-              type="button"
-              onClick={() => onChange(checked ? values.filter((value) => value !== option.value) : values.concat(option.value))}
-              className={`rounded-[10px] border px-3 py-2 text-sm font-medium transition-all duration-200 hover:rounded-[18px] ${
-                checked ? "border-[var(--color-accent)] bg-[var(--color-panel-muted)]" : "border-[var(--color-border)] bg-white"
-              }`}
-            >
-              {option.label}
-            </button>
-          );
-        })}
+    <Field>
+      <FieldLabel>{label}</FieldLabel>
+      <div className="rounded-lg border border-border bg-muted/35 p-3">
+        <ScrollArea className="max-h-48 pr-2">
+          <FieldGroup className="grid gap-2 sm:grid-cols-2">
+            {options.map((option) => {
+              const checked = values.includes(option.value);
+              return (
+                <Field orientation="horizontal" key={option.value}>
+                  <Checkbox
+                    checked={checked}
+                    onCheckedChange={() => onChange(checked ? values.filter((value) => value !== option.value) : values.concat(option.value))}
+                  />
+                  <FieldContent>
+                    <FieldTitle>{option.label}</FieldTitle>
+                  </FieldContent>
+                </Field>
+              );
+            })}
+          </FieldGroup>
+        </ScrollArea>
       </div>
-    </div>
+    </Field>
   );
 }
 
@@ -168,33 +213,25 @@ function TargetPicker({
   targets: TargetState;
   onChange: (targets: TargetState) => void;
 }) {
+  const roleOptions = workspace.role_scope_options.filter((option) => option.value !== "all");
+  const employeeOptions = workspace.employee_options.map((employee) => ({
+    value: String(employee.id),
+    label: employee.label,
+  }));
+
   return (
-    <div className="bulk-target-picker">
-      <div className="bulk-target-row">
-        <Field label="Привязка к должности">
-          <SelectField value={targets.target_role_scope} onChange={(value) => onChange({ ...targets, target_role_scope: value })}>
-            <option value="">Все должности</option>
-            {workspace.role_scope_options
-              .filter((option) => option.value !== "all")
-              .map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-          </SelectField>
+    <FieldGroup className="grid gap-4">
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Field>
+          <FieldLabel>Привязка к должности</FieldLabel>
+          <AppSelect value={targets.target_role_scope} onChange={(value) => onChange({ ...targets, target_role_scope: value })} options={roleOptions} placeholder="Все должности" />
         </Field>
-        <Field label="Конкретный сотрудник/кандидат">
-          <SelectField value={targets.target_employee_id} onChange={(value) => onChange({ ...targets, target_employee_id: value })}>
-            <option value="">Не выбран</option>
-            {workspace.employee_options.map((employee) => (
-              <option key={employee.id} value={employee.id}>
-                {employee.label}
-              </option>
-            ))}
-          </SelectField>
+        <Field>
+          <FieldLabel>Конкретный сотрудник/кандидат</FieldLabel>
+          <AppSelect value={targets.target_employee_id} onChange={(value) => onChange({ ...targets, target_employee_id: value })} options={employeeOptions} placeholder="Не выбран" />
         </Field>
       </div>
-      <div className="bulk-stage-row">
+      <div className="grid gap-4 lg:grid-cols-2">
         <MultiCheck
           label="Этапы сотрудников"
           options={workspace.employee_stage_options}
@@ -208,7 +245,7 @@ function TargetPicker({
           onChange={(values) => onChange({ ...targets, target_candidate_stages: values })}
         />
       </div>
-    </div>
+    </FieldGroup>
   );
 }
 
@@ -222,34 +259,47 @@ function ActionTable({
   onDelete?: (id: number) => void;
 }) {
   return (
-    <div className="rounded-[10px] border border-[var(--color-border)] bg-white p-3">
-      <h3 className="mb-3 text-sm font-semibold text-[var(--color-foreground)]/80">{title}</h3>
-      {actions.length ? (
-        <div className="bulk-table-list">
-          {actions.map((action) => (
-            <div key={action.id} className="bulk-action-row">
+    <Card size="sm" className="border border-border bg-background shadow-none ring-0">
+      <CardHeader className="border-b border-border/70 pb-3">
+        <CardTitle className="text-sm font-semibold">{title}</CardTitle>
+      </CardHeader>
+      <CardContent className="grid gap-2 pt-3">
+        {actions.length ? (
+          actions.map((action) => (
+            <div key={action.id} className="grid gap-2 rounded-lg border border-border bg-muted/35 p-3 xl:grid-cols-[minmax(0,1fr)_150px_96px_auto] xl:items-center">
               <div className="min-w-0">
-                <div className="truncate font-semibold">{action.title || action.message_text || "—"}</div>
-                <div className="mt-1 truncate text-[var(--color-muted-foreground)]">{action.recipient_scope}</div>
+                <div className="truncate text-sm font-semibold">{action.title || action.message_text || "-"}</div>
+                <div className="mt-1 truncate text-xs text-muted-foreground">{action.recipient_scope}</div>
               </div>
-              <div className="text-[var(--color-muted-foreground)]">{action.requested_at_label || action.processed_at_label}</div>
-              <div className="whitespace-nowrap font-medium">{action.recipient_count} получ.</div>
+              <div className="text-xs text-muted-foreground">{action.requested_at_label || action.processed_at_label}</div>
+              <Badge variant="secondary" className="justify-self-start whitespace-nowrap">
+                {action.recipient_count} получ.
+              </Badge>
               {onDelete ? (
-                <Button variant="outline" size="sm" onClick={() => window.confirm("Удалить запланированное действие?") && onDelete(action.id)}>
-                  <Trash2 className="size-4" />
+                <Button variant="outline" size="icon-sm" aria-label="Удалить запланированное действие" onClick={() => window.confirm("Удалить запланированное действие?") && onDelete(action.id)}>
+                  <Trash2 />
                 </Button>
               ) : null}
             </div>
-          ))}
-        </div>
-      ) : (
-        <p className="text-sm text-[var(--color-muted-foreground)]">Пока пусто.</p>
-      )}
-    </div>
+          ))
+        ) : (
+          <Empty className="min-h-24 border border-dashed border-border bg-muted/20">
+            <EmptyHeader>
+              <EmptyTitle>Пока пусто</EmptyTitle>
+              <EmptyDescription>Действия появятся после запуска или планирования.</EmptyDescription>
+            </EmptyHeader>
+          </Empty>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
-export function BulkActionsPage({ apiUrl, classicUrl }: BulkActionsPageProps) {
+function scenarioOptions(items: ScenarioOption[]): Option[] {
+  return items.map((item) => ({ value: item.scenario_key, label: item.title }));
+}
+
+export function BulkActionsPage({ apiUrl }: BulkActionsPageProps) {
   const [workspace, setWorkspace] = React.useState<Workspace | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [message, setMessage] = React.useState("");
@@ -318,152 +368,134 @@ export function BulkActionsPage({ apiUrl, classicUrl }: BulkActionsPageProps) {
   const canRunImmediate = preview ? preview.recipient_count > 0 : true;
 
   if (loading) {
-    return <div className="rounded-[10px] border border-[var(--color-border)] bg-white p-8 text-sm text-[var(--color-muted-foreground)]">Загружаю массовые действия...</div>;
+    return (
+      <Card className="admin-page-shell border border-border/80 bg-card shadow-none ring-0">
+        <CardContent className="p-8 text-sm text-muted-foreground">Загружаю массовые действия...</CardContent>
+      </Card>
+    );
   }
 
   if (!workspace) {
-    return <div className="rounded-[10px] border border-[var(--color-border)] bg-white p-8 text-sm text-[var(--color-danger)]">{error || "Массовые действия не загружены"}</div>;
+    return (
+      <div className="admin-page-stack gap-4">
+        <StatusAlert type="error" message={error || "Массовые действия не загружены"} />
+      </div>
+    );
   }
 
+  const scenarioItems = scenarioOptions(workspace.scenarios);
+  const surveyItems = scenarioOptions(workspace.surveys);
+
   return (
-    <div className="bulk-page">
-      <header className="bulk-hero">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--color-muted-foreground)]">React admin</p>
-          <h1 className="mt-2 text-3xl font-semibold">Массовые действия</h1>
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--color-muted-foreground)]">
-            Единая точка для сценариев, сообщений и опросов. Classic page оставлена как fallback, но все новые действия должны жить здесь.
-          </p>
-        </div>
-        <Button asChild variant="secondary">
-          <a href={classicUrl}>
-            <ExternalLink className="size-4" />
-            Classic fallback
-          </a>
-        </Button>
+    <div className="admin-page-stack gap-5">
+      <header className="admin-page-surface border border-border/80 bg-card p-5 shadow-none ring-0">
+        <h1 className="text-3xl font-semibold tracking-tight">Массовые действия</h1>
       </header>
 
-      {message ? <div className="rounded-[10px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{message}</div> : null}
-      {error ? <div className="rounded-[10px] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div> : null}
+      <StatusAlert type="success" message={message} />
+      <StatusAlert type="error" message={error} />
 
-      <Panel title="Кого затронет действие" subtitle="Фильтры применяются ко всем типам действий ниже." className="bulk-audience-panel">
+      <SurfaceCard title="Кого затронет действие">
         <TargetPicker workspace={workspace} targets={targets} onChange={updateTargets} />
         {preview ? (
-          <div className="mt-4 flex flex-wrap items-center gap-3 rounded-[10px] border border-[var(--color-border)] bg-white px-4 py-3 text-sm">
-            <span className="font-semibold">{preview.recipient_count} получателей</span>
-            <span className="text-[var(--color-muted-foreground)]">{preview.recipient_scope}</span>
-          </div>
+          <Alert className="border-primary/30 bg-primary/5">
+            <AlertTitle>{preview.recipient_count} получателей</AlertTitle>
+            <AlertDescription>{preview.recipient_scope}</AlertDescription>
+          </Alert>
         ) : (
-          <div className="mt-4 flex items-center gap-2 rounded-[10px] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-            <AlertTriangle className="size-4" />
-            Preview обновится после выбора аудитории.
-          </div>
+          <Alert className="border-warning/40 bg-warning/10">
+            <AlertTriangle />
+            <AlertTitle>Preview не построен</AlertTitle>
+            <AlertDescription>Preview обновится после выбора аудитории.</AlertDescription>
+          </Alert>
         )}
-      </Panel>
+      </SurfaceCard>
 
-      <div className="bulk-actions-grid">
-        <Panel title="Сценарии" subtitle="Запланировать или сразу запустить сценарий.">
-          <div className="bulk-card-form">
-            <Field label="Сценарий">
-              <SelectField value={scenarioKey} onChange={setScenarioKey}>
-                {workspace.scenarios.map((scenario) => (
-                  <option key={scenario.scenario_key} value={scenario.scenario_key}>
-                    {scenario.title}
-                  </option>
-                ))}
-              </SelectField>
-            </Field>
-            <Field label="Дата и время для расписания">
-              <Input type="datetime-local" value={requestedAt} onChange={(event) => setRequestedAt(event.target.value)} />
-            </Field>
-            <div className="flex flex-wrap gap-2">
-              <Button onClick={() => runMutation("/api/bulk-actions/scenarios/schedule", { ...payloadBase(), flow_key: scenarioKey, requested_at: requestedAt }, "Сценарий запланирован")}>
-                <CalendarClock className="size-4" />
-                Запланировать
-              </Button>
-              <Button variant="destructive" disabled={!canRunImmediate} onClick={() => runMutation("/api/bulk-actions/scenarios/launch", { ...payloadBase(), flow_key: scenarioKey, confirmed: true }, "Сценарий запущен")}>
-                <Play className="size-4" />
-                Запустить сейчас
-              </Button>
-            </div>
+      <div className="grid gap-5 xl:grid-cols-3">
+        <SurfaceCard title="Сценарии">
+          <Field>
+            <FieldLabel>Сценарий</FieldLabel>
+            <AppSelect value={scenarioKey} onChange={setScenarioKey} options={scenarioItems} allowEmpty={false} />
+          </Field>
+          <Field>
+            <FieldLabel>Дата и время для расписания</FieldLabel>
+            <DateTimePicker value={requestedAt} onValueChange={setRequestedAt} />
+          </Field>
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button variant="secondary" onClick={() => runMutation("/api/bulk-actions/scenarios/schedule", { ...payloadBase(), flow_key: scenarioKey, requested_at: requestedAt }, "Сценарий запланирован")}>
+              <CalendarClock data-icon="inline-start" />
+              Запланировать
+            </Button>
+            <Button disabled={!canRunImmediate} onClick={() => runMutation("/api/bulk-actions/scenarios/launch", { ...payloadBase(), flow_key: scenarioKey, confirmed: true }, "Сценарий запущен")}>
+              <Play data-icon="inline-start" />
+              Сейчас
+            </Button>
           </div>
-        </Panel>
+        </SurfaceCard>
 
-        <Panel title="Сообщения" subtitle="Свободный текст для выбранной аудитории.">
-          <div className="bulk-card-form">
-            <Field label="Текст сообщения">
-              <Textarea value={messageText} onChange={(event) => setMessageText(event.target.value)} rows={5} placeholder="Введите сообщение" />
-            </Field>
-            <div className="flex flex-wrap gap-2">
-              {["{name}", "{full_name}"].concat(workspace.document_tag_titles.map((title) => `{doc:${title}}`)).map((token) => (
-                <button key={token} type="button" className="rounded-[10px] border border-[var(--color-border)] px-2.5 py-1.5 text-xs font-semibold" onClick={() => setMessageText((current) => `${current}${token}`)}>
-                  {token}
-                </button>
-              ))}
-            </div>
-            <Field label="Дата и время для расписания">
-              <Input type="datetime-local" value={requestedAt} onChange={(event) => setRequestedAt(event.target.value)} />
-            </Field>
-            <div className="flex flex-wrap gap-2">
-              <Button onClick={() => runMutation("/api/bulk-actions/messages/schedule", { ...payloadBase(), message_text: messageText, requested_at: requestedAt }, "Сообщение запланировано")}>
-                <CalendarClock className="size-4" />
-                Запланировать
+        <SurfaceCard title="Сообщения">
+          <Field>
+            <FieldLabel>Текст сообщения</FieldLabel>
+            <Textarea value={messageText} onChange={(event) => setMessageText(event.target.value)} rows={5} placeholder="Введите сообщение" autoComplete="off" />
+          </Field>
+          <div className="flex flex-wrap gap-2">
+            {["{name}", "{full_name}"].concat(workspace.document_tag_titles.map((title) => `{doc:${title}}`)).map((token) => (
+              <Button key={token} type="button" variant="secondary" size="xs" onClick={() => setMessageText((current) => `${current}${token}`)}>
+                {token}
               </Button>
-              <Button variant="destructive" disabled={!canRunImmediate} onClick={() => runMutation("/api/bulk-actions/messages/send", { ...payloadBase(), message_text: messageText, confirmed: true }, "Сообщение отправлено")}>
-                <Send className="size-4" />
-                Отправить сейчас
-              </Button>
-            </div>
+            ))}
           </div>
-        </Panel>
+          <Field>
+            <FieldLabel>Дата и время для расписания</FieldLabel>
+            <DateTimePicker value={requestedAt} onValueChange={setRequestedAt} />
+          </Field>
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button variant="secondary" onClick={() => runMutation("/api/bulk-actions/messages/schedule", { ...payloadBase(), message_text: messageText, requested_at: requestedAt }, "Сообщение запланировано")}>
+              <CalendarClock data-icon="inline-start" />
+              Запланировать
+            </Button>
+            <Button disabled={!canRunImmediate} onClick={() => runMutation("/api/bulk-actions/messages/send", { ...payloadBase(), message_text: messageText, confirmed: true }, "Сообщение отправлено")}>
+              <Send data-icon="inline-start" />
+              Сейчас
+            </Button>
+          </div>
+        </SurfaceCard>
 
-        <Panel title="Опросы" subtitle="Запланировать или сразу запустить опрос.">
-          <div className="bulk-card-form">
-            <Field label="Опрос">
-              <SelectField value={surveyKey} onChange={setSurveyKey}>
-                {workspace.surveys.map((survey) => (
-                  <option key={survey.scenario_key} value={survey.scenario_key}>
-                    {survey.title}
-                  </option>
-                ))}
-              </SelectField>
-            </Field>
-            <Field label="Дата и время для расписания">
-              <Input type="datetime-local" value={requestedAt} onChange={(event) => setRequestedAt(event.target.value)} />
-            </Field>
-            <div className="flex flex-wrap gap-2">
-              <Button onClick={() => runMutation("/api/bulk-actions/surveys/schedule", { ...payloadBase(), flow_key: surveyKey, requested_at: requestedAt }, "Опрос запланирован")}>
-                <CalendarClock className="size-4" />
-                Запланировать
-              </Button>
-              <Button variant="destructive" disabled={!canRunImmediate} onClick={() => runMutation("/api/bulk-actions/surveys/launch", { ...payloadBase(), flow_key: surveyKey, confirmed: true }, "Опрос запущен")}>
-                <Play className="size-4" />
-                Запустить сейчас
-              </Button>
-            </div>
+        <SurfaceCard title="Опросы">
+          <Field>
+            <FieldLabel>Опрос</FieldLabel>
+            <AppSelect value={surveyKey} onChange={setSurveyKey} options={surveyItems} allowEmpty={false} />
+          </Field>
+          <Field>
+            <FieldLabel>Дата и время для расписания</FieldLabel>
+            <DateTimePicker value={requestedAt} onValueChange={setRequestedAt} />
+          </Field>
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button variant="secondary" onClick={() => runMutation("/api/bulk-actions/surveys/schedule", { ...payloadBase(), flow_key: surveyKey, requested_at: requestedAt }, "Опрос запланирован")}>
+              <CalendarClock data-icon="inline-start" />
+              Запланировать
+            </Button>
+            <Button disabled={!canRunImmediate} onClick={() => runMutation("/api/bulk-actions/surveys/launch", { ...payloadBase(), flow_key: surveyKey, confirmed: true }, "Опрос запущен")}>
+              <Play data-icon="inline-start" />
+              Сейчас
+            </Button>
           </div>
-        </Panel>
+        </SurfaceCard>
       </div>
 
-      <div className="bulk-history-grid">
-        <Panel title="История сценариев" subtitle="Запланированные и последние ручные запуски.">
-          <div className="bulk-card-form">
-            <ActionTable title="Запланировано" actions={workspace.scheduled_scenario_actions} onDelete={(id) => runMutation(`/api/bulk-actions/scenarios/${id}`, {}, "Запланированный запуск удален", "DELETE")} />
-            <ActionTable title="История" actions={workspace.manual_scenario_history} />
-          </div>
-        </Panel>
-        <Panel title="История сообщений" subtitle="Запланированные и последние ручные отправки.">
-          <div className="bulk-card-form">
-            <ActionTable title="Запланировано" actions={workspace.scheduled_message_actions} onDelete={(id) => runMutation(`/api/bulk-actions/messages/${id}`, {}, "Запланированная отправка удалена", "DELETE")} />
-            <ActionTable title="История" actions={workspace.manual_message_history} />
-          </div>
-        </Panel>
-        <Panel title="История опросов" subtitle="Запланированные и последние ручные запуски.">
-          <div className="bulk-card-form">
-            <ActionTable title="Запланировано" actions={workspace.scheduled_survey_actions} onDelete={(id) => runMutation(`/api/bulk-actions/scenarios/${id}`, {}, "Запланированный запуск удален", "DELETE")} />
-            <ActionTable title="История" actions={workspace.manual_survey_history} />
-          </div>
-        </Panel>
+      <div className="grid gap-5 xl:grid-cols-3">
+        <SurfaceCard title="История сценариев">
+          <ActionTable title="Запланировано" actions={workspace.scheduled_scenario_actions} onDelete={(id) => runMutation(`/api/bulk-actions/scenarios/${id}`, {}, "Запланированный запуск удален", "DELETE")} />
+          <ActionTable title="История" actions={workspace.manual_scenario_history} />
+        </SurfaceCard>
+        <SurfaceCard title="История сообщений">
+          <ActionTable title="Запланировано" actions={workspace.scheduled_message_actions} onDelete={(id) => runMutation(`/api/bulk-actions/messages/${id}`, {}, "Запланированная отправка удалена", "DELETE")} />
+          <ActionTable title="История" actions={workspace.manual_message_history} />
+        </SurfaceCard>
+        <SurfaceCard title="История опросов">
+          <ActionTable title="Запланировано" actions={workspace.scheduled_survey_actions} onDelete={(id) => runMutation(`/api/bulk-actions/surveys/${id}`, {}, "Запланированный запуск удален", "DELETE")} />
+          <ActionTable title="История" actions={workspace.manual_survey_history} />
+        </SurfaceCard>
       </div>
     </div>
   );

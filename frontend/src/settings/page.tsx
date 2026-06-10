@@ -1,9 +1,23 @@
 import React from "react";
-import { ExternalLink, Plus, Save, Shield, Trash2 } from "lucide-react";
+import { Save, Shield, Trash2 } from "lucide-react";
 
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import { ConfirmAction } from "@/components/ui/confirm-action";
+import { Field, FieldContent, FieldGroup, FieldLabel, FieldLegend, FieldSet, FieldTitle } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { cn } from "@/lib/utils";
 
 type HrSettings = {
   hr_name: string;
@@ -37,6 +51,11 @@ type MenuSet = {
   title: string;
   description: string;
   sort_order: number;
+  role_scope: string;
+  employee_scope: string;
+  target_employee_id: number | null;
+  target_employee_stages: string[];
+  target_candidate_stages: string[];
   buttons: MenuButton[];
 };
 
@@ -51,9 +70,14 @@ type AdminAccount = {
 type Workspace = {
   current_user: AdminAccount;
   role_labels: Record<string, string>;
+  menu_role_scope_labels: Record<string, string>;
+  menu_employee_scope_labels: Record<string, string>;
   hr_settings: HrSettings;
   menu_sets: MenuSet[];
   available_scenarios: ScenarioOption[];
+  employee_options: { id: number; label: string }[];
+  employee_stage_options: SelectOption[];
+  candidate_stage_options: SelectOption[];
   accounts: AdminAccount[];
 };
 
@@ -64,10 +88,27 @@ type DraftButton = {
   target_menu_set_id: string;
 };
 
+type SelectOption = {
+  value: string;
+  label: string;
+};
+
 export type SettingsPageProps = {
   apiUrl: string;
-  classicUrl: string;
 };
+
+const EMPTY_SELECT_VALUE = "__empty__";
+
+const actionTypeOptions = [
+  { value: "inactive", label: "Неактивна" },
+  { value: "launch_scenario", label: "Запуск сценария" },
+  { value: "open_set", label: "Переход к набору" },
+];
+
+const activeOptions = [
+  { value: "true", label: "Активен" },
+  { value: "false", label: "Отключен" },
+];
 
 async function requestJson(path: string, options: RequestInit = {}) {
   const response = await fetch(path, {
@@ -86,72 +127,187 @@ async function requestJson(path: string, options: RequestInit = {}) {
   return response.json() as Promise<Workspace>;
 }
 
+function normalizeWorkspace(workspace: Workspace): Workspace {
+  return {
+    ...workspace,
+    menu_role_scope_labels: workspace.menu_role_scope_labels || { all: "Для всех ролей" },
+    menu_employee_scope_labels:
+      workspace.menu_employee_scope_labels || {
+        all: "Для всех сотрудников и кандидатов",
+        employees: "Для всех сотрудников",
+        candidates: "Для всех кандидатов",
+      },
+    employee_options: workspace.employee_options || [],
+    employee_stage_options: workspace.employee_stage_options || [],
+    candidate_stage_options: workspace.candidate_stage_options || [],
+    menu_sets: (workspace.menu_sets || []).map((menuSet) => ({
+      ...menuSet,
+      role_scope: menuSet.role_scope || "all",
+      employee_scope: menuSet.employee_scope || "all",
+      target_employee_id:
+        typeof menuSet.target_employee_id === "number" ? menuSet.target_employee_id : null,
+      target_employee_stages: menuSet.target_employee_stages || [],
+      target_candidate_stages: menuSet.target_candidate_stages || [],
+      buttons: menuSet.buttons || [],
+    })),
+  };
+}
+
 function cloneWorkspace(workspace: Workspace): Workspace {
   return {
     ...workspace,
     hr_settings: { ...workspace.hr_settings },
     menu_sets: workspace.menu_sets.map((menuSet) => ({
       ...menuSet,
+      target_employee_stages: [...menuSet.target_employee_stages],
+      target_candidate_stages: [...menuSet.target_candidate_stages],
       buttons: menuSet.buttons.map((button) => ({ ...button })),
     })),
     accounts: workspace.accounts.map((account) => ({ ...account })),
   };
 }
 
-function FieldLabel({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <label className="grid gap-2">
-      <span className="text-sm font-semibold text-[var(--color-foreground)]/75">{label}</span>
-      {children}
-    </label>
-  );
-}
-
-function SelectField({
+function AppSelect({
   value,
   onChange,
-  children,
+  options,
+  placeholder = "Не выбрано",
+  allowEmpty = true,
+  disabled,
 }: {
   value: string;
   onChange: (value: string) => void;
+  options: SelectOption[];
+  placeholder?: string;
+  allowEmpty?: boolean;
+  disabled?: boolean;
+}) {
+  const items = allowEmpty ? [{ value: EMPTY_SELECT_VALUE, label: placeholder }].concat(options) : options;
+  const currentValue = value || (allowEmpty ? EMPTY_SELECT_VALUE : options[0]?.value || "");
+
+  return (
+    <Select
+      items={items}
+      value={currentValue}
+      onValueChange={(nextValue) => {
+        const normalizedValue = String(nextValue);
+        onChange(normalizedValue === EMPTY_SELECT_VALUE ? "" : normalizedValue);
+      }}
+    >
+      <SelectTrigger className="w-full" disabled={disabled}>
+        <SelectValue placeholder={placeholder} />
+      </SelectTrigger>
+      <SelectContent align="start" alignItemWithTrigger={false}>
+        <SelectGroup>
+          {items.map((item) => (
+            <SelectItem value={item.value} key={item.value}>
+              {item.label}
+            </SelectItem>
+          ))}
+        </SelectGroup>
+      </SelectContent>
+    </Select>
+  );
+}
+
+function SettingsCard({
+  title,
+  description,
+  children,
+  className,
+}: {
+  title: string;
+  description?: string;
   children: React.ReactNode;
+  className?: string;
 }) {
   return (
-    <select
-      value={value}
-      onChange={(event) => onChange(event.target.value)}
-      className="h-10 rounded-[10px] border border-[var(--color-border)] bg-white px-3 text-sm transition-all duration-200 hover:rounded-[18px] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]/20"
-    >
-      {children}
-    </select>
+    <Card className={cn("border border-border/80 bg-card shadow-none ring-0", className)}>
+      <CardHeader className="border-b border-border/70 pb-4">
+        <CardTitle className="text-base font-semibold">{title}</CardTitle>
+        {description ? <CardDescription>{description}</CardDescription> : null}
+      </CardHeader>
+      <CardContent className="grid gap-5 pt-5">{children}</CardContent>
+    </Card>
   );
 }
 
-function Panel({ title, subtitle, children }: { title: string; subtitle: string; children: React.ReactNode }) {
+function StatusAlert({ message, type }: { message: string; type: "success" | "error" }) {
+  if (!message) return null;
   return (
-    <section className="rounded-[10px] border border-[var(--color-border)] bg-[var(--color-panel)] p-5 shadow-[var(--shadow-soft)]">
-      <div className="mb-5">
-        <h2 className="text-xl font-semibold">{title}</h2>
-        <p className="mt-1 text-sm text-[var(--color-muted-foreground)]">{subtitle}</p>
-      </div>
-      {children}
-    </section>
+    <Alert
+      variant={type === "error" ? "destructive" : "default"}
+      className={type === "success" ? "border-primary/30 bg-primary/5" : undefined}
+    >
+      <AlertTitle>{type === "success" ? "Сохранено" : "Ошибка"}</AlertTitle>
+      <AlertDescription>{message}</AlertDescription>
+    </Alert>
   );
 }
 
-export function SettingsPage({ apiUrl, classicUrl }: SettingsPageProps) {
+function menuSetOptions(menuSets: MenuSet[]): SelectOption[] {
+  return menuSets.map((menuSet) => ({ value: String(menuSet.id), label: menuSet.title }));
+}
+
+function scenarioOptions(scenarios: ScenarioOption[]): SelectOption[] {
+  return scenarios.map((scenario) => ({ value: scenario.scenario_key, label: scenario.title }));
+}
+
+function roleOptions(labels: Record<string, string>): SelectOption[] {
+  return Object.entries(labels).map(([value, label]) => ({ value, label }));
+}
+
+function MultiCheckboxField({
+  label,
+  options,
+  values,
+  onChange,
+}: {
+  label: string;
+  options: SelectOption[];
+  values: string[];
+  onChange: (values: string[]) => void;
+}) {
+  return (
+    <Field>
+      <FieldLabel>{label}</FieldLabel>
+      <div className="rounded-lg border border-border bg-muted/35 p-3">
+        <div className="grid gap-2 sm:grid-cols-2">
+          {options.map((option) => {
+            const checked = values.includes(option.value);
+            return (
+              <Field orientation="horizontal" key={option.value}>
+                <Checkbox
+                  checked={checked}
+                  onCheckedChange={() =>
+                    onChange(
+                      checked ? values.filter((value) => value !== option.value) : values.concat(option.value),
+                    )
+                  }
+                />
+                <FieldContent>
+                  <FieldTitle>{option.label}</FieldTitle>
+                </FieldContent>
+              </Field>
+            );
+          })}
+        </div>
+      </div>
+    </Field>
+  );
+}
+
+export function SettingsPage({ apiUrl }: SettingsPageProps) {
   const [workspace, setWorkspace] = React.useState<Workspace | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [message, setMessage] = React.useState("");
   const [error, setError] = React.useState("");
-  const [newMenuSetTitle, setNewMenuSetTitle] = React.useState("");
   const [newAccount, setNewAccount] = React.useState({ login: "", password: "", role: "hr", is_active: true });
   const [accountPasswords, setAccountPasswords] = React.useState<Record<number, string>>({});
-  const [buttonDrafts, setButtonDrafts] = React.useState<Record<number, DraftButton>>({});
 
   React.useEffect(() => {
     requestJson(apiUrl)
-      .then(setWorkspace)
+      .then((payload) => setWorkspace(normalizeWorkspace(payload)))
       .catch((err) => setError(err instanceof Error ? err.message : "Не удалось загрузить настройки"))
       .finally(() => setLoading(false));
   }, [apiUrl]);
@@ -161,7 +317,7 @@ export function SettingsPage({ apiUrl, classicUrl }: SettingsPageProps) {
     setMessage("");
     try {
       const nextWorkspace = await promise;
-      setWorkspace(nextWorkspace);
+      setWorkspace(normalizeWorkspace(nextWorkspace));
       setMessage(successMessage);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Операция не выполнена");
@@ -177,27 +333,6 @@ export function SettingsPage({ apiUrl, classicUrl }: SettingsPageProps) {
     });
   };
 
-  const updateMenuSetLocal = (menuSetId: number, patch: Partial<MenuSet>) => {
-    setWorkspace((current) => {
-      if (!current) return current;
-      const next = cloneWorkspace(current);
-      next.menu_sets = next.menu_sets.map((menuSet) => (menuSet.id === menuSetId ? { ...menuSet, ...patch } : menuSet));
-      return next;
-    });
-  };
-
-  const updateMenuButtonLocal = (buttonId: number, patch: Partial<MenuButton>) => {
-    setWorkspace((current) => {
-      if (!current) return current;
-      const next = cloneWorkspace(current);
-      next.menu_sets = next.menu_sets.map((menuSet) => ({
-        ...menuSet,
-        buttons: menuSet.buttons.map((button) => (button.id === buttonId ? { ...button, ...patch } : button)),
-      }));
-      return next;
-    });
-  };
-
   const updateAccountLocal = (accountId: number, patch: Partial<AdminAccount>) => {
     setWorkspace((current) => {
       if (!current) return current;
@@ -208,226 +343,101 @@ export function SettingsPage({ apiUrl, classicUrl }: SettingsPageProps) {
   };
 
   if (loading) {
-    return <div className="rounded-[10px] border border-[var(--color-border)] bg-white p-8 text-sm text-[var(--color-muted-foreground)]">Загружаю настройки...</div>;
+    return (
+      <Card className="admin-page-shell border border-border/80 bg-card shadow-none ring-0">
+        <CardContent className="p-8 text-sm text-muted-foreground">Загружаю настройки...</CardContent>
+      </Card>
+    );
   }
 
   if (!workspace) {
-    return <div className="rounded-[10px] border border-[var(--color-border)] bg-white p-8 text-sm text-[var(--color-danger)]">{error || "Настройки не загружены"}</div>;
+    return (
+      <div className="admin-page-stack gap-4">
+        <StatusAlert type="error" message={error || "Настройки не загружены"} />
+      </div>
+    );
   }
 
   const isAdmin = workspace.current_user.role === "admin";
+  const roles = roleOptions(workspace.role_labels);
 
   return (
-    <div className="mx-auto grid w-full max-w-[1680px] gap-5">
-      <header className="flex flex-wrap items-start justify-between gap-4 rounded-[10px] border border-[var(--color-border)] bg-[var(--color-panel)] p-5 shadow-[var(--shadow-soft)]">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--color-muted-foreground)]">React admin</p>
-          <h1 className="mt-2 text-3xl font-semibold">Настройки</h1>
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--color-muted-foreground)]">
-            HR notifications, меню мессенджера и доступ в админку. Classic page оставлена как fallback на время миграции.
-          </p>
-        </div>
-        <Button asChild variant="secondary">
-          <a href={classicUrl}>
-            <ExternalLink className="size-4" />
-            Classic fallback
-          </a>
-        </Button>
+    <div className="admin-page-stack gap-5">
+      <header className="admin-page-surface border border-border/80 bg-card p-5 shadow-none ring-0">
+        <h1 className="text-3xl font-semibold tracking-tight">Настройки</h1>
       </header>
 
-      {message ? <div className="rounded-[10px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{message}</div> : null}
-      {error ? <div className="rounded-[10px] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div> : null}
+      <StatusAlert type="success" message={message} />
+      <StatusAlert type="error" message={error} />
 
-      <Panel title="HR notifications" subtitle="Кому бот отправляет служебные уведомления и какие события включены.">
-        <div className="grid gap-4 md:grid-cols-2">
-          <FieldLabel label="Имя HR">
-            <Input value={workspace.hr_settings.hr_name} onChange={(event) => updateHrSettings({ hr_name: event.target.value })} placeholder="Иван Петров" />
-          </FieldLabel>
-          <FieldLabel label="Основной ID получателя">
-            <Input value={workspace.hr_settings.telegram_user_id} onChange={(event) => updateHrSettings({ telegram_user_id: event.target.value })} placeholder="123456789" />
-          </FieldLabel>
-          <div className="md:col-span-2">
-            <FieldLabel label="Дополнительные ID получателей">
-              <Textarea
-                value={workspace.hr_settings.notification_recipient_ids}
-                onChange={(event) => updateHrSettings({ notification_recipient_ids: event.target.value })}
-                rows={3}
-                placeholder={"123456789\n987654321"}
-              />
-            </FieldLabel>
-          </div>
-          <FieldLabel label="Главный набор меню">
-            <SelectField
-              value={workspace.hr_settings.default_menu_set_id ? String(workspace.hr_settings.default_menu_set_id) : ""}
-              onChange={(value) => updateHrSettings({ default_menu_set_id: value ? Number(value) : null })}
-            >
-              <option value="">Не выбран</option>
-              {workspace.menu_sets.map((menuSet) => (
-                <option key={menuSet.id} value={menuSet.id}>
-                  {menuSet.title}
-                </option>
-              ))}
-            </SelectField>
-          </FieldLabel>
-          <div className="grid gap-3 rounded-[10px] bg-[var(--color-panel-muted)] p-4">
+      <SettingsCard title="HR-настройки">
+        <FieldGroup className="grid gap-4 md:grid-cols-2">
+          <Field>
+            <FieldLabel>Имя HR</FieldLabel>
+            <Input value={workspace.hr_settings.hr_name} onChange={(event) => updateHrSettings({ hr_name: event.target.value })} placeholder="Иван Петров" autoComplete="name" />
+          </Field>
+          <Field>
+            <FieldLabel>Основной ID получателя</FieldLabel>
+            <Input value={workspace.hr_settings.telegram_user_id} onChange={(event) => updateHrSettings({ telegram_user_id: event.target.value })} placeholder="123456789" inputMode="numeric" autoComplete="off" />
+          </Field>
+          <Field className="md:col-span-2">
+            <FieldLabel>Дополнительные ID получателей</FieldLabel>
+            <Textarea
+              value={workspace.hr_settings.notification_recipient_ids}
+              onChange={(event) => updateHrSettings({ notification_recipient_ids: event.target.value })}
+              rows={3}
+              placeholder={"123456789\n987654321"}
+              autoComplete="off"
+            />
+          </Field>
+          <FieldSet className="rounded-lg border border-border bg-muted/35 p-3 md:col-span-2">
+            <FieldLegend className="sr-only">Уведомления</FieldLegend>
+            <FieldGroup className="grid gap-2 xl:grid-cols-3">
             {[
               ["notify_scenario_completed", "По завершению сценариев"],
               ["notify_test_task_received", "По получению тестового задания"],
               ["notify_user_actions", "По действиям других пользователей"],
             ].map(([key, label]) => (
-              <label key={key} className="flex items-center gap-3 text-sm font-medium">
-                <input
-                  type="checkbox"
+              <Field orientation="horizontal" key={key}>
+                <Checkbox
                   checked={Boolean(workspace.hr_settings[key as keyof HrSettings])}
-                  onChange={(event) => updateHrSettings({ [key]: event.target.checked } as Partial<HrSettings>)}
+                  onCheckedChange={(checked) => updateHrSettings({ [key]: Boolean(checked) } as Partial<HrSettings>)}
                 />
-                {label}
-              </label>
+                <FieldContent>
+                  <FieldTitle>{label}</FieldTitle>
+                </FieldContent>
+              </Field>
             ))}
-          </div>
-        </div>
-        <div className="mt-5 flex justify-end">
-          <Button onClick={() => setWorkspaceFromApi(requestJson("/api/settings/hr", { method: "POST", body: JSON.stringify(workspace.hr_settings) }), "HR settings сохранены")}>
-            <Save className="size-4" />
+            </FieldGroup>
+          </FieldSet>
+        </FieldGroup>
+        <div className="flex justify-end">
+          <Button onClick={() => setWorkspaceFromApi(requestJson("/api/settings/hr", { method: "POST", body: JSON.stringify(workspace.hr_settings) }), "HR-настройки сохранены")}>
+            <Save data-icon="inline-start" />
             Сохранить настройки
           </Button>
         </div>
-      </Panel>
-
-      <Panel title="Меню мессенджера" subtitle="Наборы кнопок, запуск сценариев и переходы между наборами.">
-        <div className="mb-5 flex flex-wrap items-end gap-3 rounded-[10px] bg-[var(--color-panel-muted)] p-4">
-          <FieldLabel label="Новый набор кнопок">
-            <Input value={newMenuSetTitle} onChange={(event) => setNewMenuSetTitle(event.target.value)} placeholder="Главное меню" />
-          </FieldLabel>
-          <Button
-            onClick={() =>
-              setWorkspaceFromApi(
-                requestJson("/api/settings/menu-sets", { method: "POST", body: JSON.stringify({ title: newMenuSetTitle }) }),
-                "Набор кнопок создан",
-              ).then(() => setNewMenuSetTitle(""))
-            }
-          >
-            <Plus className="size-4" />
-            Создать
-          </Button>
-        </div>
-
-        <div className="grid gap-4">
-          {workspace.menu_sets.map((menuSet) => {
-            const draft = buttonDrafts[menuSet.id] || { label: "", action_type: "inactive", scenario_key: "", target_menu_set_id: "" };
-            return (
-              <article key={menuSet.id} className="rounded-[10px] border border-[var(--color-border)] bg-white p-4">
-                <div className="grid gap-3 md:grid-cols-[1fr_1fr_auto]">
-                  <FieldLabel label="Название набора">
-                    <Input value={menuSet.title} onChange={(event) => updateMenuSetLocal(menuSet.id, { title: event.target.value })} />
-                  </FieldLabel>
-                  <FieldLabel label="Описание">
-                    <Input value={menuSet.description} onChange={(event) => updateMenuSetLocal(menuSet.id, { description: event.target.value })} />
-                  </FieldLabel>
-                  <div className="flex items-end gap-2">
-                    <Button variant="secondary" onClick={() => setWorkspaceFromApi(requestJson(`/api/settings/menu-sets/${menuSet.id}`, { method: "POST", body: JSON.stringify(menuSet) }), "Набор сохранен")}>
-                      <Save className="size-4" />
-                      Сохранить
-                    </Button>
-                    <Button variant="outline" onClick={() => window.confirm("Удалить набор кнопок?") && setWorkspaceFromApi(requestJson(`/api/settings/menu-sets/${menuSet.id}`, { method: "DELETE" }), "Набор удален")}>
-                      <Trash2 className="size-4" />
-                    </Button>
-                  </div>
-                </div>
-
-                <div className="mt-4 grid gap-2">
-                  {menuSet.buttons.map((button) => (
-                    <div key={button.id} className="grid gap-2 rounded-[10px] bg-[var(--color-panel-muted)] p-3 md:grid-cols-[1.1fr_0.8fr_1fr_1fr_auto]">
-                      <Input value={button.label} onChange={(event) => updateMenuButtonLocal(button.id, { label: event.target.value })} placeholder="Кнопка" />
-                      <SelectField value={button.action_type} onChange={(value) => updateMenuButtonLocal(button.id, { action_type: value })}>
-                        <option value="inactive">Неактивна</option>
-                        <option value="launch_scenario">Запуск сценария</option>
-                        <option value="open_set">Переход к набору</option>
-                      </SelectField>
-                      <SelectField value={button.scenario_key} onChange={(value) => updateMenuButtonLocal(button.id, { scenario_key: value })}>
-                        <option value="">Сценарий</option>
-                        {workspace.available_scenarios.map((scenario) => (
-                          <option key={scenario.scenario_key} value={scenario.scenario_key}>
-                            {scenario.title}
-                          </option>
-                        ))}
-                      </SelectField>
-                      <SelectField value={button.target_menu_set_id ? String(button.target_menu_set_id) : ""} onChange={(value) => updateMenuButtonLocal(button.id, { target_menu_set_id: value ? Number(value) : null })}>
-                        <option value="">Набор</option>
-                        {workspace.menu_sets.map((targetSet) => (
-                          <option key={targetSet.id} value={targetSet.id}>
-                            {targetSet.title}
-                          </option>
-                        ))}
-                      </SelectField>
-                      <div className="flex gap-2">
-                        <Button variant="secondary" onClick={() => setWorkspaceFromApi(requestJson(`/api/settings/menu-buttons/${button.id}`, { method: "POST", body: JSON.stringify(button) }), "Кнопка сохранена")}>
-                          <Save className="size-4" />
-                        </Button>
-                        <Button variant="outline" onClick={() => window.confirm("Удалить кнопку?") && setWorkspaceFromApi(requestJson(`/api/settings/menu-buttons/${button.id}`, { method: "DELETE" }), "Кнопка удалена")}>
-                          <Trash2 className="size-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="mt-4 grid gap-2 rounded-[10px] border border-dashed border-[var(--color-border)] p-3 md:grid-cols-[1.1fr_0.8fr_1fr_1fr_auto]">
-                  <Input value={draft.label} onChange={(event) => setButtonDrafts((current) => ({ ...current, [menuSet.id]: { ...draft, label: event.target.value } }))} placeholder="Новая кнопка" />
-                  <SelectField value={draft.action_type} onChange={(value) => setButtonDrafts((current) => ({ ...current, [menuSet.id]: { ...draft, action_type: value } }))}>
-                    <option value="inactive">Неактивна</option>
-                    <option value="launch_scenario">Запуск сценария</option>
-                    <option value="open_set">Переход к набору</option>
-                  </SelectField>
-                  <SelectField value={draft.scenario_key} onChange={(value) => setButtonDrafts((current) => ({ ...current, [menuSet.id]: { ...draft, scenario_key: value } }))}>
-                    <option value="">Сценарий</option>
-                    {workspace.available_scenarios.map((scenario) => (
-                      <option key={scenario.scenario_key} value={scenario.scenario_key}>
-                        {scenario.title}
-                      </option>
-                    ))}
-                  </SelectField>
-                  <SelectField value={draft.target_menu_set_id} onChange={(value) => setButtonDrafts((current) => ({ ...current, [menuSet.id]: { ...draft, target_menu_set_id: value } }))}>
-                    <option value="">Набор</option>
-                    {workspace.menu_sets.map((targetSet) => (
-                      <option key={targetSet.id} value={targetSet.id}>
-                        {targetSet.title}
-                      </option>
-                    ))}
-                  </SelectField>
-                  <Button
-                    onClick={() =>
-                      setWorkspaceFromApi(
-                        requestJson(`/api/settings/menu-sets/${menuSet.id}/buttons`, { method: "POST", body: JSON.stringify(draft) }),
-                        "Кнопка создана",
-                      ).then(() => setButtonDrafts((current) => ({ ...current, [menuSet.id]: { label: "", action_type: "inactive", scenario_key: "", target_menu_set_id: "" } })))
-                    }
-                  >
-                    <Plus className="size-4" />
-                  </Button>
-                </div>
-              </article>
-            );
-          })}
-        </div>
-      </Panel>
+      </SettingsCard>
 
       {isAdmin ? (
-        <Panel title="Доступ в админку" subtitle="Управление аккаунтами доступно только администраторам.">
-          <div className="mb-5 grid gap-3 rounded-[10px] bg-[var(--color-panel-muted)] p-4 md:grid-cols-[1fr_1fr_0.7fr_0.6fr_auto]">
-            <Input value={newAccount.login} onChange={(event) => setNewAccount((current) => ({ ...current, login: event.target.value }))} placeholder="Логин" />
-            <Input type="password" value={newAccount.password} onChange={(event) => setNewAccount((current) => ({ ...current, password: event.target.value }))} placeholder="Пароль" />
-            <SelectField value={newAccount.role} onChange={(value) => setNewAccount((current) => ({ ...current, role: value }))}>
-              {Object.entries(workspace.role_labels).map(([value, label]) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ))}
-            </SelectField>
-            <SelectField value={newAccount.is_active ? "true" : "false"} onChange={(value) => setNewAccount((current) => ({ ...current, is_active: value === "true" }))}>
-              <option value="true">Активен</option>
-              <option value="false">Отключен</option>
-            </SelectField>
+        <SettingsCard title="Доступ в админку">
+          <div className="grid gap-3 rounded-lg border border-border bg-muted/35 p-3 xl:grid-cols-[1fr_1fr_0.7fr_0.6fr_auto] xl:items-end">
+            <Field>
+              <FieldLabel>Логин</FieldLabel>
+              <Input value={newAccount.login} onChange={(event) => setNewAccount((current) => ({ ...current, login: event.target.value }))} placeholder="Логин" autoComplete="username" />
+            </Field>
+            <Field>
+              <FieldLabel>Пароль</FieldLabel>
+              <Input type="password" value={newAccount.password} onChange={(event) => setNewAccount((current) => ({ ...current, password: event.target.value }))} placeholder="Пароль" autoComplete="new-password" />
+            </Field>
+            <Field>
+              <FieldLabel>Роль</FieldLabel>
+              <AppSelect value={newAccount.role} onChange={(value) => setNewAccount((current) => ({ ...current, role: value }))} options={roles} allowEmpty={false} />
+            </Field>
+            <Field>
+              <FieldLabel>Статус</FieldLabel>
+              <AppSelect value={newAccount.is_active ? "true" : "false"} onChange={(value) => setNewAccount((current) => ({ ...current, is_active: value === "true" }))} options={activeOptions} allowEmpty={false} />
+            </Field>
             <Button
               onClick={() =>
                 setWorkspaceFromApi(requestJson("/api/accounts", { method: "POST", body: JSON.stringify(newAccount) }), "Аккаунт создан").then(() =>
@@ -435,35 +445,29 @@ export function SettingsPage({ apiUrl, classicUrl }: SettingsPageProps) {
                 )
               }
             >
-              <Shield className="size-4" />
+              <Shield data-icon="inline-start" />
               Создать
             </Button>
           </div>
 
           <div className="grid gap-2">
             {workspace.accounts.map((account) => (
-              <div key={account.id} className="grid gap-2 rounded-[10px] border border-[var(--color-border)] bg-white p-3 md:grid-cols-[1fr_0.7fr_0.6fr_1fr_auto]">
-                <Input value={account.login} onChange={(event) => updateAccountLocal(account.id, { login: event.target.value })} />
-                <SelectField value={account.role} onChange={(value) => updateAccountLocal(account.id, { role: value })}>
-                  {Object.entries(workspace.role_labels).map(([value, label]) => (
-                    <option key={value} value={value}>
-                      {label}
-                    </option>
-                  ))}
-                </SelectField>
-                <SelectField value={account.is_active ? "true" : "false"} onChange={(value) => updateAccountLocal(account.id, { is_active: value === "true" })}>
-                  <option value="true">Активен</option>
-                  <option value="false">Отключен</option>
-                </SelectField>
+              <div key={account.id} className="grid gap-2 rounded-lg border border-border bg-background p-3 xl:grid-cols-[1fr_0.7fr_0.6fr_1fr_auto]">
+                <Input value={account.login} onChange={(event) => updateAccountLocal(account.id, { login: event.target.value })} autoComplete="username" />
+                <AppSelect value={account.role} onChange={(value) => updateAccountLocal(account.id, { role: value })} options={roles} allowEmpty={false} />
+                <AppSelect value={account.is_active ? "true" : "false"} onChange={(value) => updateAccountLocal(account.id, { is_active: value === "true" })} options={activeOptions} allowEmpty={false} />
                 <Input
                   type="password"
                   value={accountPasswords[account.id] || ""}
                   placeholder="Новый пароль"
+                  autoComplete="new-password"
                   onChange={(event) => setAccountPasswords((current) => ({ ...current, [account.id]: event.target.value }))}
                 />
-                <div className="flex gap-2">
+                <div className="flex gap-2 xl:justify-end">
                   <Button
                     variant="secondary"
+                    size="icon"
+                    aria-label="Сохранить аккаунт"
                     onClick={() =>
                       setWorkspaceFromApi(
                         requestJson(`/api/accounts/${account.id}`, {
@@ -474,18 +478,24 @@ export function SettingsPage({ apiUrl, classicUrl }: SettingsPageProps) {
                       ).then(() => setAccountPasswords((current) => ({ ...current, [account.id]: "" })))
                     }
                   >
-                    <Save className="size-4" />
+                    <Save />
                   </Button>
                   {account.id !== workspace.current_user.id ? (
-                    <Button variant="outline" onClick={() => window.confirm("Удалить аккаунт?") && setWorkspaceFromApi(requestJson(`/api/accounts/${account.id}`, { method: "DELETE" }), "Аккаунт удален")}>
-                      <Trash2 className="size-4" />
-                    </Button>
+                    <ConfirmAction
+                      title="Удалить аккаунт?"
+                      description="Аккаунт потеряет доступ к админке. Это действие нельзя отменить."
+                      onConfirm={() => setWorkspaceFromApi(requestJson(`/api/accounts/${account.id}`, { method: "DELETE" }), "Аккаунт удален")}
+                    >
+                      <Button variant="outline" size="icon" aria-label="Удалить аккаунт">
+                        <Trash2 />
+                      </Button>
+                    </ConfirmAction>
                   ) : null}
                 </div>
               </div>
             ))}
           </div>
-        </Panel>
+        </SettingsCard>
       ) : null}
     </div>
   );

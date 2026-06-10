@@ -23,6 +23,9 @@
     --shell-radius: 16px;
     --shell-pill-radius: 999px;
     --shell-ease: cubic-bezier(0.22, 1, 0.36, 1);
+    --admin-page-max-width: 1820px;
+    --admin-page-gutter: 32px;
+    --admin-page-radius: 20px;
 }
 
 .dark {
@@ -163,6 +166,8 @@ body {
     padding: 0;
 }
 
+.app-shell-brand.is-active,
+.app-shell-brand.is-active:hover,
 .app-shell-nav-link.is-active,
 .app-shell-nav-link.is-active:hover {
     background: var(--shell-accent-soft);
@@ -262,8 +267,16 @@ body {
     min-width: 0;
     align-items: center;
     gap: 12px;
+    border: 1px solid transparent;
+    border-radius: 16px;
+    padding: 8px;
     text-decoration: none;
     color: var(--shell-foreground);
+}
+
+.app-shell-panel-brand.is-active {
+    background: var(--shell-accent-soft);
+    border-color: var(--shell-accent-soft-strong);
 }
 
 .app-shell-panel-brand-copy {

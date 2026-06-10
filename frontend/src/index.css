@@ -54,6 +54,8 @@
 @layer base {
   :root {
     --radius: 0.875rem;
+    --admin-page-max-width: 1820px;
+    --admin-page-radius: var(--radius-xl);
 
     --background: oklch(0.985 0.001 106.4);
     --foreground: oklch(0.213 0.006 91.6);
@@ -170,6 +172,40 @@
     @apply bg-background text-foreground antialiased;
     font-feature-settings: "cv11", "ss01";
     font-variation-settings: "opsz" auto;
+  }
+
+  input:-webkit-autofill,
+  input:-webkit-autofill:hover,
+  input:-webkit-autofill:focus,
+  textarea:-webkit-autofill,
+  textarea:-webkit-autofill:hover,
+  textarea:-webkit-autofill:focus,
+  select:-webkit-autofill,
+  select:-webkit-autofill:hover,
+  select:-webkit-autofill:focus {
+    -webkit-text-fill-color: var(--foreground);
+    caret-color: var(--foreground);
+    box-shadow: 0 0 0 1000px var(--background) inset !important;
+    transition: background-color 999999s ease-out;
+  }
+}
+
+@layer components {
+  .admin-page-shell {
+    width: 100%;
+    max-width: var(--admin-page-max-width);
+    margin-inline: auto;
+  }
+
+  .admin-page-stack {
+    display: grid;
+    width: 100%;
+    max-width: var(--admin-page-max-width);
+    margin-inline: auto;
+  }
+
+  .admin-page-surface {
+    border-radius: var(--admin-page-radius);
   }
 }
 

@@ -1,0 +1,24 @@
+{% extends "react_base.html" %}
+
+{% block extra_head %}
+    <style>
+        .main > .container:has(#react-documents-root) {
+            width: 100%;
+            max-width: var(--admin-page-max-width);
+            transition: width 0.28s ease, max-width 0.28s ease;
+        }
+    </style>
+{% endblock %}
+
+{% block content %}
+<section class="react-page">
+    <div
+        id="react-documents-root"
+        data-api-url="{{ react_api_url }}"
+    ></div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+    <script type="module" src="/static/workspace_v2/documents.js?v=2"></script>
+{% endblock %}

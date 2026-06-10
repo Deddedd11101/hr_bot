@@ -1,0 +1,28 @@
+{% extends "react_base.html" %}
+
+{% block extra_head %}
+    <style>
+        .main > .container:has(#react-dashboard-root) {
+            width: 100%;
+            max-width: var(--admin-page-max-width);
+            transition: width 0.28s ease, max-width 0.28s ease;
+        }
+
+        #react-dashboard-root {
+            width: 100%;
+        }
+    </style>
+{% endblock %}
+
+{% block content %}
+<section class="react-page">
+    <div
+        id="react-dashboard-root"
+        data-api-url="{{ react_api_url }}"
+    ></div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+    <script type="module" src="/static/workspace_v2/dashboard.js?v=2"></script>
+{% endblock %}

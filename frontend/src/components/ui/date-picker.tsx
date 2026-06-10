@@ -132,7 +132,7 @@ function TimeSelect({
       <SelectTrigger className="w-full" disabled={disabled}>
         <SelectValue placeholder={placeholder} />
       </SelectTrigger>
-      <SelectContent>
+      <SelectContent align="start" alignItemWithTrigger={false}>
         <SelectGroup>
           {items.map((item) => (
             <SelectItem value={item.value} key={item.value}>

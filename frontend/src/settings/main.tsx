@@ -12,7 +12,6 @@ if (rootElement) {
     <React.StrictMode>
       <SettingsPage
         apiUrl={rootElement.getAttribute("data-api-url") || "/api/settings/workspace"}
-        classicUrl={rootElement.getAttribute("data-classic-url") || "/settings"}
       />
     </React.StrictMode>
   );

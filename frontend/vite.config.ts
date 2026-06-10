@@ -17,13 +17,17 @@ export default defineConfig({
     cssCodeSplit: false,
     rollupOptions: {
       input: {
+        dashboard: path.resolve(__dirname, "./src/dashboard/main.tsx"),
         "shell-sidebar": path.resolve(__dirname, "./src/shell-sidebar/main.tsx"),
         "scenario-workspace": path.resolve(__dirname, "./src/scenario-workspace/main.tsx"),
         "employees-list": path.resolve(__dirname, "./src/employees-list/main.tsx"),
         "employee-detail": path.resolve(__dirname, "./src/employee-detail/main.tsx"),
         settings: path.resolve(__dirname, "./src/settings/main.tsx"),
+        "bot-menu": path.resolve(__dirname, "./src/bot-menu/main.tsx"),
+        documents: path.resolve(__dirname, "./src/documents/main.tsx"),
         "bulk-actions": path.resolve(__dirname, "./src/bulk-actions/main.tsx"),
         "design-system": path.resolve(__dirname, "./src/design-system/main.tsx"),
+        login: path.resolve(__dirname, "./src/login/main.tsx"),
       },
       output: {
         entryFileNames: "[name].js",

@@ -3,7 +3,9 @@ import {
   BadgeCheck,
   Bot,
   Braces,
+  FolderOpen,
   FileCheck2,
+  LayoutDashboard,
   LogOut,
   Moon,
   PanelLeft,
@@ -39,6 +41,8 @@ const primaryItems = [
 
 const secondaryItems = [
   { key: "design_system", label: "Дизайн-система", href: "/app/design-system", icon: Braces },
+  { key: "bot_menu", label: "Меню бота", href: "/app/bot-menu", icon: Bot },
+  { key: "documents", label: "Документы", href: "/app/documents", icon: FolderOpen },
   { key: "settings", label: "Настройки", href: "/app/settings", icon: Settings },
 ] as const;
 
@@ -121,6 +125,7 @@ function SidebarNavLink({
 
 export function ShellSidebarPage({ activeTab, roleLabel }: SidebarPageProps) {
   const normalizedActiveTab = normalizeActiveTab(activeTab);
+  const dashboardActive = normalizedActiveTab === "dashboard";
   const initialOpen = useInitialOpenState();
   const [open, setOpen] = React.useState(initialOpen);
   const { theme, toggleTheme } = useShellTheme();
@@ -169,13 +174,14 @@ export function ShellSidebarPage({ activeTab, roleLabel }: SidebarPageProps) {
           </button>
 
           <a
-            href="/app/employees"
-            className="app-shell-brand"
+            href="/app/dashboard"
+            className={`app-shell-brand${dashboardActive ? " is-active" : ""}`}
             aria-label="HR Bot Admin"
             onClick={persistCurrentState}
+            aria-current={dashboardActive ? "page" : undefined}
           >
             <span className="app-shell-brand-icon" aria-hidden="true">
-              <Bot className="size-5" />
+              <LayoutDashboard className="size-5" />
             </span>
           </a>
 
@@ -243,13 +249,14 @@ export function ShellSidebarPage({ activeTab, roleLabel }: SidebarPageProps) {
         <aside className="app-shell-sidebar-panel" aria-label="Навигация">
           <div className="app-shell-sidebar-panel-head">
             <a
-              href="/app/employees"
-              className="app-shell-panel-brand"
+              href="/app/dashboard"
+              className={`app-shell-panel-brand${dashboardActive ? " is-active" : ""}`}
               aria-label="HR Bot Admin"
               onClick={persistOpenState}
+              aria-current={dashboardActive ? "page" : undefined}
             >
               <span className="app-shell-brand-icon" aria-hidden="true">
-                <Bot className="size-5" />
+                <LayoutDashboard className="size-5" />
               </span>
               <span className="app-shell-panel-brand-copy">
                 <span className="app-shell-panel-brand-title">HR Bot Admin</span>

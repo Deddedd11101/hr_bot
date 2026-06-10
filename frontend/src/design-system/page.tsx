@@ -1,11 +1,14 @@
 import React from "react";
 import {
+  AlertTriangle,
+  CalendarClock,
   ChevronRight,
   Columns2,
   CircleHelp,
   Download,
   ExternalLink,
   FileText,
+  LayoutDashboard,
   LayoutPanelTop,
   Layers3,
   ListFilter,
@@ -13,14 +16,19 @@ import {
   Moon,
   MousePointer2,
   Palette,
+  Play,
   Plus,
   Rows3,
+  Save,
   Send,
+  Shield,
   Sun,
+  Trash2,
 } from "lucide-react";
 import { Toaster as SonnerToaster, toast } from "sonner";
 
 import { Avatar, AvatarFallback, AvatarGroup, AvatarGroupCount } from "@/components/ui/avatar";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import {
   Breadcrumb,
@@ -40,6 +48,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import { ConfirmAction } from "@/components/ui/confirm-action";
 import { EmojiPickerPopover } from "@/components/ui/emoji-picker-popover";
 import {
   Dialog,
@@ -63,6 +72,7 @@ import {
   FieldDescription,
   FieldGroup,
   FieldLabel,
+  FieldLegend,
   FieldSet,
   FieldTitle,
 } from "@/components/ui/field";
@@ -73,6 +83,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
   SelectTrigger,
   SelectValue,
@@ -161,6 +172,36 @@ const typeScale = [
 
 const spacingScale = [8, 12, 16, 24, 32, 48];
 
+const responseTypeItems = [
+  { value: "text", label: "Текстовый ответ" },
+  { value: "file", label: "Загрузка файла" },
+  { value: "none", label: "Без ответа" },
+];
+
+const settingsMenuItems = [
+  { value: "main", label: "Главное меню" },
+  { value: "candidate", label: "Кандидаты" },
+  { value: "employee", label: "Сотрудники" },
+];
+
+const settingsRoleItems = [
+  { value: "admin", label: "Администратор" },
+  { value: "hr", label: "HR" },
+  { value: "viewer", label: "Наблюдатель" },
+];
+
+const bulkAudienceItems = [
+  { value: "all", label: "Все роли" },
+  { value: "sales", label: "Отдел продаж" },
+  { value: "ops", label: "Операционный блок" },
+];
+
+const bulkScenarioItems = [
+  { value: "candidate-screening", label: "Первичный отбор кандидата" },
+  { value: "onboarding", label: "Адаптация сотрудника" },
+  { value: "feedback", label: "Сбор обратной связи" },
+];
+
 const radiusScale = [
   { label: "rounded-md", className: "rounded-md" },
   { label: "rounded-lg", className: "rounded-lg" },
@@ -170,12 +211,13 @@ const radiusScale = [
 
 const principles = [
   "Desktop-first, documentation-style плотность, без маркетинговой декоративности.",
-  "Один primary accent и один destructive signal. Всё остальное должно читаться как нейтральная структура.",
+  "Один primary action. Destructive action подтверждается через AlertDialog.",
   "Новый экран должен объясняться через существующие примитивы и page patterns, а не через локальные хаки.",
 ];
 
 const antiPatterns = [
   "Page-local button styles и ad-hoc wrappers внутри конкретного `page.tsx`.",
+  "window.confirm в React admin pages.",
   "Hover-эффекты, которые меняют геометрию интерфейса сильнее, чем объясняют affordance.",
   "Смешивание classic-визуала и новых React primitives внутри одной рабочей секции.",
   "Новые “особенные” компоненты до попытки починить существующий primitive centrally.",
@@ -184,21 +226,28 @@ const antiPatterns = [
 const reviewChecks = [
   "Используются semantic tokens, а не hardcoded white/black/green.",
   "Кнопки и поля идут через shared UI API, а не через локальные div-based имитации.",
+  "Удаление идет через ConfirmAction, не через window.confirm.",
+  "Dashboard brand использует LayoutDashboard; bot-specific пункты используют bot/message icon.",
   "Основные секции страницы собираются из повторяемых panel/pattern блоков.",
   "Legacy fallback links не притворяются полезными действиями, если они просто редиректят обратно в React.",
   "Никаких теней как основного depth-сигнала: MVP UI держится на contrast, border и spacing.",
 ];
-
-const sectionLabelClass =
-  "text-[0.72rem] font-bold uppercase tracking-[0.16em] text-muted-foreground";
 
 const exampleCode = {
   button: `<div className="flex flex-wrap gap-2">
   <Button>Сохранить</Button>
   <Button variant="secondary">Применить позже</Button>
   <Button variant="outline">Открыть детали</Button>
-  <Button variant="destructive">Удалить</Button>
 </div>`,
+  confirmAction: `<ConfirmAction
+  title="Удалить запись?"
+  description="Действие нельзя отменить."
+  onConfirm={handleDelete}
+>
+  <Button variant="outline" size="icon" aria-label="Удалить">
+    <Trash2 />
+  </Button>
+</ConfirmAction>`,
   field: `<FieldGroup>
   <Field>
     <FieldLabel htmlFor="title">Название блока</FieldLabel>
@@ -462,6 +511,429 @@ function PatternCard({
   );
 }
 
+function SelectExample({
+  items,
+  defaultValue,
+}: {
+  items: Array<{ value: string; label: string }>;
+  defaultValue: string;
+}) {
+  return (
+    <Select items={items} defaultValue={defaultValue}>
+      <SelectTrigger className="w-full">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent align="start" alignItemWithTrigger={false}>
+        <SelectGroup>
+          {items.map((item) => (
+            <SelectItem value={item.value} key={item.value}>
+              {item.label}
+            </SelectItem>
+          ))}
+        </SelectGroup>
+      </SelectContent>
+    </Select>
+  );
+}
+
+function AuthPatternExample() {
+  return (
+    <div className="grid place-items-center rounded-xl border border-border/80 bg-background p-6">
+      <Card className="w-full max-w-[420px] border border-border/80 bg-card shadow-none ring-0">
+        <CardHeader className="border-b border-border/70 pb-4">
+          <CardTitle className="text-2xl font-semibold tracking-tight">Вход</CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-5 pt-5">
+          <Alert variant="destructive">
+            <AlertTriangle data-icon="inline-start" />
+            <AlertTitle>Ошибка входа</AlertTitle>
+            <AlertDescription>Неверный логин или пароль.</AlertDescription>
+          </Alert>
+          <FieldGroup>
+            <Field>
+              <FieldLabel htmlFor="auth-pattern-login">Логин</FieldLabel>
+              <Input id="auth-pattern-login" autoComplete="username" />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="auth-pattern-password">Пароль</FieldLabel>
+              <Input id="auth-pattern-password" type="password" autoComplete="current-password" />
+            </Field>
+            <Button className="w-full" size="lg">
+              Войти
+            </Button>
+          </FieldGroup>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function SettingsPatternExample() {
+  return (
+    <div className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
+      <Card className="border border-border/80 bg-card shadow-none ring-0">
+        <CardHeader className="border-b border-border/70 pb-4">
+          <CardTitle className="text-base font-semibold">HR-настройки</CardTitle>
+          <CardDescription>FieldGroup, Checkbox, semantic feedback.</CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-4 pt-5">
+          <FieldGroup className="grid gap-4 md:grid-cols-2">
+            <Field>
+              <FieldLabel>Имя HR</FieldLabel>
+              <Input defaultValue="Иван Петров" autoComplete="name" />
+            </Field>
+            <Field>
+              <FieldLabel>Основной ID получателя</FieldLabel>
+              <Input defaultValue="123456789" inputMode="numeric" />
+            </Field>
+          </FieldGroup>
+          <FieldSet className="rounded-lg border border-border bg-muted/35 p-3 md:col-span-2">
+            <FieldLegend className="sr-only">Уведомления</FieldLegend>
+            <FieldGroup className="grid gap-2 xl:grid-cols-3">
+              {["По завершению сценариев", "По получению тестового задания", "По действиям пользователей"].map((label) => (
+                <Field orientation="horizontal" key={label}>
+                  <Checkbox defaultChecked />
+                  <FieldContent>
+                    <FieldTitle>{label}</FieldTitle>
+                  </FieldContent>
+                </Field>
+              ))}
+            </FieldGroup>
+          </FieldSet>
+          <Alert className="border-primary/30 bg-primary/5">
+            <AlertTitle>Настройки сохранены</AlertTitle>
+            <AlertDescription>Сообщения и ошибки показываются через tokenized Alert.</AlertDescription>
+          </Alert>
+        </CardContent>
+      </Card>
+
+      <Card className="border border-border/80 bg-card shadow-none ring-0">
+        <CardHeader className="border-b border-border/70 pb-4">
+          <CardTitle className="text-base font-semibold">Admin access row</CardTitle>
+          <CardDescription>Dense rows use explicit columns and icon-only actions.</CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-3 pt-5">
+          <div className="grid gap-2 rounded-lg border border-border bg-background p-3 xl:grid-cols-[1fr_0.8fr_0.75fr_1fr_auto]">
+            <Input defaultValue="admin" autoComplete="username" />
+            <SelectExample items={settingsRoleItems} defaultValue="admin" />
+            <SelectExample
+              items={[
+                { value: "true", label: "Активен" },
+                { value: "false", label: "Отключен" },
+              ]}
+              defaultValue="true"
+            />
+            <Input type="password" placeholder="Новый пароль" autoComplete="new-password" />
+            <div className="flex gap-2">
+              <Button variant="secondary" size="icon" aria-label="Сохранить">
+                <Save />
+              </Button>
+              <ConfirmAction
+                title="Удалить аккаунт?"
+                description="Аккаунт потеряет доступ к админке. Это действие нельзя отменить."
+                onConfirm={() => undefined}
+              >
+                <Button variant="outline" size="icon" aria-label="Удалить">
+                  <Trash2 />
+                </Button>
+              </ConfirmAction>
+            </div>
+          </div>
+          <Button className="justify-self-end">
+            <Shield data-icon="inline-start" />
+            Создать аккаунт
+          </Button>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function BulkActionsPatternExample() {
+  const [dateTimeValue, setDateTimeValue] = React.useState("2026-06-19T10:00");
+
+  return (
+    <div className="grid gap-4">
+      <Card className="border border-border/80 bg-card shadow-none ring-0">
+        <CardHeader className="border-b border-border/70 pb-4">
+          <CardTitle className="text-base font-semibold">Audience filters</CardTitle>
+          <CardDescription>Select, checkbox groups and preview alert.</CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-4 pt-5">
+          <div className="grid gap-4 lg:grid-cols-2">
+            <Field>
+              <FieldLabel>Привязка к должности</FieldLabel>
+              <SelectExample items={bulkAudienceItems} defaultValue="all" />
+            </Field>
+            <Field>
+              <FieldLabel>Сотрудник/кандидат</FieldLabel>
+              <SelectExample
+                items={[
+                  { value: "none", label: "Не выбран" },
+                  { value: "9", label: "Востриков Антон" },
+                  { value: "12", label: "Кандидат: Мария Орлова" },
+                ]}
+                defaultValue="none"
+              />
+            </Field>
+          </div>
+          <Field>
+            <FieldLabel>Этапы</FieldLabel>
+            <div className="rounded-lg border border-border bg-muted/35 p-3">
+              <ScrollArea className="max-h-40 pr-2">
+                <FieldGroup className="grid gap-2 sm:grid-cols-2">
+                  {["Оформление", "Адаптация", "Кандидат", "Новый"].map((label) => (
+                    <Field orientation="horizontal" key={label}>
+                      <Checkbox defaultChecked={label !== "Новый"} />
+                      <FieldContent>
+                        <FieldTitle>{label}</FieldTitle>
+                      </FieldContent>
+                    </Field>
+                  ))}
+                </FieldGroup>
+              </ScrollArea>
+            </div>
+          </Field>
+          <Alert className="border-warning/40 bg-warning/10">
+            <AlertTriangle />
+            <AlertTitle>42 получателя</AlertTitle>
+            <AlertDescription>Preview обязан быть видимым до запуска действия.</AlertDescription>
+          </Alert>
+        </CardContent>
+      </Card>
+
+      <div className="grid gap-4 xl:grid-cols-3">
+        {["Сценарии", "Сообщения", "Опросы"].map((title) => (
+          <Card key={title} className="border border-border/80 bg-card shadow-none ring-0">
+            <CardHeader>
+              <CardTitle className="text-base font-semibold">{title}</CardTitle>
+            </CardHeader>
+            <CardContent className="grid gap-3 pt-0">
+              <Field>
+                <FieldLabel>{title === "Сообщения" ? "Текст" : title === "Опросы" ? "Опрос" : "Сценарий"}</FieldLabel>
+                {title === "Сообщения" ? (
+                  <Textarea defaultValue="Добрый день, {name}." rows={4} />
+                ) : (
+                  <SelectExample items={bulkScenarioItems} defaultValue={bulkScenarioItems[0].value} />
+                )}
+              </Field>
+              <Field>
+                <FieldLabel>Дата и время</FieldLabel>
+                <DateTimePicker value={dateTimeValue} onValueChange={setDateTimeValue} />
+              </Field>
+              <div className="flex flex-wrap justify-end gap-2">
+                <Button variant="secondary">
+                  <CalendarClock data-icon="inline-start" />
+                  Запланировать
+                </Button>
+                <Button>
+                  <Play data-icon="inline-start" />
+                  Сейчас
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function BotMenuPatternExample() {
+  return (
+    <div className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
+      <Card className="border border-border/80 bg-card shadow-none ring-0">
+        <CardHeader className="border-b border-border/70 pb-4">
+          <CardTitle className="text-base font-semibold">Новый набор</CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-3 pt-5">
+          <div className="grid gap-3 rounded-lg border border-border bg-muted/35 p-3 md:grid-cols-[minmax(220px,1fr)_auto] md:items-end">
+            <Field>
+              <FieldLabel>Новый набор кнопок</FieldLabel>
+              <Input placeholder="Главное меню" autoComplete="off" />
+            </Field>
+            <Button>
+              <Plus data-icon="inline-start" />
+              Создать
+            </Button>
+          </div>
+          <Alert className="border-primary/30 bg-primary/5">
+            <AlertTitle>Меню бота вынесено из настроек</AlertTitle>
+            <AlertDescription>Settings не должен владеть наборами кнопок.</AlertDescription>
+          </Alert>
+        </CardContent>
+      </Card>
+
+      <Card className="border border-border/80 bg-card shadow-none ring-0">
+        <CardHeader className="border-b border-border/70 pb-4">
+          <div className="grid gap-3 xl:grid-cols-[1fr_1fr_auto] xl:items-end">
+            <Field>
+              <FieldLabel>Название набора</FieldLabel>
+              <Input defaultValue="Главное меню" autoComplete="off" />
+            </Field>
+            <Field>
+              <FieldLabel>Описание</FieldLabel>
+              <Input defaultValue="Основные действия" autoComplete="off" />
+            </Field>
+            <div className="flex gap-2 xl:justify-end">
+              <Button variant="secondary">
+                <Save data-icon="inline-start" />
+                Сохранить
+              </Button>
+              <ConfirmAction
+                title="Удалить набор меню?"
+                description="Набор и его кнопки будут удалены из меню бота. Это действие нельзя отменить."
+                onConfirm={() => undefined}
+              >
+                <Button variant="outline" size="icon" aria-label="Удалить набор">
+                  <Trash2 />
+                </Button>
+              </ConfirmAction>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="grid gap-3 pt-4">
+          <div className="grid gap-4 rounded-lg border border-border bg-muted/35 p-3 lg:grid-cols-2">
+            <Field>
+              <FieldLabel>Аудитория</FieldLabel>
+              <SelectExample
+                items={[
+                  { value: "all", label: "Для всех сотрудников и кандидатов" },
+                  { value: "employees", label: "Для сотрудников" },
+                  { value: "candidates", label: "Для кандидатов" },
+                ]}
+                defaultValue="all"
+              />
+            </Field>
+            <Field>
+              <FieldLabel>Должность</FieldLabel>
+              <SelectExample items={settingsRoleItems} defaultValue="hr" />
+            </Field>
+          </div>
+
+          <div className="grid gap-2 rounded-lg border border-border bg-muted/35 p-3 xl:grid-cols-[1.1fr_0.8fr_1fr_1fr_auto]">
+            <Input defaultValue="Запустить адаптацию" autoComplete="off" />
+            <SelectExample
+              items={[
+                { value: "inactive", label: "Неактивна" },
+                { value: "launch_scenario", label: "Запуск сценария" },
+                { value: "open_set", label: "Переход к набору" },
+              ]}
+              defaultValue="launch_scenario"
+            />
+            <SelectExample items={bulkScenarioItems} defaultValue="onboarding" />
+            <SelectExample items={settingsMenuItems} defaultValue="main" />
+            <div className="flex gap-2 xl:justify-end">
+              <Button variant="secondary" size="icon" aria-label="Сохранить кнопку">
+                <Save />
+              </Button>
+              <ConfirmAction
+                title="Удалить кнопку?"
+                description="Кнопка исчезнет из этого набора меню. Это действие нельзя отменить."
+                onConfirm={() => undefined}
+              >
+                <Button variant="outline" size="icon" aria-label="Удалить кнопку">
+                  <Trash2 />
+                </Button>
+              </ConfirmAction>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function ShellSidebarPatternExample() {
+  return (
+    <div className="grid gap-4 xl:grid-cols-[0.8fr_1.2fr]">
+      <Card className="border border-border/80 bg-card shadow-none ring-0">
+        <CardHeader className="border-b border-border/70 pb-4">
+          <CardTitle className="text-base font-semibold">Icon ownership</CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-3 pt-5">
+          <div className="flex items-center gap-3 rounded-lg border border-border bg-muted/35 p-3">
+            <div className="grid size-10 place-items-center rounded-xl border border-border bg-background">
+              <LayoutDashboard className="size-5" />
+            </div>
+            <div className="min-w-0">
+              <div className="text-sm font-semibold">Dashboard</div>
+              <div className="text-xs text-muted-foreground">Обзор и стартовый вход.</div>
+            </div>
+          </div>
+          <div className="flex items-center gap-3 rounded-lg border border-border bg-muted/35 p-3">
+            <div className="grid size-10 place-items-center rounded-xl border border-border bg-background">
+              <MessageCircle className="size-5" />
+            </div>
+            <div className="min-w-0">
+              <div className="text-sm font-semibold">Bot surfaces</div>
+              <div className="text-xs text-muted-foreground">Только bot/menu actions.</div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="border border-border/80 bg-card shadow-none ring-0">
+        <CardHeader className="border-b border-border/70 pb-4">
+          <CardTitle className="text-base font-semibold">Sidebar review rule</CardTitle>
+        </CardHeader>
+        <CardContent className="pt-5">
+          <RuleList
+            items={[
+              "Dashboard brand использует LayoutDashboard, не Bot.",
+              "Bot/menu pages сохраняют bot или message iconography.",
+              "Icon-only rail links сохраняют title и aria-current state.",
+            ]}
+          />
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function ConfirmationPatternExample() {
+  return (
+    <div className="grid gap-4 xl:grid-cols-[0.85fr_1.15fr]">
+      <Card className="border border-border/80 bg-card shadow-none ring-0">
+        <CardHeader className="border-b border-border/70 pb-4">
+          <CardTitle className="text-base font-semibold">Confirmation action</CardTitle>
+          <CardDescription>Для destructive admin actions используется ConfirmAction.</CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-wrap gap-2 pt-5">
+          <ConfirmAction
+            title="Удалить запись?"
+            description="Действие нельзя отменить."
+            onConfirm={() => undefined}
+          >
+            <Button variant="outline" size="icon" aria-label="Удалить">
+              <Trash2 />
+            </Button>
+          </ConfirmAction>
+          <Button variant="secondary">
+            <Save data-icon="inline-start" />
+            Сохранить
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card className="border border-border/80 bg-card shadow-none ring-0">
+        <CardHeader className="border-b border-border/70 pb-4">
+          <CardTitle className="text-base font-semibold">Rules</CardTitle>
+        </CardHeader>
+        <CardContent className="pt-5">
+          <RuleList
+            items={[
+              "Delete icons остаются outline или ghost в dense grids.",
+              "Destructive color появляется только на финальном действии в dialog.",
+              "Никакого native browser confirm в React admin pages.",
+            ]}
+          />
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 function FoundationsSection() {
   return (
     <div className="space-y-6">
@@ -546,7 +1018,6 @@ function PrimitivesSection() {
                 <Button variant="secondary">Применить позже</Button>
                 <Button variant="outline">Открыть детали</Button>
                 <Button variant="ghost">Тихое действие</Button>
-                <Button variant="destructive">Удалить</Button>
                 <Button variant="link">Связанный документ</Button>
               </div>
               <Separator />
@@ -765,6 +1236,17 @@ function PrimitivesSection() {
                   </DialogContent>
                 </Dialog>
 
+                <ConfirmAction
+                  title="Удалить запись?"
+                  description="Действие нельзя отменить."
+                  onConfirm={() => undefined}
+                >
+                  <Button variant="outline">
+                    <Trash2 data-icon="inline-start" />
+                    Confirm delete
+                  </Button>
+                </ConfirmAction>
+
               <DropdownMenu>
                 <DropdownMenuTrigger render={<Button variant="outline" />}>
                   Открыть menu
@@ -952,6 +1434,36 @@ function PatternsSection() {
           ]}
         />
         <PatternCard
+          title="Bot menu page"
+          icon={MessageCircle}
+          body="Menu sets, audience rules, button actions."
+          checklist={[
+            "Separate from settings.",
+            "Dense menu rows.",
+            "Confirm destructive edits.",
+          ]}
+        />
+        <PatternCard
+          title="Shell sidebar"
+          icon={LayoutDashboard}
+          body="Rail and overlay navigation."
+          checklist={[
+            "Dashboard uses LayoutDashboard.",
+            "Bot pages keep bot/message iconography.",
+            "Icon-only links keep aria labels.",
+          ]}
+        />
+        <PatternCard
+          title="Confirmation"
+          icon={Trash2}
+          body="Destructive action confirmation."
+          checklist={[
+            "Use ConfirmAction.",
+            "Не использовать window.confirm.",
+            "Destructive color only inside dialog.",
+          ]}
+        />
+        <PatternCard
           title="Workspace page"
           icon={LayoutPanelTop}
           body="Navigation, canvas, detail."
@@ -959,6 +1471,16 @@ function PatternsSection() {
             "Navigation column.",
             "Canvas column.",
             "Detail column.",
+          ]}
+        />
+        <PatternCard
+          title="Auth page"
+          icon={Shield}
+          body="Pre-auth standalone React form."
+          checklist={[
+            "Standalone mount.",
+            "Shared Card/Field/Input/Button.",
+            "Native POST to auth route.",
           ]}
         />
       </div>
@@ -972,19 +1494,54 @@ function PatternsSection() {
         </CardContent>
       </Card>
 
+      <ExampleBlock title="Settings form">
+        <SettingsPatternExample />
+      </ExampleBlock>
+
+      <ExampleBlock title="Bot menu editor">
+        <BotMenuPatternExample />
+      </ExampleBlock>
+
+      <ExampleBlock title="Shell sidebar">
+        <ShellSidebarPatternExample />
+      </ExampleBlock>
+
+      <ExampleBlock title="Confirmation dialog">
+        <ConfirmationPatternExample />
+      </ExampleBlock>
+
+      <ExampleBlock title="Bulk action console">
+        <BulkActionsPatternExample />
+      </ExampleBlock>
+
+      <ExampleBlock title="Auth form">
+        <AuthPatternExample />
+      </ExampleBlock>
+
       <ExampleBlock title="Detail page building blocks">
         <div className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
           <div className="flex flex-col gap-3">
-            <div className={sectionLabelClass}>Section label</div>
             <Card className="border border-border/80 bg-card shadow-none ring-0">
               <CardHeader>
                 <CardTitle className="text-base font-semibold">Сопровождение</CardTitle>
               </CardHeader>
               <CardContent className="grid gap-3 pt-0">
-                <div className="grid gap-2 rounded-lg border border-border bg-muted/40 p-3">
-                  <div className="text-sm font-medium">Название поля</div>
-                  <div className="text-sm text-muted-foreground">Значение или shared control</div>
-                </div>
+                <FieldGroup className="grid gap-3">
+                  <Field>
+                    <FieldLabel>Руководитель сотрудника</FieldLabel>
+                    <Input placeholder="Telegram id" />
+                  </Field>
+                  <Field>
+                    <FieldLabel>Наставник адаптации</FieldLabel>
+                    <Input placeholder="Telegram id" />
+                  </Field>
+                  <Field orientation="horizontal">
+                    <Checkbox defaultChecked />
+                    <FieldContent>
+                      <FieldTitle>Согласие на ПДн</FieldTitle>
+                    </FieldContent>
+                  </Field>
+                </FieldGroup>
               </CardContent>
             </Card>
             <div className="flex flex-wrap gap-2">
@@ -1125,14 +1682,18 @@ function PatternsSection() {
               </Field>
               <Field>
                 <FieldLabel>Тип ответа</FieldLabel>
-                <Select defaultValue="text">
+                <Select items={responseTypeItems} defaultValue="text">
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="text">Текстовый ответ</SelectItem>
-                    <SelectItem value="file">Загрузка файла</SelectItem>
-                    <SelectItem value="none">Без ответа</SelectItem>
+                  <SelectContent align="start" alignItemWithTrigger={false}>
+                    <SelectGroup>
+                      {responseTypeItems.map((item) => (
+                        <SelectItem value={item.value} key={item.value}>
+                          {item.label}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
                   </SelectContent>
                 </Select>
               </Field>
@@ -1174,7 +1735,7 @@ export function DesignSystemPage() {
   }, []);
 
   return (
-    <div className="mx-auto grid w-full max-w-[1720px] gap-6 pb-10">
+    <div className="admin-page-stack gap-6 pb-10">
       <SonnerToaster
         position="bottom-right"
         richColors

@@ -201,8 +201,8 @@ export function EmployeesListPage({
   };
 
   return (
-    <div className="mx-auto w-full max-w-[1960px] px-1">
-      <Card className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-border bg-card p-4 shadow-none ring-0">
+    <div className="admin-page-shell">
+      <Card className="admin-page-surface flex min-h-0 flex-col overflow-hidden border border-border bg-card p-4 shadow-none ring-0">
         <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
           <div className="flex flex-wrap gap-2">
             {listKindOptions().map((option) => {

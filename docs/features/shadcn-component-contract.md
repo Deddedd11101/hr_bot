@@ -16,6 +16,17 @@ source_of_truth: true
 - Do not copy Next/RSC examples literally into this project. Adapt examples to the local Vite runtime.
 - Before adding or rewriting a shared component, run `npx shadcn@latest info --json` and `npx shadcn@latest docs <component>`.
 
+## Mandatory Shadcn Workflow
+
+- Treat the local shadcn skill rules as an execution gate for admin UI work, not as optional guidance.
+- Before changing a component or page composition, run `npx shadcn@latest info --json` from `frontend` and verify `base`, aliases, Tailwind version, CSS file, and installed components.
+- Before using or changing a shadcn component, run `npx shadcn@latest docs <component>` and inspect the local component source in `frontend/src/components/ui`.
+- If a needed component is missing, search and preview first: `npx shadcn@latest search ...`, then `npx shadcn@latest add <component> --dry-run`, then `--diff` when updating an existing file. Do not add registry code blindly.
+- If a page needs a new composition pattern, add it to `/app/design-system#patterns` first, then apply it to the live page.
+- After adding registry files or community blocks, read the generated files before continuing. Fix imports, `SelectGroup`/item grouping, Base UI `render` usage, icon sizing, semantic tokens, and Vite incompatibilities immediately.
+- Do not use raw internet snippets, Next/RSC examples, or registry blocks as-is. They must be adapted to this Vite + Base UI + Tailwind v4 project.
+- If the shadcn docs and current local implementation disagree, prefer the local implementation for runtime behavior and update this contract or the component deliberately.
+
 ## Primitive Policy
 
 - New shared UI must use shadcn Base components first.
@@ -23,13 +34,15 @@ source_of_truth: true
 - Use Base UI `render` composition, not Radix `asChild`.
 - Shared trigger components used with Base UI `render` must forward refs. `Button` is ref-forwarding for this reason; do not convert it back to a plain function component.
 - Do not create page-local imitations of controls when a shared primitive exists.
-- Use `Button`, `Input`, `Textarea`, `Select`, `Checkbox`, `Switch`, `Field`, `Card`, `Table`, `Badge`, `Alert`, `Empty`, `Popover`, `Dialog`, `DropdownMenu`, `Tooltip` from `frontend/src/components/ui`.
+- Use `Button`, `Input`, `Textarea`, `Select`, `Checkbox`, `Switch`, `Field`, `Card`, `Table`, `Badge`, `Alert`, `Empty`, `Popover`, `Dialog`, `AlertDialog`, `DropdownMenu`, `Tooltip` from `frontend/src/components/ui`.
 - Emoji insertion uses `EmojiPickerPopover` from `frontend/src/components/ui/emoji-picker-popover.tsx`: trigger is the shared `Button`, overlay is the shared `Popover`, `emoji-picker-react` is lazy-loaded, and the public API is only `onEmojiSelect(emoji: string)`.
+- Destructive confirmations use `ConfirmAction` from `frontend/src/components/ui/confirm-action.tsx`; do not use `window.confirm` in React admin pages. Keep destructive color on the confirmation action inside the dialog, not on every delete icon in dense page grids.
 
 ## Token Policy
 
 - Source of truth for tokens: `frontend/src/index.css`.
 - Tokens use Tailwind v4 `@theme inline` plus CSS variables in `:root` and `.dark`.
+- Page width/radius baseline: regular admin pages use `--admin-page-max-width: 1820px`, `--admin-page-radius`, `.admin-page-shell`, `.admin-page-stack`, and `.admin-page-surface`. Do not add new page-local `max-w-[1680px]`, `max-w-[1760px]`, `max-w-[1960px]`, or ad-hoc main container radii.
 - Color values use OKLCH. Do not add new hex UI tokens unless the palette is explicitly revised.
 - Do not use default Tailwind UI colors such as `gray-*`, `slate-*`, `zinc-*`, `green-*`, `red-*`, `blue-*`, `amber-*` in new admin surfaces.
 - Use semantic tokens only: `bg-background`, `text-foreground`, `bg-card`, `text-muted-foreground`, `border-border`, `border-input`, `ring-ring`, `bg-primary`, `text-primary-foreground`.
@@ -42,6 +55,7 @@ source_of_truth: true
 - Date and time controls use shared date/time primitives. Do not use native `input[type=date]`, `input[type=time]`, or `input[type=datetime-local]` for operator UI.
 - Checkboxes use shared `Checkbox`, not raw `input[type=checkbox]`.
 - Validation uses `aria-invalid` on the control and tokenized destructive styles.
+- Browser autofill must stay tokenized. Keep `:-webkit-autofill` overrides in `frontend/src/index.css` so saved emails, names, and addresses do not repaint controls to white in light or dark theme.
 
 ## Feedback
 
@@ -53,6 +67,7 @@ source_of_truth: true
 
 - If a shared primitive changes, update `/app/design-system` in the same change.
 - If a page introduces a new visual pattern, document it in `/app/design-system` or this file.
+- `/app/settings` and `/app/bulk-actions` must follow the `Settings form` and `Bulk action console` examples in `/app/design-system#patterns`.
 - Run `npm run build` after shared UI changes.
 - Browser smoke at minimum: `/app/design-system` plus the page that consumes the changed primitive.
 - Update `docs/handoffs/frontend-structure-reset-handoff.md` with touched screens, shared UI API changes, checks, and known issues.
