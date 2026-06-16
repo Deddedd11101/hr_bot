@@ -98,10 +98,22 @@ jobs:
             systemctl is-active --quiet hr-bot-web
             systemctl is-active --quiet hr-bot-worker
             systemctl is-active --quiet wg-quick@redshield
-            employees_code="$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 10 http://127.0.0.1:8000/app/employees)"
-            workspace_code="$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 10 http://127.0.0.1:8000/app/flows/workspace-v2)"
-            case "${employees_code}" in 200|303) ;; *) echo "Unexpected /app/employees status: ${employees_code}"; exit 1 ;; esac
-            case "${workspace_code}" in 200|303) ;; *) echo "Unexpected /app/flows/workspace-v2 status: ${workspace_code}"; exit 1 ;; esac
+            wait_http_status() {
+              path="$1"
+              expected="$2"
+              for attempt in $(seq 1 30); do
+                code="$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 2 --max-time 5 "http://127.0.0.1:8000${path}" || true)"
+                case " ${expected} " in
+                  *" ${code} "*) echo "${path} status: ${code}"; return 0 ;;
+                esac
+                echo "Waiting for ${path}; attempt ${attempt}/30, status: ${code}"
+                sleep 2
+              done
+              echo "Unexpected ${path} status after waiting: ${code}"
+              return 1
+            }
+            wait_http_status "/app/employees" "200 303"
+            wait_http_status "/app/flows/workspace-v2" "200 303"
             curl -4 -I --connect-timeout 10 https://api.telegram.org/
             journalctl -u hr-bot-worker --since "5 minutes ago" --no-pager -n 100 | \
               grep -E "TelegramNetworkError|Request timeout|Traceback|Unclosed client session" && exit 1 || true
