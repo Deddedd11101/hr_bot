@@ -37,6 +37,7 @@ import {
     FieldTitle,
 } from "@/components/ui/field";
 import { Checkbox } from "@/components/ui/checkbox";
+import { ConfirmAction } from "@/components/ui/confirm-action";
 import { DatePicker, DateTimePicker, TimeSelect } from "@/components/ui/date-picker";
 import { Input } from "@/components/ui/input";
 import {
@@ -58,6 +59,9 @@ type DetailItem = {
     linkLabel?: string | null;
     extraAction?: (() => void) | null;
     extraActionLabel?: string | null;
+    extraActionConfirmTitle?: string | null;
+    extraActionConfirmDescription?: string | null;
+    extraActionConfirmLabel?: string | null;
     deleteAction?: (() => void) | null;
     deleteActionLabel?: string | null;
 };
@@ -254,6 +258,18 @@ function ScenarioList(props: { items: DetailItem[] }) {
     return (
         <div className="employee-document-list">
             {props.items.map(function (item) {
+                const extraActionButton = item.extraAction ? (
+                    <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        onClick={item.extraActionConfirmTitle ? undefined : item.extraAction}
+                        aria-label={item.extraActionLabel || "Удалить"}
+                        title={item.extraActionLabel || "Удалить"}
+                    >
+                        <Trash2 />
+                    </Button>
+                ) : null;
                 return (
                     <div className="employee-document-row" key={item.id}>
                         <div className="employee-document-icon">
@@ -274,18 +290,16 @@ function ScenarioList(props: { items: DetailItem[] }) {
                                     <ExternalLink />
                                 </a>
                             ) : null}
-                            {item.extraAction ? (
-                                <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="icon-sm"
-                                    onClick={item.extraAction}
-                                    aria-label={item.extraActionLabel || "Удалить"}
-                                    title={item.extraActionLabel || "Удалить"}
+                            {item.extraAction && item.extraActionConfirmTitle && item.extraActionConfirmDescription && extraActionButton ? (
+                                <ConfirmAction
+                                    title={item.extraActionConfirmTitle}
+                                    description={item.extraActionConfirmDescription}
+                                    actionLabel={item.extraActionConfirmLabel || item.extraActionLabel || "Удалить"}
+                                    onConfirm={item.extraAction}
                                 >
-                                    <Trash2 />
-                                </Button>
-                            ) : null}
+                                    {extraActionButton}
+                                </ConfirmAction>
+                            ) : extraActionButton}
                         </div>
                     </div>
                 );

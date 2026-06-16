@@ -302,9 +302,6 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
     }
 
     function handleScheduledDelete(launchRequestId: number) {
-        if (!window.confirm("Удалить запланированную отправку?")) {
-            return;
-        }
         setOpsState({ message: "", error: false, working: true });
         fetch(apiUrl + "/schedule/" + launchRequestId, {
             method: "DELETE",
@@ -525,6 +522,9 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
             linkLabel: "Сценарий",
             extraAction: function () { handleScheduledDelete(item.id); },
             extraActionLabel: "Удалить",
+            extraActionConfirmTitle: "Удалить запланированную отправку?",
+            extraActionConfirmDescription: "Сценарий будет удален из расписания этого сотрудника.",
+            extraActionConfirmLabel: "Удалить",
         };
     });
     const manualLaunchItems = payload.manual_launch_history.map(function (item: any) {

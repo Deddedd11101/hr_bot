@@ -1194,3 +1194,30 @@ source_of_truth: true
 ### Checks
 
 - `npm run build`
+
+## Employee Scheduled Delete Confirm - 2026-06-16
+
+### Changed
+
+- Scheduled scenario deletion on `/app/employees/{employee_id}` now uses shared `ConfirmAction` and shadcn/Base `AlertDialog` instead of browser `window.confirm`.
+- `ScenarioList` accepts optional confirm metadata for dense icon actions; actions without confirm metadata keep direct execution.
+
+### Screens
+
+- `/app/employees/{employee_id}`
+
+### Shared UI API
+
+- `ConfirmAction` API unchanged.
+- `ScenarioList` item shape gained optional `extraActionConfirmTitle`, `extraActionConfirmDescription`, and `extraActionConfirmLabel`.
+
+### Known issues
+
+- Other employee-detail destructive actions still contain legacy `window.confirm` and should be migrated separately if they enter current UX scope.
+
+### Checks
+
+- `npm run build`
+- `D:\HRBot\hr_bot\.venv\Scripts\python.exe -m compileall app tests`
+- `D:\HRBot\hr_bot\.venv\Scripts\python.exe -m unittest tests.test_scenario_engine_smoke tests.test_messaging_identity tests.test_employee_api_smoke -v`
+- Browser smoke on `http://127.0.0.1:8001/app/employees/1`: scheduled scenario delete opens shared `AlertDialog`; no console errors.
