@@ -34,6 +34,37 @@ source_of_truth: true
 
 ## Записи
 
+### 2026-06-16 13:38 MSK - app deploy - scenario workspace latest выведен на stage
+
+- Deploy ref: `stage`.
+- Deployed commit: `28d4bf2`.
+- В stage включены:
+  - `86c1c48` frontend drag-preview для scenario/survey/root step drag;
+  - `b92617e` scenario workspace blocking-step guardrails;
+  - `01fb93d` fixes для `ruff F821` и rebuilt Vite assets;
+  - `28d4bf2` фиксация runtime env hotfix в git: `DOTENV_OVERRIDE`, `TELEGRAM_PROXY_URL`, SQLite `timeout=30`.
+- Перед deploy stage worktree был dirty из-за ручного hotfix в `app/config.py` и `app/database.py`.
+- Backup перед cleanup:
+  - `backups/hr_bot.before-stage-deploy.20260616-103707.db`;
+  - `backups/config.before-stage-deploy.20260616-103707.py`;
+  - `backups/database.before-stage-deploy.20260616-103707.py`;
+  - `backups/code-diff.before-stage-deploy.20260616-103707.patch`.
+- БД не заменялась и не откатывалась; cleanup затронул только tracked code-файлы `app/config.py` и `app/database.py`, после чего тот же hotfix был получен обратно из git commit `28d4bf2`.
+- Локальные проверки на объединенном `stage`:
+  - `.venv\Scripts\python.exe -m compileall app`;
+  - `.venv\Scripts\ruff.exe check --select F821 app tests`;
+  - `.venv\Scripts\python.exe -m unittest tests.test_scenario_engine_smoke tests.test_messaging_identity tests.test_employee_api_smoke -v` -> 64 tests OK;
+  - `npm run build` в `frontend`.
+- Stage smoke checks:
+  - `systemctl is-active wg-quick@redshield hr-bot-web hr-bot-worker` -> all `active`;
+  - `curl http://127.0.0.1:8000/app/employees` -> `303`;
+  - `curl http://127.0.0.1:8000/app/flows/workspace-v2` -> `303`;
+  - `curl http://127.0.0.1:8000/app/employees/1` -> `303`;
+  - `curl -4 -I https://api.telegram.org/` -> `HTTP/2 302`;
+  - `wg show redshield` -> active peer with `AllowedIPs 149.154.166.110/32`;
+  - worker logs за последние 5 минут без `TelegramNetworkError`, `Request timeout`, `Traceback`, `Unclosed client session`.
+- Открытый риск: deploy был выполнен вручную тем же SSH flow, потому что GitHub Actions сначала остановился на dirty worktree; после cleanup повторный workflow должен пройти обычным путем.
+
 ### 2026-06-15 17:10 MSK - infra - восстановлен Telegram delivery через RedShield
 
 - Stage server: `92.51.38.32`, app dir: `/opt/hr_bot`.
