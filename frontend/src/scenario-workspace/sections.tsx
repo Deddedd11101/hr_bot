@@ -38,10 +38,14 @@ import type {
   WorkspaceButtonNotification,
   WorkspaceButtonNotificationRule,
   WorkspaceData,
+  WorkspaceGraph,
   WorkspaceItem,
+  WorkspaceRootStepOption,
   WorkspaceStep,
   WorkspaceStepSendNotificationRule,
 } from "./types";
+
+const ScenarioGraphView = React.lazy(() => import("./graph-view").then((module) => ({ default: module.ScenarioGraphView })));
 
 export function WorkspaceFlashNotice(props: { message: string; error: boolean }) {
   if (!props.message) {
@@ -95,6 +99,7 @@ export function WorkspaceSidebarSection(props: {
   newScenarioTitle: string;
   search: string;
   audienceFilter: "all" | "employees" | "candidates";
+  sortMode: "updated_desc" | "created_desc" | "created_asc" | "title_asc";
   scenarios: ScenarioSummary[];
   selectedScenarioId: number | null;
   selectedScenarioIds: number[];
@@ -106,6 +111,7 @@ export function WorkspaceSidebarSection(props: {
   onCancelCreateScenario: () => void;
   onSearchChange: (value: string) => void;
   onAudienceFilterChange: (value: "all" | "employees" | "candidates") => void;
+  onSortModeChange: (value: "updated_desc" | "created_desc" | "created_asc" | "title_asc") => void;
   onToggleSelectAllVisibleScenarios: () => void;
   onBulkScenarioAction: (action: "bulk-copy" | "bulk-delete") => void;
   onSelectScenario: (scenarioId: number) => void;
@@ -123,6 +129,7 @@ export function WorkspaceSidebarSection(props: {
     newScenarioTitle,
     search,
     audienceFilter,
+    sortMode,
     scenarios,
     selectedScenarioId,
     selectedScenarioIds,
@@ -134,6 +141,7 @@ export function WorkspaceSidebarSection(props: {
     onCancelCreateScenario,
     onSearchChange,
     onAudienceFilterChange,
+    onSortModeChange,
     onToggleSelectAllVisibleScenarios,
     onBulkScenarioAction,
     onSelectScenario,
@@ -188,6 +196,17 @@ export function WorkspaceSidebarSection(props: {
             className="h-8 pl-8 text-sm"
           />
         </div>
+        <SingleSelectPicker
+          options={[
+            { value: "updated_desc", label: "Сначала недавно изменённые" },
+            { value: "created_desc", label: "Сначала новые" },
+            { value: "created_asc", label: "Сначала старые" },
+            { value: "title_asc", label: "По алфавиту" },
+          ]}
+          value={sortMode}
+          placeholder="Сортировка"
+          onChange={(value) => onSortModeChange(value as "updated_desc" | "created_desc" | "created_asc" | "title_asc")}
+        />
         <div className="flex flex-wrap items-center gap-1.5">
           {!isSurveyWorkspace ? (
             <div className="flex items-center gap-1 rounded-lg border border-border bg-background p-1">
@@ -343,9 +362,12 @@ export function WorkspaceCanvasSection(props: {
   currentContainer: Container | null;
   currentItems: Container["items"];
   selectedItemKey: string;
+  selectedStepId: number | null;
+  viewMode: "list" | "graph";
   stepTitle: string;
   itemLabel: string;
   isSurveyWorkspace: boolean;
+  graph: WorkspaceGraph | null | undefined;
   payloadWorkspace: WorkspaceData | null | undefined;
   exportUrl: string;
   scenarioSettingsForm: ScenarioSettingsForm | null;
@@ -354,6 +376,7 @@ export function WorkspaceCanvasSection(props: {
   roleScopeOptions: SingleOption[];
   employeeScopeOptions: SingleOption[];
   triggerModeOptions: SingleOption[];
+  candidateWorkStageOptions: SingleOption[];
   targetEmployeeOptions: SingleOption[];
   dragStepId: number | null;
   onBreadcrumbClick: (index: number) => void;
@@ -363,6 +386,8 @@ export function WorkspaceCanvasSection(props: {
   onAddRootStep: () => void;
   onAddChainStep: () => void;
   onSelectItem: (itemKey: string) => void;
+  onViewModeChange: (viewMode: "list" | "graph") => void;
+  onSelectGraphStep: (stepId: number) => void;
   onDragStepStart: (stepId: number) => void;
   onDragStepDrop: (targetStepId: number) => void;
   onDragStepEnd: () => void;
@@ -373,9 +398,12 @@ export function WorkspaceCanvasSection(props: {
     currentContainer,
     currentItems,
     selectedItemKey,
+    selectedStepId,
+    viewMode,
     stepTitle,
     itemLabel,
     isSurveyWorkspace,
+    graph,
     payloadWorkspace,
     exportUrl,
     scenarioSettingsForm,
@@ -384,6 +412,7 @@ export function WorkspaceCanvasSection(props: {
     roleScopeOptions,
     employeeScopeOptions,
     triggerModeOptions,
+    candidateWorkStageOptions,
     targetEmployeeOptions,
     dragStepId,
     onBreadcrumbClick,
@@ -393,6 +422,8 @@ export function WorkspaceCanvasSection(props: {
     onAddRootStep,
     onAddChainStep,
     onSelectItem,
+    onViewModeChange,
+    onSelectGraphStep,
     onDragStepStart,
     onDragStepDrop,
     onDragStepEnd,
@@ -429,8 +460,25 @@ export function WorkspaceCanvasSection(props: {
             {currentContainer?.type === "root" ? stepTitle : currentContainer?.title || payloadWorkspace?.scenario.title}
           </h3>
         </div>
-        {currentContainer?.type === "root" ? (
-          <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-1 rounded-lg border border-border bg-muted/45 p-1">
+            <Button
+              size="xs"
+              variant={viewMode === "list" ? "secondary" : "ghost"}
+              onClick={() => onViewModeChange("list")}
+            >
+              Список
+            </Button>
+            <Button
+              size="xs"
+              variant={viewMode === "graph" ? "secondary" : "ghost"}
+              onClick={() => onViewModeChange("graph")}
+            >
+              Схема
+            </Button>
+          </div>
+          {currentContainer?.type === "root" ? (
+            <>
             {exportUrl ? (
               <Button render={<a href={exportUrl} />} variant="outline" size="sm">
                 Выгрузить Excel
@@ -510,7 +558,33 @@ export function WorkspaceCanvasSection(props: {
                           options={triggerModeOptions}
                           value={scenarioSettingsForm.trigger_mode}
                           placeholder="Запуск"
-                          onChange={(nextValue) => onScenarioSettingsFormChange((prev) => (prev ? { ...prev, trigger_mode: nextValue } : prev))}
+                          onChange={(nextValue) =>
+                            onScenarioSettingsFormChange((prev) =>
+                              prev
+                                ? {
+                                    ...prev,
+                                    trigger_mode: nextValue,
+                                    candidate_work_stage_trigger:
+                                      nextValue === "candidate_hr_stage" ? prev.candidate_work_stage_trigger : "",
+                                  }
+                                : prev,
+                            )
+                          }
+                        />
+                      </label>
+                    ) : null}
+                    {!isSurveyWorkspace && scenarioSettingsForm.trigger_mode === "candidate_hr_stage" ? (
+                      <label className="grid min-w-0 gap-2.5">
+                        <span className="text-sm font-semibold text-foreground/75">HR-статус кандидата</span>
+                        <SingleSelectPicker
+                          options={candidateWorkStageOptions}
+                          value={scenarioSettingsForm.candidate_work_stage_trigger}
+                          placeholder="Выбери статус"
+                          onChange={(nextValue) =>
+                            onScenarioSettingsFormChange((prev) =>
+                              prev ? { ...prev, candidate_work_stage_trigger: nextValue } : prev,
+                            )
+                          }
                         />
                       </label>
                     ) : null}
@@ -536,103 +610,116 @@ export function WorkspaceCanvasSection(props: {
               <Plus data-icon="inline-start" />
               {isSurveyWorkspace ? "Добавить" : "Добавить шаг"}
             </Button>
-          </div>
+            </>
         ) : currentContainer?.type === "chain" ? (
           <Button variant="secondary" size="sm" onClick={onAddChainStep}>
             <Plus data-icon="inline-start" />
             Добавить шаг
           </Button>
         ) : null}
+        </div>
       </div>
 
-      <ScrollArea className="min-h-0 flex-1">
-        <div className="grid gap-2 pr-3">
-          {currentItems.map((item, index) => {
-            const canOpen = !!buildChildContainer(item);
-            const active = itemKey(item) === selectedItemKey;
-            const isDragging = dragStepId === item.id;
-            const isDropTarget = dropTargetId === item.id && !isDragging;
-            return (
-              <article
-                key={itemKey(item) || `${currentContainer?.key}-${index}`}
-                onClick={() => onSelectItem(itemKey(item))}
-                draggable={currentContainer?.type === "root" && item.kind !== "branch_slot"}
-                onDragStart={(event) => {
-                  if (currentContainer?.type === "root" && item.kind !== "branch_slot") {
-                    event.dataTransfer.effectAllowed = "move";
-                    setWorkspaceDragImage(event, {
-                      title: workspaceItemTitle(item, index),
-                      meta: isSurveyWorkspace ? "Перемещение вопроса" : "Перемещение шага",
-                    });
-                    onDragStepStart(Number(itemKey(item)));
-                  }
-                }}
-                onDragOver={(event) => {
-                  if (currentContainer?.type === "root" && item.kind !== "branch_slot") {
-                    event.preventDefault();
-                    setDropTargetId(item.id);
-                  }
-                }}
-                onDragLeave={(event) => {
-                  if (!event.currentTarget.contains(event.relatedTarget as Node)) {
-                    setDropTargetId((current) => (current === item.id ? null : current));
-                  }
-                }}
-                onDrop={() => {
-                  if (currentContainer?.type === "root" && item.kind !== "branch_slot") {
+      {viewMode === "graph" ? (
+        <React.Suspense
+          fallback={
+            <div className="flex min-h-0 flex-1 items-center justify-center rounded-lg border border-border bg-muted/35 p-6 text-sm font-medium text-muted-foreground">
+              Собираю схему…
+            </div>
+          }
+        >
+          <ScenarioGraphView graph={graph} selectedStepId={selectedStepId} onSelectStep={onSelectGraphStep} />
+        </React.Suspense>
+      ) : (
+        <ScrollArea className="min-h-0 flex-1">
+          <div className="grid gap-2 pr-3">
+            {currentItems.map((item, index) => {
+              const canOpen = !!buildChildContainer(item);
+              const active = itemKey(item) === selectedItemKey;
+              const isDragging = dragStepId === item.id;
+              const isDropTarget = dropTargetId === item.id && !isDragging;
+              return (
+                <article
+                  key={itemKey(item) || `${currentContainer?.key}-${index}`}
+                  onClick={() => onSelectItem(itemKey(item))}
+                  draggable={currentContainer?.type === "root" && item.kind !== "branch_slot"}
+                  onDragStart={(event) => {
+                    if (currentContainer?.type === "root" && item.kind !== "branch_slot") {
+                      event.dataTransfer.effectAllowed = "move";
+                      setWorkspaceDragImage(event, {
+                        title: workspaceItemTitle(item, index),
+                        meta: isSurveyWorkspace ? "Перемещение вопроса" : "Перемещение шага",
+                      });
+                      onDragStepStart(Number(itemKey(item)));
+                    }
+                  }}
+                  onDragOver={(event) => {
+                    if (currentContainer?.type === "root" && item.kind !== "branch_slot") {
+                      event.preventDefault();
+                      setDropTargetId(item.id);
+                    }
+                  }}
+                  onDragLeave={(event) => {
+                    if (!event.currentTarget.contains(event.relatedTarget as Node)) {
+                      setDropTargetId((current) => (current === item.id ? null : current));
+                    }
+                  }}
+                  onDrop={() => {
+                    if (currentContainer?.type === "root" && item.kind !== "branch_slot") {
+                      setDropTargetId(null);
+                      onDragStepDrop(item.id);
+                    }
+                  }}
+                  onDragEnd={() => {
                     setDropTargetId(null);
-                    onDragStepDrop(item.id);
-                  }
-                }}
-                onDragEnd={() => {
-                  setDropTargetId(null);
-                  onDragStepEnd();
-                }}
-                className={cn(
-                  "relative flex w-full min-w-0 cursor-pointer flex-col gap-2 rounded-lg border p-3 transition-[border-color,background-color,opacity,transform,box-shadow]",
-                  active ? "border-primary/70 bg-muted/50" : "border-border bg-card hover:bg-accent/60",
-                  isDragging && "scale-[0.985] border-primary/40 bg-muted/70 opacity-50",
-                  isDropTarget && "border-primary bg-primary/5 ring-2 ring-primary/20",
-                )}
-              >
-                {isDropTarget ? <span className="pointer-events-none absolute inset-x-3 -top-1 h-0.5 rounded-full bg-primary" /> : null}
-                <div className="flex flex-col gap-1">
-                  <h4 className="text-[0.95rem] font-semibold">{workspaceItemTitle(item, index)}</h4>
-                  <p className="text-[0.83rem] leading-5 text-muted-foreground">{summarizeItem(item)}</p>
-                </div>
-                <div className="flex items-center justify-between gap-3">
-                  <div className="flex flex-wrap gap-1.5">
-                    <Badge variant="secondary">{item.kind === "branch_slot" ? "Ветка" : item.response_label}</Badge>
-                    {"response_type" in item ? (
-                      <Badge variant={responseTypeWaitState(item.response_type).tone === "waiting" ? "default" : "outline"}>
-                        {responseTypeWaitState(item.response_type).badge}
-                      </Badge>
-                    ) : null}
-                    {"button_options" in item && item.button_options.length ? (
-                      <Badge variant="secondary">
-                        {isSurveyWorkspace ? `Ответы: ${item.button_options.length}` : `Кнопки: ${item.button_options.length}`}
-                      </Badge>
+                    onDragStepEnd();
+                  }}
+                  className={cn(
+                    "relative flex w-full min-w-0 cursor-pointer flex-col gap-2 rounded-lg border p-3 transition-[border-color,background-color,opacity,transform,box-shadow]",
+                    active ? "border-primary/70 bg-muted/50" : "border-border bg-card hover:bg-accent/60",
+                    isDragging && "scale-[0.985] border-primary/40 bg-muted/70 opacity-50",
+                    isDropTarget && "border-primary bg-primary/5 ring-2 ring-primary/20",
+                  )}
+                >
+                  {isDropTarget ? <span className="pointer-events-none absolute inset-x-3 -top-1 h-0.5 rounded-full bg-primary" /> : null}
+                  <div className="flex flex-col gap-1">
+                    <h4 className="text-[0.95rem] font-semibold">{workspaceItemTitle(item, index)}</h4>
+                    <p className="text-[0.83rem] leading-5 text-muted-foreground">{summarizeItem(item)}</p>
+                  </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex flex-wrap gap-1.5">
+                      <Badge variant="secondary">{item.kind === "branch_slot" ? "Ветка" : item.response_label}</Badge>
+                      {"response_type" in item ? (
+                        <Badge variant={responseTypeWaitState(item.response_type).tone === "waiting" ? "default" : "outline"}>
+                          {responseTypeWaitState(item.response_type).badge}
+                        </Badge>
+                      ) : null}
+                      {"button_options" in item && item.button_options.length ? (
+                        <Badge variant="secondary">
+                          {isSurveyWorkspace ? `Ответы: ${item.button_options.length}` : `Кнопки: ${item.button_options.length}`}
+                        </Badge>
+                      ) : null}
+                    </div>
+                    {canOpen ? (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onOpenItem(item);
+                        }}
+                      >
+                        <PanelLeft data-icon="inline-start" />
+                        Открыть
+                      </Button>
                     ) : null}
                   </div>
-                  {canOpen ? (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        onOpenItem(item);
-                      }}
-                    >
-                      <PanelLeft data-icon="inline-start" />
-                      Открыть
-                    </Button>
-                  ) : null}
-                </div>
-              </article>
-            );
-          })}
-        </div>
-      </ScrollArea>
+                </article>
+              );
+            })}
+          </div>
+        </ScrollArea>
+      )}
     </Card>
   );
 }
@@ -669,6 +756,7 @@ export function WorkspaceStepDetailPane(props: {
     send_time: string;
     target_field: string;
     launch_scenario_key: string;
+    return_to_step_key: string;
     send_employee_card: boolean;
     notify_on_send_text: string;
     notify_on_send_recipient_ids: string;
@@ -686,6 +774,7 @@ export function WorkspaceStepDetailPane(props: {
   sendModeOptions: SingleOption[];
   targetFieldOptions: SingleOption[];
   launchScenarioOptions: SingleOption[];
+  rootStepOptions: WorkspaceRootStepOption[];
   onInsertIntoText: (snippet: string) => void;
   onFormChange: (
     updater: (
@@ -698,6 +787,7 @@ export function WorkspaceStepDetailPane(props: {
         send_time: string;
         target_field: string;
         launch_scenario_key: string;
+        return_to_step_key: string;
         send_employee_card: boolean;
         notify_on_send_text: string;
         notify_on_send_recipient_ids: string;
@@ -714,6 +804,7 @@ export function WorkspaceStepDetailPane(props: {
       send_time: string;
       target_field: string;
       launch_scenario_key: string;
+      return_to_step_key: string;
       send_employee_card: boolean;
       notify_on_send_text: string;
       notify_on_send_recipient_ids: string;
@@ -747,6 +838,7 @@ export function WorkspaceStepDetailPane(props: {
     sendModeOptions,
     targetFieldOptions,
     launchScenarioOptions,
+    rootStepOptions,
     onInsertIntoText,
     onFormChange,
     onCreateBranch,
@@ -1264,6 +1356,22 @@ export function WorkspaceStepDetailPane(props: {
                         onChange={(nextValue) => onFormChange((prev) => (prev ? { ...prev, launch_scenario_key: nextValue } : prev))}
                       />
                     </label>
+
+                    {detailTarget?.kind === "branch_step" ? (
+                      <label className="grid gap-2">
+                        <span className="text-sm font-semibold text-foreground/75">Вернуться в основной сценарий</span>
+                        <SingleSelectPicker
+                          options={rootStepOptions}
+                          value={form?.return_to_step_key || ""}
+                          placeholder="Не возвращать в основной поток"
+                          disabled={(form?.response_type || "") === "launch_scenario"}
+                          onChange={(nextValue) => onFormChange((prev) => (prev ? { ...prev, return_to_step_key: nextValue } : prev))}
+                        />
+                        <p className="text-xs leading-5 text-muted-foreground">
+                          После завершения этой ветки бот перейдёт к выбранному root-шагу, а не к следующему шагу после точки ветвления.
+                        </p>
+                      </label>
+                    ) : null}
 
                     <details className="rounded-lg border border-border bg-muted/50 p-3">
                       <summary className="cursor-pointer list-none text-sm font-semibold text-foreground/80">

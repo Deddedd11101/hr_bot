@@ -6,10 +6,13 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 from app.database import SessionLocal, init_db
-from app.models import Employee, FlowStepTemplate, ScenarioProgress, ScenarioTemplate
+from app.models import Employee, EmployeeFile, FlowStepTemplate, ScenarioProgress, ScenarioTemplate
 from app.scenario_engine import (
     SCENARIO_BACK_BUTTON_TEXT,
+    handle_button_response,
     handle_back_response,
+    handle_file_response,
+    handle_text_response,
     matches_role_scope,
     resolve_notification_recipients,
     scenario_anchor_date,
@@ -286,6 +289,231 @@ class ScenarioEngineSmokeTests(unittest.IsolatedAsyncioTestCase):
     async def test_handle_back_response_accepts_back_label_as_control(self) -> None:
         self.assertEqual(SCENARIO_BACK_BUTTON_TEXT, "Назад")
 
+    async def test_handle_back_response_restores_employee_field_value(self) -> None:
+        init_db()
+        now = datetime.now(UTC).replace(tzinfo=None)
+        scenario_key = f"test_back_restore_field_{int(datetime.now(UTC).timestamp() * 1000000)}"
+
+        with SessionLocal() as db:
+            scenario = ScenarioTemplate(
+                scenario_key=scenario_key,
+                title="Back restore field",
+                role_scope="all",
+                scenario_kind="scenario",
+                sort_order=0,
+                trigger_mode="manual_only",
+            )
+            step_one = FlowStepTemplate(
+                flow_key=scenario_key,
+                step_key="step_one",
+                step_title="Step one",
+                sort_order=10,
+                default_text="Введите ФИО",
+                response_type="text",
+                send_mode="immediate",
+                day_offset_workdays=0,
+                target_field="full_name",
+            )
+            step_two = FlowStepTemplate(
+                flow_key=scenario_key,
+                step_key="step_two",
+                step_title="Step two",
+                sort_order=20,
+                default_text="Следующий шаг",
+                response_type="text",
+                send_mode="immediate",
+                day_offset_workdays=0,
+            )
+            employee = Employee(
+                full_name="Original Name",
+                telegram_user_id="123456789",
+                created_at=now,
+                is_flow_scheduled=False,
+                employee_stage="candidate",
+            )
+            db.add_all([scenario, step_one, step_two, employee])
+            db.commit()
+
+            messenger = FakeMessenger()
+            await send_step(messenger, db, employee, scenario, step_one)
+            handled = await handle_text_response(messenger, db, employee, SimpleNamespace(text="Updated Name"))
+
+            self.assertTrue(handled)
+            db.refresh(employee)
+            self.assertEqual(employee.full_name, "Updated Name")
+
+            handled_back = await handle_back_response(messenger, db, employee)
+
+            self.assertTrue(handled_back)
+            db.refresh(employee)
+            self.assertEqual(employee.full_name, "Original Name")
+            progress = db.query(ScenarioProgress).filter_by(employee_id=employee.id, scenario_key=scenario_key).first()
+            self.assertIsNotNone(progress)
+            self.assertEqual(progress.current_step_key, "step_one")
+            self.assertTrue(progress.waiting_for_response)
+
+            db.delete(step_two)
+            db.delete(step_one)
+            db.delete(scenario)
+            db.delete(employee)
+            db.commit()
+
+    async def test_handle_back_response_deletes_uploaded_file_and_restores_step(self) -> None:
+        init_db()
+        now = datetime.now(UTC).replace(tzinfo=None)
+        scenario_key = f"test_back_restore_file_{int(datetime.now(UTC).timestamp() * 1000000)}"
+
+        with tempfile.TemporaryDirectory() as tmp_dir, SessionLocal() as db:
+            stored_path = Path(tmp_dir) / "resume.pdf"
+            stored_path.write_bytes(b"resume")
+            scenario = ScenarioTemplate(
+                scenario_key=scenario_key,
+                title="Back restore file",
+                role_scope="all",
+                scenario_kind="scenario",
+                sort_order=0,
+                trigger_mode="manual_only",
+            )
+            step_one = FlowStepTemplate(
+                flow_key=scenario_key,
+                step_key="step_one",
+                step_title="Step one",
+                sort_order=10,
+                default_text="Загрузите резюме",
+                response_type="file",
+                send_mode="immediate",
+                day_offset_workdays=0,
+                target_field="resume",
+            )
+            step_two = FlowStepTemplate(
+                flow_key=scenario_key,
+                step_key="step_two",
+                step_title="Step two",
+                sort_order=20,
+                default_text="Следующий шаг",
+                response_type="text",
+                send_mode="immediate",
+                day_offset_workdays=0,
+            )
+            employee = Employee(
+                full_name="File Tester",
+                telegram_user_id="123456789",
+                created_at=now,
+                is_flow_scheduled=False,
+                employee_stage="candidate",
+            )
+            db.add_all([scenario, step_one, step_two, employee])
+            db.commit()
+            db.refresh(employee)
+
+            db_file = EmployeeFile(
+                employee_id=employee.id,
+                direction="inbound",
+                category="candidate_file",
+                telegram_file_id=None,
+                telegram_file_unique_id=None,
+                original_filename="resume.pdf",
+                stored_path=str(stored_path),
+                mime_type="application/pdf",
+                file_size=6,
+                created_at=now,
+            )
+            db.add(db_file)
+            db.commit()
+            db.refresh(db_file)
+
+            messenger = FakeMessenger()
+            await send_step(messenger, db, employee, scenario, step_one)
+            handled = await handle_file_response(messenger, db, employee, db_file)
+
+            self.assertTrue(handled)
+            self.assertTrue(stored_path.exists())
+            self.assertIsNotNone(db.get(EmployeeFile, db_file.id))
+
+            handled_back = await handle_back_response(messenger, db, employee)
+
+            self.assertTrue(handled_back)
+            self.assertFalse(stored_path.exists())
+            self.assertIsNone(db.get(EmployeeFile, db_file.id))
+            progress = db.query(ScenarioProgress).filter_by(employee_id=employee.id, scenario_key=scenario_key).first()
+            self.assertIsNotNone(progress)
+            self.assertEqual(progress.current_step_key, "step_one")
+
+            db.delete(step_two)
+            db.delete(step_one)
+            db.delete(scenario)
+            db.delete(employee)
+            db.commit()
+
+    async def test_handle_back_response_restores_recruitment_button_side_effects(self) -> None:
+        init_db()
+        now = datetime.now(UTC).replace(tzinfo=None)
+        scenario_key = f"test_recruitment_back_{int(datetime.now(UTC).timestamp() * 1000000)}"
+
+        with SessionLocal() as db:
+            scenario = ScenarioTemplate(
+                scenario_key=scenario_key,
+                title="Recruitment",
+                role_scope="all",
+                scenario_kind="scenario",
+                sort_order=0,
+                trigger_mode="manual_only",
+            )
+            step_one = FlowStepTemplate(
+                flow_key=scenario_key,
+                step_key="step_one",
+                step_title="Step one",
+                sort_order=10,
+                default_text="Кого регистрируем?",
+                response_type="branching",
+                button_options="Кандидат\nСотрудник",
+                send_mode="immediate",
+                day_offset_workdays=0,
+            )
+            step_two = FlowStepTemplate(
+                flow_key=scenario_key,
+                step_key="step_two",
+                step_title="Step two",
+                sort_order=20,
+                default_text="Следующий шаг",
+                response_type="text",
+                send_mode="immediate",
+                day_offset_workdays=0,
+            )
+            employee = Employee(
+                full_name="Recruitment Tester",
+                telegram_user_id="123456789",
+                created_at=now,
+                is_flow_scheduled=False,
+                employee_stage="candidate",
+                candidate_status="original_status",
+            )
+            db.add_all([scenario, step_one, step_two, employee])
+            db.commit()
+
+            messenger = FakeMessenger()
+            await send_step(messenger, db, employee, scenario, step_one)
+            with patch("app.scenario_engine.RECRUITMENT_SCENARIO_KEY", scenario_key):
+                handled = await handle_button_response(messenger, db, employee, scenario_key, "step_one", 1)
+
+            self.assertTrue(handled)
+            db.refresh(employee)
+            self.assertEqual(employee.employee_stage, "staff")
+            self.assertEqual(employee.candidate_status, "step_one")
+
+            handled_back = await handle_back_response(messenger, db, employee)
+
+            self.assertTrue(handled_back)
+            db.refresh(employee)
+            self.assertEqual(employee.employee_stage, "candidate")
+            self.assertEqual(employee.candidate_status, "original_status")
+
+            db.delete(step_two)
+            db.delete(step_one)
+            db.delete(scenario)
+            db.delete(employee)
+            db.commit()
+
     async def test_send_step_launch_scenario_marks_progress_completed_and_starts_target(self) -> None:
         init_db()
         now = datetime.now(UTC).replace(tzinfo=None)
@@ -332,6 +560,91 @@ class ScenarioEngineSmokeTests(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(progress.is_completed)
             mocked_start.assert_awaited_once()
             self.assertEqual(mocked_start.await_args.args[3], "target_flow")
+
+    async def test_branch_step_can_return_to_later_root_step(self) -> None:
+        init_db()
+        now = datetime.now(UTC).replace(tzinfo=None)
+        scenario_key = f"test_branch_return_{int(datetime.now(UTC).timestamp() * 1000000)}"
+
+        with SessionLocal() as db:
+            scenario = ScenarioTemplate(
+                scenario_key=scenario_key,
+                title="Branch return",
+                role_scope="all",
+                scenario_kind="scenario",
+                sort_order=0,
+                trigger_mode="manual_only",
+            )
+            root_step = FlowStepTemplate(
+                flow_key=scenario_key,
+                step_key="step_one",
+                step_title="Step one",
+                sort_order=10,
+                default_text="Согласен?",
+                response_type="branching",
+                button_options="Да\nНет",
+                send_mode="immediate",
+                day_offset_workdays=0,
+            )
+            skipped_root = FlowStepTemplate(
+                flow_key=scenario_key,
+                step_key="step_two",
+                step_title="Skipped root",
+                sort_order=20,
+                default_text="Сюда не должны попасть",
+                response_type="none",
+                send_mode="immediate",
+                day_offset_workdays=0,
+            )
+            target_root = FlowStepTemplate(
+                flow_key=scenario_key,
+                step_key="step_three",
+                step_title="Merged root",
+                sort_order=30,
+                default_text="Общий поток после ветки",
+                response_type="none",
+                send_mode="immediate",
+                day_offset_workdays=0,
+            )
+            employee = Employee(
+                full_name="Tester",
+                telegram_user_id="123456789",
+                created_at=now,
+                is_flow_scheduled=False,
+                employee_stage="candidate",
+            )
+            db.add_all([scenario, root_step, skipped_root, target_root, employee])
+            db.commit()
+            db.refresh(root_step)
+            db.refresh(target_root)
+            db.refresh(employee)
+
+            branch_step = FlowStepTemplate(
+                flow_key=scenario_key,
+                step_key="step_one_branch_yes",
+                parent_step_id=root_step.id,
+                branch_option_index=0,
+                step_title="Branch yes",
+                sort_order=1001,
+                default_text="Локальная ветка",
+                response_type="none",
+                return_to_step_key=target_root.step_key,
+                send_mode="immediate",
+                day_offset_workdays=0,
+            )
+            db.add(branch_step)
+            db.commit()
+
+            messenger = FakeMessenger()
+            await send_step(messenger, db, employee, scenario, root_step)
+
+            handled = await handle_button_response(messenger, db, employee, scenario_key, root_step.step_key, 0)
+
+            self.assertTrue(handled)
+            sent_texts = [item["text"] for item in messenger.texts]
+            self.assertIn("Локальная ветка", sent_texts)
+            self.assertIn("Общий поток после ветки", sent_texts)
+            self.assertNotIn("Сюда не должны попасть", sent_texts)
 
 
 if __name__ == "__main__":

@@ -9,6 +9,7 @@ import {
   buildChildContainer,
   detailTargetFromItem,
   FALLBACK_RESPONSE_TYPE_LABELS,
+  findWorkspacePathToStep,
   itemKey,
   makeRootContainer,
   moveItemById,
@@ -26,11 +27,12 @@ import {
   WorkspaceStepDetailPane,
 } from "./sections";
 import type {
-  WorkspaceButtonNotification,
   Container,
   ScenarioSettingsForm,
   SingleOption,
+  WorkspaceButtonNotification,
   WorkspacePayload,
+  WorkspaceRootStepOption,
   WorkspaceStepSendNotificationRule,
 } from "./types";
 
@@ -58,8 +60,10 @@ export function ScenarioWorkspacePage() {
   const [selectedScenarioId, setSelectedScenarioId] = React.useState<number | null>(initialScenarioId);
   const [search, setSearch] = React.useState("");
   const [audienceFilter, setAudienceFilter] = React.useState<"all" | "employees" | "candidates">("all");
+  const [sortMode, setSortMode] = React.useState<"updated_desc" | "created_desc" | "created_asc" | "title_asc">("updated_desc");
   const [stack, setStack] = React.useState<Container[]>([]);
   const [selectedItemKey, setSelectedItemKey] = React.useState("");
+  const [viewMode, setViewMode] = React.useState<"list" | "graph">("list");
   const [form, setForm] = React.useState<null | {
     title: string;
     text: string;
@@ -69,6 +73,7 @@ export function ScenarioWorkspacePage() {
     send_time: string;
     target_field: string;
     launch_scenario_key: string;
+    return_to_step_key: string;
     send_employee_card: boolean;
     notify_on_send_text: string;
     notify_on_send_recipient_ids: string;
@@ -99,6 +104,7 @@ export function ScenarioWorkspacePage() {
   const currentItems = currentContainer?.items || [];
   const selectedItem = currentItems.find((item) => itemKey(item) === selectedItemKey) || currentItems[0] || null;
   const detailTarget = detailTargetFromItem(selectedItem);
+  const selectedStepId = detailTarget?.id || null;
   const openLabel = openActionLabel(selectedItem);
   const responseTypeOptions = React.useMemo(() => {
     const labels = payload?.workspace?.response_type_labels || FALLBACK_RESPONSE_TYPE_LABELS;
@@ -128,6 +134,13 @@ export function ScenarioWorkspacePage() {
     () => Object.entries(payload?.workspace?.trigger_mode_labels || {}).map(([value, label]) => ({ value, label })),
     [payload],
   );
+  const candidateWorkStageOptions = React.useMemo<SingleOption[]>(
+    () => [
+      { value: "", label: "Не выбрано" },
+      ...Object.entries(payload?.workspace?.candidate_work_stage_labels || {}).map(([value, label]) => ({ value, label })),
+    ],
+    [payload],
+  );
   const targetEmployeeOptions = React.useMemo<SingleOption[]>(
     () => [
       { value: "", label: "Не привязывать к конкретной карточке" },
@@ -143,6 +156,16 @@ export function ScenarioWorkspacePage() {
     () => [
       { value: "", label: "Не выполнять переход" },
       ...((payload?.workspace?.available_scenarios || []).map((option) => ({ value: option.value, label: option.label })) as SingleOption[]),
+    ],
+    [payload],
+  );
+  const rootStepOptions = React.useMemo<WorkspaceRootStepOption[]>(
+    () => [
+      { value: "", label: "Не возвращать в основной поток" },
+      ...((payload?.workspace?.root_steps || []).map((step) => ({
+        value: step.step_key,
+        label: step.title || step.text_preview || `Шаг ${step.id}`,
+      })) as WorkspaceRootStepOption[]),
     ],
     [payload],
   );
@@ -236,13 +259,30 @@ export function ScenarioWorkspacePage() {
 
   const scenarios = React.useMemo(() => {
     const items = payload?.scenarios || [];
-    return items.filter((scenario) => {
+    const filtered = items.filter((scenario) => {
       const matchesAudience = audienceFilter === "all" || scenario.employee_scope === audienceFilter;
       const matchesSearch =
         !search.trim() || `${scenario.title} ${scenario.description}`.toLowerCase().includes(search.toLowerCase());
       return matchesAudience && matchesSearch;
     });
-  }, [audienceFilter, payload, search]);
+    const timestampValue = (value: string | null, fallback: number) => {
+      const parsed = value ? Date.parse(value) : Number.NaN;
+      return Number.isFinite(parsed) ? parsed : fallback;
+    };
+    const byTitle = (left: string, right: string) => left.localeCompare(right, "ru", { sensitivity: "base" });
+    return filtered.slice().sort((left, right) => {
+      if (sortMode === "title_asc") {
+        return byTitle(left.title, right.title);
+      }
+      if (sortMode === "created_asc") {
+        return timestampValue(left.created_at, left.id) - timestampValue(right.created_at, right.id);
+      }
+      if (sortMode === "created_desc") {
+        return timestampValue(right.created_at, right.id) - timestampValue(left.created_at, left.id);
+      }
+      return timestampValue(right.updated_at || right.created_at, right.id) - timestampValue(left.updated_at || left.created_at, left.id);
+    });
+  }, [audienceFilter, payload, search, sortMode]);
 
   React.useEffect(() => {
     const availableIds = new Set((payload?.scenarios || []).map((scenario) => scenario.id));
@@ -273,6 +313,7 @@ export function ScenarioWorkspacePage() {
       send_time: detailTarget.send_time || "",
       target_field: detailTarget.target_field || "",
       launch_scenario_key: detailTarget.launch_scenario_key || "",
+      return_to_step_key: detailTarget.return_to_step_key || "",
       send_employee_card: Boolean(detailTarget.send_employee_card),
       notify_on_send_text: detailTarget.notify_on_send_text || "",
       notify_on_send_recipient_ids: detailTarget.notify_on_send_recipient_ids || "",
@@ -296,6 +337,7 @@ export function ScenarioWorkspacePage() {
       role_scope: scenario.role_scope || "all",
       employee_scope: scenario.employee_scope || "all",
       trigger_mode: scenario.trigger_mode || "manual_only",
+      candidate_work_stage_trigger: scenario.candidate_work_stage_trigger || "",
       target_employee_id: scenario.target_employee_id ? String(scenario.target_employee_id) : "",
     });
     setScenarioSettingsState({ saving: false, message: "", error: false });
@@ -320,6 +362,7 @@ export function ScenarioWorkspacePage() {
         send_time: form.send_time,
         target_field: supportsTargetField(form.response_type) ? form.target_field : "",
         launch_scenario_key: form.launch_scenario_key,
+        return_to_step_key: detailTarget?.kind === "branch_step" ? form.return_to_step_key : "",
         send_employee_card: form.send_employee_card,
         notify_on_send_text: form.notify_on_send_text,
         notify_on_send_recipient_ids: form.notify_on_send_recipient_ids,
@@ -686,6 +729,18 @@ export function ScenarioWorkspacePage() {
     persistRootStepOrder(reorderedItems.map((item) => item.id));
   };
 
+  const handleSelectGraphStep = React.useCallback(
+    (stepId: number) => {
+      const workspace = payload?.workspace;
+      if (!workspace) return;
+      const path = findWorkspacePathToStep(workspace, stepId);
+      if (!path) return;
+      setStack(path.stack);
+      setSelectedItemKey(path.selectedItemKey);
+    },
+    [payload?.workspace],
+  );
+
   if (loading && !payload) {
     return <Card className="border border-border bg-card p-8 shadow-none ring-0">Собираю новый workspace…</Card>;
   }
@@ -728,6 +783,7 @@ export function ScenarioWorkspacePage() {
             newScenarioTitle={newScenarioTitle}
             search={search}
             audienceFilter={audienceFilter}
+            sortMode={sortMode}
             scenarios={scenarios}
             selectedScenarioId={selectedScenarioId}
             selectedScenarioIds={selectedScenarioIds}
@@ -742,6 +798,7 @@ export function ScenarioWorkspacePage() {
             }}
             onSearchChange={setSearch}
             onAudienceFilterChange={setAudienceFilter}
+            onSortModeChange={setSortMode}
             onToggleSelectAllVisibleScenarios={toggleSelectAllVisibleScenarios}
             onBulkScenarioAction={handleBulkScenarioAction}
             onSelectScenario={setSelectedScenarioId}
@@ -756,9 +813,12 @@ export function ScenarioWorkspacePage() {
             currentContainer={currentContainer}
             currentItems={currentItems}
             selectedItemKey={selectedItemKey}
+            selectedStepId={selectedStepId}
+            viewMode={viewMode}
             stepTitle={stepTitle}
             itemLabel={itemLabel}
             isSurveyWorkspace={isSurveyWorkspace}
+            graph={payload?.workspace?.graph}
             payloadWorkspace={payload?.workspace}
             exportUrl={exportUrl}
             scenarioSettingsForm={scenarioSettingsForm}
@@ -767,6 +827,7 @@ export function ScenarioWorkspacePage() {
             roleScopeOptions={roleScopeOptions}
             employeeScopeOptions={employeeScopeOptions}
             triggerModeOptions={triggerModeOptions}
+            candidateWorkStageOptions={candidateWorkStageOptions}
             targetEmployeeOptions={targetEmployeeOptions}
             dragStepId={dragStepId}
             onBreadcrumbClick={(index) => {
@@ -780,6 +841,8 @@ export function ScenarioWorkspacePage() {
             onAddRootStep={handleAddRootStep}
             onAddChainStep={handleAddChainStep}
             onSelectItem={setSelectedItemKey}
+            onViewModeChange={setViewMode}
+            onSelectGraphStep={handleSelectGraphStep}
             onDragStepStart={setDragStepId}
             onDragStepDrop={handleRootStepDrop}
             onDragStepEnd={() => setDragStepId(null)}
@@ -808,6 +871,7 @@ export function ScenarioWorkspacePage() {
               sendModeOptions={sendModeOptions}
               targetFieldOptions={targetFieldOptions}
               launchScenarioOptions={launchScenarioOptions}
+              rootStepOptions={rootStepOptions}
               onInsertIntoText={insertIntoText}
               onFormChange={setForm}
               onCreateBranch={handleCreateBranch}

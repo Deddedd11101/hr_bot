@@ -1324,3 +1324,35 @@ source_of_truth: true
 - `.\.venv\Scripts\python.exe -m unittest tests.test_scenario_engine_smoke tests.test_messaging_identity tests.test_employee_api_smoke -v`
 - Local HTTP smoke on `http://127.0.0.1:8012`: `/app/employees`, `/app/documents`, `/app/flows/workspace-v2` return auth redirect `303`.
 - Follow-up compact sidebar pass: `npm run build`, `.\.venv\Scripts\python.exe -m compileall app tests`.
+
+## Scenario Workspace Graph View - 2026-06-17
+
+### Changed
+
+- Merged `codex/scenario-runtime-and-ui-fixes` into `codex/admin-ui-polish-pass` so the frontend consumes the backend-owned `payload.workspace.graph` contract.
+- Added `Список | Схема` view switch in the scenario workspace central container. `Список` remains default and keeps existing editor/drag workflow.
+- Added read-only graph mode using `@xyflow/react` and ELK layout. Coordinates are calculated on the frontend; no backend coordinates are expected.
+- Graph rendering uses only `workspace.graph.nodes` / `workspace.graph.edges`; it does not reconstruct flow semantics from `root_steps`.
+- Graph view is lazy-loaded so the default list bundle does not pay the React Flow + ELK cost.
+- Node click syncs editable `step_id` nodes back into the existing right-side detail pane. Placeholder branch slots and launch target nodes remain read-only visual nodes.
+
+### Shared UI / Kit Notes
+
+- Graph/canvas views should stay read-only unless an explicit editor contract exists. Do not add drag-editing or inline forms to the graph.
+- Canvas colors should use existing semantic tokens via CSS variables. Edge variants: normal flow neutral, `branch_option` primary, `return_to_root` warning dashed, `launch_scenario` info animated.
+
+### Screens
+
+- `/app/flows/workspace-v2`
+
+### Checks
+
+- `npm run build`
+- `.\.venv\Scripts\python.exe -m compileall app tests tools`
+- `.\.venv\Scripts\python.exe -m unittest tests.test_employee_api_smoke tests.test_messaging_identity tests.test_scenario_engine_smoke tests.test_scenario_engine_branching -v`
+- Browser smoke on `http://127.0.0.1:8012/app/flows/workspace-v2`: graph switch visible, branch graph renders 5 nodes / 5 edges, branch labels visible, placeholder branch visible, return edge class present, node click syncs right detail pane.
+
+### Known Issues
+
+- Vite still warns about the lazy `graph-view` chunk size because ELK is large. The default list entry remains small after lazy loading.
+- Browser smoke did not fully verify `launch_scenario` visual edge because switching to the launch fixture from graph mode was unreliable in the in-app browser; backend contract test covers launch edge presence.

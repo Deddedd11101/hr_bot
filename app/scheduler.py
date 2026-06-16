@@ -330,6 +330,10 @@ async def schedule_all_employees(scheduler: AsyncIOScheduler, bot) -> None:
                     await send_step(bot, db, employee, scenario, step, scheduled_at=request.requested_at)
                 request.processed_at = utc_now()
                 continue
+            if request.launch_type == "status_transition":
+                await start_scenario(bot, db, employee, scenario.scenario_key)
+                request.processed_at = utc_now()
+                continue
             if request.launch_type == "manual" and request.skip_step_key:
                 await _continue_after_manual_step(bot, db, employee, scenario, request.skip_step_key)
                 request.processed_at = utc_now()

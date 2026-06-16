@@ -3,6 +3,9 @@ export type ScenarioSummary = {
   title: string;
   description: string;
   employee_scope: string;
+  created_at: string | null;
+  updated_at: string | null;
+  candidate_work_stage_trigger: string;
   role_scope_label: string;
   employee_scope_label: string;
   trigger_mode_label: string;
@@ -13,6 +16,7 @@ export type ScenarioSummary = {
 
 export type WorkspaceStep = {
   id: number;
+  step_key: string;
   kind: "step" | "branch_step" | "chain_step";
   title: string;
   text: string;
@@ -30,6 +34,7 @@ export type WorkspaceStep = {
   target_field: string;
   target_field_label: string;
   launch_scenario_key: string;
+  return_to_step_key: string;
   notify_on_send: boolean;
   notify_on_send_text: string;
   notify_on_send_recipient_ids: string;
@@ -72,6 +77,45 @@ export type WorkspaceBranchSlot = {
   step: WorkspaceStep | null;
 };
 
+export type WorkspaceGraphNode = {
+  id: string;
+  step_id: number | null;
+  step_key: string;
+  kind: "step" | "branch_step" | "chain_step" | "branch_slot" | "launch_target";
+  title: string;
+  text_preview: string;
+  response_type: string;
+  response_label: string;
+  has_attachment: boolean;
+  has_notifications: boolean;
+  waits_for_response: boolean;
+  send_mode: string;
+  launch_scenario_key: string;
+  is_placeholder: boolean;
+  is_terminal: boolean;
+};
+
+export type WorkspaceGraphEdge = {
+  id: string;
+  source: string;
+  target: string;
+  kind: "next" | "chain" | "branch_option" | "return_to_root" | "launch_scenario";
+  label: string;
+};
+
+export type WorkspaceGraph = {
+  nodes: WorkspaceGraphNode[];
+  edges: WorkspaceGraphEdge[];
+  meta: {
+    node_count: number;
+    edge_count: number;
+    has_branching: boolean;
+    has_return_edges: boolean;
+    has_launch_edges: boolean;
+    has_placeholders: boolean;
+  };
+};
+
 export type WorkspaceData = {
   scenario: {
     id: number;
@@ -83,11 +127,13 @@ export type WorkspaceData = {
     employee_scope: string;
     employee_scope_label: string;
     trigger_mode: string;
+    candidate_work_stage_trigger: string;
     trigger_mode_label: string;
     target_employee_id: number | null;
     classic_url: string;
   };
   root_steps: WorkspaceStep[];
+  graph: WorkspaceGraph;
   stats: {
     steps_count: number;
   };
@@ -95,12 +141,18 @@ export type WorkspaceData = {
   role_scope_labels: Record<string, string>;
   employee_scope_labels: Record<string, string>;
   trigger_mode_labels: Record<string, string>;
+  candidate_work_stage_labels: Record<string, string>;
   target_field_labels: Record<string, string>;
   send_mode_labels: Record<string, string>;
   notification_recipient_scope_labels: Record<string, string>;
   document_tag_titles: string[];
   employee_options: Array<{ id: number; label: string; kind: string }>;
   available_scenarios: Array<{ value: string; label: string }>;
+};
+
+export type WorkspaceRootStepOption = {
+  value: string;
+  label: string;
 };
 
 export type WorkspacePayload = {
@@ -146,5 +198,6 @@ export type ScenarioSettingsForm = {
   role_scope: string;
   employee_scope: string;
   trigger_mode: string;
+  candidate_work_stage_trigger: string;
   target_employee_id: string;
 };
