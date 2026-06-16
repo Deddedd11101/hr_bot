@@ -216,9 +216,6 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
     }
 
     function handleOfferDelete(linkId: number) {
-        if (!window.confirm("Удалить ссылку на оффер?")) {
-            return;
-        }
         setOpsState({ message: "", error: false, working: true });
         fetch(apiUrl + "/document-links/" + linkId, {
             method: "DELETE",
@@ -388,9 +385,6 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
     }
 
     function handleDeleteFile(fileId: number) {
-        if (!window.confirm("Удалить этот файл?")) {
-            return;
-        }
         setOpsState({ message: "", error: false, working: true });
         fetch(apiUrl + "/files/" + fileId, {
             method: "DELETE",
@@ -415,9 +409,6 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
     }
 
     function handleDeleteEmployee() {
-        if (!window.confirm("Удалить этого сотрудника?")) {
-            return;
-        }
         setOpsState({ message: "", error: false, working: true });
         fetch(apiUrl, {
             method: "DELETE",
@@ -441,9 +432,6 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
     }
 
     function handlePromoteToAdaptation() {
-        if (!window.confirm("Перевести кандидата в адаптацию?")) {
-            return;
-        }
         setOpsState({ message: "", error: false, working: true });
         fetch(apiUrl + "/promote-to-adaptation", {
             method: "POST",
@@ -492,6 +480,9 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
             extraActionLabel: file.can_send_to_channel ? "Отправить в мессенджер" : null,
             deleteAction: function () { handleDeleteFile(file.id); },
             deleteActionLabel: "Удалить файл",
+            deleteConfirmTitle: "Удалить файл?",
+            deleteConfirmDescription: "Файл будет удален из карточки сотрудника.",
+            deleteConfirmLabel: "Удалить",
         };
     });
     const employeeFileItems = fileItems.filter(function (file: any) {
@@ -510,6 +501,9 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
             linkLabel: "Открыть",
             deleteAction: function () { handleOfferDelete(item.id); },
             deleteActionLabel: "Удалить ссылку",
+            deleteConfirmTitle: "Удалить ссылку?",
+            deleteConfirmDescription: "Ссылка будет удалена из карточки сотрудника.",
+            deleteConfirmLabel: "Удалить",
         };
     });
 

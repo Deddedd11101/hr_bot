@@ -19,6 +19,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { ConfirmAction } from "@/components/ui/confirm-action";
 import { EmojiPickerPopover } from "@/components/ui/emoji-picker-popover";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -196,16 +197,22 @@ export function WorkspaceSidebarSection(props: {
         >
           <Copy />
         </Button>
-        <Button
-          size="icon-sm"
-          variant="destructive"
-          title="Удалить выбранные"
-          aria-label="Удалить выбранные"
-          onClick={() => onBulkScenarioAction("bulk-delete")}
-          disabled={!selectedScenarioIds.length}
+        <ConfirmAction
+          title={`Удалить выбранные ${isSurveyWorkspace ? "опросы" : "сценарии"}?`}
+          description={`Будет удалено: ${selectedScenarioIds.length}. Это действие нельзя отменить.`}
+          actionLabel="Удалить"
+          onConfirm={() => onBulkScenarioAction("bulk-delete")}
         >
-          <Trash2 />
-        </Button>
+          <Button
+            size="icon-sm"
+            variant="outline"
+            title="Удалить выбранные"
+            aria-label="Удалить выбранные"
+            disabled={!selectedScenarioIds.length}
+          >
+            <Trash2 />
+          </Button>
+        </ConfirmAction>
       </div>
       {sidebarState.message ? (
         <p className={`mt-3 text-sm ${sidebarState.error ? "text-destructive" : "text-muted-foreground"}`}>
@@ -966,9 +973,16 @@ export function WorkspaceStepDetailPane(props: {
                       >
                         {detailTarget.attachment_filename}
                       </a>
-                      <Button type="button" variant="ghost" size="sm" onClick={onDeleteAttachment} disabled={attachmentState.uploading}>
-                        Удалить
-                      </Button>
+                      <ConfirmAction
+                        title={`Удалить вложение у этого ${stepLabel}?`}
+                        description="Файл будет отвязан от текущего элемента workspace."
+                        actionLabel="Удалить"
+                        onConfirm={onDeleteAttachment}
+                      >
+                        <Button type="button" variant="ghost" size="sm" disabled={attachmentState.uploading}>
+                          Удалить
+                        </Button>
+                      </ConfirmAction>
                     </div>
                   ) : null}
                   <p className={`text-sm ${attachmentState.error ? "text-destructive" : "text-muted-foreground"}`}>
@@ -1285,10 +1299,17 @@ export function WorkspaceStepDetailPane(props: {
                 <div className="flex flex-col gap-3">
                   <p className={`text-sm ${saveState.error ? "text-destructive" : "text-muted-foreground"}`}>{saveState.message || " "}</p>
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <Button variant="outline" className="border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={onDeleteCurrent}>
-                      <Trash2 data-icon="inline-start" />
-                      Удалить
-                    </Button>
+                    <ConfirmAction
+                      title={`Удалить ${stepLabel}?`}
+                      description="Элемент будет удален из текущего workspace. Это действие нельзя отменить."
+                      actionLabel="Удалить"
+                      onConfirm={onDeleteCurrent}
+                    >
+                      <Button variant="outline">
+                        <Trash2 data-icon="inline-start" />
+                        Удалить
+                      </Button>
+                    </ConfirmAction>
                     {openLabel ? (
                       <Button variant="outline" onClick={onOpenCurrentChild}>
                         {openLabel}

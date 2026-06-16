@@ -1221,3 +1221,31 @@ source_of_truth: true
 - `D:\HRBot\hr_bot\.venv\Scripts\python.exe -m compileall app tests`
 - `D:\HRBot\hr_bot\.venv\Scripts\python.exe -m unittest tests.test_scenario_engine_smoke tests.test_messaging_identity tests.test_employee_api_smoke -v`
 - Browser smoke on `http://127.0.0.1:8001/app/employees/1`: scheduled scenario delete opens shared `AlertDialog`; no console errors.
+
+## React Admin Confirm Sweep - 2026-06-16
+
+### Changed
+
+- Remaining React admin `window.confirm` calls were replaced with shared `ConfirmAction`.
+- Scenario/survey workspace now uses shadcn/Base `AlertDialog` for step/question deletion, attachment deletion, and bulk scenario/survey deletion.
+- Bulk actions scheduled-action deletion now uses `ConfirmAction`.
+- Employee detail file/link deletion, candidate promotion, and employee deletion now use `ConfirmAction`.
+
+### Screens
+
+- `/app/flows/workspace-v2`
+- `/app/surveys/workspace`
+- `/app/bulk-actions`
+- `/app/employees/{employee_id}`
+
+### Known issues
+
+- Legacy fallback `scenario_edit.html` still has native browser confirm prompts. That surface is behind the explicit legacy seam and needs a separate non-React modal cleanup if it remains supported.
+
+### Checks
+
+- `npm run build`
+- `D:\HRBot\hr_bot\.venv\Scripts\python.exe -m compileall app tests`
+- `D:\HRBot\hr_bot\.venv\Scripts\python.exe -m unittest tests.test_scenario_engine_smoke tests.test_messaging_identity tests.test_employee_api_smoke -v`
+- Browser smoke on `http://127.0.0.1:8002/app/flows/workspace-v2`: step delete opens shared `AlertDialog`; no console errors.
+- `rg "window\.confirm|confirm\(" frontend\src app\static\workspace_v2`: no runtime React matches outside design-system documentation text.
