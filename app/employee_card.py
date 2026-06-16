@@ -52,7 +52,6 @@ def render_employee_card_png(employee: Employee) -> bytes:
     shadow = Image.new("RGBA", (width, height), (0, 0, 0, 0))
     shadow_draw = ImageDraw.Draw(shadow)
     shadow_draw.rounded_rectangle((18, 24, width - 18, height - 24), radius=34, fill=(16, 24, 40, 22))
-    shadow = shadow.filter(ImageFilter.GaussianBlur(14)) if False else shadow
     canvas.alpha_composite(shadow, (0, 8))
     draw.rounded_rectangle((20, 20, width - 20, height - 28), radius=34, fill="white", outline="#edf1f6")
 
