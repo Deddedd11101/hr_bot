@@ -181,3 +181,38 @@ source_of_truth: true
   - rollback path: вернуть старые `app/config.py`, `app/database.py` и убрать `DEMO_MODE=false` / `DOTENV_OVERRIDE=false` из systemd drop-ins.
 - Открытые риски:
   - SQLite все еще остается источником write-lock риска; `timeout=30` смягчает симптом, но не заменяет более надежную delivery/outbox стратегию.
+
+### 2026-06-17 00:13 MSK - app deploy - выведены UI polish, select scroll policy и scenario runtime triggers
+
+- Deploy ref: `stage`.
+- Deployed commit: `230779c`.
+- GitHub Actions run: `27648456932`.
+- Влитые feature-ветки:
+  - `codex/select-scroll-policy` -> `2bd5851`;
+  - `codex/admin-ui-polish-pass` -> `a26c529`;
+  - `codex/scenario-runtime-and-ui-fixes` -> `1f52589` вместе с `129fb33`.
+- Что изменено:
+  - унифицирован scroll policy для select-компонентов;
+  - выровнены мелкие admin UI-паттерны;
+  - добавлена сортировка sidebar сценариев;
+  - добавлены scenario triggers для HR-статусов кандидатов;
+  - пересобраны `app/static/workspace_v2` после объединения фронтовых веток.
+- Локальные проверки перед deploy:
+  - `npm run build`;
+  - `.\.venv\Scripts\python.exe -m compileall app tests tools`;
+  - `.\.venv\Scripts\ruff.exe check --select F821 app tests`;
+  - `.\.venv\Scripts\python.exe -m unittest tests.test_employee_api_smoke tests.test_messaging_identity tests.test_scenario_engine_smoke tests.test_scenario_engine_branching -v` -> 71 tests OK.
+- GitHub Actions preflight:
+  - backend dependencies install;
+  - `compileall`;
+  - `ruff F821`;
+  - backend smoke tests;
+  - frontend build;
+  - smoke imports.
+- Stage smoke checks:
+  - `hr-bot-web`, `hr-bot-worker` и `wg-quick@redshield` active;
+  - `/app/employees` -> `303`;
+  - `/app/flows/workspace-v2` -> `303`;
+  - `curl -4 -I --connect-timeout 10 https://api.telegram.org/` -> `HTTP/2 302`;
+  - свежих `TelegramNetworkError`, `Request timeout`, `Traceback`, `Unclosed client session` в worker logs не найдено.
+- Backup БД не делался: deploy шел через git/systemd restart и не требовал ручной замены `hr_bot.db`.
