@@ -39,10 +39,10 @@ Scenario engine превращает scenario templates плюс employee state 
 1. Найти scenario и первый step.
 2. Отрендерить step text с employee context.
 3. Отправить text, optional employee card, optional attachment и optional buttons.
-4. Сохранить progress в `scenario_progress`, включая короткую историю предыдущих интерактивных шагов.
+4. Сохранить progress в `scenario_progress`, включая короткую историю предыдущих интерактивных шагов и undo-снимок последнего подтвержденного ответа.
 5. Если user response не нужен, auto-advance к следующему step или schedule follow-up delivery.
 6. Если response нужен, ждать text/file/button input и применить result к employee state.
-7. Для активного интерактивного шага runtime поддерживает default `Назад`: для text/file это reply button, для button/branching — inline button. Откат возвращает только на предыдущий интерактивный шаг в рамках текущего незавершенного сценария.
+7. Для активного интерактивного шага runtime поддерживает default `Назад`: для text/file это reply button, для button/branching — inline button. Откат возвращает на предыдущий интерактивный шаг в рамках текущего незавершенного сценария и откатывает последний подтвержденный ответ: целевое поле карточки, `candidate_status`, survey answer и загруженный file record, если именно этот ответ их создал/изменил.
 8. Если step имеет `response_type=launch_scenario`, runtime теперь завершает текущий progress и сразу вызывает `start_scenario(...)` для `launch_scenario_key`. Раньше это работало только в branch-specific path и ломалось для обычных шагов.
 
 ## Launch audit и follow-up jobs
@@ -85,7 +85,7 @@ Scenario engine превращает scenario templates плюс employee state 
 - Empty или placeholder step content может утечь в user dialog, если templates смоделированы неаккуратно.
 - Attachment-only interactive steps все еще могут потребовать отдельное helper-message, потому что messenger transport пока не умеет captions + inline markup для file/photo delivery.
 - Candidate и employee behavior все еще используют один engine и data model. Это удобно, но продуктово нечисто.
-- `Назад` пока не является полноценным time-travel: он не откатывает уже совершенные side effects и не resurrect'ит сценарий, который уже был terminally completed ответом вроде отказа на consent step.
+- `Назад` теперь умеет откатывать только последний подтвержденный ответ внутри живого progress. Это не глобальный time-travel: он не раскатывает цепочку из нескольких уже завершенных сценариев и не обещает undo для внешних side effects вне текущего runtime-контракта.
 
 ## Связанная работа
 

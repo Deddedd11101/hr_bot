@@ -656,6 +656,11 @@ class ScenarioProgress(Base):
         nullable=True,
         doc="История интерактивных шагов через перевод строки для отката назад.",
     )
+    response_undo_history: Mapped[Optional[str]] = mapped_column(
+        String(16384),
+        nullable=True,
+        doc="JSON-стек снимков последнего подтвержденного ответа для rollback по кнопке назад.",
+    )
     waiting_for_response: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     is_completed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     started_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
