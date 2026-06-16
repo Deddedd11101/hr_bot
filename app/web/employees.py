@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from ..config import settings
 from ..file_storage import build_employee_file_path
-from ..flow_templates import EMPLOYEE_ROLE_VALUES
+from ..flow_templates import CANDIDATE_WORK_STAGE_LABELS, EMPLOYEE_ROLE_VALUES
 from ..messaging import create_telegram_messenger
 from ..messaging.identity import (
     EmployeeIdentityConflictError,
@@ -33,12 +33,20 @@ EMPLOYEE_STAGE_VALUES = {
 }
 
 CANDIDATE_WORK_STAGE_VALUES = {
+    "company_decline": "Наш отказ",
+    "hr_interview": "Собеседование с HR",
+    "manager_interview": "Собеседование с руководителем",
     "testing": "Тестирование",
     "offer": "Оффер",
-    "candidate_decline": "Отказ кандидата",
-    "company_decline": "Наш отказ",
     "preonboarding": "Преонбординг",
+    "candidate_decline": "Отказ кандидата",
     "contract": "Заключение договора",
+}
+
+VISIBLE_CANDIDATE_WORK_STAGE_VALUES = {
+    value: label
+    for value, label in CANDIDATE_WORK_STAGE_VALUES.items()
+    if value != "contract"
 }
 
 
@@ -333,6 +341,56 @@ def _apply_employee_telegram_identity(
         set_public_chat_handle(employee, normalized_chat_handle, db=db)
 
 
+def _candidate_stage_transition_scenarios(
+    db: Session,
+    employee: Employee,
+    next_candidate_stage: str,
+) -> list[ScenarioTemplate]:
+    if not next_candidate_stage:
+        return []
+    return [
+        scenario
+        for scenario in db.query(ScenarioTemplate)
+        .filter(
+            ScenarioTemplate.scenario_kind == "scenario",
+            ScenarioTemplate.trigger_mode == "candidate_hr_stage",
+            ScenarioTemplate.candidate_work_stage_trigger == next_candidate_stage,
+        )
+        .order_by(ScenarioTemplate.sort_order.asc(), ScenarioTemplate.id.asc())
+        .all()
+        if _scenario_matches_employee_role(scenario, employee)
+    ]
+
+
+def _queue_candidate_stage_transition_launches(
+    db: Session,
+    employee: Employee,
+    previous_candidate_stage: str | None,
+    next_candidate_stage: str | None,
+) -> None:
+    previous_value = (previous_candidate_stage or "").strip()
+    next_value = (next_candidate_stage or "").strip()
+    if previous_value == next_value or not next_value:
+        return
+    if _employee_list_kind(employee) != "candidates":
+        return
+    scenarios = _candidate_stage_transition_scenarios(db, employee, next_value)
+    if not scenarios:
+        return
+    requested_at = utc_now()
+    for scenario in scenarios:
+        db.add(
+            FlowLaunchRequest(
+                employee_id=employee.id,
+                flow_key=scenario.scenario_key,
+                requested_at=requested_at,
+                processed_at=None,
+                launch_type="status_transition",
+                skip_step_key=None,
+            )
+        )
+
+
 def _create_employee_record(
     db: Session,
     *,
@@ -406,6 +464,7 @@ def _apply_employee_update(
     notes: str,
 ) -> Employee:
     is_candidate = _employee_list_kind(employee) == "candidates"
+    previous_candidate_work_stage = (employee.candidate_work_stage or "").strip() or None
     first_day = _parse_optional_date(first_workday)
     parsed_birth_date = _parse_optional_date(birth_date)
 
@@ -469,6 +528,8 @@ def _apply_employee_update(
         employee.employee_data_consent = employee_data_consent
 
     employee.notes = notes.strip() or None
+    db.commit()
+    _queue_candidate_stage_transition_launches(db, employee, previous_candidate_work_stage, employee.candidate_work_stage)
     db.commit()
     sync_legacy_telegram_account(db, employee)
     db.commit()
@@ -790,7 +851,7 @@ def _build_employee_detail_payload(db: Session, employee: Employee) -> dict:
             ],
             "candidate_work_stage_values": [
                 {"value": value, "label": label}
-                for value, label in CANDIDATE_WORK_STAGE_VALUES.items()
+                for value, label in VISIBLE_CANDIDATE_WORK_STAGE_VALUES.items()
             ],
             "staff_employee_values": _staff_employee_options(db, employee.id),
             "scenarios": [{"value": scenario.scenario_key, "label": scenario.title} for scenario in scenarios],

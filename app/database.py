@@ -379,6 +379,8 @@ def _ensure_sqlite_schema() -> None:
                     """
                 )
             )
+        if scenario_table_columns and "candidate_work_stage_trigger" not in scenario_table_columns:
+            conn.execute(text("ALTER TABLE scenario_templates ADD COLUMN candidate_work_stage_trigger TEXT"))
         if scenario_table_columns and "sort_order" in {row[1] for row in conn.execute(text("PRAGMA table_info(scenario_templates)")).fetchall()}:
             conn.execute(
                 text(

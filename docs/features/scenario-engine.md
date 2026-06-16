@@ -23,6 +23,7 @@ Scenario engine превращает scenario templates плюс employee state 
 - `scenario_progress` — runtime state.
 - `employees` — personalization и field updates.
 - `flow_launch_requests` — delayed или manual launches.
+- `candidate_work_stage` changes в employee detail — отдельный trigger source для HR-driven candidate lifecycle.
 
 ## Текущие типы шагов
 
@@ -49,9 +50,18 @@ Scenario engine превращает scenario templates плюс employee state 
 - `flow_launch_requests` используются в двух разных смыслах:
   - operator-visible scheduled/manual launches;
   - internal follow-up jobs для отложенного шага внутри уже идущего сценария.
+- Добавлен третий тип `launch_type=status_transition`: это backend-queue для сценариев, которые запускаются от смены HR-статуса кандидата, а не вручную и не по scheduler anchor.
 - Internal follow-up job маркируется `skip_step_key="__single_step__:<step_key>"`.
 - Эти internal jobs не должны показываться в employee list/detail как отдельные planned launches.
 - Ручной запуск сценария из карточки сотрудника больше не должен создавать дополнительный pending `manual` request ради продолжения после первого `none` step: сам `send_step(...)` уже умеет либо auto-follow, либо queue next step по normal semantics.
+
+## HR-статус как trigger
+
+- Scenario metadata теперь поддерживает `trigger_mode=candidate_hr_stage`.
+- Для такого trigger сценарий хранит явный `candidate_work_stage_trigger`.
+- При реальном изменении `employees.candidate_work_stage` из admin backend ставит `flow_launch_requests` с `launch_type=status_transition`.
+- Scheduler/worker забирает этот request и вызывает обычный `start_scenario(...)`.
+- Повторное сохранение того же самого статуса не должно создавать новый launch request.
 
 ## Editor guardrails
 

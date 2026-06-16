@@ -58,6 +58,7 @@ export function ScenarioWorkspacePage() {
   const [selectedScenarioId, setSelectedScenarioId] = React.useState<number | null>(initialScenarioId);
   const [search, setSearch] = React.useState("");
   const [audienceFilter, setAudienceFilter] = React.useState<"all" | "employees" | "candidates">("all");
+  const [sortMode, setSortMode] = React.useState<"updated_desc" | "created_desc" | "created_asc" | "title_asc">("updated_desc");
   const [stack, setStack] = React.useState<Container[]>([]);
   const [selectedItemKey, setSelectedItemKey] = React.useState("");
   const [form, setForm] = React.useState<null | {
@@ -126,6 +127,13 @@ export function ScenarioWorkspacePage() {
   );
   const triggerModeOptions = React.useMemo<SingleOption[]>(
     () => Object.entries(payload?.workspace?.trigger_mode_labels || {}).map(([value, label]) => ({ value, label })),
+    [payload],
+  );
+  const candidateWorkStageOptions = React.useMemo<SingleOption[]>(
+    () => [
+      { value: "", label: "Не выбрано" },
+      ...Object.entries(payload?.workspace?.candidate_work_stage_labels || {}).map(([value, label]) => ({ value, label })),
+    ],
     [payload],
   );
   const targetEmployeeOptions = React.useMemo<SingleOption[]>(
@@ -236,13 +244,30 @@ export function ScenarioWorkspacePage() {
 
   const scenarios = React.useMemo(() => {
     const items = payload?.scenarios || [];
-    return items.filter((scenario) => {
+    const filtered = items.filter((scenario) => {
       const matchesAudience = audienceFilter === "all" || scenario.employee_scope === audienceFilter;
       const matchesSearch =
         !search.trim() || `${scenario.title} ${scenario.description}`.toLowerCase().includes(search.toLowerCase());
       return matchesAudience && matchesSearch;
     });
-  }, [audienceFilter, payload, search]);
+    const timestampValue = (value: string | null, fallback: number) => {
+      const parsed = value ? Date.parse(value) : Number.NaN;
+      return Number.isFinite(parsed) ? parsed : fallback;
+    };
+    const byTitle = (left: string, right: string) => left.localeCompare(right, "ru", { sensitivity: "base" });
+    return filtered.slice().sort((left, right) => {
+      if (sortMode === "title_asc") {
+        return byTitle(left.title, right.title);
+      }
+      if (sortMode === "created_asc") {
+        return timestampValue(left.created_at, left.id) - timestampValue(right.created_at, right.id);
+      }
+      if (sortMode === "created_desc") {
+        return timestampValue(right.created_at, right.id) - timestampValue(left.created_at, left.id);
+      }
+      return timestampValue(right.updated_at || right.created_at, right.id) - timestampValue(left.updated_at || left.created_at, left.id);
+    });
+  }, [audienceFilter, payload, search, sortMode]);
 
   React.useEffect(() => {
     const availableIds = new Set((payload?.scenarios || []).map((scenario) => scenario.id));
@@ -296,6 +321,7 @@ export function ScenarioWorkspacePage() {
       role_scope: scenario.role_scope || "all",
       employee_scope: scenario.employee_scope || "all",
       trigger_mode: scenario.trigger_mode || "manual_only",
+      candidate_work_stage_trigger: scenario.candidate_work_stage_trigger || "",
       target_employee_id: scenario.target_employee_id ? String(scenario.target_employee_id) : "",
     });
     setScenarioSettingsState({ saving: false, message: "", error: false });
@@ -728,6 +754,7 @@ export function ScenarioWorkspacePage() {
             newScenarioTitle={newScenarioTitle}
             search={search}
             audienceFilter={audienceFilter}
+            sortMode={sortMode}
             scenarios={scenarios}
             selectedScenarioId={selectedScenarioId}
             selectedScenarioIds={selectedScenarioIds}
@@ -742,6 +769,7 @@ export function ScenarioWorkspacePage() {
             }}
             onSearchChange={setSearch}
             onAudienceFilterChange={setAudienceFilter}
+            onSortModeChange={setSortMode}
             onToggleSelectAllVisibleScenarios={toggleSelectAllVisibleScenarios}
             onBulkScenarioAction={handleBulkScenarioAction}
             onSelectScenario={setSelectedScenarioId}
@@ -767,6 +795,7 @@ export function ScenarioWorkspacePage() {
             roleScopeOptions={roleScopeOptions}
             employeeScopeOptions={employeeScopeOptions}
             triggerModeOptions={triggerModeOptions}
+            candidateWorkStageOptions={candidateWorkStageOptions}
             targetEmployeeOptions={targetEmployeeOptions}
             dragStepId={dragStepId}
             onBreadcrumbClick={(index) => {

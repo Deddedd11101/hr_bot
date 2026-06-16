@@ -66,7 +66,7 @@ source_of_truth: true
 
 | Таблица | Назначение | Ключевые поля | Связи и примечания |
 | --- | --- | --- | --- |
-| `scenario_templates` | Metadata сценариев и опросов | `scenario_key`, `title`, `scenario_kind`, `role_scope`, `employee_scope`, `trigger_mode`, `target_employee_id`, `description`, `sort_order` | Parent entity для steps и runtime launches |
+| `scenario_templates` | Metadata сценариев и опросов | `scenario_key`, `title`, `scenario_kind`, `role_scope`, `employee_scope`, `trigger_mode`, `candidate_work_stage_trigger`, `target_employee_id`, `description`, `sort_order` | Parent entity для steps и runtime launches; `candidate_work_stage_trigger` используется только для HR-driven candidate status launches |
 | `flow_step_templates` | Step definitions | `flow_key`, `step_key`, `parent_step_id`, `branch_option_index`, `response_type`, `button_options`, scheduling fields, target field, attachment fields, notification fields | Root steps имеют `parent_step_id = NULL`; branches и chains вложены через `parent_step_id` |
 | `step_button_notifications` | Notification overrides для button options | `flow_key`, `step_id`, `option_index`, `message_text`, recipient fields | Дополнительная notification model для конкретной button option |
 | `scenario_progress` | Runtime position сценария по employee | `employee_id`, `scenario_key`, `current_step_key`, `waiting_for_response`, `is_completed`, timestamps | Tracks active/completed scenario state |

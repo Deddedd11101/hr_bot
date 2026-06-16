@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from ..database import get_session
 from ..flow_templates import (
+    CANDIDATE_WORK_STAGE_LABELS,
     EMPLOYEE_SCOPE_LABELS,
     NOTIFICATION_RECIPIENT_SCOPE_LABELS,
     RESPONSE_TYPE_LABELS,
@@ -197,6 +198,7 @@ def update_workspace_scenario_api(
     role_scope = str(payload.get("role_scope") or "").strip()
     employee_scope = str(payload.get("employee_scope") or "").strip()
     trigger_mode = str(payload.get("trigger_mode") or "").strip()
+    candidate_work_stage_trigger = str(payload.get("candidate_work_stage_trigger") or "").strip()
     target_employee_id = str(payload.get("target_employee_id") or "").strip()
 
     scenario.title = title[:120] or scenario.title or "Без названия"
@@ -204,6 +206,11 @@ def update_workspace_scenario_api(
     scenario.role_scope = role_scope if role_scope in ROLE_SCOPE_LABELS else "all"
     scenario.employee_scope = employee_scope if employee_scope in EMPLOYEE_SCOPE_LABELS else "all"
     scenario.trigger_mode = trigger_mode if trigger_mode in TRIGGER_MODE_LABELS else "manual_only"
+    scenario.candidate_work_stage_trigger = (
+        candidate_work_stage_trigger
+        if scenario.trigger_mode == "candidate_hr_stage" and candidate_work_stage_trigger in CANDIDATE_WORK_STAGE_LABELS
+        else None
+    ) or None
     scenario.target_employee_id = int(target_employee_id) if target_employee_id.isdigit() else None
     db.commit()
 

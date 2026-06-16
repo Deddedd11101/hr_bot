@@ -81,6 +81,7 @@ source_of_truth: true
 - Bulk-actions backend-slice тоже уже отделен на React/API уровне: targeting/workspace helpers вынесены в `app/web/bulk_actions.py`, а `/bulk-actions`, `/app/bulk-actions` и `/api/bulk-actions*` плюс classic bulk form routes вынесены в `app/web/bulk_action_routes.py`.
 - Settings backend-slice тоже уже отделен на React/API уровне: HR settings, menu sets/buttons и accounts workspace helpers вынесены в `app/web/settings.py`, а `/settings`, `/app/settings`, `/api/settings*`, `/api/accounts*` и classic settings form handlers вынесены в `app/web/settings_routes.py`.
 - Bot menu sets больше не являются просто декоративными наборами кнопок: у `BotMenuSet` теперь есть audience-targeting по `employee_scope`, `role_scope` и явному списку `target_employee_ids`; `settings`/`bot-menu` React/API умеют этим управлять, а runtime бота выбирает и открывает только те наборы, которые реально подходят сотруднику или кандидату.
+- HR lifecycle перестал упираться только в ручной запуск сценариев: candidate status shortlist нормализован вокруг реальных HR-этапов (`Наш отказ`, `HR`, `руководитель`, `тестирование`, `оффер`, `преонбординг`, `отказ кандидата`), а scenario metadata теперь умеет `trigger_mode=candidate_hr_stage` с explicit `candidate_work_stage_trigger`, который backend превращает в `status_transition` launch request при реальном изменении статуса в карточке кандидата.
 - Menu sets и audience-targeting уже перестали помещаться в общие системные настройки: для них выделен отдельный React surface `/app/bot-menu`, а `/app/settings` теперь снова отвечает в основном за HR/system settings и account management вместо смешивания с bot-menu редактором.
 - Для shared bot materials добавлена отдельная библиотека документов: `/app/documents` хранит общие файлы и ссылки, `DocumentLibraryItem` отделен от employee-specific `employee_files`, а menu buttons получили новый runtime action `send_document`.
 - Для ускорения bot-menu сборки поверх этого добавлен scaffold-helper: `/app/documents` теперь умеет по active categories автоматически создавать иерархию обычных `menu sets` (`root -> category -> send_document buttons`), не вводя отдельную document-navigation подсистему.
@@ -94,6 +95,7 @@ source_of_truth: true
 - По уведомлениям зафиксирована рабочая продуктовая граница на потом: сценарные уведомления не должны переопределяться глобальными настройками; глобальный слой должен отвечать за системные события и delivery rules, а не за смысл конкретного сценария.
 - В scenario runtime закрыт один из главных semantic drifts: обычный step с `response_type=launch_scenario` теперь действительно завершает текущий сценарий и запускает target scenario, а не зависает после своей отправки.
 - React scenario workspace получил следующий обязательный guardrail: название сценария теперь редактируется в settings, список сценариев фильтруется по аудитории `сотрудники/кандидаты`, а select `Переход к сценарию` больше не выглядит доступным при несовместимом `response_type`.
+- Sidebar scenario workspace больше не держится за неочевидный backend order как будто это “естественная сортировка”: в payload добавлены timestamp slots `created_at/updated_at`, а UI уже умеет явно сортировать сценарии по недавнему изменению, созданию и алфавиту.
 - Employee list/detail launch audit очищен от внутреннего scheduler-макияжа: follow-up jobs с `skip_step_key=__single_step__:*` больше не показываются оператору как будто это отдельные planned launches.
 - Ручной запуск сценария из карточки сотрудника больше не создает скрытый pending `manual` request для продолжения после первого non-interactive step. Продолжение снова делает сам engine через нормальные follow-up semantics вместо pseudo-demo очереди на `MANUAL_STEP_MINUTES`.
 
@@ -143,7 +145,7 @@ source_of_truth: true
 
 ## Ближайшие приоритеты
 
-- `HRB-P1-01` запускать сценарии из HR status changes вместо manual operator workarounds.
+- `HRB-P1-01` довести HR status launches от базового direct trigger до полной product trigger-matrix: сейчас change event уже стартует сценарии, но дальше нужны policy по dedupe/cooldown, richer audit и явное решение по `offer accepted`.
 - `HRB-P1-02` привести scenario-to-scenario transition semantics в новом admin к нормальной модели.
 - `HRB-P1-03` унифицировать notifications, чтобы new admin мог безопасно заменить old one.
 - `HRB-P1-06` уменьшить workspace lag до broader UX work.

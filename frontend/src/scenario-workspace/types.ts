@@ -3,6 +3,9 @@ export type ScenarioSummary = {
   title: string;
   description: string;
   employee_scope: string;
+  created_at: string | null;
+  updated_at: string | null;
+  candidate_work_stage_trigger: string;
   role_scope_label: string;
   employee_scope_label: string;
   trigger_mode_label: string;
@@ -83,6 +86,7 @@ export type WorkspaceData = {
     employee_scope: string;
     employee_scope_label: string;
     trigger_mode: string;
+    candidate_work_stage_trigger: string;
     trigger_mode_label: string;
     target_employee_id: number | null;
     classic_url: string;
@@ -95,6 +99,7 @@ export type WorkspaceData = {
   role_scope_labels: Record<string, string>;
   employee_scope_labels: Record<string, string>;
   trigger_mode_labels: Record<string, string>;
+  candidate_work_stage_labels: Record<string, string>;
   target_field_labels: Record<string, string>;
   send_mode_labels: Record<string, string>;
   notification_recipient_scope_labels: Record<string, string>;
@@ -146,5 +151,6 @@ export type ScenarioSettingsForm = {
   role_scope: string;
   employee_scope: string;
   trigger_mode: string;
+  candidate_work_stage_trigger: string;
   target_employee_id: string;
 };
