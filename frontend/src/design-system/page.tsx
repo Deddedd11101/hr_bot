@@ -993,6 +993,7 @@ function FoundationsSection() {
 
 function PrimitivesSection() {
   const [selectValue, setSelectValue] = React.useState("review");
+  const [longSelectValue, setLongSelectValue] = React.useState("item-01");
   const [notes, setNotes] = React.useState(
     "Новые страницы должны собираться из shared primitives, а не из локально нарисованных контролов.",
   );
@@ -1003,6 +1004,14 @@ function PrimitivesSection() {
   const [dateValue, setDateValue] = React.useState("");
   const [dateTimeValue, setDateTimeValue] = React.useState("");
   const [timeValue, setTimeValue] = React.useState("");
+  const longSelectItems = React.useMemo(
+    () =>
+      Array.from({ length: 24 }, (_, index) => {
+        const number = String(index + 1).padStart(2, "0");
+        return { value: `item-${number}`, label: `Длинный список ${number}` };
+      }),
+    [],
+  );
 
   return (
     <TooltipProvider>
@@ -1078,12 +1087,32 @@ function PrimitivesSection() {
                     <SelectTrigger id="kit-status" className="w-full">
                       <SelectValue />
                     </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="draft">Draft</SelectItem>
-                      <SelectItem value="review">Review</SelectItem>
-                      <SelectItem value="ready">Ready</SelectItem>
+                    <SelectContent align="start" alignItemWithTrigger={false}>
+                      <SelectGroup>
+                        <SelectItem value="draft">Draft</SelectItem>
+                        <SelectItem value="review">Review</SelectItem>
+                        <SelectItem value="ready">Ready</SelectItem>
+                      </SelectGroup>
                     </SelectContent>
                   </Select>
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="kit-long-select">Длинный список</FieldLabel>
+                  <Select value={longSelectValue} onValueChange={setLongSelectValue} items={longSelectItems}>
+                    <SelectTrigger id="kit-long-select" className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent align="start" alignItemWithTrigger={false}>
+                      <SelectGroup>
+                        {longSelectItems.map((item) => (
+                          <SelectItem value={item.value} key={item.value}>
+                            {item.label}
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                  <FieldDescription>Scrollable after max content height.</FieldDescription>
                 </Field>
               </div>
 
