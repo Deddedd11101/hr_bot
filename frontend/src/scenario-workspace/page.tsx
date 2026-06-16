@@ -489,7 +489,6 @@ export function ScenarioWorkspacePage() {
 
   const handleDeleteCurrent = () => {
     if (!detailTarget) return;
-    if (!window.confirm("Удалить выбранный элемент?")) return;
     fetch(`/api/flows/workspace/steps/${detailTarget.id}/delete`, {
       method: "POST",
       credentials: "same-origin",
@@ -545,7 +544,6 @@ export function ScenarioWorkspacePage() {
 
   const handleDeleteAttachment = async () => {
     if (!detailTarget || !detailTarget.has_attachment) return;
-    if (!window.confirm(`Удалить вложение у этого ${stepLabel}?`)) return;
     setAttachmentState({ uploading: true, message: "", error: false });
     try {
       const response = await fetch(`/api/flows/workspace/steps/${detailTarget.id}/attachment/delete`, {
@@ -587,9 +585,6 @@ export function ScenarioWorkspacePage() {
 
   const handleBulkScenarioAction = (action: "bulk-copy" | "bulk-delete") => {
     if (!selectedScenarioIds.length) return;
-    if (action === "bulk-delete" && !window.confirm(`Удалить выбранные ${isSurveyWorkspace ? "опросы" : "сценарии"}: ${selectedScenarioIds.length}?`)) {
-      return;
-    }
     fetch(`/api/flows/workspace/scenarios/${action}`, {
       method: "POST",
       credentials: "same-origin",

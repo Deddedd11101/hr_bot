@@ -37,6 +37,7 @@ import {
     FieldTitle,
 } from "@/components/ui/field";
 import { Checkbox } from "@/components/ui/checkbox";
+import { ConfirmAction } from "@/components/ui/confirm-action";
 import { DatePicker, DateTimePicker, TimeSelect } from "@/components/ui/date-picker";
 import { Input } from "@/components/ui/input";
 import {
@@ -58,8 +59,14 @@ type DetailItem = {
     linkLabel?: string | null;
     extraAction?: (() => void) | null;
     extraActionLabel?: string | null;
+    extraActionConfirmTitle?: string | null;
+    extraActionConfirmDescription?: string | null;
+    extraActionConfirmLabel?: string | null;
     deleteAction?: (() => void) | null;
     deleteActionLabel?: string | null;
+    deleteConfirmTitle?: string | null;
+    deleteConfirmDescription?: string | null;
+    deleteConfirmLabel?: string | null;
 };
 
 const EMPTY_SELECT_VALUE = "__empty__";
@@ -206,16 +213,35 @@ function DocumentList(props: {
                                             </Button>
                                         ) : null}
                                         {item.deleteAction ? (
-                                            <Button
-                                                type="button"
-                                                variant="ghost"
-                                                size="icon-sm"
-                                                onClick={item.deleteAction}
-                                                aria-label={item.deleteActionLabel || "Удалить"}
-                                                title={item.deleteActionLabel || "Удалить"}
-                                            >
-                                                <Trash2 />
-                                            </Button>
+                                            item.deleteConfirmTitle && item.deleteConfirmDescription ? (
+                                                <ConfirmAction
+                                                    title={item.deleteConfirmTitle}
+                                                    description={item.deleteConfirmDescription}
+                                                    actionLabel={item.deleteConfirmLabel || item.deleteActionLabel || "Удалить"}
+                                                    onConfirm={item.deleteAction}
+                                                >
+                                                    <Button
+                                                        type="button"
+                                                        variant="ghost"
+                                                        size="icon-sm"
+                                                        aria-label={item.deleteActionLabel || "Удалить"}
+                                                        title={item.deleteActionLabel || "Удалить"}
+                                                    >
+                                                        <Trash2 />
+                                                    </Button>
+                                                </ConfirmAction>
+                                            ) : (
+                                                <Button
+                                                    type="button"
+                                                    variant="ghost"
+                                                    size="icon-sm"
+                                                    onClick={item.deleteAction}
+                                                    aria-label={item.deleteActionLabel || "Удалить"}
+                                                    title={item.deleteActionLabel || "Удалить"}
+                                                >
+                                                    <Trash2 />
+                                                </Button>
+                                            )
                                         ) : null}
                                     </div>
                                 </div>
@@ -254,6 +280,18 @@ function ScenarioList(props: { items: DetailItem[] }) {
     return (
         <div className="employee-document-list">
             {props.items.map(function (item) {
+                const extraActionButton = item.extraAction ? (
+                    <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        onClick={item.extraActionConfirmTitle ? undefined : item.extraAction}
+                        aria-label={item.extraActionLabel || "Удалить"}
+                        title={item.extraActionLabel || "Удалить"}
+                    >
+                        <Trash2 />
+                    </Button>
+                ) : null;
                 return (
                     <div className="employee-document-row" key={item.id}>
                         <div className="employee-document-icon">
@@ -274,18 +312,16 @@ function ScenarioList(props: { items: DetailItem[] }) {
                                     <ExternalLink />
                                 </a>
                             ) : null}
-                            {item.extraAction ? (
-                                <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="icon-sm"
-                                    onClick={item.extraAction}
-                                    aria-label={item.extraActionLabel || "Удалить"}
-                                    title={item.extraActionLabel || "Удалить"}
+                            {item.extraAction && item.extraActionConfirmTitle && item.extraActionConfirmDescription && extraActionButton ? (
+                                <ConfirmAction
+                                    title={item.extraActionConfirmTitle}
+                                    description={item.extraActionConfirmDescription}
+                                    actionLabel={item.extraActionConfirmLabel || item.extraActionLabel || "Удалить"}
+                                    onConfirm={item.extraAction}
                                 >
-                                    <Trash2 />
-                                </Button>
-                            ) : null}
+                                    {extraActionButton}
+                                </ConfirmAction>
+                            ) : extraActionButton}
                         </div>
                     </div>
                 );
@@ -696,15 +732,21 @@ export function EmployeeOperationsSection(props: any) {
                                 Сначала укажите реальный первый день сотрудника в карточке.
                             </p>
                         ) : null}
-                        <Button
-                            type="button"
-                            variant="secondary"
-                            onClick={handlePromoteToAdaptation}
-                            disabled={!canPromoteToAdaptation}
+                        <ConfirmAction
+                            title="Перевести кандидата в адаптацию?"
+                            description="Статус карточки изменится на адаптацию, а даты адаптационного периода будут подготовлены из первого рабочего дня."
+                            actionLabel="Перевести"
+                            onConfirm={handlePromoteToAdaptation}
                         >
-                            <Play data-icon="inline-start" />
-                            Перевести в адаптацию
-                        </Button>
+                            <Button
+                                type="button"
+                                variant="secondary"
+                                disabled={!canPromoteToAdaptation}
+                            >
+                                <Play data-icon="inline-start" />
+                                Перевести в адаптацию
+                            </Button>
+                        </ConfirmAction>
                     </CardContent>
                 </DetailCard>
             ) : null}
@@ -898,10 +940,17 @@ export function EmployeeOperationsSection(props: any) {
                     </CardTitle>
                 </CardHeader>
                 <CardFooter>
-                    <Button type="button" variant="destructive" onClick={handleDeleteEmployee}>
-                        <Trash2 data-icon="inline-start" />
-                        Удалить сотрудника
-                    </Button>
+                    <ConfirmAction
+                        title="Удалить сотрудника?"
+                        description="Карточка сотрудника будет удалена. Это действие нельзя отменить."
+                        actionLabel="Удалить"
+                        onConfirm={handleDeleteEmployee}
+                    >
+                        <Button type="button" variant="outline">
+                            <Trash2 data-icon="inline-start" />
+                            Удалить сотрудника
+                        </Button>
+                    </ConfirmAction>
                 </CardFooter>
             </DetailCard>
         </div>

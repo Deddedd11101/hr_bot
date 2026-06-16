@@ -1194,3 +1194,60 @@ source_of_truth: true
 ### Checks
 
 - `npm run build`
+
+## Employee Scheduled Delete Confirm - 2026-06-16
+
+### Changed
+
+- Scheduled scenario deletion on `/app/employees/{employee_id}` now uses shared `ConfirmAction` and shadcn/Base `AlertDialog` instead of browser `window.confirm`.
+- `ScenarioList` accepts optional confirm metadata for dense icon actions; actions without confirm metadata keep direct execution.
+
+### Screens
+
+- `/app/employees/{employee_id}`
+
+### Shared UI API
+
+- `ConfirmAction` API unchanged.
+- `ScenarioList` item shape gained optional `extraActionConfirmTitle`, `extraActionConfirmDescription`, and `extraActionConfirmLabel`.
+
+### Known issues
+
+- Other employee-detail destructive actions still contain legacy `window.confirm` and should be migrated separately if they enter current UX scope.
+
+### Checks
+
+- `npm run build`
+- `D:\HRBot\hr_bot\.venv\Scripts\python.exe -m compileall app tests`
+- `D:\HRBot\hr_bot\.venv\Scripts\python.exe -m unittest tests.test_scenario_engine_smoke tests.test_messaging_identity tests.test_employee_api_smoke -v`
+- Browser smoke on `http://127.0.0.1:8001/app/employees/1`: scheduled scenario delete opens shared `AlertDialog`; no console errors.
+
+## React Admin Confirm Sweep - 2026-06-16
+
+### Changed
+
+- Remaining React admin `window.confirm` calls were replaced with shared `ConfirmAction`.
+- Scenario/survey workspace now uses shadcn/Base `AlertDialog` for step/question deletion, attachment deletion, and bulk scenario/survey deletion.
+- Bulk actions scheduled-action deletion now uses `ConfirmAction`.
+- Employee detail file/link deletion, candidate promotion, and employee deletion now use `ConfirmAction`.
+- Shared `AlertDialogAction` now closes the dialog through Base UI `Close`, so confirming deletion cannot leave the same destructive dialog over the next selected item.
+
+### Screens
+
+- `/app/flows/workspace-v2`
+- `/app/surveys/workspace`
+- `/app/bulk-actions`
+- `/app/employees/{employee_id}`
+
+### Known issues
+
+- Legacy fallback `scenario_edit.html` still has native browser confirm prompts. That surface is behind the explicit legacy seam and needs a separate non-React modal cleanup if it remains supported.
+
+### Checks
+
+- `npm run build`
+- `D:\HRBot\hr_bot\.venv\Scripts\python.exe -m compileall app tests`
+- `D:\HRBot\hr_bot\.venv\Scripts\python.exe -m unittest tests.test_scenario_engine_smoke tests.test_messaging_identity tests.test_employee_api_smoke -v`
+- Browser smoke on `http://127.0.0.1:8002/app/flows/workspace-v2`: step delete opens shared `AlertDialog`; no console errors.
+- Browser smoke on a disposable local scenario: after confirming step deletion, `role="alertdialog"` count is `0`, deleted step is gone, and no console errors are emitted.
+- `rg "window\.confirm|confirm\(" frontend\src app\static\workspace_v2`: no runtime React matches outside design-system documentation text.
