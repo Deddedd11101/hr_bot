@@ -355,6 +355,7 @@ export function WorkspaceCanvasSection(props: {
   roleScopeOptions: SingleOption[];
   employeeScopeOptions: SingleOption[];
   triggerModeOptions: SingleOption[];
+  candidateWorkStageOptions: SingleOption[];
   targetEmployeeOptions: SingleOption[];
   dragStepId: number | null;
   onBreadcrumbClick: (index: number) => void;
@@ -385,6 +386,7 @@ export function WorkspaceCanvasSection(props: {
     roleScopeOptions,
     employeeScopeOptions,
     triggerModeOptions,
+    candidateWorkStageOptions,
     targetEmployeeOptions,
     dragStepId,
     onBreadcrumbClick,
@@ -511,7 +513,33 @@ export function WorkspaceCanvasSection(props: {
                           options={triggerModeOptions}
                           value={scenarioSettingsForm.trigger_mode}
                           placeholder="Запуск"
-                          onChange={(nextValue) => onScenarioSettingsFormChange((prev) => (prev ? { ...prev, trigger_mode: nextValue } : prev))}
+                          onChange={(nextValue) =>
+                            onScenarioSettingsFormChange((prev) =>
+                              prev
+                                ? {
+                                    ...prev,
+                                    trigger_mode: nextValue,
+                                    candidate_work_stage_trigger:
+                                      nextValue === "candidate_hr_stage" ? prev.candidate_work_stage_trigger : "",
+                                  }
+                                : prev,
+                            )
+                          }
+                        />
+                      </label>
+                    ) : null}
+                    {!isSurveyWorkspace && scenarioSettingsForm.trigger_mode === "candidate_hr_stage" ? (
+                      <label className="grid min-w-0 gap-2.5">
+                        <span className="text-sm font-semibold text-foreground/75">HR-статус кандидата</span>
+                        <SingleSelectPicker
+                          options={candidateWorkStageOptions}
+                          value={scenarioSettingsForm.candidate_work_stage_trigger}
+                          placeholder="Выбери статус"
+                          onChange={(nextValue) =>
+                            onScenarioSettingsFormChange((prev) =>
+                              prev ? { ...prev, candidate_work_stage_trigger: nextValue } : prev,
+                            )
+                          }
                         />
                       </label>
                     ) : null}

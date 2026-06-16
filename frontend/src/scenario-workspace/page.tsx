@@ -129,6 +129,13 @@ export function ScenarioWorkspacePage() {
     () => Object.entries(payload?.workspace?.trigger_mode_labels || {}).map(([value, label]) => ({ value, label })),
     [payload],
   );
+  const candidateWorkStageOptions = React.useMemo<SingleOption[]>(
+    () => [
+      { value: "", label: "Не выбрано" },
+      ...Object.entries(payload?.workspace?.candidate_work_stage_labels || {}).map(([value, label]) => ({ value, label })),
+    ],
+    [payload],
+  );
   const targetEmployeeOptions = React.useMemo<SingleOption[]>(
     () => [
       { value: "", label: "Не привязывать к конкретной карточке" },
@@ -314,6 +321,7 @@ export function ScenarioWorkspacePage() {
       role_scope: scenario.role_scope || "all",
       employee_scope: scenario.employee_scope || "all",
       trigger_mode: scenario.trigger_mode || "manual_only",
+      candidate_work_stage_trigger: scenario.candidate_work_stage_trigger || "",
       target_employee_id: scenario.target_employee_id ? String(scenario.target_employee_id) : "",
     });
     setScenarioSettingsState({ saving: false, message: "", error: false });
@@ -792,6 +800,7 @@ export function ScenarioWorkspacePage() {
             roleScopeOptions={roleScopeOptions}
             employeeScopeOptions={employeeScopeOptions}
             triggerModeOptions={triggerModeOptions}
+            candidateWorkStageOptions={candidateWorkStageOptions}
             targetEmployeeOptions={targetEmployeeOptions}
             dragStepId={dragStepId}
             onBreadcrumbClick={(index) => {

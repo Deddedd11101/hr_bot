@@ -28,10 +28,22 @@ EMPLOYEE_SCOPE_LABELS = {
     EMPLOYEE_SCOPE_CANDIDATES: "Для всех кандидатов",
 }
 
+CANDIDATE_WORK_STAGE_LABELS = {
+    "company_decline": "Наш отказ",
+    "hr_interview": "Собеседование с HR",
+    "manager_interview": "Собеседование с руководителем",
+    "testing": "Тестирование",
+    "offer": "Оффер",
+    "preonboarding": "Преонбординг",
+    "candidate_decline": "Отказ кандидата",
+    "contract": "Заключение договора",
+}
+
 TRIGGER_MODE_LABELS = {
     "manual_only": "Только вручную",
     "bot_registration": "Сразу после регистрации в боте",
     "scenario_transition": "При переходе из другого сценария",
+    "candidate_hr_stage": "При смене HR-статуса кандидата",
     "first_workday": "В первый рабочий день",
     "first_week_friday": "В пятницу первой рабочей недели",
     "mid_probation": "В середине испытательного срока",

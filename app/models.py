@@ -247,7 +247,7 @@ class FlowLaunchRequest(Base):
         String(32),
         nullable=False,
         default="manual",
-        doc="manual | scheduled",
+        doc="manual | scheduled | status_transition",
     )
     skip_step_key: Mapped[Optional[str]] = mapped_column(
         String(128),
@@ -500,7 +500,12 @@ class ScenarioTemplate(Base):
         String(64),
         nullable=False,
         default="manual_only",
-        doc="manual_only | bot_registration | scenario_transition | first_workday | first_week_friday | mid_probation | end_probation",
+        doc="manual_only | bot_registration | scenario_transition | candidate_hr_stage | first_workday | first_week_friday | mid_probation | end_probation",
+    )
+    candidate_work_stage_trigger: Mapped[Optional[str]] = mapped_column(
+        String(64),
+        nullable=True,
+        doc="Опциональный HR-статус кандидата, который запускает сценарий при trigger_mode=candidate_hr_stage.",
     )
     target_employee_id: Mapped[Optional[int]] = mapped_column(
         Integer,
