@@ -1230,6 +1230,7 @@ source_of_truth: true
 - Scenario/survey workspace now uses shadcn/Base `AlertDialog` for step/question deletion, attachment deletion, and bulk scenario/survey deletion.
 - Bulk actions scheduled-action deletion now uses `ConfirmAction`.
 - Employee detail file/link deletion, candidate promotion, and employee deletion now use `ConfirmAction`.
+- Shared `AlertDialogAction` now closes the dialog through Base UI `Close`, so confirming deletion cannot leave the same destructive dialog over the next selected item.
 
 ### Screens
 
@@ -1248,4 +1249,5 @@ source_of_truth: true
 - `D:\HRBot\hr_bot\.venv\Scripts\python.exe -m compileall app tests`
 - `D:\HRBot\hr_bot\.venv\Scripts\python.exe -m unittest tests.test_scenario_engine_smoke tests.test_messaging_identity tests.test_employee_api_smoke -v`
 - Browser smoke on `http://127.0.0.1:8002/app/flows/workspace-v2`: step delete opens shared `AlertDialog`; no console errors.
+- Browser smoke on a disposable local scenario: after confirming step deletion, `role="alertdialog"` count is `0`, deleted step is gone, and no console errors are emitted.
 - `rg "window\.confirm|confirm\(" frontend\src app\static\workspace_v2`: no runtime React matches outside design-system documentation text.
