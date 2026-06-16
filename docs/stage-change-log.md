@@ -34,6 +34,32 @@ source_of_truth: true
 
 ## Записи
 
+### 2026-06-16 18:26 MSK - app deploy - confirm dialogs, favicon и scenario runtime fixes
+
+- Deploy ref: `stage`.
+- Deployed commit: `bd186a9`.
+- GitHub Actions run: `27628589073` -> success.
+- В stage включены:
+  - `codex/admin-confirm-dialog-sweep` до `f62a9e2`: React admin runtime переведен с native `window.confirm` на shared `ConfirmAction` / `AlertDialog`; dialog закрывается после подтверждения;
+  - `codex/employee-confirm-dialog` через confirm sweep: удаление запланированного сценария в карточке сотрудника через shared confirm;
+  - `codex/admin-favicon-logo` до `dd6feda`: добавлен `app/static/favicon.png` и подключение favicon в templates;
+  - `codex/scenario-runtime-and-ui-fixes` до `d22fd93`: `launch_scenario` runtime transition, меньше сервисного шума при вложениях с кнопками, фильтрация internal follow-up jobs из launch audit, workspace scenario title/filter/disabled transition selector;
+  - merge-fix `bd186a9`: regenerated `scenario-workspace.js` после merge generated bundle conflict.
+- Локальные проверки на объединенном `stage`:
+  - `npm run build` в `frontend`;
+  - `.venv\Scripts\python.exe -m compileall app tests tools`;
+  - `.venv\Scripts\ruff.exe check --select F821 app tests`;
+  - `.venv\Scripts\python.exe -m unittest tests.test_employee_api_smoke tests.test_messaging_identity tests.test_scenario_engine_smoke tests.test_scenario_engine_branching -v` -> 70 tests OK.
+- Stage smoke checks:
+  - server HEAD -> `bd186a9`;
+  - stage worktree clean;
+  - `systemctl is-active wg-quick@redshield hr-bot-web hr-bot-worker` -> all `active`;
+  - `curl http://127.0.0.1:8000/app/employees` -> `303`;
+  - `curl http://127.0.0.1:8000/app/flows/workspace-v2` -> `303`;
+  - `curl -4 -I https://api.telegram.org/` -> `HTTP/2 302`;
+  - worker logs за последние 5 минут без `TelegramNetworkError`, `Request timeout`, `Traceback`, `Unclosed client session`.
+- Открытый риск: legacy fallback `scenario_edit.html?legacy=1` все еще может содержать browser confirm; это отдельный non-React cleanup.
+
 ### 2026-06-16 13:38 MSK - app deploy - scenario workspace latest выведен на stage
 
 - Deploy ref: `stage`.
