@@ -1044,6 +1044,11 @@ class EmployeeApiSmokeTests(unittest.TestCase):
             self.assertEqual(scenario_payload["employee_scope"], "employees")
             self.assertEqual(scenario_payload["trigger_mode"], "bot_registration")
             self.assertEqual(scenario_payload["target_employee_id"], self.employee_id)
+            scenario_summary = next(
+                item for item in response.json()["payload"]["scenarios"] if item["id"] == scenario_id
+            )
+            self.assertIn("created_at", scenario_summary)
+            self.assertIn("updated_at", scenario_summary)
         finally:
             with SessionLocal() as db:
                 scenario = db.get(ScenarioTemplate, scenario_id)

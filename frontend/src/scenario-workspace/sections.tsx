@@ -94,6 +94,7 @@ export function WorkspaceSidebarSection(props: {
   newScenarioTitle: string;
   search: string;
   audienceFilter: "all" | "employees" | "candidates";
+  sortMode: "updated_desc" | "created_desc" | "created_asc" | "title_asc";
   scenarios: ScenarioSummary[];
   selectedScenarioId: number | null;
   selectedScenarioIds: number[];
@@ -105,6 +106,7 @@ export function WorkspaceSidebarSection(props: {
   onCancelCreateScenario: () => void;
   onSearchChange: (value: string) => void;
   onAudienceFilterChange: (value: "all" | "employees" | "candidates") => void;
+  onSortModeChange: (value: "updated_desc" | "created_desc" | "created_asc" | "title_asc") => void;
   onToggleSelectAllVisibleScenarios: () => void;
   onBulkScenarioAction: (action: "bulk-copy" | "bulk-delete") => void;
   onSelectScenario: (scenarioId: number) => void;
@@ -122,6 +124,7 @@ export function WorkspaceSidebarSection(props: {
     newScenarioTitle,
     search,
     audienceFilter,
+    sortMode,
     scenarios,
     selectedScenarioId,
     selectedScenarioIds,
@@ -133,6 +136,7 @@ export function WorkspaceSidebarSection(props: {
     onCancelCreateScenario,
     onSearchChange,
     onAudienceFilterChange,
+    onSortModeChange,
     onToggleSelectAllVisibleScenarios,
     onBulkScenarioAction,
     onSelectScenario,
@@ -180,6 +184,17 @@ export function WorkspaceSidebarSection(props: {
         value={search}
         onChange={(e) => onSearchChange(e.target.value)}
         className="mt-3 text-sm"
+      />
+      <SingleSelectPicker
+        options={[
+          { value: "updated_desc", label: "Сначала недавно изменённые" },
+          { value: "created_desc", label: "Сначала новые" },
+          { value: "created_asc", label: "Сначала старые" },
+          { value: "title_asc", label: "По алфавиту" },
+        ]}
+        value={sortMode}
+        placeholder="Сортировка"
+        onChange={(value) => onSortModeChange(value as "updated_desc" | "created_desc" | "created_asc" | "title_asc")}
       />
       {!isSurveyWorkspace ? (
         <div className="mt-3 flex flex-wrap gap-2">

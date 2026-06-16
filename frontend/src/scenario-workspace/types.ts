@@ -3,6 +3,8 @@ export type ScenarioSummary = {
   title: string;
   description: string;
   employee_scope: string;
+  created_at: string | null;
+  updated_at: string | null;
   role_scope_label: string;
   employee_scope_label: string;
   trigger_mode_label: string;

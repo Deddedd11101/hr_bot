@@ -6,6 +6,7 @@ from typing import Optional
 from uuid import uuid4
 
 from fastapi import UploadFile
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from ..file_storage import build_step_attachment_path
@@ -28,6 +29,41 @@ from ..models import (
     SurveyAnswer,
 )
 from .employees import OFFER_DOCUMENT_TITLE, _all_employee_options
+
+
+def _scenario_timestamp_columns(db: Session) -> set[str]:
+    rows = db.execute(text("PRAGMA table_info(scenario_templates)")).fetchall()
+    return {str(row[1]) for row in rows}
+
+
+def _load_scenario_timestamps(db: Session, scenario_ids: list[int]) -> dict[int, dict[str, Optional[str]]]:
+    if not scenario_ids:
+        return {}
+    scenario_columns = _scenario_timestamp_columns(db)
+    has_created_at = "created_at" in scenario_columns
+    has_updated_at = "updated_at" in scenario_columns
+    if not has_created_at and not has_updated_at:
+        return {}
+
+    select_parts = ["id"]
+    if has_created_at:
+        select_parts.append("created_at")
+    if has_updated_at:
+        select_parts.append("updated_at")
+    rows = db.execute(
+        text(f"SELECT {', '.join(select_parts)} FROM scenario_templates WHERE id IN ({', '.join(str(int(item)) for item in scenario_ids)})")
+    ).fetchall()
+
+    timestamps: dict[int, dict[str, Optional[str]]] = {}
+    for row in rows:
+        row_map = dict(row._mapping)
+        created_at = row_map.get("created_at")
+        updated_at = row_map.get("updated_at")
+        timestamps[int(row_map["id"])] = {
+            "created_at": created_at.isoformat() if isinstance(created_at, datetime) else None,
+            "updated_at": updated_at.isoformat() if isinstance(updated_at, datetime) else None,
+        }
+    return timestamps
 
 
 def _load_scenario_editor_data(db: Session, scenario: ScenarioTemplate):
@@ -311,6 +347,7 @@ def _build_scenario_workspace_payload(
     if selected_scenario is None and scenarios:
         selected_scenario = scenarios[0]
 
+    scenario_timestamps = _load_scenario_timestamps(db, [scenario.id for scenario in scenarios])
     scenario_items = []
     for scenario in scenarios:
         steps_count = (
@@ -327,6 +364,8 @@ def _build_scenario_workspace_payload(
                 "title": scenario.title,
                 "description": scenario.description or "",
                 "employee_scope": getattr(scenario, "employee_scope", "all"),
+                "created_at": scenario_timestamps.get(scenario.id, {}).get("created_at"),
+                "updated_at": scenario_timestamps.get(scenario.id, {}).get("updated_at"),
                 "role_scope_label": ROLE_SCOPE_LABELS.get(scenario.role_scope, scenario.role_scope),
                 "employee_scope_label": EMPLOYEE_SCOPE_LABELS.get(
                     getattr(scenario, "employee_scope", "all"),

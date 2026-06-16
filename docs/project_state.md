@@ -94,6 +94,7 @@ source_of_truth: true
 - По уведомлениям зафиксирована рабочая продуктовая граница на потом: сценарные уведомления не должны переопределяться глобальными настройками; глобальный слой должен отвечать за системные события и delivery rules, а не за смысл конкретного сценария.
 - В scenario runtime закрыт один из главных semantic drifts: обычный step с `response_type=launch_scenario` теперь действительно завершает текущий сценарий и запускает target scenario, а не зависает после своей отправки.
 - React scenario workspace получил следующий обязательный guardrail: название сценария теперь редактируется в settings, список сценариев фильтруется по аудитории `сотрудники/кандидаты`, а select `Переход к сценарию` больше не выглядит доступным при несовместимом `response_type`.
+- Sidebar scenario workspace больше не держится за неочевидный backend order как будто это “естественная сортировка”: в payload добавлены timestamp slots `created_at/updated_at`, а UI уже умеет явно сортировать сценарии по недавнему изменению, созданию и алфавиту.
 - Employee list/detail launch audit очищен от внутреннего scheduler-макияжа: follow-up jobs с `skip_step_key=__single_step__:*` больше не показываются оператору как будто это отдельные planned launches.
 - Ручной запуск сценария из карточки сотрудника больше не создает скрытый pending `manual` request для продолжения после первого non-interactive step. Продолжение снова делает сам engine через нормальные follow-up semantics вместо pseudo-demo очереди на `MANUAL_STEP_MINUTES`.
 
