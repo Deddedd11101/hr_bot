@@ -1268,3 +1268,27 @@ source_of_truth: true
 
 - `.\.venv\Scripts\python.exe -m compileall app tests`
 - `npm run build`
+
+## Select Scroll Policy - 2026-06-16
+
+### Changed
+
+- Shared `SelectContent` now uses a global popup height policy instead of page-local overflow behavior.
+- Short select lists stay compact; long lists cap at `--select-content-max-height` and use the same tokenized scrollbar across pages.
+- `TimeSelect` inherits the same behavior through shared `SelectContent`, so time pickers no longer define a separate scroll pattern.
+- `/app/design-system#primitives` now includes a long select example next to the regular select and time select.
+
+### Shared UI API
+
+- `SelectContent` public props are unchanged.
+- New design token: `--select-content-max-height`.
+
+### Screens
+
+- `/app/design-system`
+- Any page using shared `SelectContent`, including employee detail, employees filters, scenario/survey workspace, settings, bulk actions, bot menu, and date-time time selects.
+
+### Checks
+
+- `npm run build`
+- `.\.venv\Scripts\python.exe -m compileall app tests`
