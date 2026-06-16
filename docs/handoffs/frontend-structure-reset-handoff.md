@@ -1251,3 +1251,20 @@ source_of_truth: true
 - Browser smoke on `http://127.0.0.1:8002/app/flows/workspace-v2`: step delete opens shared `AlertDialog`; no console errors.
 - Browser smoke on a disposable local scenario: after confirming step deletion, `role="alertdialog"` count is `0`, deleted step is gone, and no console errors are emitted.
 - `rg "window\.confirm|confirm\(" frontend\src app\static\workspace_v2`: no runtime React matches outside design-system documentation text.
+## Admin Favicon Logo - 2026-06-16
+
+### Changed
+
+- Added the operator-provided logo as stable static asset `app/static/favicon.png`.
+- Wired the favicon into React shell, legacy shell, and standalone login template so browser tabs use the same admin identity across `/app/*`, `/login`, and remaining fallback pages.
+
+### Screens
+
+- `/login`
+- `/app/dashboard`
+- Remaining legacy pages that still extend `base.html`
+
+### Checks
+
+- `.\.venv\Scripts\python.exe -m compileall app tests`
+- `npm run build`
