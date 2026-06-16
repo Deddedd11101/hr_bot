@@ -43,6 +43,7 @@ source_of_truth: true
 - Documentation standard: введен легкий формат docs, templates и maps; Obsidian используется как navigation/properties/templates layer, а canonical truth остается Markdown в git.
 - Local run model: рабочая команда запуска админки зафиксирована в [[local-runbook]]; запуск без `--reload` является основной командой.
 - UI migration model: принят LLD-подход для перевода classic admin UI на React default с сохранением classic direct routes как временного rollback.
+- Delivery model: параллельная работа субагентов теперь разделена на feature-фазу и integration-фазу. Субагенты пушат отдельные feature-ветки, интегратор собирает общий `stage` ref, а GitHub Actions `Deploy Stage` запускается вручную с `ref=stage`.
 
 ## Что работает
 
@@ -122,6 +123,7 @@ source_of_truth: true
 - `Назад` в сценариях теперь закрывает базовый UX-gap исправления ответа, но это еще не полноценный undo-layer: terminal branches и уже совершенные побочные изменения данных по-прежнему требуют отдельной продуктовой семантики, если понадобится настоящий rewind.
 - Inspected live SQLite уже показывает unresolved schema drift (`media_assets`, `flow_step_templates.media_asset_id`) без поддержки в текущем коде.
 - Stage infrastructure truth все еще частично вне репозитория, потому что systemd env и service definitions не codified здесь.
+- Stage deploy больше не должен auto-deploy `main`: при параллельной работе это риск перетереть накопительный `stage`. Нормальный deploy ref — `stage` или осознанный `integration/...`.
 - Для двух ИП требуется отдельное решение по legal/data boundary: вероятнее всего, раздельные БД/контуры хранения и явное отображение текущего ИП в UI; это нужно подтвердить юридически и оформить в LLD до реализации.
 - Security/compliance слой пока не выделен отдельной реализацией: роли, аудит, защита файлов/персональных данных, секреты, backup policy, CSRF/session/rate-limit hardening требуют отдельного прохода после стабилизации основных модулей.
 - Auth/access сейчас реализован минимально: два seeded account type `admin` и `hr`, browser cookie с account id, `admin` нужен только для управления аккаунтами, а большинство operator API доступны любой авторизованной роли. Целевая модель для HR/директора/технического администратора еще не выбрана.
@@ -168,6 +170,7 @@ source_of_truth: true
 - Локальный repo сейчас содержит runtime databases и snapshots outside git; docs должны описывать behavior, а не предполагать чистоту runtime data.
 - Для schema questions source of truth — code плюс startup schema guard, а не raw SQLite inspection alone.
 - Для docs questions source of truth — [[documentation-standard]]; старые документы можно мигрировать к frontmatter contract постепенно при следующих изменениях.
+- Для параллельных субагентов source of truth по веткам и handoff — [[subagent-delivery]]. Не деплоить feature-ветки напрямую на общий stage без явного решения.
 
 ## Правило документации
 

@@ -50,6 +50,7 @@ source_of_truth: true
 | [data-model.md](/D:/HRBot/hr_bot/docs/data-model.md) | Текущая модель данных по коду, startup schema guard и observed SQLite drift. |
 | [local-runbook.md](/D:/HRBot/hr_bot/docs/local-runbook.md) | Локальный запуск админки, bot worker и пересборка frontend assets. |
 | [stage-deploy.md](/D:/HRBot/hr_bot/docs/stage-deploy.md) | Stage deploy path, runbook, smoke checks и границы repo-vs-server truth. |
+| [subagent-delivery.md](/D:/HRBot/hr_bot/docs/subagent-delivery.md) | Правила feature-веток, интеграции в `stage` и handoff для параллельных субагентов. |
 | [stage-change-log.md](/D:/HRBot/hr_bot/docs/stage-change-log.md) | Журнал того, что реально выведено и проверено на test/stage. |
 | [configuration.md](/D:/HRBot/hr_bot/docs/configuration.md) | Environment variables, precedence rules, secrets и stage placement. |
 

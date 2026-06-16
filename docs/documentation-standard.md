@@ -89,6 +89,7 @@ source_of_truth: true
 - [[web-surface]] — non-JSON operator web surface.
 - [[data-model]] — текущая схема данных и drift.
 - [[stage-deploy]] — stage deploy/runbook.
+- [[subagent-delivery]] — правила параллельных feature-веток, stage integration и handoff.
 - [[stage-change-log]] — короткий operational ledger фактических выкаток на test/stage.
 - [[configuration]] — env/config contract.
 

@@ -79,6 +79,13 @@ source_of_truth: true
 - Уточнение branch model: deploy отдельных feature-веток может удалить со стенда предыдущую feature-выкатку, поэтому для накопительного тестового стенда использовать `stage` или `integration/...` ref и деплоить именно его.
 - Stage deploy: не требуется для самого изменения workflow до merge/push; после попадания workflow в default branch ручной deploy станет доступен из GitHub Actions.
 
+### 2026-06-16 - docs/process - stage deploy сделан manual-only и закреплен subagent workflow
+
+- Изменение: `Deploy Stage` больше не запускается автоматически от `main`; workflow запускается вручную и по умолчанию предлагает `ref=stage`.
+- Добавлен `docs/subagent-delivery.md` с ролями субагента и интегратора, правилами feature-веток, handoff-шаблоном и запретом прямого deploy feature-веток при параллельной работе.
+- Причина: auto-deploy `main` и последовательный deploy разных feature-веток могут перетереть уже выведенные на stage изменения.
+- Stage deploy: не требуется для самого process-change; это настройка workflow/docs перед следующими feature deploy.
+
 ### 2026-06-16 02:07 MSK - app deploy/config - остановлен demo-loop и снижен риск повторных отправок в боте
 
 - Причина: на stage бот отправлял авто-шаги `first_day`/`first_week`/`mid_probation`/`end_probation` минутной очередью поверх ручного сценария, а часть сообщений повторялась.

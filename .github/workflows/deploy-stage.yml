@@ -1,26 +1,22 @@
 name: Deploy Stage
 
 on:
-  workflow_run:
-    workflows:
-      - CI
-    types:
-      - completed
-    branches:
-      - main
   workflow_dispatch:
     inputs:
       ref:
-        description: "Git ref to deploy to stage: branch, tag, or commit SHA"
+        description: "Git ref to deploy to stage: usually stage; branch, tag, or commit SHA"
         required: true
-        default: "main"
+        default: "stage"
+
+concurrency:
+  group: deploy-stage
+  cancel-in-progress: false
 
 jobs:
   preflight:
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     env:
-      DEPLOY_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || 'main' }}
+      DEPLOY_REF: ${{ inputs.ref }}
 
     steps:
       - name: Checkout deploy ref
@@ -70,7 +66,7 @@ jobs:
     needs: preflight
     runs-on: ubuntu-latest
     env:
-      DEPLOY_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || 'main' }}
+      DEPLOY_REF: ${{ inputs.ref }}
 
     steps:
       - name: Deploy over SSH
