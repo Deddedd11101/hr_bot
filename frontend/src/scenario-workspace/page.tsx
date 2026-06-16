@@ -730,6 +730,7 @@ export function ScenarioWorkspacePage() {
             scenarios={scenarios}
             selectedScenarioId={selectedScenarioId}
             selectedScenarioIds={selectedScenarioIds}
+            dragScenarioId={dragScenarioId}
             sidebarState={sidebarState}
             onNewScenarioTitleChange={setNewScenarioTitle}
             onCreateScenario={handleCreateScenario}

@@ -3,6 +3,7 @@ import { ChevronRight, Copy, FileStack, PanelLeft, Paperclip, Plus, Trash2, X } 
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   Card,
   CardContent,
@@ -24,8 +25,9 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
+import { cn } from "@/lib/utils";
 
-import { buildChildContainer, crumbIcon, itemKey, parseRecipientIds, summarizeItem, workspaceItemTitle } from "./model";
+import { buildChildContainer, crumbIcon, itemKey, parseRecipientIds, responseTypeWaitState, summarizeItem, workspaceItemTitle } from "./model";
 import { NotificationRecipientsPicker, SingleSelectPicker } from "./pickers";
 import type {
   Container,
@@ -58,6 +60,31 @@ export function WorkspaceFlashNotice(props: { message: string; error: boolean })
   );
 }
 
+function setWorkspaceDragImage(
+  event: React.DragEvent<HTMLElement>,
+  { title, meta }: { title: string; meta: string },
+) {
+  const dragImage = document.createElement("div");
+  dragImage.className = cn(
+    "pointer-events-none fixed -left-[9999px] top-0 z-50 w-[280px] rounded-xl border border-border bg-popover p-3 text-popover-foreground shadow-xl ring-1 ring-foreground/10",
+    "flex flex-col gap-1",
+  );
+
+  const titleElement = document.createElement("div");
+  titleElement.className = "truncate text-sm font-semibold";
+  titleElement.textContent = title || "Без названия";
+
+  const metaElement = document.createElement("div");
+  metaElement.className = "text-xs text-muted-foreground";
+  metaElement.textContent = meta;
+
+  dragImage.append(titleElement, metaElement);
+  document.body.appendChild(dragImage);
+  event.dataTransfer.setDragImage(dragImage, 18, 18);
+
+  window.setTimeout(() => dragImage.remove(), 0);
+}
+
 export function WorkspaceSidebarSection(props: {
   sidebarTitle: string;
   isSurveyWorkspace: boolean;
@@ -69,6 +96,7 @@ export function WorkspaceSidebarSection(props: {
   scenarios: ScenarioSummary[];
   selectedScenarioId: number | null;
   selectedScenarioIds: number[];
+  dragScenarioId: number | null;
   sidebarState: { message: string; error: boolean };
   onNewScenarioTitleChange: (value: string) => void;
   onCreateScenario: () => void;
@@ -94,6 +122,7 @@ export function WorkspaceSidebarSection(props: {
     scenarios,
     selectedScenarioId,
     selectedScenarioIds,
+    dragScenarioId,
     sidebarState,
     onNewScenarioTitleChange,
     onCreateScenario,
@@ -108,6 +137,7 @@ export function WorkspaceSidebarSection(props: {
     onScenarioDragEnd,
     onToggleScenarioSelection,
   } = props;
+  const [dropTargetId, setDropTargetId] = React.useState<number | null>(null);
 
   return (
     <Card className="flex min-h-0 flex-col overflow-hidden border border-border bg-card p-4 shadow-none ring-0">
@@ -184,8 +214,11 @@ export function WorkspaceSidebarSection(props: {
       ) : null}
       <ScrollArea className="mt-4 min-h-0 flex-1">
         <div className="grid gap-2 pr-3">
-          {scenarios.map((scenario) => (
-            <article
+          {scenarios.map((scenario) => {
+            const isDragging = dragScenarioId === scenario.id;
+            const isDropTarget = dropTargetId === scenario.id && !isDragging;
+            return (
+              <article
               key={scenario.id}
               role="button"
               tabIndex={0}
@@ -197,16 +230,41 @@ export function WorkspaceSidebarSection(props: {
                 }
               }}
               draggable
-              onDragStart={() => onScenarioDragStart(scenario.id)}
-              onDragOver={(event) => event.preventDefault()}
-              onDrop={() => onScenarioDrop(scenario.id)}
-              onDragEnd={onScenarioDragEnd}
-              className={`flex w-full min-w-0 cursor-pointer flex-col gap-2 rounded-lg border p-3 text-left transition-colors ${
+              onDragStart={(event) => {
+                event.dataTransfer.effectAllowed = "move";
+                setWorkspaceDragImage(event, {
+                  title: scenario.title,
+                  meta: isSurveyWorkspace ? "Перемещение опроса" : "Перемещение сценария",
+                });
+                onScenarioDragStart(scenario.id);
+              }}
+              onDragOver={(event) => {
+                event.preventDefault();
+                setDropTargetId(scenario.id);
+              }}
+              onDragLeave={(event) => {
+                if (!event.currentTarget.contains(event.relatedTarget as Node)) {
+                  setDropTargetId((current) => (current === scenario.id ? null : current));
+                }
+              }}
+              onDrop={() => {
+                setDropTargetId(null);
+                onScenarioDrop(scenario.id);
+              }}
+              onDragEnd={() => {
+                setDropTargetId(null);
+                onScenarioDragEnd();
+              }}
+              className={cn(
+                "relative flex w-full min-w-0 cursor-pointer flex-col gap-2 rounded-lg border p-3 text-left transition-[border-color,background-color,opacity,transform,box-shadow]",
                 scenario.id === selectedScenarioId
                   ? "border-primary/70 bg-muted/50"
-                  : "border-border bg-card hover:bg-accent/60"
-              }`}
+                  : "border-border bg-card hover:bg-accent/60",
+                isDragging && "scale-[0.985] border-primary/40 bg-muted/70 opacity-50",
+                isDropTarget && "border-primary bg-primary/5 ring-2 ring-primary/20",
+              )}
             >
+              {isDropTarget ? <span className="pointer-events-none absolute inset-x-3 -top-1 h-0.5 rounded-full bg-primary" /> : null}
               <div className="flex items-center justify-between gap-3">
                 <div
                   className="inline-flex min-w-0 items-center gap-2"
@@ -229,7 +287,8 @@ export function WorkspaceSidebarSection(props: {
                 <Badge variant="secondary">{scenario.trigger_mode_label}</Badge>
               </div>
             </article>
-          ))}
+            );
+          })}
         </div>
       </ScrollArea>
     </Card>
@@ -296,6 +355,7 @@ export function WorkspaceCanvasSection(props: {
     onDragStepEnd,
     onOpenItem,
   } = props;
+  const [dropTargetId, setDropTargetId] = React.useState<number | null>(null);
 
   return (
     <Card className="flex min-h-0 flex-col overflow-hidden border border-border bg-card p-4 shadow-none ring-0">
@@ -433,33 +493,52 @@ export function WorkspaceCanvasSection(props: {
           {currentItems.map((item, index) => {
             const canOpen = !!buildChildContainer(item);
             const active = itemKey(item) === selectedItemKey;
+            const isDragging = dragStepId === item.id;
+            const isDropTarget = dropTargetId === item.id && !isDragging;
             return (
               <article
                 key={itemKey(item) || `${currentContainer?.key}-${index}`}
                 onClick={() => onSelectItem(itemKey(item))}
                 draggable={currentContainer?.type === "root" && item.kind !== "branch_slot"}
-                onDragStart={() => {
+                onDragStart={(event) => {
                   if (currentContainer?.type === "root" && item.kind !== "branch_slot") {
+                    event.dataTransfer.effectAllowed = "move";
+                    setWorkspaceDragImage(event, {
+                      title: workspaceItemTitle(item, index),
+                      meta: isSurveyWorkspace ? "Перемещение вопроса" : "Перемещение шага",
+                    });
                     onDragStepStart(Number(itemKey(item)));
                   }
                 }}
                 onDragOver={(event) => {
-                  if (currentContainer?.type === "root") {
+                  if (currentContainer?.type === "root" && item.kind !== "branch_slot") {
                     event.preventDefault();
+                    setDropTargetId(item.id);
+                  }
+                }}
+                onDragLeave={(event) => {
+                  if (!event.currentTarget.contains(event.relatedTarget as Node)) {
+                    setDropTargetId((current) => (current === item.id ? null : current));
                   }
                 }}
                 onDrop={() => {
                   if (currentContainer?.type === "root" && item.kind !== "branch_slot") {
+                    setDropTargetId(null);
                     onDragStepDrop(item.id);
                   }
                 }}
-                onDragEnd={onDragStepEnd}
-                className={`flex w-full min-w-0 cursor-pointer flex-col gap-2 rounded-lg border p-3 transition-colors ${
-                  active
-                    ? "border-primary/70 bg-muted/50"
-                    : "border-border bg-card hover:bg-accent/60"
-                }`}
+                onDragEnd={() => {
+                  setDropTargetId(null);
+                  onDragStepEnd();
+                }}
+                className={cn(
+                  "relative flex w-full min-w-0 cursor-pointer flex-col gap-2 rounded-lg border p-3 transition-[border-color,background-color,opacity,transform,box-shadow]",
+                  active ? "border-primary/70 bg-muted/50" : "border-border bg-card hover:bg-accent/60",
+                  isDragging && "scale-[0.985] border-primary/40 bg-muted/70 opacity-50",
+                  isDropTarget && "border-primary bg-primary/5 ring-2 ring-primary/20",
+                )}
               >
+                {isDropTarget ? <span className="pointer-events-none absolute inset-x-3 -top-1 h-0.5 rounded-full bg-primary" /> : null}
                 <div className="flex flex-col gap-1">
                   <h4 className="text-[0.95rem] font-semibold">{workspaceItemTitle(item, index)}</h4>
                   <p className="text-[0.83rem] leading-5 text-muted-foreground">{summarizeItem(item)}</p>
@@ -467,6 +546,11 @@ export function WorkspaceCanvasSection(props: {
                 <div className="flex items-center justify-between gap-3">
                   <div className="flex flex-wrap gap-1.5">
                     <Badge variant="secondary">{item.kind === "branch_slot" ? "Ветка" : item.response_label}</Badge>
+                    {"response_type" in item ? (
+                      <Badge variant={responseTypeWaitState(item.response_type).tone === "waiting" ? "default" : "outline"}>
+                        {responseTypeWaitState(item.response_type).badge}
+                      </Badge>
+                    ) : null}
                     {"button_options" in item && item.button_options.length ? (
                       <Badge variant="secondary">
                         {isSurveyWorkspace ? `Ответы: ${item.button_options.length}` : `Кнопки: ${item.button_options.length}`}
@@ -639,6 +723,10 @@ export function WorkspaceStepDetailPane(props: {
     const entries = (payloadWorkspace?.employee_options || []).map((option) => [String(option.id), option.label]);
     return Object.fromEntries(entries) as Record<string, string>;
   }, [payloadWorkspace]);
+  const waitState = React.useMemo(
+    () => responseTypeWaitState(form?.response_type || detailTarget?.response_type || "none"),
+    [detailTarget?.response_type, form?.response_type],
+  );
 
   const saveNotificationRule = () => {
     if (!notificationRuleEditor) return;
@@ -889,8 +977,11 @@ export function WorkspaceStepDetailPane(props: {
                 </div>
 
                 {!isSurveyWorkspace ? (
-                  <label className="grid gap-2">
-                    <span className="text-sm font-semibold text-foreground/75">Тип ответа</span>
+                  <div className="grid gap-2">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="text-sm font-semibold text-foreground/75">Тип ответа</span>
+                      <Badge variant={waitState.tone === "waiting" ? "default" : "outline"}>{waitState.badge}</Badge>
+                    </div>
                     <SingleSelectPicker
                       options={responseTypePickerOptions}
                       value={form?.response_type || "none"}
@@ -909,7 +1000,11 @@ export function WorkspaceStepDetailPane(props: {
                         )
                       }
                     />
-                  </label>
+                    <Alert className={cn("border", waitState.tone === "waiting" ? "border-primary/35 bg-primary/5" : "border-border bg-muted/40")}>
+                      <AlertTitle>{waitState.title}</AlertTitle>
+                      <AlertDescription>{waitState.description}</AlertDescription>
+                    </Alert>
+                  </div>
                 ) : null}
 
                 {isSurveyWorkspace || supportsButtonOptions(form?.response_type || "") ? (
