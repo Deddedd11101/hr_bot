@@ -3,6 +3,7 @@ import {
   BadgeCheck,
   Bot,
   Braces,
+  ClipboardList,
   FolderOpen,
   FileCheck2,
   LayoutDashboard,
@@ -10,7 +11,6 @@ import {
   Moon,
   PanelLeft,
   Settings,
-  Sparkles,
   Sun,
   Users,
   Workflow,
@@ -34,7 +34,7 @@ const OPEN_KEY = "app-shell-sidebar-open";
 
 const primaryItems = [
   { key: "employees", label: "Сотрудники", href: "/app/employees", icon: Users },
-  { key: "bulk_actions", label: "Массовые действия", href: "/app/bulk-actions", icon: Sparkles },
+  { key: "bulk_actions", label: "Массовые действия", href: "/app/bulk-actions", icon: ClipboardList },
   { key: "flows", label: "Сценарии", href: "/app/flows/workspace-v2", icon: Workflow },
   { key: "surveys", label: "Опросы", href: "/app/surveys/workspace", icon: FileCheck2 },
 ] as const;

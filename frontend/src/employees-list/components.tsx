@@ -1,10 +1,11 @@
 import * as React from "react";
 import {
+  BadgeCheck,
   BriefcaseBusiness,
   ExternalLink,
   FileClock,
   MessageCircle,
-  Sparkles,
+  Workflow,
 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -27,18 +28,20 @@ export function SinglePicker({
   options,
   onChange,
   icon,
+  className,
 }: {
   value: string;
   options: Option[];
   onChange: (next: string) => void;
   icon?: React.ReactNode;
+  className?: string;
 }) {
   const selected = options.find((option) => option.value === value) || options[0];
 
   return (
     <Select items={options} value={selected?.value || value} onValueChange={onChange}>
       <SelectTrigger
-        className="min-w-48 border-transparent bg-secondary text-secondary-foreground hover:bg-border"
+        className={cn("min-w-48 border-transparent bg-secondary text-secondary-foreground hover:bg-border", className)}
         size="default"
       >
         <span className="inline-flex min-w-0 items-center gap-2 truncate">
@@ -114,7 +117,7 @@ export function EmployeeCard({ item }: { item: EmployeeItem }) {
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="truncate text-[1rem] font-semibold">{item.full_name || "Без имени"}</h3>
             <MetaChip
-              icon={isCandidate ? <FileClock className="size-3.5" /> : <Sparkles className="size-3.5" />}
+              icon={isCandidate ? <FileClock className="size-3.5" /> : <BadgeCheck className="size-3.5" />}
               label={statusValue || "Без статуса"}
             />
           </div>
@@ -129,7 +132,7 @@ export function EmployeeCard({ item }: { item: EmployeeItem }) {
         <MetaChip icon={<MessageCircle className="size-3.5" />} label={item.chat_id || item.chat_handle || "Канал не привязан"} />
         <MetaChip icon={<BriefcaseBusiness className="size-3.5" />} label={`${dateTitle}: ${dateLabel || "—"}`} />
         {item.planned_scenario_title && item.planned_scenario_title !== "—" ? (
-          <MetaChip icon={<Sparkles className="size-3.5" />} label={item.planned_scenario_title} />
+          <MetaChip icon={<Workflow className="size-3.5" />} label={item.planned_scenario_title} />
         ) : null}
       </CardContent>
     </Card>

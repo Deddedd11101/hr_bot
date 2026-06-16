@@ -3,6 +3,7 @@ import {
   AlertTriangle,
   CalendarClock,
   ChevronRight,
+  ClipboardList,
   Columns2,
   CircleHelp,
   Download,
@@ -24,6 +25,7 @@ import {
   Shield,
   Sun,
   Trash2,
+  Workflow,
 } from "lucide-react";
 import { Toaster as SonnerToaster, toast } from "sonner";
 
@@ -656,7 +658,10 @@ function BulkActionsPatternExample() {
     <div className="grid gap-4">
       <Card className="border border-border/80 bg-card shadow-none ring-0">
         <CardHeader className="border-b border-border/70 pb-4">
-          <CardTitle className="text-base font-semibold">Audience filters</CardTitle>
+          <CardTitle className="flex items-center gap-2 text-base font-semibold">
+            <ClipboardList data-icon="inline-start" />
+            Audience filters
+          </CardTitle>
           <CardDescription>Select, checkbox groups and preview alert.</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4 pt-5">
@@ -1478,6 +1483,7 @@ function PatternsSection() {
           body="Rail and overlay navigation."
           checklist={[
             "Dashboard uses LayoutDashboard.",
+            "Bulk actions use ClipboardList.",
             "Bot pages keep bot/message iconography.",
             "Icon-only links keep aria labels.",
           ]}
@@ -1631,7 +1637,10 @@ function PatternsSection() {
               @AVstrkv
             </Badge>
             <Badge variant="secondary">Выход: 19.06.2026</Badge>
-            <Badge variant="secondary">OC от коллег</Badge>
+            <Badge variant="secondary">
+              <Workflow data-icon="inline-start" />
+              OC от коллег
+            </Badge>
           </CardContent>
         </Card>
       </ExampleBlock>
