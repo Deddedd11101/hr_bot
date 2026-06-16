@@ -1194,3 +1194,21 @@ source_of_truth: true
 ### Checks
 
 - `npm run build`
+
+## Admin Favicon Logo - 2026-06-16
+
+### Changed
+
+- Added the operator-provided logo as stable static asset `app/static/favicon.png`.
+- Wired the favicon into React shell, legacy shell, and standalone login template so browser tabs use the same admin identity across `/app/*`, `/login`, and remaining fallback pages.
+
+### Screens
+
+- `/login`
+- `/app/dashboard`
+- Remaining legacy pages that still extend `base.html`
+
+### Checks
+
+- `.\.venv\Scripts\python.exe -m compileall app tests`
+- `npm run build`
