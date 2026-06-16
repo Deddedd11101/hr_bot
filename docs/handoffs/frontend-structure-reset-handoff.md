@@ -1302,11 +1302,13 @@ source_of_truth: true
 - Sidebar and dashboard module icon for bulk actions changed from `Sparkles` to `ClipboardList`.
 - Documents file picker now uses a plain hidden file input triggered by the button, matching the working scenario attachment pattern.
 - Scenario workspace detail pane now has left inset and more right padding so focus rings are not clipped and the scrollbar is less tight to fields.
+- Scenario workspace sidebar controls are compressed into a single header/control block: create action in the header, search with icon, audience filter, select-all, copy, and delete actions grouped together.
 
 ### Shared UI / Kit Notes
 
 - Operational icons should describe the object/action. Avoid decorative sparkles for counts, statuses, completed scenario metadata, and bulk actions.
 - Compact create rows should use fixed-width controls inside a wrapping inline row when the form only has a few fields.
+- Dense sidebar control panels should keep create/search/filter/selection actions grouped before the scrollable list instead of stacking each action as a full-width row.
 
 ### Screens
 
@@ -1321,3 +1323,4 @@ source_of_truth: true
 - `.\.venv\Scripts\python.exe -m compileall app tests`
 - `.\.venv\Scripts\python.exe -m unittest tests.test_scenario_engine_smoke tests.test_messaging_identity tests.test_employee_api_smoke -v`
 - Local HTTP smoke on `http://127.0.0.1:8012`: `/app/employees`, `/app/documents`, `/app/flows/workspace-v2` return auth redirect `303`.
+- Follow-up compact sidebar pass: `npm run build`, `.\.venv\Scripts\python.exe -m compileall app tests`.

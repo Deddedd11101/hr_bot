@@ -1,5 +1,5 @@
 import * as React from "react";
-import { ChevronRight, Copy, FileStack, PanelLeft, Paperclip, Plus, Trash2, X } from "lucide-react";
+import { ChevronRight, Copy, FileStack, PanelLeft, Paperclip, Plus, Search, Trash2, X } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -146,17 +146,30 @@ export function WorkspaceSidebarSection(props: {
 
   return (
     <Card className="flex min-h-0 flex-col overflow-hidden border border-border bg-card p-4 shadow-none ring-0">
-      <CardHeader className="gap-3 border-b border-border/70 p-0 pb-4">
-        <CardTitle className="text-[1.65rem] font-semibold">{sidebarTitle}</CardTitle>
+      <CardHeader className="gap-2 border-b border-border/70 p-0 pb-3">
+        <div className="flex min-w-0 items-center justify-between gap-2">
+          <div className="flex min-w-0 items-center gap-2">
+            <CardTitle className="truncate text-[1.35rem] font-semibold">{sidebarTitle}</CardTitle>
+            <Badge variant="secondary" className="shrink-0">
+              {scenarios.length}
+            </Badge>
+          </div>
+          {!creatingScenario ? (
+            <Button size="sm" onClick={onOpenCreateScenario} title={createItemLabel} aria-label={createItemLabel}>
+              <Plus data-icon="inline-start" />
+              Создать
+            </Button>
+          ) : null}
+        </div>
       </CardHeader>
-      {creatingScenario ? (
-        <div className="mt-4 rounded-lg border border-border bg-muted/50 p-2">
+      <div className="mt-3 flex flex-col gap-2 rounded-lg border border-border bg-muted/35 p-2">
+        {creatingScenario ? (
           <div className="flex items-center gap-2">
             <Input
               value={newScenarioTitle}
               onChange={(event) => onNewScenarioTitleChange(event.target.value)}
               placeholder={itemNamePlaceholder}
-              className="h-10 text-sm"
+              className="h-8 text-sm"
             />
             <Button size="sm" onClick={onCreateScenario} className="px-3">
               Готово
@@ -165,83 +178,77 @@ export function WorkspaceSidebarSection(props: {
               <X />
             </Button>
           </div>
-        </div>
-      ) : (
-        <Button
-          variant="outline"
-          className="mt-4 w-full justify-center border-dashed"
-          onClick={onOpenCreateScenario}
-        >
-          <Plus data-icon="inline-start" />
-          {createItemLabel}
-        </Button>
-      )}
-      <Input
-        placeholder={isSurveyWorkspace ? "Найти" : "Найти сценарий"}
-        value={search}
-        onChange={(e) => onSearchChange(e.target.value)}
-        className="mt-3 text-sm"
-      />
-      {!isSurveyWorkspace ? (
-        <div className="mt-3 flex flex-wrap gap-2">
-          <Button
-            size="sm"
-            variant={audienceFilter === "all" ? "secondary" : "outline"}
-            onClick={() => onAudienceFilterChange("all")}
-          >
-            Все
-          </Button>
-          <Button
-            size="sm"
-            variant={audienceFilter === "employees" ? "secondary" : "outline"}
-            onClick={() => onAudienceFilterChange("employees")}
-          >
-            Сотрудники
-          </Button>
-          <Button
-            size="sm"
-            variant={audienceFilter === "candidates" ? "secondary" : "outline"}
-            onClick={() => onAudienceFilterChange("candidates")}
-          >
-            Кандидаты
-          </Button>
-        </div>
-      ) : null}
-      <div className="mt-3 flex flex-wrap items-center gap-2">
-        <label className="inline-flex h-7 items-center gap-2 rounded-lg border border-border bg-background px-2.5 text-xs font-semibold text-muted-foreground">
-          <Checkbox
-            checked={scenarios.length > 0 && scenarios.every((scenario) => selectedScenarioIds.includes(scenario.id))}
-            onCheckedChange={onToggleSelectAllVisibleScenarios}
-            aria-label="Выбрать все сценарии"
+        ) : null}
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            placeholder={isSurveyWorkspace ? "Найти" : "Найти сценарий"}
+            value={search}
+            onChange={(e) => onSearchChange(e.target.value)}
+            className="h-8 pl-8 text-sm"
           />
-          Выбрать все
-        </label>
-        <Button
-          size="icon-sm"
-          variant="secondary"
-          title="Копировать выбранные"
-          aria-label="Копировать выбранные"
-          onClick={() => onBulkScenarioAction("bulk-copy")}
-          disabled={!selectedScenarioIds.length}
-        >
-          <Copy />
-        </Button>
-        <ConfirmAction
-          title={`Удалить выбранные ${isSurveyWorkspace ? "опросы" : "сценарии"}?`}
-          description={`Будет удалено: ${selectedScenarioIds.length}. Это действие нельзя отменить.`}
-          actionLabel="Удалить"
-          onConfirm={() => onBulkScenarioAction("bulk-delete")}
-        >
+        </div>
+        <div className="flex flex-wrap items-center gap-1.5">
+          {!isSurveyWorkspace ? (
+            <div className="flex items-center gap-1 rounded-lg border border-border bg-background p-1">
+              <Button
+                size="xs"
+                variant={audienceFilter === "all" ? "secondary" : "ghost"}
+                onClick={() => onAudienceFilterChange("all")}
+              >
+                Все
+              </Button>
+              <Button
+                size="xs"
+                variant={audienceFilter === "employees" ? "secondary" : "ghost"}
+                onClick={() => onAudienceFilterChange("employees")}
+              >
+                Сотрудники
+              </Button>
+              <Button
+                size="xs"
+                variant={audienceFilter === "candidates" ? "secondary" : "ghost"}
+                onClick={() => onAudienceFilterChange("candidates")}
+              >
+                Кандидаты
+              </Button>
+            </div>
+          ) : null}
+          <label className="inline-flex h-7 items-center gap-2 rounded-lg border border-border bg-background px-2.5 text-xs font-semibold text-muted-foreground">
+            <Checkbox
+              checked={scenarios.length > 0 && scenarios.every((scenario) => selectedScenarioIds.includes(scenario.id))}
+              onCheckedChange={onToggleSelectAllVisibleScenarios}
+              aria-label="Выбрать все сценарии"
+            />
+            Все
+          </label>
           <Button
             size="icon-sm"
-            variant="outline"
-            title="Удалить выбранные"
-            aria-label="Удалить выбранные"
+            variant="secondary"
+            title="Копировать выбранные"
+            aria-label="Копировать выбранные"
+            onClick={() => onBulkScenarioAction("bulk-copy")}
             disabled={!selectedScenarioIds.length}
           >
-            <Trash2 />
+            <Copy />
           </Button>
-        </ConfirmAction>
+          <ConfirmAction
+            title={`Удалить выбранные ${isSurveyWorkspace ? "опросы" : "сценарии"}?`}
+            description={`Будет удалено: ${selectedScenarioIds.length}. Это действие нельзя отменить.`}
+            actionLabel="Удалить"
+            onConfirm={() => onBulkScenarioAction("bulk-delete")}
+          >
+            <Button
+              size="icon-sm"
+              variant="outline"
+              title="Удалить выбранные"
+              aria-label="Удалить выбранные"
+              disabled={!selectedScenarioIds.length}
+            >
+              <Trash2 />
+            </Button>
+          </ConfirmAction>
+        </div>
       </div>
       {sidebarState.message ? (
         <p className={`mt-3 text-sm ${sidebarState.error ? "text-destructive" : "text-muted-foreground"}`}>
