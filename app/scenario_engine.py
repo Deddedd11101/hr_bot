@@ -698,6 +698,24 @@ def apply_response_to_employee(
     return True
 
 
+async def _finish_launch_transition(
+    messenger_or_bot: Any,
+    db: Session,
+    employee: Employee,
+    scenario: ScenarioTemplate,
+    progress: ScenarioProgress,
+    step: FlowStepTemplate,
+) -> None:
+    messenger = as_messenger(messenger_or_bot)
+    progress.waiting_for_response = False
+    progress.is_completed = True
+    progress.completed_at = utc_now()
+    progress.updated_at = utc_now()
+    db.commit()
+    if step.launch_scenario_key:
+        await start_scenario(messenger, db, employee, step.launch_scenario_key)
+
+
 def _compute_followup_run_at(step: FlowStepTemplate) -> Optional[datetime]:
     if step.send_mode != "specific_time" or not (step.send_time or "").strip():
         return None
@@ -763,7 +781,7 @@ async def send_step(
     send_employee_card = bool(getattr(step, "send_employee_card", False))
     reply_markup = step_reply_markup(step, include_back=include_back)
     back_keyboard = step_back_keyboard(step, include_back=include_back)
-    inline_buttons_after_attachment = (has_attachment or send_employee_card) and reply_markup is not None
+    inline_buttons_after_attachment = bool(reply_markup and not message_text.strip())
 
     if message_text.strip():
         await messenger.send_text(
@@ -818,7 +836,11 @@ async def send_step(
             step.send_time,
         )
 
-    if step.response_type == "launch_scenario" or not auto_follow:
+    if step.response_type == "launch_scenario":
+        await _finish_launch_transition(messenger, db, employee, scenario, progress, step)
+        return
+
+    if not auto_follow:
         return
 
     if not progress.waiting_for_response:
@@ -948,13 +970,6 @@ async def handle_button_response(messenger_or_bot: Any, db: Session, employee: E
                 return True
 
             await send_step(messenger, db, employee, scenario, branch_step)
-            if branch_step.response_type == "launch_scenario" and branch_step.launch_scenario_key:
-                progress.waiting_for_response = False
-                progress.is_completed = True
-                progress.completed_at = utc_now()
-                progress.updated_at = utc_now()
-                db.commit()
-                await start_scenario(messenger, db, employee, branch_step.launch_scenario_key)
             return True
     await advance_after_response(messenger, db, employee, scenario, step)
     return True

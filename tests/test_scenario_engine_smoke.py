@@ -3,6 +3,7 @@ import unittest
 from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import AsyncMock, patch
 
 from app.database import SessionLocal, init_db
 from app.models import Employee, FlowStepTemplate, ScenarioProgress, ScenarioTemplate
@@ -51,6 +52,53 @@ class FakeMessenger:
 
 
 class ScenarioEngineSmokeTests(unittest.IsolatedAsyncioTestCase):
+    async def test_send_step_uses_main_message_for_attachment_buttons_when_text_exists(self) -> None:
+        init_db()
+        now = datetime.now(UTC).replace(tzinfo=None)
+        scenario_key = f"test_attachment_buttons_{int(datetime.now(UTC).timestamp() * 1000000)}"
+
+        with tempfile.TemporaryDirectory() as tmp_dir, SessionLocal() as db:
+            attachment_path = Path(tmp_dir) / "guide.pdf"
+            attachment_path.write_bytes(b"fake-pdf")
+            scenario = ScenarioTemplate(
+                scenario_key=scenario_key,
+                title="Attachment buttons",
+                role_scope="all",
+                scenario_kind="scenario",
+                sort_order=0,
+                trigger_mode="manual_only",
+            )
+            step = FlowStepTemplate(
+                flow_key=scenario_key,
+                step_key="step_one",
+                step_title="Step one",
+                sort_order=10,
+                default_text="Выбери вариант",
+                response_type="buttons",
+                button_options="Да\nНет",
+                send_mode="immediate",
+                day_offset_workdays=0,
+                attachment_path=str(attachment_path),
+                attachment_filename="guide.pdf",
+            )
+            employee = Employee(
+                full_name="Tester",
+                telegram_user_id="123456789",
+                created_at=now,
+                is_flow_scheduled=False,
+                employee_stage="candidate",
+            )
+            db.add_all([scenario, step, employee])
+            db.commit()
+
+            messenger = FakeMessenger()
+            await send_step(messenger, db, employee, scenario, step)
+
+            self.assertEqual(len(messenger.texts), 1)
+            self.assertEqual(messenger.texts[0]["text"], "Выбери вариант")
+            self.assertIsNotNone(messenger.texts[0]["reply_markup"])
+            self.assertEqual(len(messenger.documents), 1)
+
     async def test_send_step_attachment_uses_photo_for_image_files(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             image_path = Path(tmp_dir) / "mentor-card.png"
@@ -237,6 +285,53 @@ class ScenarioEngineSmokeTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_handle_back_response_accepts_back_label_as_control(self) -> None:
         self.assertEqual(SCENARIO_BACK_BUTTON_TEXT, "Назад")
+
+    async def test_send_step_launch_scenario_marks_progress_completed_and_starts_target(self) -> None:
+        init_db()
+        now = datetime.now(UTC).replace(tzinfo=None)
+        scenario_key = f"test_launch_transition_{int(datetime.now(UTC).timestamp() * 1000000)}"
+
+        with SessionLocal() as db:
+            scenario = ScenarioTemplate(
+                scenario_key=scenario_key,
+                title="Launch transition",
+                role_scope="all",
+                scenario_kind="scenario",
+                sort_order=0,
+                trigger_mode="manual_only",
+            )
+            step = FlowStepTemplate(
+                flow_key=scenario_key,
+                step_key="step_one",
+                step_title="Step one",
+                sort_order=10,
+                default_text="Переход",
+                response_type="launch_scenario",
+                launch_scenario_key="target_flow",
+                send_mode="immediate",
+                day_offset_workdays=0,
+            )
+            employee = Employee(
+                full_name="Tester",
+                telegram_user_id="123456789",
+                created_at=now,
+                is_flow_scheduled=False,
+                employee_stage="candidate",
+            )
+            db.add_all([scenario, step, employee])
+            db.commit()
+            db.refresh(employee)
+
+            messenger = FakeMessenger()
+            with patch("app.scenario_engine.start_scenario", new=AsyncMock(return_value=True)) as mocked_start:
+                await send_step(messenger, db, employee, scenario, step)
+
+            progress = db.query(ScenarioProgress).filter_by(employee_id=employee.id, scenario_key=scenario_key).first()
+            self.assertIsNotNone(progress)
+            self.assertFalse(progress.waiting_for_response)
+            self.assertTrue(progress.is_completed)
+            mocked_start.assert_awaited_once()
+            self.assertEqual(mocked_start.await_args.args[3], "target_flow")
 
 
 if __name__ == "__main__":

@@ -94,6 +94,7 @@ export function WorkspaceSidebarSection(props: {
   creatingScenario: boolean;
   newScenarioTitle: string;
   search: string;
+  audienceFilter: "all" | "employees" | "candidates";
   scenarios: ScenarioSummary[];
   selectedScenarioId: number | null;
   selectedScenarioIds: number[];
@@ -104,6 +105,7 @@ export function WorkspaceSidebarSection(props: {
   onOpenCreateScenario: () => void;
   onCancelCreateScenario: () => void;
   onSearchChange: (value: string) => void;
+  onAudienceFilterChange: (value: "all" | "employees" | "candidates") => void;
   onToggleSelectAllVisibleScenarios: () => void;
   onBulkScenarioAction: (action: "bulk-copy" | "bulk-delete") => void;
   onSelectScenario: (scenarioId: number) => void;
@@ -120,6 +122,7 @@ export function WorkspaceSidebarSection(props: {
     creatingScenario,
     newScenarioTitle,
     search,
+    audienceFilter,
     scenarios,
     selectedScenarioId,
     selectedScenarioIds,
@@ -130,6 +133,7 @@ export function WorkspaceSidebarSection(props: {
     onOpenCreateScenario,
     onCancelCreateScenario,
     onSearchChange,
+    onAudienceFilterChange,
     onToggleSelectAllVisibleScenarios,
     onBulkScenarioAction,
     onSelectScenario,
@@ -178,6 +182,31 @@ export function WorkspaceSidebarSection(props: {
         onChange={(e) => onSearchChange(e.target.value)}
         className="mt-3 text-sm"
       />
+      {!isSurveyWorkspace ? (
+        <div className="mt-3 flex flex-wrap gap-2">
+          <Button
+            size="sm"
+            variant={audienceFilter === "all" ? "secondary" : "outline"}
+            onClick={() => onAudienceFilterChange("all")}
+          >
+            Все
+          </Button>
+          <Button
+            size="sm"
+            variant={audienceFilter === "employees" ? "secondary" : "outline"}
+            onClick={() => onAudienceFilterChange("employees")}
+          >
+            Сотрудники
+          </Button>
+          <Button
+            size="sm"
+            variant={audienceFilter === "candidates" ? "secondary" : "outline"}
+            onClick={() => onAudienceFilterChange("candidates")}
+          >
+            Кандидаты
+          </Button>
+        </div>
+      ) : null}
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <label className="inline-flex h-7 items-center gap-2 rounded-lg border border-border bg-background px-2.5 text-xs font-semibold text-muted-foreground">
           <Checkbox
@@ -416,6 +445,20 @@ export function WorkspaceCanvasSection(props: {
                     </Button>
                   </div>
                   <div className="flex flex-col gap-4">
+                    <label className="grid min-w-0 gap-2.5">
+                      <span className="text-sm font-semibold text-foreground/75">Название</span>
+                      <Input
+                        value={scenarioSettingsForm.title}
+                        maxLength={120}
+                        placeholder="Название сценария"
+                        className="h-10 text-sm"
+                        onChange={(event) =>
+                          onScenarioSettingsFormChange((prev) =>
+                            prev ? { ...prev, title: event.target.value.slice(0, 120) } : prev,
+                          )
+                        }
+                      />
+                    </label>
                     <label className="grid min-w-0 gap-2.5">
                       <span className="text-sm font-semibold text-foreground/75">Описание</span>
                       <div className="relative">
@@ -1009,6 +1052,7 @@ export function WorkspaceStepDetailPane(props: {
                                 button_options: supportsButtonOptions(nextValue) ? prev.button_options : "",
                                 button_notifications: supportsButtonOptions(nextValue) ? prev.button_notifications : [],
                                 target_field: supportsTargetField(nextValue) ? prev.target_field : "",
+                                launch_scenario_key: nextValue === "launch_scenario" ? prev.launch_scenario_key : "",
                               }
                             : prev,
                         )
@@ -1209,6 +1253,7 @@ export function WorkspaceStepDetailPane(props: {
                         options={launchScenarioOptions}
                         value={form?.launch_scenario_key || ""}
                         placeholder="Не выполнять переход"
+                        disabled={(form?.response_type || "") !== "launch_scenario"}
                         onChange={(nextValue) => onFormChange((prev) => (prev ? { ...prev, launch_scenario_key: nextValue } : prev))}
                       />
                     </label>

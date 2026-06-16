@@ -97,11 +97,13 @@ export function SingleSelectPicker({
   value,
   onChange,
   placeholder,
+  disabled = false,
 }: {
   options: SingleOption[];
   value: string;
   onChange: (next: string) => void;
   placeholder: string;
+  disabled?: boolean;
 }) {
   const emptyValue = "__empty__";
   const normalizedOptions = React.useMemo(
@@ -117,7 +119,7 @@ export function SingleSelectPicker({
       value={selectedValue}
       onValueChange={(nextValue) => onChange(nextValue === emptyValue ? "" : nextValue)}
     >
-      <SelectTrigger className="w-full">
+      <SelectTrigger className="w-full" disabled={disabled}>
         <SelectValue placeholder={placeholder} className="truncate text-left" />
       </SelectTrigger>
       <SelectContent align="start" alignItemWithTrigger={false}>

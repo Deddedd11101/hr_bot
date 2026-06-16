@@ -20,7 +20,7 @@ from ..messaging.identity import (
     sync_legacy_telegram_account,
 )
 from ..models import Employee, EmployeeDocumentLink, EmployeeFile, FlowLaunchRequest, ScenarioTemplate
-from ..scenario_engine import add_workdays, get_first_step, get_scenario_steps, matches_role_scope, start_scenario
+from ..scenario_engine import SINGLE_STEP_REQUEST_PREFIX, add_workdays, get_first_step, matches_role_scope, start_scenario
 from ..time_utils import utc_now
 
 OFFER_DOCUMENT_TITLE = "Оффер"
@@ -98,6 +98,11 @@ def _employee_list_kind(employee: Optional[Employee]) -> str:
     if (getattr(employee, "employee_stage", None) or "").strip() == "candidate":
         return "candidates"
     return "employees"
+
+
+def _is_internal_followup_request(launch_request: FlowLaunchRequest) -> bool:
+    skip_step_key = (getattr(launch_request, "skip_step_key", None) or "").strip()
+    return bool(skip_step_key) and skip_step_key.startswith(SINGLE_STEP_REQUEST_PREFIX)
 
 
 def _employee_list_meta(list_kind: str) -> dict:
@@ -244,6 +249,8 @@ def _build_employee_views(list_kind: str, db: Session) -> list[dict]:
             .all()
         )
         for launch_request in pending_launch_requests:
+            if _is_internal_followup_request(launch_request):
+                continue
             launch_requests_by_employee.setdefault(launch_request.employee_id, launch_request)
 
     today = datetime.now().date()
@@ -660,19 +667,6 @@ async def _launch_employee_flow_now(
                 skip_step_key=None,
             )
         )
-
-        steps = get_scenario_steps(db, scenario.scenario_key)
-        if first_step.response_type == "none" and len(steps) > 1:
-            db.add(
-                FlowLaunchRequest(
-                    employee_id=employee.id,
-                    flow_key=flow_key,
-                    requested_at=datetime.now(),
-                    processed_at=None,
-                    launch_type="manual",
-                    skip_step_key=first_step.step_key,
-                )
-            )
         db.commit()
         return None
     except TelegramBadRequest as exc:
@@ -722,6 +716,11 @@ def _build_employee_detail_payload(db: Session, employee: Employee) -> dict:
         .order_by(FlowLaunchRequest.requested_at.asc(), FlowLaunchRequest.id.asc())
         .all()
     )
+    pending_scheduled_launches = [
+        launch_request
+        for launch_request in pending_scheduled_launches
+        if not _is_internal_followup_request(launch_request)
+    ]
     manual_launch_history = (
         db.query(FlowLaunchRequest)
         .filter(

@@ -2,6 +2,7 @@ export type ScenarioSummary = {
   id: number;
   title: string;
   description: string;
+  employee_scope: string;
   role_scope_label: string;
   employee_scope_label: string;
   trigger_mode_label: string;
@@ -140,6 +141,7 @@ export type SingleOption = {
 };
 
 export type ScenarioSettingsForm = {
+  title: string;
   description: string;
   role_scope: string;
   employee_scope: string;

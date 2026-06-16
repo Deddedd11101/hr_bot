@@ -17,7 +17,19 @@ from .mass_targeting import (
 from .messaging import as_messenger
 from .messaging.identity import get_primary_chat_id
 from .models import Employee, FlowLaunchRequest, FlowStepTemplate, MassMessageAction, MassScenarioAction, OnboardingEvent, ScenarioTemplate
-from .scenario_engine import SINGLE_STEP_REQUEST_PREFIX, add_workdays, format_message, get_scenario_steps, get_step_by_key, matches_role_scope, scenario_anchor_date, send_step, start_scenario
+from .scenario_engine import (
+    SINGLE_STEP_REQUEST_PREFIX,
+    add_workdays,
+    format_message,
+    get_scenario_steps,
+    get_step_by_key,
+    matches_role_scope,
+    queue_followup_step,
+    resolve_followup_step,
+    scenario_anchor_date,
+    send_step,
+    start_scenario,
+)
 from .time_utils import utc_now
 
 
@@ -150,6 +162,20 @@ async def run_scheduled_step(bot, employee_id: int, scenario_key: str, step_key:
         if not get_primary_chat_id(employee, db=db):
             return
         await send_step(bot, db, employee, scenario, step, scheduled_at=scheduled_at)
+
+
+async def _continue_after_manual_step(bot, db: Session, employee: Employee, scenario: ScenarioTemplate, step_key: str) -> None:
+    current_step = get_step_by_key(db, scenario.scenario_key, step_key)
+    if not current_step:
+        return
+    next_step = resolve_followup_step(db, scenario.scenario_key, current_step)
+    if not next_step:
+        return
+    if settings.DEMO_MODE or next_step.send_mode == "immediate":
+        await send_step(bot, db, employee, scenario, next_step)
+        return
+    if not queue_followup_step(db, employee, scenario, next_step):
+        await send_step(bot, db, employee, scenario, next_step)
 
 
 def schedule_employee_scenario(
@@ -302,6 +328,10 @@ async def schedule_all_employees(scheduler: AsyncIOScheduler, bot) -> None:
                 step = get_step_by_key(db, scenario.scenario_key, step_key)
                 if step:
                     await send_step(bot, db, employee, scenario, step, scheduled_at=request.requested_at)
+                request.processed_at = utc_now()
+                continue
+            if request.launch_type == "manual" and request.skip_step_key:
+                await _continue_after_manual_step(bot, db, employee, scenario, request.skip_step_key)
                 request.processed_at = utc_now()
                 continue
             sent_keys = _load_sent_event_keys(db, employee.id)
