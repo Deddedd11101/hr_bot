@@ -913,7 +913,7 @@ export function WorkspaceStepDetailPane(props: {
     <>
       <Separator />
       <ScrollArea className="min-h-0 flex-1 pt-3">
-        <div className="pr-3">
+        <div className="pl-1 pr-6 pb-3">
           {selectedItem ? (
             selectedItem.kind === "branch_slot" && !detailTarget ? (
               <div className="flex flex-col gap-4 rounded-lg border border-border bg-muted/50 p-4">
