@@ -1527,6 +1527,106 @@ class EmployeeApiSmokeTests(unittest.TestCase):
             self.assertEqual(len(notifications), 1)
             self.assertEqual(notifications[0].message_text, "Обновлённое уведомление")
 
+    def test_workspace_branch_step_api_persists_return_to_root_step(self) -> None:
+        scenario_key = f"codex_branch_return_{self.unique_tag}"
+        with SessionLocal() as db:
+            scenario = ScenarioTemplate(
+                scenario_key=scenario_key,
+                title=f"codex-branch-return-{self.unique_tag}",
+                sort_order=10,
+                scenario_kind="scenario",
+                role_scope="all",
+                employee_scope="all",
+                trigger_mode="manual_only",
+            )
+            db.add(scenario)
+            db.flush()
+            root_step = FlowStepTemplate(
+                flow_key=scenario_key,
+                step_key=f"{scenario_key}_step_1",
+                step_title="Root branching",
+                sort_order=10,
+                default_text="Выбери вариант",
+                custom_text=None,
+                response_type="branching",
+                button_options="Да\nНет",
+                send_mode="immediate",
+                send_time=None,
+                day_offset_workdays=0,
+                target_field=None,
+                send_employee_card=False,
+            )
+            followup_step = FlowStepTemplate(
+                flow_key=scenario_key,
+                step_key=f"{scenario_key}_step_2",
+                step_title="Common flow",
+                sort_order=20,
+                default_text="Общий поток",
+                custom_text=None,
+                response_type="none",
+                send_mode="immediate",
+                send_time=None,
+                day_offset_workdays=0,
+                target_field=None,
+                send_employee_card=False,
+            )
+            branch_step = FlowStepTemplate(
+                flow_key=scenario_key,
+                step_key=f"{scenario_key}_branch_yes",
+                parent_step_id=None,
+                branch_option_index=0,
+                step_title="Ветка Да",
+                sort_order=1001,
+                default_text="Локальная ветка",
+                custom_text=None,
+                response_type="none",
+                send_mode="immediate",
+                send_time=None,
+                day_offset_workdays=0,
+                target_field=None,
+                send_employee_card=False,
+            )
+            db.add_all([root_step, followup_step])
+            db.flush()
+            branch_step.parent_step_id = root_step.id
+            db.add(branch_step)
+            db.commit()
+            db.refresh(branch_step)
+            branch_step_id = branch_step.id
+            followup_step_key = followup_step.step_key
+
+        response = self.client.post(
+            f"/api/flows/workspace/steps/{branch_step_id}",
+            json={
+                "title": "Ветка Да",
+                "text": "Локальная ветка",
+                "response_type": "none",
+                "button_options": "",
+                "send_mode": "immediate",
+                "send_time": "",
+                "target_field": "",
+                "launch_scenario_key": "",
+                "return_to_step_key": followup_step_key,
+                "send_employee_card": False,
+                "notify_on_send_text": "",
+                "notify_on_send_recipient_ids": "",
+                "notify_on_send_recipient_scope": "",
+                "step_send_notifications": [],
+                "button_notifications": [],
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        root_payload = response.json()["payload"]["workspace"]["root_steps"][0]
+        branch_payload = root_payload["branch_items"][0]["step"]
+        self.assertEqual(branch_payload["return_to_step_key"], followup_step_key)
+        self.assertEqual(branch_payload["step_key"], f"{scenario_key}_branch_yes")
+
+        with SessionLocal() as db:
+            branch_step = db.get(FlowStepTemplate, branch_step_id)
+            self.assertIsNotNone(branch_step)
+            self.assertEqual(branch_step.return_to_step_key, followup_step_key)
+
     def test_button_response_sends_all_notification_rules(self) -> None:
         scenario_key = f"codex_button_runtime_{self.unique_tag}"
         now = datetime.now(UTC).replace(tzinfo=None)
@@ -2221,4 +2321,3 @@ class EmployeeApiSmokeTests(unittest.TestCase):
             self.assertTrue(handled)
             self.assertTrue(messenger.sent_texts)
             self.assertIn("https://example.com/policy", messenger.sent_texts[-1][1])
-

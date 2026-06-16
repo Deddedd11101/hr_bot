@@ -167,6 +167,34 @@ def _workspace_response_type_labels() -> dict[str, str]:
     return labels
 
 
+def _resolve_branch_return_to_step_key(db: Session, step: FlowStepTemplate, raw_value: str) -> Optional[str]:
+    if step.parent_step_id is None or step.branch_option_index is None:
+        return None
+    normalized = (raw_value or "").strip()
+    if not normalized:
+        return None
+    target_step = (
+        db.query(FlowStepTemplate)
+        .filter(
+            FlowStepTemplate.flow_key == step.flow_key,
+            FlowStepTemplate.step_key == normalized,
+            FlowStepTemplate.parent_step_id.is_(None),
+        )
+        .first()
+    )
+    if not target_step:
+        return None
+    current = step
+    while current.parent_step_id is not None:
+        parent_step = db.get(FlowStepTemplate, current.parent_step_id)
+        if not parent_step:
+            break
+        current = parent_step
+    if current.step_key == target_step.step_key:
+        return None
+    return target_step.step_key
+
+
 def _generate_workspace_scenario_key(kind: str = "scenario") -> str:
     return f"{kind}_{uuid4().hex[:12]}"
 
@@ -295,6 +323,7 @@ def _serialize_workspace_step(
 
     return {
         "id": step.id,
+        "step_key": step.step_key,
         "kind": _workspace_node_kind(step),
         "title": step.step_title,
         "text": (step.custom_text or "").strip() if (step.custom_text or "").strip() else (step.default_text or ""),
@@ -312,6 +341,7 @@ def _serialize_workspace_step(
         "target_field": step.target_field or "",
         "target_field_label": TARGET_FIELD_LABELS.get(step.target_field or "", "Не сохранять"),
         "launch_scenario_key": step.launch_scenario_key or "",
+        "return_to_step_key": getattr(step, "return_to_step_key", None) or "",
         "notify_on_send": bool(
             step_send_rules
             or
@@ -453,7 +483,7 @@ def _normalize_workspace_response_type(value: str, step: FlowStepTemplate) -> st
     return normalized if normalized in allowed else (step.response_type or "none")
 
 
-def _apply_workspace_step_update(step: FlowStepTemplate, payload: dict, scenario_kind: str = "scenario"):
+def _apply_workspace_step_update(db: Session, step: FlowStepTemplate, payload: dict, scenario_kind: str = "scenario"):
     if scenario_kind == "survey":
         question = (
             str(payload.get("text") or "").strip()
@@ -473,6 +503,7 @@ def _apply_workspace_step_update(step: FlowStepTemplate, payload: dict, scenario
         step.send_time = None
         step.target_field = None
         step.launch_scenario_key = None
+        step.return_to_step_key = None
         step.send_employee_card = False
         step.notify_on_send_text = None
         step.notify_on_send_recipient_ids = None
@@ -495,6 +526,11 @@ def _apply_workspace_step_update(step: FlowStepTemplate, payload: dict, scenario
         str(payload.get("launch_scenario_key") or "").strip() or None
         if step.response_type == "launch_scenario"
         else None
+    )
+    step.return_to_step_key = _resolve_branch_return_to_step_key(
+        db,
+        step,
+        str(payload.get("return_to_step_key") or ""),
     )
     step.send_employee_card = str(payload.get("send_employee_card") or "").strip().lower() in {"1", "true", "yes", "on"}
     step.notify_on_send_text = str(payload.get("notify_on_send_text") or "").strip() or None
@@ -814,6 +850,7 @@ def _copy_template_entity(db: Session, scenario: ScenarioTemplate) -> ScenarioTe
             day_offset_workdays=original_step.day_offset_workdays,
             target_field=original_step.target_field,
             launch_scenario_key=original_step.launch_scenario_key,
+            return_to_step_key=getattr(original_step, "return_to_step_key", None),
             send_employee_card=getattr(original_step, "send_employee_card", False),
             notify_on_send_text=getattr(original_step, "notify_on_send_text", None),
             notify_on_send_recipient_ids=getattr(original_step, "notify_on_send_recipient_ids", None),

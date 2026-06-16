@@ -9,6 +9,7 @@ from app.database import SessionLocal, init_db
 from app.models import Employee, FlowStepTemplate, ScenarioProgress, ScenarioTemplate
 from app.scenario_engine import (
     SCENARIO_BACK_BUTTON_TEXT,
+    handle_button_response,
     handle_back_response,
     matches_role_scope,
     resolve_notification_recipients,
@@ -332,6 +333,91 @@ class ScenarioEngineSmokeTests(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(progress.is_completed)
             mocked_start.assert_awaited_once()
             self.assertEqual(mocked_start.await_args.args[3], "target_flow")
+
+    async def test_branch_step_can_return_to_later_root_step(self) -> None:
+        init_db()
+        now = datetime.now(UTC).replace(tzinfo=None)
+        scenario_key = f"test_branch_return_{int(datetime.now(UTC).timestamp() * 1000000)}"
+
+        with SessionLocal() as db:
+            scenario = ScenarioTemplate(
+                scenario_key=scenario_key,
+                title="Branch return",
+                role_scope="all",
+                scenario_kind="scenario",
+                sort_order=0,
+                trigger_mode="manual_only",
+            )
+            root_step = FlowStepTemplate(
+                flow_key=scenario_key,
+                step_key="step_one",
+                step_title="Step one",
+                sort_order=10,
+                default_text="Согласен?",
+                response_type="branching",
+                button_options="Да\nНет",
+                send_mode="immediate",
+                day_offset_workdays=0,
+            )
+            skipped_root = FlowStepTemplate(
+                flow_key=scenario_key,
+                step_key="step_two",
+                step_title="Skipped root",
+                sort_order=20,
+                default_text="Сюда не должны попасть",
+                response_type="none",
+                send_mode="immediate",
+                day_offset_workdays=0,
+            )
+            target_root = FlowStepTemplate(
+                flow_key=scenario_key,
+                step_key="step_three",
+                step_title="Merged root",
+                sort_order=30,
+                default_text="Общий поток после ветки",
+                response_type="none",
+                send_mode="immediate",
+                day_offset_workdays=0,
+            )
+            employee = Employee(
+                full_name="Tester",
+                telegram_user_id="123456789",
+                created_at=now,
+                is_flow_scheduled=False,
+                employee_stage="candidate",
+            )
+            db.add_all([scenario, root_step, skipped_root, target_root, employee])
+            db.commit()
+            db.refresh(root_step)
+            db.refresh(target_root)
+            db.refresh(employee)
+
+            branch_step = FlowStepTemplate(
+                flow_key=scenario_key,
+                step_key="step_one_branch_yes",
+                parent_step_id=root_step.id,
+                branch_option_index=0,
+                step_title="Branch yes",
+                sort_order=1001,
+                default_text="Локальная ветка",
+                response_type="none",
+                return_to_step_key=target_root.step_key,
+                send_mode="immediate",
+                day_offset_workdays=0,
+            )
+            db.add(branch_step)
+            db.commit()
+
+            messenger = FakeMessenger()
+            await send_step(messenger, db, employee, scenario, root_step)
+
+            handled = await handle_button_response(messenger, db, employee, scenario_key, root_step.step_key, 0)
+
+            self.assertTrue(handled)
+            sent_texts = [item["text"] for item in messenger.texts]
+            self.assertIn("Локальная ветка", sent_texts)
+            self.assertIn("Общий поток после ветки", sent_texts)
+            self.assertNotIn("Сюда не должны попасть", sent_texts)
 
 
 if __name__ == "__main__":

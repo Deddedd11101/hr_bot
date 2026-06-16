@@ -137,6 +137,44 @@ def get_next_step(db: Session, scenario_key: str, current_step: FlowStepTemplate
     return None
 
 
+def get_root_step_by_key(db: Session, scenario_key: str, step_key: str) -> Optional[FlowStepTemplate]:
+    return (
+        db.query(FlowStepTemplate)
+        .filter(
+            FlowStepTemplate.flow_key == scenario_key,
+            FlowStepTemplate.step_key == step_key,
+            FlowStepTemplate.parent_step_id.is_(None),
+        )
+        .first()
+    )
+
+
+def get_root_ancestor_step(db: Session, step: FlowStepTemplate | None) -> Optional[FlowStepTemplate]:
+    current = step
+    while current and current.parent_step_id is not None:
+        current = db.get(FlowStepTemplate, current.parent_step_id)
+    return current
+
+
+def resolve_branch_return_step(
+    db: Session,
+    scenario_key: str,
+    branch_step: FlowStepTemplate | None,
+) -> Optional[FlowStepTemplate]:
+    if not branch_step:
+        return None
+    target_step_key = (getattr(branch_step, "return_to_step_key", None) or "").strip()
+    if not target_step_key:
+        return None
+    target_step = get_root_step_by_key(db, scenario_key, target_step_key)
+    if not target_step:
+        return None
+    branch_root = get_root_ancestor_step(db, branch_step)
+    if branch_root and branch_root.step_key == target_step.step_key:
+        return None
+    return target_step
+
+
 def resolve_followup_step(
     db: Session,
     scenario_key: str,
@@ -151,6 +189,9 @@ def resolve_followup_step(
                 return next_chain_step
             return resolve_after_parent(db.get(FlowStepTemplate, step.parent_step_id))
         if step.parent_step_id and step.branch_option_index is not None:
+            branch_return_step = resolve_branch_return_step(db, scenario_key, step)
+            if branch_return_step:
+                return branch_return_step
             parent_step = db.get(FlowStepTemplate, step.parent_step_id)
             if not parent_step:
                 return None
@@ -169,6 +210,9 @@ def resolve_followup_step(
         return resolve_after_parent(db.get(FlowStepTemplate, current_step.parent_step_id))
 
     if current_step.parent_step_id and current_step.branch_option_index is not None:
+        branch_return_step = resolve_branch_return_step(db, scenario_key, current_step)
+        if branch_return_step:
+            return branch_return_step
         return resolve_after_parent(db.get(FlowStepTemplate, current_step.parent_step_id))
 
     return get_next_step(db, scenario_key, current_step)

@@ -259,6 +259,7 @@ def _ensure_sqlite_schema() -> None:
             "day_offset_workdays": "INTEGER NOT NULL DEFAULT 0",
             "target_field": "TEXT",
             "launch_scenario_key": "TEXT",
+            "return_to_step_key": "TEXT",
             "attachment_path": "TEXT",
             "attachment_filename": "TEXT",
             "send_employee_card": "BOOLEAN NOT NULL DEFAULT 0",

@@ -567,6 +567,11 @@ class FlowStepTemplate(Base):
         nullable=True,
         doc="Какой сценарий запускать для перехода из ветки.",
     )
+    return_to_step_key: Mapped[Optional[str]] = mapped_column(
+        String(128),
+        nullable=True,
+        doc="Ключ root-step того же сценария, к которому ветка должна вернуться после завершения.",
+    )
     attachment_path: Mapped[Optional[str]] = mapped_column(
         String(1024),
         nullable=True,
