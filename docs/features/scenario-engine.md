@@ -43,6 +43,12 @@ Scenario engine превращает scenario templates плюс employee state 
 6. Если response нужен, ждать text/file/button input и применить result к employee state.
 7. Для активного интерактивного шага runtime поддерживает default `Назад`: для text/file это reply button, для button/branching — inline button. Откат возвращает только на предыдущий интерактивный шаг в рамках текущего незавершенного сценария.
 
+## Editor guardrails
+
+- В React scenario workspace тип ответа теперь явно показывает, блокирует ли шаг поток.
+- `text`, `file`, `buttons` и `branching` считаются интерактивными: после отправки такого шага бот ждет ответ и не переходит дальше автоматически.
+- `none` не блокирует сценарий и должен использоваться для чисто информационных шагов, файлов и текстов, после которых не нужен ответ.
+
 ## Известные ограничения
 
 - Transition model к другому scenario еще не semantically clean.

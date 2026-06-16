@@ -11,6 +11,8 @@ export const FALLBACK_RESPONSE_TYPE_LABELS: Record<string, string> = {
   chain: "Цепочка шагов",
 };
 
+const INTERACTIVE_RESPONSE_TYPES = new Set(["text", "file", "buttons", "branching"]);
+
 export function payloadLabel(kind: "scenario" | "survey") {
   return kind === "survey" ? "опрос" : "сценарий";
 }
@@ -118,6 +120,25 @@ export function supportsButtonOptions(responseType: string) {
 
 export function supportsTargetField(responseType: string) {
   return responseType === "text" || responseType === "file";
+}
+
+export function responseTypeWaitState(responseType: string) {
+  if (INTERACTIVE_RESPONSE_TYPES.has(responseType)) {
+    return {
+      tone: "waiting" as const,
+      badge: "Ждёт ответ",
+      title: "Сценарий остановится на этом шаге",
+      description:
+        "После отправки бот будет ждать ответ пользователя и не пойдёт дальше, пока не получит его.",
+    };
+  }
+  return {
+    tone: "passive" as const,
+    badge: "Автопереход",
+    title: "Шаг не блокирует сценарий",
+    description:
+      "После отправки бот сам перейдёт дальше по сценарию, если не сработают отдельные условия запуска или времени.",
+  };
 }
 
 export function parseRecipientIds(value: string) {

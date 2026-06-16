@@ -3,6 +3,7 @@ import { ChevronRight, Copy, FileStack, PanelLeft, Paperclip, Plus, Trash2, X } 
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   Card,
   CardContent,
@@ -26,7 +27,7 @@ import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 
-import { buildChildContainer, crumbIcon, itemKey, parseRecipientIds, summarizeItem, workspaceItemTitle } from "./model";
+import { buildChildContainer, crumbIcon, itemKey, parseRecipientIds, responseTypeWaitState, summarizeItem, workspaceItemTitle } from "./model";
 import { NotificationRecipientsPicker, SingleSelectPicker } from "./pickers";
 import type {
   Container,
@@ -545,6 +546,11 @@ export function WorkspaceCanvasSection(props: {
                 <div className="flex items-center justify-between gap-3">
                   <div className="flex flex-wrap gap-1.5">
                     <Badge variant="secondary">{item.kind === "branch_slot" ? "Ветка" : item.response_label}</Badge>
+                    {"response_type" in item ? (
+                      <Badge variant={responseTypeWaitState(item.response_type).tone === "waiting" ? "default" : "outline"}>
+                        {responseTypeWaitState(item.response_type).badge}
+                      </Badge>
+                    ) : null}
                     {"button_options" in item && item.button_options.length ? (
                       <Badge variant="secondary">
                         {isSurveyWorkspace ? `Ответы: ${item.button_options.length}` : `Кнопки: ${item.button_options.length}`}
@@ -717,6 +723,10 @@ export function WorkspaceStepDetailPane(props: {
     const entries = (payloadWorkspace?.employee_options || []).map((option) => [String(option.id), option.label]);
     return Object.fromEntries(entries) as Record<string, string>;
   }, [payloadWorkspace]);
+  const waitState = React.useMemo(
+    () => responseTypeWaitState(form?.response_type || detailTarget?.response_type || "none"),
+    [detailTarget?.response_type, form?.response_type],
+  );
 
   const saveNotificationRule = () => {
     if (!notificationRuleEditor) return;
@@ -967,8 +977,11 @@ export function WorkspaceStepDetailPane(props: {
                 </div>
 
                 {!isSurveyWorkspace ? (
-                  <label className="grid gap-2">
-                    <span className="text-sm font-semibold text-foreground/75">Тип ответа</span>
+                  <div className="grid gap-2">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="text-sm font-semibold text-foreground/75">Тип ответа</span>
+                      <Badge variant={waitState.tone === "waiting" ? "default" : "outline"}>{waitState.badge}</Badge>
+                    </div>
                     <SingleSelectPicker
                       options={responseTypePickerOptions}
                       value={form?.response_type || "none"}
@@ -987,7 +1000,11 @@ export function WorkspaceStepDetailPane(props: {
                         )
                       }
                     />
-                  </label>
+                    <Alert className={cn("border", waitState.tone === "waiting" ? "border-primary/35 bg-primary/5" : "border-border bg-muted/40")}>
+                      <AlertTitle>{waitState.title}</AlertTitle>
+                      <AlertDescription>{waitState.description}</AlertDescription>
+                    </Alert>
+                  </div>
                 ) : null}
 
                 {isSurveyWorkspace || supportsButtonOptions(form?.response_type || "") ? (
