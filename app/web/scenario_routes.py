@@ -192,12 +192,14 @@ def update_workspace_scenario_api(
     if not scenario or scenario.scenario_kind not in {"scenario", "survey"}:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Сценарий или опрос не найден")
 
+    title = str(payload.get("title") or "").strip()
     description = str(payload.get("description") or "").strip()
     role_scope = str(payload.get("role_scope") or "").strip()
     employee_scope = str(payload.get("employee_scope") or "").strip()
     trigger_mode = str(payload.get("trigger_mode") or "").strip()
     target_employee_id = str(payload.get("target_employee_id") or "").strip()
 
+    scenario.title = title[:120] or scenario.title or "Без названия"
     scenario.description = description[:50] or None
     scenario.role_scope = role_scope if role_scope in ROLE_SCOPE_LABELS else "all"
     scenario.employee_scope = employee_scope if employee_scope in EMPLOYEE_SCOPE_LABELS else "all"

@@ -57,6 +57,7 @@ export function ScenarioWorkspacePage() {
   const [payload, setPayload] = React.useState<WorkspacePayload | null>(null);
   const [selectedScenarioId, setSelectedScenarioId] = React.useState<number | null>(initialScenarioId);
   const [search, setSearch] = React.useState("");
+  const [audienceFilter, setAudienceFilter] = React.useState<"all" | "employees" | "candidates">("all");
   const [stack, setStack] = React.useState<Container[]>([]);
   const [selectedItemKey, setSelectedItemKey] = React.useState("");
   const [form, setForm] = React.useState<null | {
@@ -235,10 +236,13 @@ export function ScenarioWorkspacePage() {
 
   const scenarios = React.useMemo(() => {
     const items = payload?.scenarios || [];
-    if (!search.trim()) return items;
-    const query = search.toLowerCase();
-    return items.filter((scenario) => `${scenario.title} ${scenario.description}`.toLowerCase().includes(query));
-  }, [payload, search]);
+    return items.filter((scenario) => {
+      const matchesAudience = audienceFilter === "all" || scenario.employee_scope === audienceFilter;
+      const matchesSearch =
+        !search.trim() || `${scenario.title} ${scenario.description}`.toLowerCase().includes(search.toLowerCase());
+      return matchesAudience && matchesSearch;
+    });
+  }, [audienceFilter, payload, search]);
 
   React.useEffect(() => {
     const availableIds = new Set((payload?.scenarios || []).map((scenario) => scenario.id));
@@ -287,6 +291,7 @@ export function ScenarioWorkspacePage() {
       return;
     }
     setScenarioSettingsForm({
+      title: scenario.title || "",
       description: scenario.description || "",
       role_scope: scenario.role_scope || "all",
       employee_scope: scenario.employee_scope || "all",
@@ -727,6 +732,7 @@ export function ScenarioWorkspacePage() {
             creatingScenario={creatingScenario}
             newScenarioTitle={newScenarioTitle}
             search={search}
+            audienceFilter={audienceFilter}
             scenarios={scenarios}
             selectedScenarioId={selectedScenarioId}
             selectedScenarioIds={selectedScenarioIds}
@@ -740,6 +746,7 @@ export function ScenarioWorkspacePage() {
               setNewScenarioTitle("");
             }}
             onSearchChange={setSearch}
+            onAudienceFilterChange={setAudienceFilter}
             onToggleSelectAllVisibleScenarios={toggleSelectAllVisibleScenarios}
             onBulkScenarioAction={handleBulkScenarioAction}
             onSelectScenario={setSelectedScenarioId}

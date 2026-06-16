@@ -42,6 +42,16 @@ Scenario engine превращает scenario templates плюс employee state 
 5. Если user response не нужен, auto-advance к следующему step или schedule follow-up delivery.
 6. Если response нужен, ждать text/file/button input и применить result к employee state.
 7. Для активного интерактивного шага runtime поддерживает default `Назад`: для text/file это reply button, для button/branching — inline button. Откат возвращает только на предыдущий интерактивный шаг в рамках текущего незавершенного сценария.
+8. Если step имеет `response_type=launch_scenario`, runtime теперь завершает текущий progress и сразу вызывает `start_scenario(...)` для `launch_scenario_key`. Раньше это работало только в branch-specific path и ломалось для обычных шагов.
+
+## Launch audit и follow-up jobs
+
+- `flow_launch_requests` используются в двух разных смыслах:
+  - operator-visible scheduled/manual launches;
+  - internal follow-up jobs для отложенного шага внутри уже идущего сценария.
+- Internal follow-up job маркируется `skip_step_key="__single_step__:<step_key>"`.
+- Эти internal jobs не должны показываться в employee list/detail как отдельные planned launches.
+- Ручной запуск сценария из карточки сотрудника больше не должен создавать дополнительный pending `manual` request ради продолжения после первого `none` step: сам `send_step(...)` уже умеет либо auto-follow, либо queue next step по normal semantics.
 
 ## Editor guardrails
 
@@ -52,8 +62,10 @@ Scenario engine превращает scenario templates плюс employee state 
 ## Известные ограничения
 
 - Transition model к другому scenario еще не semantically clean.
+- `launch_scenario` больше не зависает молча, но продуктовое правило для пустого `launch_scenario_key` все еще стоит считать editor/data-quality проблемой, а не “легальной” runtime-ситуацией.
 - Step notifications прикреплены на уровне step, button notifications — отдельно.
 - Empty или placeholder step content может утечь в user dialog, если templates смоделированы неаккуратно.
+- Attachment-only interactive steps все еще могут потребовать отдельное helper-message, потому что messenger transport пока не умеет captions + inline markup для file/photo delivery.
 - Candidate и employee behavior все еще используют один engine и data model. Это удобно, но продуктово нечисто.
 - `Назад` пока не является полноценным time-travel: он не откатывает уже совершенные side effects и не resurrect'ит сценарий, который уже был terminally completed ответом вроде отказа на consent step.
 

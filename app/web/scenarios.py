@@ -114,8 +114,6 @@ def _load_scenario_editor_data(db: Session, scenario: ScenarioTemplate):
 
 def _workspace_response_label(step: FlowStepTemplate, scenario_kind: str = "scenario") -> str:
     response_type = (step.response_type or "").strip()
-    if scenario_kind == "survey" and response_type == "text" and (step.button_options or "").strip():
-        return "Варианты ответа"
     if response_type == "buttons":
         response_type = "branching"
     extra_labels = {
@@ -328,6 +326,7 @@ def _build_scenario_workspace_payload(
                 "id": scenario.id,
                 "title": scenario.title,
                 "description": scenario.description or "",
+                "employee_scope": getattr(scenario, "employee_scope", "all"),
                 "role_scope_label": ROLE_SCOPE_LABELS.get(scenario.role_scope, scenario.role_scope),
                 "employee_scope_label": EMPLOYEE_SCOPE_LABELS.get(
                     getattr(scenario, "employee_scope", "all"),

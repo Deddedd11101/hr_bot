@@ -13,7 +13,7 @@ from app.database import SessionLocal, init_db
 from app.main import AUTH_COOKIE_NAME, app
 from app.messaging.identity import get_primary_chat_id, set_primary_chat_id
 from app.messaging.service import current_menu_set, get_or_create_employee_by_chat, handle_menu_button
-from app.scenario_engine import handle_button_response, send_step
+from app.scenario_engine import SINGLE_STEP_REQUEST_PREFIX, handle_button_response, send_step
 from app.models import (
     BotMenuButton,
     BotMenuSet,
@@ -1027,6 +1027,7 @@ class EmployeeApiSmokeTests(unittest.TestCase):
             response = self.client.post(
                 f"/api/flows/workspace/scenarios/{scenario_id}/settings",
                 json={
+                    "title": "Новый заголовок сценария",
                     "description": "x" * 60,
                     "role_scope": "analyst",
                     "employee_scope": "employees",
@@ -1037,6 +1038,7 @@ class EmployeeApiSmokeTests(unittest.TestCase):
 
             self.assertEqual(response.status_code, 200)
             scenario_payload = response.json()["payload"]["workspace"]["scenario"]
+            self.assertEqual(scenario_payload["title"], "Новый заголовок сценария")
             self.assertEqual(scenario_payload["description"], "x" * 50)
             self.assertEqual(scenario_payload["role_scope"], "analyst")
             self.assertEqual(scenario_payload["employee_scope"], "employees")
@@ -1047,6 +1049,65 @@ class EmployeeApiSmokeTests(unittest.TestCase):
                 scenario = db.get(ScenarioTemplate, scenario_id)
                 if scenario is not None:
                     db.delete(scenario)
+
+    def test_employee_apis_hide_internal_followup_launch_requests(self) -> None:
+        visible_flow_key = f"codex_visible_launch_{self.unique_tag}"
+        internal_flow_key = f"codex_internal_launch_{self.unique_tag}"
+        with SessionLocal() as db:
+            visible_scenario = ScenarioTemplate(
+                scenario_key=visible_flow_key,
+                title=f"Visible launch {self.unique_tag}",
+                sort_order=10,
+                scenario_kind="scenario",
+                role_scope="all",
+                employee_scope="all",
+                trigger_mode="manual_only",
+            )
+            internal_scenario = ScenarioTemplate(
+                scenario_key=internal_flow_key,
+                title=f"Internal launch {self.unique_tag}",
+                sort_order=20,
+                scenario_kind="scenario",
+                role_scope="all",
+                employee_scope="all",
+                trigger_mode="manual_only",
+            )
+            db.add_all([visible_scenario, internal_scenario])
+            db.flush()
+            db.add_all(
+                [
+                    FlowLaunchRequest(
+                        employee_id=self.employee_id,
+                        flow_key=visible_flow_key,
+                        requested_at=datetime(2026, 6, 1, 9, 30),
+                        processed_at=None,
+                        launch_type="scheduled",
+                        skip_step_key=None,
+                    ),
+                    FlowLaunchRequest(
+                        employee_id=self.employee_id,
+                        flow_key=internal_flow_key,
+                        requested_at=datetime(2026, 6, 1, 9, 45),
+                        processed_at=None,
+                        launch_type="scheduled",
+                        skip_step_key=f"{SINGLE_STEP_REQUEST_PREFIX}step_two",
+                    ),
+                ]
+            )
+            db.commit()
+
+        detail_response = self.client.get(f"/api/employees/{self.employee_id}")
+        list_response = self.client.get("/api/employees?list_kind=candidates")
+
+        self.assertEqual(detail_response.status_code, 200)
+        detail_payload = detail_response.json()
+        self.assertEqual(len(detail_payload["scheduled_launches"]), 1)
+        self.assertEqual(detail_payload["scheduled_launches"][0]["flow_key"], visible_flow_key)
+
+        self.assertEqual(list_response.status_code, 200)
+        list_payload = list_response.json()
+        employee_item = next(item for item in list_payload["items"] if item["id"] == self.employee_id)
+        self.assertEqual(employee_item["planned_scenario_title"], f"Visible launch {self.unique_tag}")
 
     def test_workspace_step_api_updates_button_notifications(self) -> None:
         scenario_key = f"codex_button_notify_{self.unique_tag}"
@@ -2029,7 +2090,7 @@ class EmployeeApiSmokeTests(unittest.TestCase):
             employee = db.get(Employee, self.employee_id)
             self.assertIsNotNone(employee)
             employee.employee_stage = "candidate"
-            set_primary_chat_id(employee, "123456789", db=db)
+            set_primary_chat_id(employee, f"77{self.employee_id}{int(self.unique_tag[:6], 16) % 1000000:06d}", db=db)
             menu_set = BotMenuSet(
                 title=f"codex-docs-{self.unique_tag}",
                 description="documents",
