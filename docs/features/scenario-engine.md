@@ -77,6 +77,21 @@ Scenario engine превращает scenario templates плюс employee state 
 - `text`, `file`, `buttons` и `branching` считаются интерактивными: после отправки такого шага бот ждет ответ и не переходит дальше автоматически.
 - `none` не блокирует сценарий и должен использоваться для чисто информационных шагов, файлов и текстов, после которых не нужен ответ.
 
+## Read-only graph contract
+
+- Workspace API теперь дополнительно отдает `workspace.graph` для read-only overview режима.
+- Graph не является отдельным источником истины и не должен жить по своей семантике: он строится из тех же step trees и follow-up rules, что и runtime/list view.
+- `nodes` включают реальные steps плюс служебные placeholder nodes:
+  - `branch_slot` для пустой ветки;
+  - `launch_target` для перехода в другой сценарий.
+- `edges` отражают runtime-переходы:
+  - `next` — обычный следующий шаг;
+  - `branch_option` — выбор кнопки в branching step;
+  - `chain` — вход или продолжение вложенной цепочки;
+  - `return_to_root` — merge branch обратно в root flow;
+  - `launch_scenario` — переход в другой сценарий.
+- Layout координаты backend не отдает намеренно: фронт сам раскладывает graph, чтобы не смешивать domain contract и presentation.
+
 ## Известные ограничения
 
 - Transition model к другому scenario еще не semantically clean.

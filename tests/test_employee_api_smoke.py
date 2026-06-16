@@ -1627,6 +1627,99 @@ class EmployeeApiSmokeTests(unittest.TestCase):
             self.assertIsNotNone(branch_step)
             self.assertEqual(branch_step.return_to_step_key, followup_step_key)
 
+    def test_workspace_payload_includes_read_only_graph_contract(self) -> None:
+        scenario_key = f"codex_graph_payload_{self.unique_tag}"
+        target_scenario_key = f"{scenario_key}_target"
+        with SessionLocal() as db:
+            target_scenario = ScenarioTemplate(
+                scenario_key=target_scenario_key,
+                title="Target scenario",
+                sort_order=5,
+                scenario_kind="scenario",
+                role_scope="all",
+                employee_scope="all",
+                trigger_mode="manual_only",
+            )
+            scenario = ScenarioTemplate(
+                scenario_key=scenario_key,
+                title=f"codex-graph-payload-{self.unique_tag}",
+                sort_order=10,
+                scenario_kind="scenario",
+                role_scope="all",
+                employee_scope="all",
+                trigger_mode="manual_only",
+            )
+            db.add_all([target_scenario, scenario])
+            db.flush()
+            branching_root = FlowStepTemplate(
+                flow_key=scenario_key,
+                step_key=f"{scenario_key}_step_1",
+                step_title="Root branching",
+                sort_order=10,
+                default_text="Выбери вариант",
+                response_type="branching",
+                button_options="Да\nНет",
+                send_mode="immediate",
+                day_offset_workdays=0,
+                target_field=None,
+                send_employee_card=False,
+            )
+            followup_root = FlowStepTemplate(
+                flow_key=scenario_key,
+                step_key=f"{scenario_key}_step_2",
+                step_title="Launch step",
+                sort_order=20,
+                default_text="Переходим дальше",
+                response_type="launch_scenario",
+                launch_scenario_key=target_scenario_key,
+                send_mode="immediate",
+                day_offset_workdays=0,
+                target_field=None,
+                send_employee_card=False,
+            )
+            db.add_all([branching_root, followup_root])
+            db.flush()
+            branch_step = FlowStepTemplate(
+                flow_key=scenario_key,
+                step_key=f"{scenario_key}_branch_yes",
+                parent_step_id=branching_root.id,
+                branch_option_index=0,
+                step_title="Ветка Да",
+                sort_order=1001,
+                default_text="Локальная ветка",
+                response_type="none",
+                send_mode="immediate",
+                day_offset_workdays=0,
+                target_field=None,
+                send_employee_card=False,
+                return_to_step_key=followup_root.step_key,
+            )
+            db.add(branch_step)
+            db.commit()
+            scenario_id = scenario.id
+
+        response = self.client.get(f"/api/flows/workspace?scenario_id={scenario_id}")
+
+        self.assertEqual(response.status_code, 200)
+        workspace = response.json()["workspace"]
+        graph = workspace["graph"]
+        self.assertGreaterEqual(graph["meta"]["node_count"], 5)
+        self.assertTrue(graph["meta"]["has_branching"])
+        self.assertTrue(graph["meta"]["has_return_edges"])
+        self.assertTrue(graph["meta"]["has_launch_edges"])
+        self.assertTrue(graph["meta"]["has_placeholders"])
+
+        node_kinds = {node["kind"] for node in graph["nodes"]}
+        self.assertIn("root_step", node_kinds)
+        self.assertIn("branch_step", node_kinds)
+        self.assertIn("branch_slot", node_kinds)
+        self.assertIn("launch_target", node_kinds)
+
+        branch_edges = [edge for edge in graph["edges"] if edge["kind"] == "branch_option"]
+        self.assertEqual({edge["label"] for edge in branch_edges}, {"Да", "Нет"})
+        self.assertTrue(any(edge["kind"] == "return_to_root" for edge in graph["edges"]))
+        self.assertTrue(any(edge["kind"] == "launch_scenario" for edge in graph["edges"]))
+
     def test_button_response_sends_all_notification_rules(self) -> None:
         scenario_key = f"codex_button_runtime_{self.unique_tag}"
         now = datetime.now(UTC).replace(tzinfo=None)

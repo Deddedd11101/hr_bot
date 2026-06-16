@@ -135,6 +135,7 @@ source_of_truth: true
 - `workspace`
   - `scenario`
   - `root_steps`
+  - `graph`
   - `stats`
   - label dictionaries для UI rendering
   - `employee_options`
@@ -215,6 +216,38 @@ source_of_truth: true
 | `POST` | `/api/flows/workspace/steps/{step_id}/delete` | Удалить step subtree. | Path: `step_id` | `{ message, payload, deleted_kind }` | Удаляет выбранный step и descendants | `401`, `404` |
 | `POST` | `/api/flows/workspace/steps/{step_id}/attachment` | Загрузить file attachment для step. | Multipart: `upload` | `{ message, payload, step_id }` | Сохраняет attachment на диск и обновляет `attachment_path` / `attachment_filename` | `401`, `404` |
 | `POST` | `/api/flows/workspace/steps/{step_id}/attachment/delete` | Удалить step attachment. | Path: `step_id` | `{ message, payload, step_id }` | Удаляет attachment file и очищает attachment fields | `401`, `404` |
+
+Дополнение к `workspace.graph`:
+
+- `nodes[]`
+  - `id`
+  - `step_id`
+  - `step_key`
+  - `kind = root_step | branch_step | chain_step | branch_slot | launch_target`
+  - `title`
+  - `text_preview`
+  - `response_type`
+  - `response_label`
+  - `has_attachment`
+  - `has_notifications`
+  - `waits_for_response`
+  - `send_mode`
+  - `launch_scenario_key`
+  - `is_placeholder`
+  - `is_terminal`
+- `edges[]`
+  - `id`
+  - `source`
+  - `target`
+  - `kind = next | branch_option | chain | return_to_root | launch_scenario`
+  - `label`
+- `meta`
+  - `node_count`
+  - `edge_count`
+  - `has_branching`
+  - `has_return_edges`
+  - `has_launch_edges`
+  - `has_placeholders`
 
 ## API settings workspace
 
