@@ -301,10 +301,7 @@ export function ScenarioWorkspacePage() {
     setForm({
       title: detailTarget.title || "",
       text: detailTarget.text || "",
-      response_type:
-        !isSurveyWorkspace && detailTarget.response_type === "buttons"
-          ? "branching"
-          : detailTarget.response_type || "none",
+      response_type: detailTarget.response_type || "none",
       button_options: detailTarget.button_options.join("\n"),
       send_mode: detailTarget.send_mode || "immediate",
       send_time: detailTarget.send_time || "",

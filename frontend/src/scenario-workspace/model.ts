@@ -6,6 +6,7 @@ export const FALLBACK_RESPONSE_TYPE_LABELS: Record<string, string> = {
   none: "Без ответа",
   text: "Текстовый ответ",
   file: "Загрузка файла",
+  buttons: "Выбор кнопками",
   branching: "Ветвление",
   launch_scenario: "Переход к сценарию",
   chain: "Цепочка шагов",
@@ -115,11 +116,11 @@ export function detailTargetFromItem(item: WorkspaceItem | null) {
 }
 
 export function supportsButtonOptions(responseType: string) {
-  return responseType === "branching";
+  return responseType === "buttons" || responseType === "branching";
 }
 
 export function supportsTargetField(responseType: string) {
-  return responseType === "text" || responseType === "file";
+  return responseType === "text" || responseType === "file" || responseType === "buttons";
 }
 
 export function responseTypeWaitState(responseType: string) {
