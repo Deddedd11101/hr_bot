@@ -786,28 +786,60 @@ def resolve_branch_followup_step(
     return resolve_followup_step(db, scenario_key, branch_step)
 
 
-async def send_step_attachment(messenger_or_bot: Any, chat_id: str, step: FlowStepTemplate) -> None:
+async def send_step_attachment(
+    messenger_or_bot: Any,
+    chat_id: str,
+    step: FlowStepTemplate,
+    reply_markup: Any | None = None,
+    caption: str | None = None,
+) -> bool:
     messenger = as_messenger(messenger_or_bot)
     attachment_path = (getattr(step, "attachment_path", None) or "").strip()
     if not attachment_path:
-        return
+        return False
     path = Path(attachment_path)
     if not path.exists():
-        return
+        return False
     filename = getattr(step, "attachment_filename", None) or path.name
     if path.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}:
-        await messenger.send_photo_path(chat_id=chat_id, path=path, filename=filename)
-        return
-    await messenger.send_document_path(chat_id=chat_id, path=path, filename=filename)
+        await messenger.send_photo_path(
+            chat_id=chat_id,
+            path=path,
+            filename=filename,
+            reply_markup=reply_markup,
+            caption=caption,
+        )
+        return True
+    await messenger.send_document_path(
+        chat_id=chat_id,
+        path=path,
+        filename=filename,
+        reply_markup=reply_markup,
+        caption=caption,
+    )
+    return True
 
 
-async def send_employee_card_image(messenger_or_bot: Any, chat_id: str, employee: Employee) -> None:
+async def send_employee_card_image(
+    messenger_or_bot: Any,
+    chat_id: str,
+    employee: Employee,
+    reply_markup: Any | None = None,
+    caption: str | None = None,
+) -> bool:
     messenger = as_messenger(messenger_or_bot)
     try:
         image_bytes = render_employee_card_png(employee)
     except ImportError:
-        return
-    await messenger.send_photo_bytes(chat_id=chat_id, data=image_bytes, filename=f"employee_card_{employee.id}.png")
+        return False
+    await messenger.send_photo_bytes(
+        chat_id=chat_id,
+        data=image_bytes,
+        filename=f"employee_card_{employee.id}.png",
+        reply_markup=reply_markup,
+        caption=caption,
+    )
+    return True
 
 
 async def send_step_buttons(messenger_or_bot: Any, chat_id: str, step: FlowStepTemplate) -> None:
@@ -958,28 +990,35 @@ async def send_step(
     send_employee_card = bool(getattr(step, "send_employee_card", False))
     reply_markup = step_reply_markup(step, include_back=include_back)
     back_keyboard = step_back_keyboard(step, include_back=include_back)
-    separate_inline_buttons_message = bool(
-        reply_markup
-        and (
-            not message_text.strip()
-            or has_attachment
-            or send_employee_card
-        )
-    )
+    media_can_host_inline_buttons = bool(reply_markup and (has_attachment or send_employee_card))
+    needs_fallback_inline_buttons_message = bool(reply_markup and not message_text.strip() and not media_can_host_inline_buttons)
 
     if message_text.strip():
         await messenger.send_text(
             chat_id=chat_id,
             text=message_text,
-            reply_markup=None if separate_inline_buttons_message else (reply_markup or back_keyboard),
+            reply_markup=None if media_can_host_inline_buttons else (reply_markup or back_keyboard),
         )
+    media_reply_markup = reply_markup if media_can_host_inline_buttons else None
     if send_employee_card:
-        await send_employee_card_image(messenger, chat_id, employee)
-    await send_step_attachment(messenger, chat_id, step)
-    if separate_inline_buttons_message:
+        employee_card_reply_markup = media_reply_markup if not has_attachment else None
+        await send_employee_card_image(
+            messenger,
+            chat_id,
+            employee,
+            reply_markup=employee_card_reply_markup,
+        )
+    if has_attachment:
+        await send_step_attachment(
+            messenger,
+            chat_id,
+            step,
+            reply_markup=media_reply_markup,
+        )
+    if needs_fallback_inline_buttons_message:
         await messenger.send_text(
             chat_id=chat_id,
-            text="Выберите вариант ответа:",
+            text="\u2060",
             reply_markup=reply_markup,
         )
 

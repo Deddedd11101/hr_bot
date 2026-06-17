@@ -44,14 +44,59 @@ class FakeMessenger:
     async def send_menu(self, chat_id: str, text: str, buttons: list[str]) -> None:
         self.texts.append({"chat_id": chat_id, "text": text, "buttons": buttons})
 
-    async def send_photo_path(self, chat_id: str, path, filename: str | None = None) -> None:
-        self.photos.append({"chat_id": chat_id, "path": str(path), "filename": filename})
+    async def send_photo_path(
+        self,
+        chat_id: str,
+        path,
+        filename: str | None = None,
+        reply_markup=None,
+        caption: str | None = None,
+    ) -> None:
+        self.photos.append(
+            {
+                "chat_id": chat_id,
+                "path": str(path),
+                "filename": filename,
+                "reply_markup": reply_markup,
+                "caption": caption,
+            }
+        )
 
-    async def send_photo_bytes(self, chat_id: str, data: bytes, filename: str) -> None:
-        self.photos.append({"chat_id": chat_id, "bytes": len(data), "filename": filename})
+    async def send_photo_bytes(
+        self,
+        chat_id: str,
+        data: bytes,
+        filename: str,
+        reply_markup=None,
+        caption: str | None = None,
+    ) -> None:
+        self.photos.append(
+            {
+                "chat_id": chat_id,
+                "bytes": len(data),
+                "filename": filename,
+                "reply_markup": reply_markup,
+                "caption": caption,
+            }
+        )
 
-    async def send_document_path(self, chat_id: str, path, filename: str | None = None) -> None:
-        self.documents.append({"chat_id": chat_id, "path": str(path), "filename": filename})
+    async def send_document_path(
+        self,
+        chat_id: str,
+        path,
+        filename: str | None = None,
+        reply_markup=None,
+        caption: str | None = None,
+    ) -> None:
+        self.documents.append(
+            {
+                "chat_id": chat_id,
+                "path": str(path),
+                "filename": filename,
+                "reply_markup": reply_markup,
+                "caption": caption,
+            }
+        )
 
 
 class ScenarioEngineSmokeTests(unittest.IsolatedAsyncioTestCase):
@@ -97,12 +142,57 @@ class ScenarioEngineSmokeTests(unittest.IsolatedAsyncioTestCase):
             messenger = FakeMessenger()
             await send_step(messenger, db, employee, scenario, step)
 
-            self.assertEqual(len(messenger.texts), 2)
+            self.assertEqual(len(messenger.texts), 1)
             self.assertEqual(messenger.texts[0]["text"], "Выбери вариант")
             self.assertIsNone(messenger.texts[0]["reply_markup"])
             self.assertEqual(len(messenger.documents), 1)
-            self.assertEqual(messenger.texts[1]["text"], "Выберите вариант ответа:")
-            self.assertIsNotNone(messenger.texts[1]["reply_markup"])
+            self.assertIsNotNone(messenger.documents[0]["reply_markup"])
+
+    async def test_send_step_attachment_only_buttons_uses_media_without_technical_prompt(self) -> None:
+        init_db()
+        now = datetime.now(UTC).replace(tzinfo=None)
+        scenario_key = f"test_attachment_only_buttons_{int(datetime.now(UTC).timestamp() * 1000000)}"
+
+        with tempfile.TemporaryDirectory() as tmp_dir, SessionLocal() as db:
+            attachment_path = Path(tmp_dir) / "welcome.png"
+            attachment_path.write_bytes(b"fake-image")
+            scenario = ScenarioTemplate(
+                scenario_key=scenario_key,
+                title="Attachment only buttons",
+                role_scope="all",
+                scenario_kind="scenario",
+                sort_order=0,
+                trigger_mode="manual_only",
+            )
+            step = FlowStepTemplate(
+                flow_key=scenario_key,
+                step_key="step_one",
+                step_title="Step one",
+                sort_order=10,
+                default_text="",
+                response_type="buttons",
+                button_options="Понятно",
+                send_mode="immediate",
+                day_offset_workdays=0,
+                attachment_path=str(attachment_path),
+                attachment_filename="welcome.png",
+            )
+            employee = Employee(
+                full_name="Tester",
+                telegram_user_id="123456789",
+                created_at=now,
+                is_flow_scheduled=False,
+                employee_stage="candidate",
+            )
+            db.add_all([scenario, step, employee])
+            db.commit()
+
+            messenger = FakeMessenger()
+            await send_step(messenger, db, employee, scenario, step)
+
+            self.assertEqual(len(messenger.texts), 0)
+            self.assertEqual(len(messenger.photos), 1)
+            self.assertIsNotNone(messenger.photos[0]["reply_markup"])
 
     async def test_send_step_attachment_uses_photo_for_image_files(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
