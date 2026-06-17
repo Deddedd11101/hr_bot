@@ -345,7 +345,7 @@ def update_workspace_step_api(
     if not scenario:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Сценарий не найден")
 
-    _apply_workspace_step_update(step, payload, scenario.scenario_kind)
+    _apply_workspace_step_update(db, step, payload, scenario.scenario_kind)
     _sync_workspace_button_notifications(db, step, payload, scenario.scenario_kind)
     _sync_workspace_step_send_notifications(db, step, payload, scenario.scenario_kind)
     db.commit()
@@ -1865,5 +1865,4 @@ def export_survey_results(
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f'attachment; filename=\"{filename}\"'},
     )
-
 

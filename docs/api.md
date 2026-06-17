@@ -135,6 +135,7 @@ source_of_truth: true
 - `workspace`
   - `scenario`
   - `root_steps`
+  - `graph`
   - `stats`
   - label dictionaries для UI rendering
   - `employee_options`
@@ -207,7 +208,7 @@ source_of_truth: true
 | `POST` | `/api/flows/workspace/scenarios/reorder` | Сохранить sidebar order сценариев/опросов. | JSON: `scenario_ids[]`, optional `kind=scenario\|survey` | `{ message, payload }` | Перезаписывает `sort_order` выбранных items внутри kind | `401`, `400` если список пустой |
 | `POST` | `/api/flows/workspace/scenarios/bulk-copy` | Скопировать один или несколько scenarios/surveys. | JSON: `scenario_ids[]`, optional `kind=scenario\|survey` | `{ message, payload }` | Дублирует items и step trees внутри kind | `401`, `400`, `404` |
 | `POST` | `/api/flows/workspace/scenarios/bulk-delete` | Удалить один или несколько scenarios/surveys. | JSON: `scenario_ids[]`, optional `kind=scenario\|survey` | `{ message, payload }` | Удаляет items и dependent step trees внутри kind | `401`, `400`, `404` |
-| `POST` | `/api/flows/workspace/steps/{step_id}` | Обновить один workspace node. | JSON fields: `title`, `text`, `response_type`, `button_options`, `send_mode`, `send_time`, `target_field`, `launch_scenario_key`, `send_employee_card`, `notify_on_send_text`, `notify_on_send_recipient_ids`, `notify_on_send_recipient_scope` | `{ message, payload, step_id }` | Обновляет одну `flow_step_templates` строку и related notification fields | `401`, `404` |
+| `POST` | `/api/flows/workspace/steps/{step_id}` | Обновить один workspace node. | JSON fields: `title`, `text`, `response_type`, `button_options`, `send_mode`, `send_time`, `target_field`, `launch_scenario_key`, `return_to_step_key`, `send_employee_card`, `notify_on_send_text`, `notify_on_send_recipient_ids`, `notify_on_send_recipient_scope` | `{ message, payload, step_id }` | Обновляет одну `flow_step_templates` строку и related notification fields; для branch-step может сохранить возврат в root-step того же сценария | `401`, `404` |
 | `POST` | `/api/flows/workspace/scenarios/{scenario_id}/steps` | Создать новый root step. | JSON: optional `title` | `{ message, payload, step_id }` | Inserts root `flow_step_templates` row | `401`, `404` |
 | `POST` | `/api/flows/workspace/scenarios/{scenario_id}/steps/reorder` | Сохранить root-step order. | JSON: `step_ids[]` | `{ message, payload }` | Перезаписывает `sort_order` root steps | `401`, `404`, `400` |
 | `POST` | `/api/flows/workspace/steps/{step_id}/branches` | Создать branch step для branching node. | JSON: `option_index` | `{ message, payload, step_id }` | Inserts branch child step, если его еще нет | `401`, `404`, `400` если parent не branching или option invalid |
@@ -215,6 +216,38 @@ source_of_truth: true
 | `POST` | `/api/flows/workspace/steps/{step_id}/delete` | Удалить step subtree. | Path: `step_id` | `{ message, payload, deleted_kind }` | Удаляет выбранный step и descendants | `401`, `404` |
 | `POST` | `/api/flows/workspace/steps/{step_id}/attachment` | Загрузить file attachment для step. | Multipart: `upload` | `{ message, payload, step_id }` | Сохраняет attachment на диск и обновляет `attachment_path` / `attachment_filename` | `401`, `404` |
 | `POST` | `/api/flows/workspace/steps/{step_id}/attachment/delete` | Удалить step attachment. | Path: `step_id` | `{ message, payload, step_id }` | Удаляет attachment file и очищает attachment fields | `401`, `404` |
+
+Дополнение к `workspace.graph`:
+
+- `nodes[]`
+  - `id`
+  - `step_id`
+  - `step_key`
+  - `kind = root_step | branch_step | chain_step | branch_slot | launch_target`
+  - `title`
+  - `text_preview`
+  - `response_type`
+  - `response_label`
+  - `has_attachment`
+  - `has_notifications`
+  - `waits_for_response`
+  - `send_mode`
+  - `launch_scenario_key`
+  - `is_placeholder`
+  - `is_terminal`
+- `edges[]`
+  - `id`
+  - `source`
+  - `target`
+  - `kind = next | branch_option | chain | return_to_root | launch_scenario`
+  - `label`
+- `meta`
+  - `node_count`
+  - `edge_count`
+  - `has_branching`
+  - `has_return_edges`
+  - `has_launch_edges`
+  - `has_placeholders`
 
 ## API settings workspace
 

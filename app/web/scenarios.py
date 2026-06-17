@@ -2,7 +2,7 @@ import shutil
 from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 from uuid import uuid4
 
 from fastapi import UploadFile
@@ -29,6 +29,7 @@ from ..models import (
     StepSendNotification,
     SurveyAnswer,
 )
+from ..scenario_engine import resolve_followup_step
 from .employees import OFFER_DOCUMENT_TITLE, _all_employee_options
 
 
@@ -167,6 +168,34 @@ def _workspace_response_type_labels() -> dict[str, str]:
     return labels
 
 
+def _resolve_branch_return_to_step_key(db: Session, step: FlowStepTemplate, raw_value: str) -> Optional[str]:
+    if step.parent_step_id is None or step.branch_option_index is None:
+        return None
+    normalized = (raw_value or "").strip()
+    if not normalized:
+        return None
+    target_step = (
+        db.query(FlowStepTemplate)
+        .filter(
+            FlowStepTemplate.flow_key == step.flow_key,
+            FlowStepTemplate.step_key == normalized,
+            FlowStepTemplate.parent_step_id.is_(None),
+        )
+        .first()
+    )
+    if not target_step:
+        return None
+    current = step
+    while current.parent_step_id is not None:
+        parent_step = db.get(FlowStepTemplate, current.parent_step_id)
+        if not parent_step:
+            break
+        current = parent_step
+    if current.step_key == target_step.step_key:
+        return None
+    return target_step.step_key
+
+
 def _generate_workspace_scenario_key(kind: str = "scenario") -> str:
     return f"{kind}_{uuid4().hex[:12]}"
 
@@ -211,6 +240,269 @@ def _workspace_text_preview(step: FlowStepTemplate) -> str:
     if len(raw) <= 180:
         return raw
     return f"{raw[:177].rstrip()}..."
+
+
+def _workspace_graph_node_id(step_id: int) -> str:
+    return f"step:{step_id}"
+
+
+def _workspace_graph_launch_node_id(source_step_id: int, scenario_key: str) -> str:
+    return f"launch:{source_step_id}:{scenario_key}"
+
+
+def _workspace_graph_branch_slot_node_id(parent_step_id: int, option_index: int) -> str:
+    return f"branch-slot:{parent_step_id}:{option_index}"
+
+
+def _workspace_graph_waits_for_response(response_type: str) -> bool:
+    return response_type in {"text", "file", "buttons", "branching"}
+
+
+def _flatten_workspace_graph_steps(root_steps: list[dict[str, Any]]) -> tuple[dict[int, dict[str, Any]], list[dict[str, Any]]]:
+    steps_by_id: dict[int, dict[str, Any]] = {}
+    empty_branch_slots: list[dict[str, Any]] = []
+
+    def visit_step(step_payload: dict[str, Any]) -> None:
+        step_id = int(step_payload["id"])
+        steps_by_id[step_id] = step_payload
+        for branch_item in step_payload.get("branch_items", []):
+            branch_step = branch_item.get("step")
+            if branch_step:
+                visit_step(branch_step)
+            else:
+                empty_branch_slots.append(
+                    {
+                        "parent_step_id": step_id,
+                        "option_index": int(branch_item["option_index"]),
+                        "label": branch_item.get("label", ""),
+                    }
+                )
+        for child_step in step_payload.get("chain_steps", []):
+            visit_step(child_step)
+
+    for root_step in root_steps:
+        visit_step(root_step)
+    return steps_by_id, empty_branch_slots
+
+
+def _workspace_graph_branch_ancestor(db: Session, step: FlowStepTemplate) -> FlowStepTemplate | None:
+    current = step
+    while current.parent_step_id is not None:
+        parent_step = db.get(FlowStepTemplate, current.parent_step_id)
+        if not parent_step:
+            return None
+        if parent_step.branch_option_index is not None:
+            return parent_step
+        current = parent_step
+    return None
+
+
+def _workspace_graph_follow_edge_kind(
+    db: Session,
+    step: FlowStepTemplate,
+    followup_step: FlowStepTemplate,
+) -> str:
+    if followup_step.parent_step_id == step.id and followup_step.branch_option_index is None:
+        return "chain"
+    branch_ancestor = step if step.branch_option_index is not None else _workspace_graph_branch_ancestor(db, step)
+    if branch_ancestor and (branch_ancestor.return_to_step_key or "").strip() == followup_step.step_key:
+        return "return_to_root"
+    return "next"
+
+
+def _workspace_graph_node_from_step(
+    step_payload: dict[str, Any],
+    actual_step: FlowStepTemplate,
+) -> dict[str, Any]:
+    has_button_rules = any(item.get("rules") for item in step_payload.get("button_notifications", []))
+    return {
+        "id": _workspace_graph_node_id(actual_step.id),
+        "step_id": actual_step.id,
+        "step_key": actual_step.step_key,
+        "kind": "root_step" if actual_step.parent_step_id is None else ("branch_step" if actual_step.branch_option_index is not None else "chain_step"),
+        "title": step_payload.get("title", "") or "Без названия",
+        "text_preview": step_payload.get("text_preview", "") or "",
+        "response_type": step_payload.get("response_type", "none") or "none",
+        "response_label": step_payload.get("response_label", "") or "",
+        "has_attachment": bool(step_payload.get("has_attachment")),
+        "has_notifications": bool(step_payload.get("notify_on_send")) or has_button_rules,
+        "waits_for_response": _workspace_graph_waits_for_response(str(step_payload.get("response_type") or "none")),
+        "send_mode": step_payload.get("send_mode", "immediate") or "immediate",
+        "launch_scenario_key": step_payload.get("launch_scenario_key", "") or "",
+        "is_placeholder": False,
+        "is_terminal": False,
+    }
+
+
+def _workspace_graph_slot_node(
+    parent_step_id: int,
+    option_index: int,
+    label: str,
+) -> dict[str, Any]:
+    return {
+        "id": _workspace_graph_branch_slot_node_id(parent_step_id, option_index),
+        "step_id": None,
+        "step_key": "",
+        "kind": "branch_slot",
+        "title": label or f"Ветка {option_index + 1}",
+        "text_preview": "Ветка ещё не создана.",
+        "response_type": "none",
+        "response_label": "Пустая ветка",
+        "has_attachment": False,
+        "has_notifications": False,
+        "waits_for_response": False,
+        "send_mode": "immediate",
+        "launch_scenario_key": "",
+        "is_placeholder": True,
+        "is_terminal": False,
+    }
+
+
+def _workspace_graph_launch_node(
+    source_step_id: int,
+    scenario_key: str,
+    available_titles: dict[str, str],
+) -> dict[str, Any]:
+    return {
+        "id": _workspace_graph_launch_node_id(source_step_id, scenario_key),
+        "step_id": None,
+        "step_key": scenario_key,
+        "kind": "launch_target",
+        "title": available_titles.get(scenario_key, scenario_key or "Целевой сценарий"),
+        "text_preview": "Переход к другому сценарию.",
+        "response_type": "launch_scenario",
+        "response_label": "Переход к сценарию",
+        "has_attachment": False,
+        "has_notifications": False,
+        "waits_for_response": False,
+        "send_mode": "immediate",
+        "launch_scenario_key": scenario_key,
+        "is_placeholder": True,
+        "is_terminal": True,
+    }
+
+
+def _build_workspace_graph(
+    db: Session,
+    scenario: ScenarioTemplate,
+    root_steps: list[dict[str, Any]],
+    editor_data: dict[str, Any],
+) -> dict[str, Any]:
+    serialized_by_id, empty_branch_slots = _flatten_workspace_graph_steps(root_steps)
+    raw_steps_by_id: dict[int, FlowStepTemplate] = {}
+    for root_step in editor_data["steps"]:
+        raw_steps_by_id[root_step.id] = root_step
+    for child_steps in editor_data["branch_steps_by_parent"].values():
+        for child_step in child_steps:
+            raw_steps_by_id[child_step.id] = child_step
+    for child_steps in editor_data["chain_steps_by_parent"].values():
+        for child_step in child_steps:
+            raw_steps_by_id[child_step.id] = child_step
+
+    available_titles = {item.scenario_key: item.title for item in editor_data["available_scenarios"]}
+    nodes: list[dict[str, Any]] = []
+    edges: list[dict[str, Any]] = []
+    outgoing_edges: defaultdict[str, int] = defaultdict(int)
+    added_node_ids: set[str] = set()
+    added_edge_ids: set[str] = set()
+
+    def add_node(node: dict[str, Any]) -> None:
+        node_id = str(node["id"])
+        if node_id in added_node_ids:
+            return
+        added_node_ids.add(node_id)
+        nodes.append(node)
+
+    def add_edge(source: str, target: str, kind: str, label: str = "") -> None:
+        edge_id = f"{kind}:{source}:{target}:{label}"
+        if edge_id in added_edge_ids:
+            return
+        added_edge_ids.add(edge_id)
+        edges.append(
+            {
+                "id": edge_id,
+                "source": source,
+                "target": target,
+                "kind": kind,
+                "label": label,
+            }
+        )
+        outgoing_edges[source] += 1
+
+    for step_id, actual_step in raw_steps_by_id.items():
+        serialized_step = serialized_by_id.get(step_id)
+        if not serialized_step:
+            continue
+        add_node(_workspace_graph_node_from_step(serialized_step, actual_step))
+
+    for slot in empty_branch_slots:
+        add_node(
+            _workspace_graph_slot_node(
+                slot["parent_step_id"],
+                slot["option_index"],
+                slot["label"],
+            )
+        )
+
+    for step_id, actual_step in raw_steps_by_id.items():
+        serialized_step = serialized_by_id.get(step_id)
+        if not serialized_step:
+            continue
+        source_id = _workspace_graph_node_id(step_id)
+        if actual_step.response_type == "branching":
+            existing_branch_steps = {
+                child.branch_option_index: child
+                for child in editor_data["branch_steps_by_parent"].get(actual_step.id, [])
+                if child.branch_option_index is not None
+            }
+            for option_index, label in enumerate(serialized_step.get("button_options", [])):
+                branch_step = existing_branch_steps.get(option_index)
+                if branch_step is not None:
+                    add_edge(
+                        source_id,
+                        _workspace_graph_node_id(branch_step.id),
+                        "branch_option",
+                        label,
+                    )
+                else:
+                    slot_id = _workspace_graph_branch_slot_node_id(actual_step.id, option_index)
+                    add_edge(source_id, slot_id, "branch_option", label)
+                    fallback_step = resolve_followup_step(db, scenario.scenario_key, actual_step)
+                    if fallback_step:
+                        add_edge(slot_id, _workspace_graph_node_id(fallback_step.id), "next")
+            continue
+
+        if actual_step.response_type == "launch_scenario" and (actual_step.launch_scenario_key or "").strip():
+            launch_key = actual_step.launch_scenario_key.strip()
+            launch_node = _workspace_graph_launch_node(actual_step.id, launch_key, available_titles)
+            add_node(launch_node)
+            add_edge(source_id, launch_node["id"], "launch_scenario", launch_node["title"])
+            continue
+
+        followup_step = resolve_followup_step(db, scenario.scenario_key, actual_step)
+        if not followup_step:
+            continue
+        add_edge(
+            source_id,
+            _workspace_graph_node_id(followup_step.id),
+            _workspace_graph_follow_edge_kind(db, actual_step, followup_step),
+        )
+
+    for node in nodes:
+        node["is_terminal"] = bool(node.get("is_terminal")) or outgoing_edges.get(str(node["id"]), 0) == 0
+
+    return {
+        "nodes": nodes,
+        "edges": edges,
+        "meta": {
+            "node_count": len(nodes),
+            "edge_count": len(edges),
+            "has_branching": any(edge["kind"] == "branch_option" for edge in edges),
+            "has_return_edges": any(edge["kind"] == "return_to_root" for edge in edges),
+            "has_launch_edges": any(edge["kind"] == "launch_scenario" for edge in edges),
+            "has_placeholders": any(node["is_placeholder"] for node in nodes),
+        },
+    }
 
 
 def _serialize_workspace_step(
@@ -295,6 +587,7 @@ def _serialize_workspace_step(
 
     return {
         "id": step.id,
+        "step_key": step.step_key,
         "kind": _workspace_node_kind(step),
         "title": step.step_title,
         "text": (step.custom_text or "").strip() if (step.custom_text or "").strip() else (step.default_text or ""),
@@ -312,6 +605,7 @@ def _serialize_workspace_step(
         "target_field": step.target_field or "",
         "target_field_label": TARGET_FIELD_LABELS.get(step.target_field or "", "Не сохранять"),
         "launch_scenario_key": step.launch_scenario_key or "",
+        "return_to_step_key": getattr(step, "return_to_step_key", None) or "",
         "notify_on_send": bool(
             step_send_rules
             or
@@ -394,6 +688,7 @@ def _build_scenario_workspace_payload(
             )
             for step in editor_data["steps"]
         ]
+        workspace_graph = _build_workspace_graph(db, selected_scenario, root_steps, editor_data)
         workspace = {
             "scenario": {
                 "id": selected_scenario.id,
@@ -414,6 +709,7 @@ def _build_scenario_workspace_payload(
                 "scenario_kind": kind,
             },
             "root_steps": root_steps,
+            "graph": workspace_graph,
             "stats": {
                 "steps_count": len(root_steps),
             },
@@ -453,7 +749,7 @@ def _normalize_workspace_response_type(value: str, step: FlowStepTemplate) -> st
     return normalized if normalized in allowed else (step.response_type or "none")
 
 
-def _apply_workspace_step_update(step: FlowStepTemplate, payload: dict, scenario_kind: str = "scenario"):
+def _apply_workspace_step_update(db: Session, step: FlowStepTemplate, payload: dict, scenario_kind: str = "scenario"):
     if scenario_kind == "survey":
         question = (
             str(payload.get("text") or "").strip()
@@ -473,6 +769,7 @@ def _apply_workspace_step_update(step: FlowStepTemplate, payload: dict, scenario
         step.send_time = None
         step.target_field = None
         step.launch_scenario_key = None
+        step.return_to_step_key = None
         step.send_employee_card = False
         step.notify_on_send_text = None
         step.notify_on_send_recipient_ids = None
@@ -495,6 +792,11 @@ def _apply_workspace_step_update(step: FlowStepTemplate, payload: dict, scenario
         str(payload.get("launch_scenario_key") or "").strip() or None
         if step.response_type == "launch_scenario"
         else None
+    )
+    step.return_to_step_key = _resolve_branch_return_to_step_key(
+        db,
+        step,
+        str(payload.get("return_to_step_key") or ""),
     )
     step.send_employee_card = str(payload.get("send_employee_card") or "").strip().lower() in {"1", "true", "yes", "on"}
     step.notify_on_send_text = str(payload.get("notify_on_send_text") or "").strip() or None
@@ -814,6 +1116,7 @@ def _copy_template_entity(db: Session, scenario: ScenarioTemplate) -> ScenarioTe
             day_offset_workdays=original_step.day_offset_workdays,
             target_field=original_step.target_field,
             launch_scenario_key=original_step.launch_scenario_key,
+            return_to_step_key=getattr(original_step, "return_to_step_key", None),
             send_employee_card=getattr(original_step, "send_employee_card", False),
             notify_on_send_text=getattr(original_step, "notify_on_send_text", None),
             notify_on_send_recipient_ids=getattr(original_step, "notify_on_send_recipient_ids", None),

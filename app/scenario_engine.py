@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import html
+import json
 import re
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
@@ -137,6 +138,44 @@ def get_next_step(db: Session, scenario_key: str, current_step: FlowStepTemplate
     return None
 
 
+def get_root_step_by_key(db: Session, scenario_key: str, step_key: str) -> Optional[FlowStepTemplate]:
+    return (
+        db.query(FlowStepTemplate)
+        .filter(
+            FlowStepTemplate.flow_key == scenario_key,
+            FlowStepTemplate.step_key == step_key,
+            FlowStepTemplate.parent_step_id.is_(None),
+        )
+        .first()
+    )
+
+
+def get_root_ancestor_step(db: Session, step: FlowStepTemplate | None) -> Optional[FlowStepTemplate]:
+    current = step
+    while current and current.parent_step_id is not None:
+        current = db.get(FlowStepTemplate, current.parent_step_id)
+    return current
+
+
+def resolve_branch_return_step(
+    db: Session,
+    scenario_key: str,
+    branch_step: FlowStepTemplate | None,
+) -> Optional[FlowStepTemplate]:
+    if not branch_step:
+        return None
+    target_step_key = (getattr(branch_step, "return_to_step_key", None) or "").strip()
+    if not target_step_key:
+        return None
+    target_step = get_root_step_by_key(db, scenario_key, target_step_key)
+    if not target_step:
+        return None
+    branch_root = get_root_ancestor_step(db, branch_step)
+    if branch_root and branch_root.step_key == target_step.step_key:
+        return None
+    return target_step
+
+
 def resolve_followup_step(
     db: Session,
     scenario_key: str,
@@ -151,6 +190,9 @@ def resolve_followup_step(
                 return next_chain_step
             return resolve_after_parent(db.get(FlowStepTemplate, step.parent_step_id))
         if step.parent_step_id and step.branch_option_index is not None:
+            branch_return_step = resolve_branch_return_step(db, scenario_key, step)
+            if branch_return_step:
+                return branch_return_step
             parent_step = db.get(FlowStepTemplate, step.parent_step_id)
             if not parent_step:
                 return None
@@ -169,6 +211,9 @@ def resolve_followup_step(
         return resolve_after_parent(db.get(FlowStepTemplate, current_step.parent_step_id))
 
     if current_step.parent_step_id and current_step.branch_option_index is not None:
+        branch_return_step = resolve_branch_return_step(db, scenario_key, current_step)
+        if branch_return_step:
+            return branch_return_step
         return resolve_after_parent(db.get(FlowStepTemplate, current_step.parent_step_id))
 
     return get_next_step(db, scenario_key, current_step)
@@ -254,6 +299,7 @@ def get_or_create_progress(db: Session, employee_id: int, scenario_key: str) -> 
         scenario_key=scenario_key,
         current_step_key=None,
         step_history=None,
+        response_undo_history=None,
         waiting_for_response=False,
         is_completed=False,
         started_at=now,
@@ -270,6 +316,7 @@ def reset_progress(db: Session, employee_id: int, scenario_key: str) -> Scenario
     progress = get_or_create_progress(db, employee_id, scenario_key)
     progress.current_step_key = None
     progress.step_history = None
+    progress.response_undo_history = None
     progress.waiting_for_response = False
     progress.is_completed = False
     progress.started_at = now
@@ -332,6 +379,136 @@ def _deserialize_step_history(progress: ScenarioProgress) -> list[str]:
 def _serialize_step_history(progress: ScenarioProgress, history: list[str]) -> None:
     normalized = [item.strip() for item in history if item and item.strip()]
     progress.step_history = "\n".join(normalized) if normalized else None
+
+
+def _deserialize_response_undo_history(progress: ScenarioProgress) -> list[dict[str, Any]]:
+    raw_value = (getattr(progress, "response_undo_history", None) or "").strip()
+    if not raw_value:
+        return []
+    try:
+        payload = json.loads(raw_value)
+    except json.JSONDecodeError:
+        return []
+    if not isinstance(payload, list):
+        return []
+    return [item for item in payload if isinstance(item, dict)]
+
+
+def _serialize_response_undo_history(progress: ScenarioProgress, history: list[dict[str, Any]]) -> None:
+    progress.response_undo_history = json.dumps(history, ensure_ascii=False) if history else None
+
+
+def _get_latest_survey_answer(
+    db: Session,
+    employee: Employee,
+    scenario: ScenarioTemplate,
+    step: FlowStepTemplate,
+) -> SurveyAnswer | None:
+    if not is_survey(scenario):
+        return None
+    return (
+        db.query(SurveyAnswer)
+        .filter(
+            SurveyAnswer.employee_id == employee.id,
+            SurveyAnswer.scenario_key == scenario.scenario_key,
+            SurveyAnswer.step_key == step.step_key,
+        )
+        .order_by(SurveyAnswer.id.desc())
+        .first()
+    )
+
+
+def _capture_response_undo_snapshot(
+    db: Session,
+    employee: Employee,
+    scenario: ScenarioTemplate,
+    step: FlowStepTemplate,
+    uploaded_file: EmployeeFile | None = None,
+) -> dict[str, Any]:
+    employee_before: dict[str, Any] = {
+        "candidate_status": employee.candidate_status,
+    }
+    target_field = (step.target_field or "").strip()
+    if target_field and hasattr(employee, target_field):
+        employee_before[target_field] = getattr(employee, target_field)
+    if scenario.scenario_key == RECRUITMENT_SCENARIO_KEY and step.response_type == "branching":
+        employee_before["employee_stage"] = employee.employee_stage
+    survey_answer = _get_latest_survey_answer(db, employee, scenario, step)
+    survey_before: dict[str, Any] | None = None
+    if is_survey(scenario):
+        survey_before = {
+            "existed": survey_answer is not None,
+            "answer_value": survey_answer.answer_value if survey_answer else None,
+            "file_name": survey_answer.file_name if survey_answer else None,
+        }
+    file_before: dict[str, Any] | None = None
+    if uploaded_file is not None:
+        file_before = {
+            "id": uploaded_file.id,
+            "stored_path": uploaded_file.stored_path,
+        }
+    return {
+        "step_key": step.step_key,
+        "employee_before": employee_before,
+        "survey_before": survey_before,
+        "file_before": file_before,
+    }
+
+
+def _restore_response_undo_snapshot(
+    db: Session,
+    employee: Employee,
+    scenario: ScenarioTemplate,
+    step: FlowStepTemplate,
+    snapshot: dict[str, Any],
+) -> None:
+    employee_before = snapshot.get("employee_before")
+    if isinstance(employee_before, dict):
+        for field_name, previous_value in employee_before.items():
+            if hasattr(employee, field_name):
+                setattr(employee, field_name, previous_value)
+
+    survey_before = snapshot.get("survey_before")
+    if isinstance(survey_before, dict) and is_survey(scenario):
+        current_answer = _get_latest_survey_answer(db, employee, scenario, step)
+        existed_before = bool(survey_before.get("existed"))
+        if not existed_before:
+            if current_answer is not None:
+                db.delete(current_answer)
+        elif current_answer is not None:
+            current_answer.answer_value = survey_before.get("answer_value")
+            current_answer.file_name = survey_before.get("file_name")
+            current_answer.answered_at = utc_now()
+
+    file_before = snapshot.get("file_before")
+    if isinstance(file_before, dict):
+        file_id = file_before.get("id")
+        db_file = db.get(EmployeeFile, file_id) if file_id is not None else None
+        if db_file is not None:
+            path_value = (db_file.stored_path or "").strip()
+            if path_value:
+                path = Path(path_value)
+                if path.exists():
+                    try:
+                        path.unlink()
+                    except OSError:
+                        pass
+            db.delete(db_file)
+
+
+def _push_response_undo_snapshot(progress: ScenarioProgress, snapshot: dict[str, Any]) -> None:
+    history = _deserialize_response_undo_history(progress)
+    history.append(snapshot)
+    _serialize_response_undo_history(progress, history)
+
+
+def _pop_response_undo_snapshot(progress: ScenarioProgress) -> dict[str, Any] | None:
+    history = _deserialize_response_undo_history(progress)
+    if not history:
+        return None
+    snapshot = history.pop()
+    _serialize_response_undo_history(progress, history)
+    return snapshot
 
 
 def progress_has_back_step(progress: ScenarioProgress | None) -> bool:
@@ -902,10 +1079,13 @@ async def handle_text_response(messenger_or_bot: Any, db: Session, employee: Emp
     step = get_step_by_key(db, scenario.scenario_key, progress.current_step_key)
     if not step or step.response_type != "text":
         return False
+    undo_snapshot = _capture_response_undo_snapshot(db, employee, scenario, step)
     store_survey_answer(db, employee, scenario, step, message.text)
     if not apply_response_to_employee(db, employee, step, message.text):
+        _restore_response_undo_snapshot(db, employee, scenario, step, undo_snapshot)
         return False
     employee.candidate_status = step.step_key
+    _push_response_undo_snapshot(progress, undo_snapshot)
     db.commit()
     await advance_after_response(messenger_or_bot, db, employee, scenario, step)
     return True
@@ -929,8 +1109,10 @@ async def handle_button_response(messenger_or_bot: Any, db: Session, employee: E
     if option_index < 0 or option_index >= len(options):
         return False
     selected_value = options[option_index]
+    undo_snapshot = _capture_response_undo_snapshot(db, employee, scenario, step)
     store_survey_answer(db, employee, scenario, step, selected_value)
     if not apply_response_to_employee(db, employee, step, selected_value):
+        _restore_response_undo_snapshot(db, employee, scenario, step, undo_snapshot)
         return False
     apply_status_from_recruitment_choice(db, employee, scenario, step, selected_value)
     button_notifications = get_button_notifications(db, step.id, option_index)
@@ -945,6 +1127,7 @@ async def handle_button_response(messenger_or_bot: Any, db: Session, employee: E
             step.send_time,
         )
     employee.candidate_status = step.step_key
+    _push_response_undo_snapshot(progress, undo_snapshot)
     db.commit()
     if step.target_field in {"personal_data_consent", "employee_data_consent"} and not getattr(employee, step.target_field):
         progress.waiting_for_response = False
@@ -1012,12 +1195,15 @@ async def handle_file_response(
     step = get_step_by_key(db, scenario.scenario_key, progress.current_step_key)
     if not step or step.response_type != "file":
         return False
+    undo_snapshot = _capture_response_undo_snapshot(db, employee, scenario, step, uploaded_file)
     store_survey_answer(db, employee, scenario, step, uploaded_file.original_filename, uploaded_file.original_filename)
     if step.target_field == "resume":
         uploaded_file.category = "resume"
     if not apply_response_to_employee(db, employee, step, uploaded_file.original_filename, uploaded_file):
+        _restore_response_undo_snapshot(db, employee, scenario, step, undo_snapshot)
         return False
     employee.candidate_status = step.step_key
+    _push_response_undo_snapshot(progress, undo_snapshot)
     db.commit()
     await advance_after_response(messenger_or_bot, db, employee, scenario, step)
     return True
@@ -1033,6 +1219,12 @@ async def handle_back_response(messenger_or_bot: Any, db: Session, employee: Emp
     scenario = db.query(ScenarioTemplate).filter(ScenarioTemplate.scenario_key == progress.scenario_key).first()
     if not scenario:
         return False
+
+    undo_snapshot = _pop_response_undo_snapshot(progress)
+    undo_step_key = (undo_snapshot or {}).get("step_key") if isinstance(undo_snapshot, dict) else None
+    undo_step = get_step_by_key(db, scenario.scenario_key, undo_step_key) if undo_step_key else None
+    if undo_snapshot and undo_step:
+        _restore_response_undo_snapshot(db, employee, scenario, undo_step, undo_snapshot)
 
     history = _deserialize_step_history(progress)
     previous_step: Optional[FlowStepTemplate] = None

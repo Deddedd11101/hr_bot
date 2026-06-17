@@ -26,11 +26,12 @@ import {
   WorkspaceStepDetailPane,
 } from "./sections";
 import type {
-  WorkspaceButtonNotification,
   Container,
   ScenarioSettingsForm,
   SingleOption,
+  WorkspaceButtonNotification,
   WorkspacePayload,
+  WorkspaceRootStepOption,
   WorkspaceStepSendNotificationRule,
 } from "./types";
 
@@ -70,6 +71,7 @@ export function ScenarioWorkspacePage() {
     send_time: string;
     target_field: string;
     launch_scenario_key: string;
+    return_to_step_key: string;
     send_employee_card: boolean;
     notify_on_send_text: string;
     notify_on_send_recipient_ids: string;
@@ -151,6 +153,16 @@ export function ScenarioWorkspacePage() {
     () => [
       { value: "", label: "Не выполнять переход" },
       ...((payload?.workspace?.available_scenarios || []).map((option) => ({ value: option.value, label: option.label })) as SingleOption[]),
+    ],
+    [payload],
+  );
+  const rootStepOptions = React.useMemo<WorkspaceRootStepOption[]>(
+    () => [
+      { value: "", label: "Не возвращать в основной поток" },
+      ...((payload?.workspace?.root_steps || []).map((step) => ({
+        value: step.step_key,
+        label: step.title || step.text_preview || `Шаг ${step.id}`,
+      })) as WorkspaceRootStepOption[]),
     ],
     [payload],
   );
@@ -298,6 +310,7 @@ export function ScenarioWorkspacePage() {
       send_time: detailTarget.send_time || "",
       target_field: detailTarget.target_field || "",
       launch_scenario_key: detailTarget.launch_scenario_key || "",
+      return_to_step_key: detailTarget.return_to_step_key || "",
       send_employee_card: Boolean(detailTarget.send_employee_card),
       notify_on_send_text: detailTarget.notify_on_send_text || "",
       notify_on_send_recipient_ids: detailTarget.notify_on_send_recipient_ids || "",
@@ -346,6 +359,7 @@ export function ScenarioWorkspacePage() {
         send_time: form.send_time,
         target_field: supportsTargetField(form.response_type) ? form.target_field : "",
         launch_scenario_key: form.launch_scenario_key,
+        return_to_step_key: detailTarget?.kind === "branch_step" ? form.return_to_step_key : "",
         send_employee_card: form.send_employee_card,
         notify_on_send_text: form.notify_on_send_text,
         notify_on_send_recipient_ids: form.notify_on_send_recipient_ids,
@@ -837,6 +851,7 @@ export function ScenarioWorkspacePage() {
               sendModeOptions={sendModeOptions}
               targetFieldOptions={targetFieldOptions}
               launchScenarioOptions={launchScenarioOptions}
+              rootStepOptions={rootStepOptions}
               onInsertIntoText={insertIntoText}
               onFormChange={setForm}
               onCreateBranch={handleCreateBranch}

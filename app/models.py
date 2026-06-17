@@ -567,6 +567,11 @@ class FlowStepTemplate(Base):
         nullable=True,
         doc="Какой сценарий запускать для перехода из ветки.",
     )
+    return_to_step_key: Mapped[Optional[str]] = mapped_column(
+        String(128),
+        nullable=True,
+        doc="Ключ root-step того же сценария, к которому ветка должна вернуться после завершения.",
+    )
     attachment_path: Mapped[Optional[str]] = mapped_column(
         String(1024),
         nullable=True,
@@ -650,6 +655,11 @@ class ScenarioProgress(Base):
         String(4096),
         nullable=True,
         doc="История интерактивных шагов через перевод строки для отката назад.",
+    )
+    response_undo_history: Mapped[Optional[str]] = mapped_column(
+        String(16384),
+        nullable=True,
+        doc="JSON-стек снимков последнего подтвержденного ответа для rollback по кнопке назад.",
     )
     waiting_for_response: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     is_completed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)

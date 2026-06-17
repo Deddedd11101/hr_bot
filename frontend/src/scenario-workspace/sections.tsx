@@ -39,6 +39,7 @@ import type {
   WorkspaceButtonNotificationRule,
   WorkspaceData,
   WorkspaceItem,
+  WorkspaceRootStepOption,
   WorkspaceStep,
   WorkspaceStepSendNotificationRule,
 } from "./types";
@@ -705,6 +706,7 @@ export function WorkspaceStepDetailPane(props: {
     send_time: string;
     target_field: string;
     launch_scenario_key: string;
+    return_to_step_key: string;
     send_employee_card: boolean;
     notify_on_send_text: string;
     notify_on_send_recipient_ids: string;
@@ -722,6 +724,7 @@ export function WorkspaceStepDetailPane(props: {
   sendModeOptions: SingleOption[];
   targetFieldOptions: SingleOption[];
   launchScenarioOptions: SingleOption[];
+  rootStepOptions: WorkspaceRootStepOption[];
   onInsertIntoText: (snippet: string) => void;
   onFormChange: (
     updater: (
@@ -734,6 +737,7 @@ export function WorkspaceStepDetailPane(props: {
         send_time: string;
         target_field: string;
         launch_scenario_key: string;
+        return_to_step_key: string;
         send_employee_card: boolean;
         notify_on_send_text: string;
         notify_on_send_recipient_ids: string;
@@ -750,6 +754,7 @@ export function WorkspaceStepDetailPane(props: {
       send_time: string;
       target_field: string;
       launch_scenario_key: string;
+      return_to_step_key: string;
       send_employee_card: boolean;
       notify_on_send_text: string;
       notify_on_send_recipient_ids: string;
@@ -783,6 +788,7 @@ export function WorkspaceStepDetailPane(props: {
     sendModeOptions,
     targetFieldOptions,
     launchScenarioOptions,
+    rootStepOptions,
     onInsertIntoText,
     onFormChange,
     onCreateBranch,
@@ -1300,6 +1306,22 @@ export function WorkspaceStepDetailPane(props: {
                         onChange={(nextValue) => onFormChange((prev) => (prev ? { ...prev, launch_scenario_key: nextValue } : prev))}
                       />
                     </label>
+
+                    {detailTarget?.kind === "branch_step" ? (
+                      <label className="grid gap-2">
+                        <span className="text-sm font-semibold text-foreground/75">Вернуться в основной сценарий</span>
+                        <SingleSelectPicker
+                          options={rootStepOptions}
+                          value={form?.return_to_step_key || ""}
+                          placeholder="Не возвращать в основной поток"
+                          disabled={(form?.response_type || "") === "launch_scenario"}
+                          onChange={(nextValue) => onFormChange((prev) => (prev ? { ...prev, return_to_step_key: nextValue } : prev))}
+                        />
+                        <p className="text-xs leading-5 text-muted-foreground">
+                          После завершения этой ветки бот перейдёт к выбранному root-шагу, а не к следующему шагу после точки ветвления.
+                        </p>
+                      </label>
+                    ) : null}
 
                     <details className="rounded-lg border border-border bg-muted/50 p-3">
                       <summary className="cursor-pointer list-none text-sm font-semibold text-foreground/80">

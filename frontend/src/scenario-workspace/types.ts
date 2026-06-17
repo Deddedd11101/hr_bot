@@ -16,6 +16,7 @@ export type ScenarioSummary = {
 
 export type WorkspaceStep = {
   id: number;
+  step_key: string;
   kind: "step" | "branch_step" | "chain_step";
   title: string;
   text: string;
@@ -33,6 +34,7 @@ export type WorkspaceStep = {
   target_field: string;
   target_field_label: string;
   launch_scenario_key: string;
+  return_to_step_key: string;
   notify_on_send: boolean;
   notify_on_send_text: string;
   notify_on_send_recipient_ids: string;
@@ -106,6 +108,11 @@ export type WorkspaceData = {
   document_tag_titles: string[];
   employee_options: Array<{ id: number; label: string; kind: string }>;
   available_scenarios: Array<{ value: string; label: string }>;
+};
+
+export type WorkspaceRootStepOption = {
+  value: string;
+  label: string;
 };
 
 export type WorkspacePayload = {

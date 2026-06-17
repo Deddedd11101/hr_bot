@@ -259,6 +259,7 @@ def _ensure_sqlite_schema() -> None:
             "day_offset_workdays": "INTEGER NOT NULL DEFAULT 0",
             "target_field": "TEXT",
             "launch_scenario_key": "TEXT",
+            "return_to_step_key": "TEXT",
             "attachment_path": "TEXT",
             "attachment_filename": "TEXT",
             "send_employee_card": "BOOLEAN NOT NULL DEFAULT 0",
@@ -403,6 +404,7 @@ def _ensure_sqlite_schema() -> None:
                         scenario_key VARCHAR(64) NOT NULL,
                         current_step_key VARCHAR(128),
                         step_history TEXT,
+                        response_undo_history TEXT,
                         waiting_for_response BOOLEAN NOT NULL DEFAULT 0,
                         is_completed BOOLEAN NOT NULL DEFAULT 0,
                         started_at DATETIME NOT NULL,
@@ -430,6 +432,8 @@ def _ensure_sqlite_schema() -> None:
             progress_columns = {row[1] for row in progress_table_info}
             if "step_history" not in progress_columns:
                 conn.execute(text("ALTER TABLE scenario_progress ADD COLUMN step_history TEXT"))
+            if "response_undo_history" not in progress_columns:
+                conn.execute(text("ALTER TABLE scenario_progress ADD COLUMN response_undo_history TEXT"))
 
         survey_answers_info = conn.execute(text("PRAGMA table_info(survey_answers)")).fetchall()
         if not survey_answers_info:
