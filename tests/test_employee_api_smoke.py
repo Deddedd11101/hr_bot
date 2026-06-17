@@ -361,6 +361,7 @@ class EmployeeApiSmokeTests(unittest.TestCase):
             ("/api/employees/{employee_id}/schedule/{launch_request_id}", "DELETE"),
             ("/api/employees/{employee_id}/launch", "POST"),
             ("/api/employees/{employee_id}/promote-to-adaptation", "POST"),
+            ("/api/employees/{employee_id}/bot-link/reset", "POST"),
             ("/api/employees/{employee_id}/files", "POST"),
             ("/api/employees/{employee_id}/files/{file_id}/send", "POST"),
             ("/api/employees/{employee_id}/files/{file_id}", "DELETE"),
@@ -2008,6 +2009,107 @@ class EmployeeApiSmokeTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 400)
         self.assertIn("доступ к боту заблокирован", response.json()["detail"].lower())
+
+    def test_reset_employee_bot_linkage_api_clears_identity_and_pending_runtime_state(self) -> None:
+        scenario_key = f"codex-reset-linkage-{self.unique_tag}"
+        now = datetime.now(UTC).replace(tzinfo=None)
+        with SessionLocal() as db:
+            employee = db.get(Employee, self.employee_id)
+            self.assertIsNotNone(employee)
+            employee.telegram_user_id = "777123456"
+            employee.telegram_username = "reset_me"
+            employee.current_menu_set_id = 123
+            employee.is_flow_scheduled = True
+            db.add(
+                EmployeeMessengerAccount(
+                    employee_id=employee.id,
+                    channel="telegram",
+                    external_user_id="777123456",
+                    external_username="reset_me",
+                    is_primary=True,
+                    is_active=True,
+                    created_at=now,
+                    updated_at=now,
+                )
+            )
+            db.add(
+                ScenarioProgress(
+                    employee_id=employee.id,
+                    scenario_key=scenario_key,
+                    current_step_key="step_1",
+                    waiting_for_response=True,
+                    is_completed=False,
+                    started_at=now,
+                    updated_at=now,
+                    response_undo_history='[{"step_key":"step_1"}]',
+                )
+            )
+            db.add(
+                FlowLaunchRequest(
+                    employee_id=employee.id,
+                    flow_key=scenario_key,
+                    requested_at=now,
+                    processed_at=None,
+                    launch_type="scheduled",
+                    skip_step_key=None,
+                )
+            )
+            db.add(
+                FlowLaunchRequest(
+                    employee_id=employee.id,
+                    flow_key=scenario_key,
+                    requested_at=now,
+                    processed_at=now,
+                    launch_type="manual",
+                    skip_step_key=None,
+                )
+            )
+            db.commit()
+
+        response = self.client.post(
+            f"/api/employees/{self.employee_id}/bot-link/reset",
+            headers={"Accept": "application/json"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["employee"]["chat_id"], "")
+        self.assertEqual(payload["employee"]["chat_handle"], "")
+        self.assertEqual(payload["scheduled_launches"], [])
+
+        with SessionLocal() as db:
+            employee = db.get(Employee, self.employee_id)
+            self.assertIsNotNone(employee)
+            self.assertIsNone(employee.telegram_user_id)
+            self.assertIsNone(employee.telegram_username)
+            self.assertIsNone(employee.current_menu_set_id)
+            self.assertFalse(employee.is_flow_scheduled)
+            self.assertEqual(
+                db.query(EmployeeMessengerAccount).filter(EmployeeMessengerAccount.employee_id == self.employee_id).count(),
+                0,
+            )
+            self.assertEqual(
+                db.query(ScenarioProgress).filter(ScenarioProgress.employee_id == self.employee_id).count(),
+                0,
+            )
+            self.assertEqual(
+                db.query(FlowLaunchRequest)
+                .filter(
+                    FlowLaunchRequest.employee_id == self.employee_id,
+                    FlowLaunchRequest.processed_at.is_(None),
+                )
+                .count(),
+                0,
+            )
+            self.assertEqual(
+                db.query(FlowLaunchRequest)
+                .filter(
+                    FlowLaunchRequest.employee_id == self.employee_id,
+                    FlowLaunchRequest.processed_at.is_not(None),
+                )
+                .count(),
+                1,
+            )
 
     def test_bulk_actions_preview_api_uses_candidate_stage_split(self) -> None:
         response = self.client.post(

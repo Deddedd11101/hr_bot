@@ -443,6 +443,38 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
             });
     }
 
+    function handleResetBotLinkage() {
+        if (!window.confirm("Сбросить привязку к боту и очистить активные сценарии и ожидающие отправки?")) {
+            return;
+        }
+        setOpsState({ message: "", error: false, working: true });
+        fetch(apiUrl + "/bot-link/reset", {
+            method: "POST",
+            credentials: "same-origin",
+            headers: { Accept: "application/json" },
+        })
+            .then(function (response) {
+                if (!response.ok) {
+                    return response.json().catch(function () { return {}; }).then(function (payload) {
+                        throw new Error(payload.detail || "Не удалось сбросить привязку к боту");
+                    });
+                }
+                return response.json();
+            })
+            .then(function (payload) {
+                updatePayloadState(setState, setForm, payload);
+                setLaunchFlowKey(
+                    payload.options && payload.options.scenarios && payload.options.scenarios.length
+                        ? payload.options.scenarios[0].value
+                        : "",
+                );
+                setOperationMessage("Привязка к боту сброшена", false);
+            })
+            .catch(function (error) {
+                setOperationMessage(error.message || "Не удалось сбросить привязку к боту", true);
+            });
+    }
+
     function handlePromoteToAdaptation() {
         if (!window.confirm("Перевести кандидата в адаптацию?")) {
             return;
@@ -588,6 +620,7 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
                     handleLaunchSubmit={handleLaunchSubmit}
                     handleFileSubmit={handleFileSubmit}
                     handlePromoteToAdaptation={handlePromoteToAdaptation}
+                    handleResetBotLinkage={handleResetBotLinkage}
                     handleDeleteEmployee={handleDeleteEmployee}
                     employeeFileItems={employeeFileItems}
                     hrFileItems={hrFileItems}

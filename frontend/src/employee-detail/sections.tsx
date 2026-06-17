@@ -7,6 +7,7 @@ import {
     FileText,
     Link2,
     Play,
+    RefreshCcw,
     Send,
     ShieldAlert,
     Trash2,
@@ -657,6 +658,7 @@ export function EmployeeOperationsSection(props: any) {
         handleLaunchSubmit,
         handleFileSubmit,
         handlePromoteToAdaptation,
+        handleResetBotLinkage,
         handleDeleteEmployee,
         employeeFileItems,
         hrFileItems,
@@ -897,7 +899,11 @@ export function EmployeeOperationsSection(props: any) {
                         Редкие действия
                     </CardTitle>
                 </CardHeader>
-                <CardFooter>
+                <CardFooter className="employee-action-row">
+                    <Button type="button" variant="outline" onClick={handleResetBotLinkage}>
+                        <RefreshCcw data-icon="inline-start" />
+                        Сбросить привязку к боту
+                    </Button>
                     <Button type="button" variant="destructive" onClick={handleDeleteEmployee}>
                         <Trash2 data-icon="inline-start" />
                         Удалить сотрудника
