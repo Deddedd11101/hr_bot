@@ -288,3 +288,35 @@ source_of_truth: true
 - Открытые риски:
   - `graph-view` bundle warning остается из предыдущего deploy;
   - GitHub Actions warning про Node.js 20 deprecation остается плановым workflow-долгом.
+
+### 2026-06-17 16:39 MSK - app deploy - порядок сообщений шага с вложением и кнопками
+
+- Deploy ref: `stage`.
+- Deployed commit: `d9c842f`.
+- GitHub Actions run: `27693049551`.
+- Влитая feature-ветка:
+  - `codex/step-attachment-button-order` -> `e926d26`.
+- Что изменено:
+  - runtime отправки шага сценария теперь отправляет `текст -> карточка/вложение -> отдельное сообщение с inline-кнопками`;
+  - кнопки больше не цепляются к первому текстовому сообщению перед вложением;
+  - добавлен smoke-тест `test_send_step_sends_buttons_after_attachment_when_text_exists`.
+- Локальные проверки перед deploy:
+  - `.\.venv\Scripts\python.exe -m compileall app tests`;
+  - `.\.venv\Scripts\ruff.exe check --select F821 app tests`;
+  - `.\.venv\Scripts\python.exe -m unittest tests.test_scenario_engine_smoke tests.test_scenario_engine_branching -v` -> 17 tests OK;
+  - `.\.venv\Scripts\python.exe -m unittest tests.test_employee_api_smoke tests.test_messaging_identity tests.test_scenario_engine_smoke tests.test_scenario_engine_branching -v` -> 78 tests OK.
+- GitHub Actions preflight:
+  - backend dependencies install;
+  - `compileall`;
+  - `ruff F821`;
+  - backend smoke tests;
+  - frontend build;
+  - smoke imports.
+- Stage smoke checks:
+  - `/app/employees` -> `303`;
+  - `/app/flows/workspace-v2` -> `303`;
+  - `curl -4 -I --connect-timeout 10 https://api.telegram.org/` -> `HTTP/2 302`;
+  - deploy job завершился успешно и вывел `d9c842f`.
+- Backup БД не делался: deploy шел через git/systemd restart и не требовал ручной замены `hr_bot.db`.
+- Открытые риски:
+  - UX-компромисс: inline-кнопки приходят отдельным сообщением после вложения, потому что Telegram не позволяет одновременно иметь отдельный текст, вложение и кнопки без дополнительного button-message.
