@@ -958,18 +958,25 @@ async def send_step(
     send_employee_card = bool(getattr(step, "send_employee_card", False))
     reply_markup = step_reply_markup(step, include_back=include_back)
     back_keyboard = step_back_keyboard(step, include_back=include_back)
-    inline_buttons_after_attachment = bool(reply_markup and not message_text.strip())
+    separate_inline_buttons_message = bool(
+        reply_markup
+        and (
+            not message_text.strip()
+            or has_attachment
+            or send_employee_card
+        )
+    )
 
     if message_text.strip():
         await messenger.send_text(
             chat_id=chat_id,
             text=message_text,
-            reply_markup=None if inline_buttons_after_attachment else (reply_markup or back_keyboard),
+            reply_markup=None if separate_inline_buttons_message else (reply_markup or back_keyboard),
         )
     if send_employee_card:
         await send_employee_card_image(messenger, chat_id, employee)
     await send_step_attachment(messenger, chat_id, step)
-    if inline_buttons_after_attachment:
+    if separate_inline_buttons_message:
         await messenger.send_text(
             chat_id=chat_id,
             text="Выберите вариант ответа:",
