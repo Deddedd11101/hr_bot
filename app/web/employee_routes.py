@@ -32,6 +32,7 @@ from .employees import (
     _is_employee_identity_integrity_error,
     _launch_employee_flow_now,
     _promote_candidate_to_adaptation,
+    _reset_employee_bot_linkage,
     _save_offer_document_link,
     _schedule_employee_flow_request,
     _send_file_to_telegram,
@@ -754,6 +755,20 @@ def promote_employee_to_adaptation_api(
     except ValueError as exc:
         db.rollback()
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    return _build_employee_detail_payload(db, employee)
+
+
+@router.post("/api/employees/{employee_id}/bot-link/reset")
+def reset_employee_bot_linkage_api(
+    request: Request,
+    employee_id: int,
+    db: Session = Depends(get_db),
+):
+    require_api_auth(request)
+    employee = db.get(Employee, employee_id)
+    if not employee:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Сотрудник не найден")
+    employee = _reset_employee_bot_linkage(db, employee)
     return _build_employee_detail_payload(db, employee)
 
 

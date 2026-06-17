@@ -19,7 +19,15 @@ from ..messaging.identity import (
     set_public_chat_handle,
     sync_legacy_telegram_account,
 )
-from ..models import Employee, EmployeeDocumentLink, EmployeeFile, FlowLaunchRequest, ScenarioTemplate
+from ..models import (
+    Employee,
+    EmployeeDocumentLink,
+    EmployeeFile,
+    EmployeeMessengerAccount,
+    FlowLaunchRequest,
+    ScenarioProgress,
+    ScenarioTemplate,
+)
 from ..scenario_engine import SINGLE_STEP_REQUEST_PREFIX, add_workdays, get_first_step, matches_role_scope, start_scenario
 from ..time_utils import utc_now
 
@@ -652,6 +660,28 @@ def _promote_candidate_to_adaptation(db: Session, employee: Employee) -> Employe
     return employee
 
 
+def _reset_employee_bot_linkage(db: Session, employee: Employee) -> Employee:
+    db.query(EmployeeMessengerAccount).filter(
+        EmployeeMessengerAccount.employee_id == employee.id,
+    ).delete(synchronize_session=False)
+    db.query(ScenarioProgress).filter(
+        ScenarioProgress.employee_id == employee.id,
+    ).delete(synchronize_session=False)
+    db.query(FlowLaunchRequest).filter(
+        FlowLaunchRequest.employee_id == employee.id,
+        FlowLaunchRequest.processed_at.is_(None),
+    ).delete(synchronize_session=False)
+
+    employee.telegram_user_id = None
+    employee.telegram_username = None
+    employee.current_menu_set_id = None
+    employee.is_flow_scheduled = False
+
+    db.commit()
+    db.refresh(employee)
+    return employee
+
+
 def _schedule_employee_flow_request(
     db: Session,
     employee: Employee,
@@ -867,5 +897,3 @@ def _build_employee_detail_payload(db: Session, employee: Employee) -> dict:
             for launch_request in manual_launch_history
         ],
     }
-
-
