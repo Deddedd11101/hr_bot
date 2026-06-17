@@ -55,7 +55,7 @@ class FakeMessenger:
 
 
 class ScenarioEngineSmokeTests(unittest.IsolatedAsyncioTestCase):
-    async def test_send_step_uses_main_message_for_attachment_buttons_when_text_exists(self) -> None:
+    async def test_send_step_sends_buttons_after_attachment_when_text_exists(self) -> None:
         init_db()
         now = datetime.now(UTC).replace(tzinfo=None)
         scenario_key = f"test_attachment_buttons_{int(datetime.now(UTC).timestamp() * 1000000)}"
@@ -97,10 +97,12 @@ class ScenarioEngineSmokeTests(unittest.IsolatedAsyncioTestCase):
             messenger = FakeMessenger()
             await send_step(messenger, db, employee, scenario, step)
 
-            self.assertEqual(len(messenger.texts), 1)
+            self.assertEqual(len(messenger.texts), 2)
             self.assertEqual(messenger.texts[0]["text"], "Выбери вариант")
-            self.assertIsNotNone(messenger.texts[0]["reply_markup"])
+            self.assertIsNone(messenger.texts[0]["reply_markup"])
             self.assertEqual(len(messenger.documents), 1)
+            self.assertEqual(messenger.texts[1]["text"], "Выберите вариант ответа:")
+            self.assertIsNotNone(messenger.texts[1]["reply_markup"])
 
     async def test_send_step_attachment_uses_photo_for_image_files(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
