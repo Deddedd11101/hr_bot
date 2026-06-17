@@ -320,3 +320,37 @@ source_of_truth: true
 - Backup БД не делался: deploy шел через git/systemd restart и не требовал ручной замены `hr_bot.db`.
 - Открытые риски:
   - UX-компромисс: inline-кнопки приходят отдельным сообщением после вложения, потому что Telegram не позволяет одновременно иметь отдельный текст, вложение и кнопки без дополнительного button-message.
+
+### 2026-06-17 17:11 MSK - app deploy - кнопки media-шагов без технического текста
+
+- Deploy ref: `stage`.
+- Deployed commit: `9443d61`.
+- GitHub Actions run: `27695175484`.
+- Влитая feature-ветка:
+  - `codex/remove-technical-button-prompts` -> `96401a2`.
+- Что изменено:
+  - убран технический текст `Выберите вариант ответа:` для media-шагов с inline-кнопками;
+  - если у шага есть картинка/документ и inline-кнопки, кнопки крепятся прямо к media-сообщению;
+  - для кейса `текст + картинка + кнопка` порядок стал `текст -> картинка с кнопкой`;
+  - для кейса `картинка + кнопка` отдельное сервисное сообщение больше не отправляется;
+  - messaging contract расширен под `reply_markup` и `caption` для photo/document send.
+- Локальные проверки перед deploy:
+  - `.\.venv\Scripts\python.exe -m compileall app tests`;
+  - `.\.venv\Scripts\ruff.exe check --select F821 app tests`;
+  - `.\.venv\Scripts\python.exe -m unittest tests.test_scenario_engine_smoke tests.test_scenario_engine_branching tests.test_employee_api_smoke -v` -> 76 tests OK;
+  - `.\.venv\Scripts\python.exe -m unittest tests.test_employee_api_smoke tests.test_messaging_identity tests.test_scenario_engine_smoke tests.test_scenario_engine_branching -v` -> 79 tests OK.
+- GitHub Actions preflight:
+  - backend dependencies install;
+  - `compileall`;
+  - `ruff F821`;
+  - backend smoke tests;
+  - frontend build;
+  - smoke imports.
+- Stage smoke checks:
+  - `/app/employees` -> `303`;
+  - `/app/flows/workspace-v2` -> `303`;
+  - `curl -4 -I --connect-timeout 10 https://api.telegram.org/` -> `HTTP/2 302`;
+  - deploy job завершился успешно и вывел `9443d61`.
+- Backup БД не делался: deploy шел через git/systemd restart и не требовал ручной замены `hr_bot.db`.
+- Открытые риски:
+  - Telegram media-сообщение теперь несет inline-кнопки; если Telegram API отклонит конкретный тип media/caption/markup, смотреть worker logs и fallback path.
