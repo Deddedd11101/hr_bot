@@ -253,3 +253,38 @@ source_of_truth: true
 - Открытые риски:
   - `graph-view` bundle после React Flow + ELK около `1.6 MB`; режим `Схема` стоит вынести в lazy chunk.
   - GitHub Actions выдал warning про Node.js 20 deprecation для `actions/checkout@v4` и `actions/setup-python@v5`; deploy успешен, но workflow нужно обновить планово.
+
+### 2026-06-17 16:22 MSK - app deploy - сброс привязки карточки к Telegram-боту
+
+- Deploy ref: `stage`.
+- Deployed commit: `8ff5ce4`.
+- GitHub Actions run: `27692014859`.
+- Влитая feature-ветка:
+  - `codex/scenario-runtime-and-ui-fixes` -> `8c848e7`.
+- Что изменено:
+  - добавлен endpoint `POST /api/employees/{employee_id}/bot-link/reset`;
+  - в карточке сотрудника/кандидата добавлено отдельное действие `Сбросить привязку к боту`;
+  - reset очищает `telegram_user_id`, `telegram_username`, `current_menu_set_id`, `is_flow_scheduled`;
+  - reset удаляет `employee_messenger_accounts`, активный `scenario_progress` и только pending `flow_launch_requests`;
+  - удаление карточки осталось отдельным destructive action с confirm dialog.
+- Локальные проверки перед deploy:
+  - `npm run build`;
+  - `.\.venv\Scripts\python.exe -m compileall app tests tools`;
+  - `.\.venv\Scripts\ruff.exe check --select F821 app tests`;
+  - `.\.venv\Scripts\python.exe -m unittest tests.test_employee_api_smoke tests.test_messaging_identity tests.test_scenario_engine_smoke tests.test_scenario_engine_branching -v` -> 78 tests OK.
+- GitHub Actions preflight:
+  - backend dependencies install;
+  - `compileall`;
+  - `ruff F821`;
+  - backend smoke tests;
+  - frontend build;
+  - smoke imports.
+- Stage smoke checks:
+  - `/app/employees` -> `303`;
+  - `/app/flows/workspace-v2` -> `303`;
+  - `curl -4 -I --connect-timeout 10 https://api.telegram.org/` -> `HTTP/2 302`;
+  - deploy job завершился успешно и вывел `8ff5ce4`.
+- Backup БД не делался: deploy шел через git/systemd restart и не требовал ручной замены `hr_bot.db`.
+- Открытые риски:
+  - `graph-view` bundle warning остается из предыдущего deploy;
+  - GitHub Actions warning про Node.js 20 deprecation остается плановым workflow-долгом.
