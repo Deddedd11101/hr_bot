@@ -216,3 +216,40 @@ source_of_truth: true
   - `curl -4 -I --connect-timeout 10 https://api.telegram.org/` -> `HTTP/2 302`;
   - свежих `TelegramNetworkError`, `Request timeout`, `Traceback`, `Unclosed client session` в worker logs не найдено.
 - Backup БД не делался: deploy шел через git/systemd restart и не требовал ручной замены `hr_bot.db`.
+
+### 2026-06-17 12:09 MSK - app deploy - branch return flow и read-only схема сценария
+
+- Deploy ref: `stage`.
+- Deployed commit: `8e0ddb4`.
+- GitHub Actions run: `27678177804`.
+- Влитые feature-ветки:
+  - `codex/scenario-runtime-and-ui-fixes` -> `9f8e8fd` вместе с `7a1a52f` и `1c4dfef`;
+  - `codex/admin-ui-polish-pass` -> `dc2159a`.
+- Что изменено:
+  - branch step получил узкий возврат в root-step того же сценария через `return_to_step_key`;
+  - добавлены rollback snapshots для сценарного Back action;
+  - workspace API начал отдавать read-only graph payload для режима `Схема`;
+  - scenario workspace получил read-only граф на React Flow + ELK с синхронизацией выбранной node и правой панели;
+  - пересобраны `app/static/workspace_v2` после объединения runtime/UI веток.
+- Локальные проверки перед deploy:
+  - `npm install` для новых frontend-зависимостей;
+  - `npm run build`;
+  - `.\.venv\Scripts\python.exe -m compileall app tests tools`;
+  - `.\.venv\Scripts\ruff.exe check --select F821 app tests`;
+  - `.\.venv\Scripts\python.exe -m unittest tests.test_employee_api_smoke tests.test_messaging_identity tests.test_scenario_engine_smoke tests.test_scenario_engine_branching -v` -> 77 tests OK.
+- GitHub Actions preflight:
+  - backend dependencies install;
+  - `compileall`;
+  - `ruff F821`;
+  - backend smoke tests;
+  - frontend build;
+  - smoke imports.
+- Stage smoke checks:
+  - `/app/employees` -> `303`;
+  - `/app/flows/workspace-v2` -> `303`;
+  - `curl -4 -I --connect-timeout 10 https://api.telegram.org/` -> `HTTP/2 302`;
+  - deploy job завершился успешно и вывел `8e0ddb4`.
+- Backup БД не делался: deploy шел через git/systemd restart и не требовал ручной замены `hr_bot.db`.
+- Открытые риски:
+  - `graph-view` bundle после React Flow + ELK около `1.6 MB`; режим `Схема` стоит вынести в lazy chunk.
+  - GitHub Actions выдал warning про Node.js 20 deprecation для `actions/checkout@v4` и `actions/setup-python@v5`; deploy успешен, но workflow нужно обновить планово.
