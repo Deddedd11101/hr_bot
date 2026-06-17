@@ -9,6 +9,7 @@ import {
   buildChildContainer,
   detailTargetFromItem,
   FALLBACK_RESPONSE_TYPE_LABELS,
+  findWorkspacePathToStep,
   itemKey,
   makeRootContainer,
   moveItemById,
@@ -62,6 +63,7 @@ export function ScenarioWorkspacePage() {
   const [sortMode, setSortMode] = React.useState<"updated_desc" | "created_desc" | "created_asc" | "title_asc">("updated_desc");
   const [stack, setStack] = React.useState<Container[]>([]);
   const [selectedItemKey, setSelectedItemKey] = React.useState("");
+  const [viewMode, setViewMode] = React.useState<"list" | "graph">("list");
   const [form, setForm] = React.useState<null | {
     title: string;
     text: string;
@@ -102,6 +104,7 @@ export function ScenarioWorkspacePage() {
   const currentItems = currentContainer?.items || [];
   const selectedItem = currentItems.find((item) => itemKey(item) === selectedItemKey) || currentItems[0] || null;
   const detailTarget = detailTargetFromItem(selectedItem);
+  const selectedStepId = detailTarget?.id || null;
   const openLabel = openActionLabel(selectedItem);
   const responseTypeOptions = React.useMemo(() => {
     const labels = payload?.workspace?.response_type_labels || FALLBACK_RESPONSE_TYPE_LABELS;
@@ -726,6 +729,18 @@ export function ScenarioWorkspacePage() {
     persistRootStepOrder(reorderedItems.map((item) => item.id));
   };
 
+  const handleSelectGraphStep = React.useCallback(
+    (stepId: number) => {
+      const workspace = payload?.workspace;
+      if (!workspace) return;
+      const path = findWorkspacePathToStep(workspace, stepId);
+      if (!path) return;
+      setStack(path.stack);
+      setSelectedItemKey(path.selectedItemKey);
+    },
+    [payload?.workspace],
+  );
+
   if (loading && !payload) {
     return <Card className="border border-border bg-card p-8 shadow-none ring-0">Собираю новый workspace…</Card>;
   }
@@ -798,9 +813,12 @@ export function ScenarioWorkspacePage() {
             currentContainer={currentContainer}
             currentItems={currentItems}
             selectedItemKey={selectedItemKey}
+            selectedStepId={selectedStepId}
+            viewMode={viewMode}
             stepTitle={stepTitle}
             itemLabel={itemLabel}
             isSurveyWorkspace={isSurveyWorkspace}
+            graph={payload?.workspace?.graph}
             payloadWorkspace={payload?.workspace}
             exportUrl={exportUrl}
             scenarioSettingsForm={scenarioSettingsForm}
@@ -823,6 +841,8 @@ export function ScenarioWorkspacePage() {
             onAddRootStep={handleAddRootStep}
             onAddChainStep={handleAddChainStep}
             onSelectItem={setSelectedItemKey}
+            onViewModeChange={setViewMode}
+            onSelectGraphStep={handleSelectGraphStep}
             onDragStepStart={setDragStepId}
             onDragStepDrop={handleRootStepDrop}
             onDragStepEnd={() => setDragStepId(null)}

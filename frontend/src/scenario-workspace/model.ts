@@ -94,6 +94,32 @@ export function buildChildContainer(item: WorkspaceItem | null): Container | nul
   return null;
 }
 
+export function findWorkspacePathToStep(workspace: WorkspaceData, stepId: number): { stack: Container[]; selectedItemKey: string } | null {
+  const root = makeRootContainer(workspace);
+
+  function visit(container: Container): { stack: Container[]; selectedItemKey: string } | null {
+    for (const item of container.items) {
+      if (item.kind !== "branch_slot" && item.id === stepId) {
+        return { stack: [container], selectedItemKey: itemKey(item) };
+      }
+
+      if (item.kind === "branch_slot" && item.step?.id === stepId) {
+        return { stack: [container], selectedItemKey: itemKey(item) };
+      }
+
+      const child = buildChildContainer(item);
+      if (!child) continue;
+      const nested = visit(child);
+      if (nested) {
+        return { stack: [container, ...nested.stack], selectedItemKey: nested.selectedItemKey };
+      }
+    }
+    return null;
+  }
+
+  return visit(root);
+}
+
 export function workspaceItemTitle(item: WorkspaceItem, index: number) {
   if (item.kind === "branch_slot") return item.label || `Ветка ${index + 1}`;
   return item.title || `Шаг ${index + 1}`;

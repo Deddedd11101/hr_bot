@@ -77,6 +77,45 @@ export type WorkspaceBranchSlot = {
   step: WorkspaceStep | null;
 };
 
+export type WorkspaceGraphNode = {
+  id: string;
+  step_id: number | null;
+  step_key: string;
+  kind: "step" | "branch_step" | "chain_step" | "branch_slot" | "launch_target";
+  title: string;
+  text_preview: string;
+  response_type: string;
+  response_label: string;
+  has_attachment: boolean;
+  has_notifications: boolean;
+  waits_for_response: boolean;
+  send_mode: string;
+  launch_scenario_key: string;
+  is_placeholder: boolean;
+  is_terminal: boolean;
+};
+
+export type WorkspaceGraphEdge = {
+  id: string;
+  source: string;
+  target: string;
+  kind: "next" | "chain" | "branch_option" | "return_to_root" | "launch_scenario";
+  label: string;
+};
+
+export type WorkspaceGraph = {
+  nodes: WorkspaceGraphNode[];
+  edges: WorkspaceGraphEdge[];
+  meta: {
+    node_count: number;
+    edge_count: number;
+    has_branching: boolean;
+    has_return_edges: boolean;
+    has_launch_edges: boolean;
+    has_placeholders: boolean;
+  };
+};
+
 export type WorkspaceData = {
   scenario: {
     id: number;
@@ -94,6 +133,7 @@ export type WorkspaceData = {
     classic_url: string;
   };
   root_steps: WorkspaceStep[];
+  graph: WorkspaceGraph;
   stats: {
     steps_count: number;
   };
