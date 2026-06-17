@@ -46,13 +46,13 @@ class DummyMessenger:
     async def send_menu(self, chat_id: str, text: str, buttons: list[str]) -> None:
         self.sent_menus.append((chat_id, text, buttons))
 
-    async def send_photo_path(self, chat_id: str, path, filename=None) -> None:
+    async def send_photo_path(self, chat_id: str, path, filename=None, reply_markup=None, caption=None) -> None:
         return None
 
-    async def send_photo_bytes(self, chat_id: str, data: bytes, filename: str) -> None:
+    async def send_photo_bytes(self, chat_id: str, data: bytes, filename: str, reply_markup=None, caption=None) -> None:
         return None
 
-    async def send_document_path(self, chat_id: str, path, filename=None) -> None:
+    async def send_document_path(self, chat_id: str, path, filename=None, reply_markup=None, caption=None) -> None:
         self.sent_documents.append((chat_id, str(path) if path is not None else None, filename))
         return None
 
