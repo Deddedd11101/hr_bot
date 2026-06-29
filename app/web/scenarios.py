@@ -152,8 +152,6 @@ def _load_scenario_editor_data(db: Session, scenario: ScenarioTemplate):
 
 def _workspace_response_label(step: FlowStepTemplate, scenario_kind: str = "scenario") -> str:
     response_type = (step.response_type or "").strip()
-    if response_type == "buttons":
-        response_type = "branching"
     extra_labels = {
         "chain": "Цепочка шагов",
         "launch_scenario": "Переход к сценарию",
@@ -162,7 +160,7 @@ def _workspace_response_label(step: FlowStepTemplate, scenario_kind: str = "scen
 
 
 def _workspace_response_type_labels() -> dict[str, str]:
-    labels = {key: value for key, value in RESPONSE_TYPE_LABELS.items() if key != "buttons"}
+    labels = dict(RESPONSE_TYPE_LABELS)
     labels["launch_scenario"] = "Переход к сценарию"
     labels["chain"] = "Цепочка шагов"
     return labels

@@ -159,15 +159,27 @@ export function ScenarioWorkspacePage() {
     ],
     [payload],
   );
+  const ancestorRootStepKey = React.useMemo(
+    () => {
+      if (detailTarget?.kind !== "branch_step" || currentContainer?.type !== "branches") {
+        return "";
+      }
+      const ownerRootStep = (payload?.workspace?.root_steps || []).find((step) => step.id === currentContainer.ownerStepId);
+      return ownerRootStep?.step_key || "";
+    },
+    [currentContainer, detailTarget, payload],
+  );
   const rootStepOptions = React.useMemo<WorkspaceRootStepOption[]>(
     () => [
       { value: "", label: "Не возвращать в основной поток" },
-      ...((payload?.workspace?.root_steps || []).map((step) => ({
-        value: step.step_key,
-        label: step.title || step.text_preview || `Шаг ${step.id}`,
-      })) as WorkspaceRootStepOption[]),
+      ...((payload?.workspace?.root_steps || [])
+        .filter((step) => step.step_key !== ancestorRootStepKey)
+        .map((step) => ({
+          value: step.step_key,
+          label: step.title || step.text_preview || `Шаг ${step.id}`,
+        })) as WorkspaceRootStepOption[]),
     ],
-    [payload],
+    [ancestorRootStepKey, payload],
   );
 
   React.useEffect(() => {
@@ -304,10 +316,7 @@ export function ScenarioWorkspacePage() {
     setForm({
       title: detailTarget.title || "",
       text: detailTarget.text || "",
-      response_type:
-        !isSurveyWorkspace && detailTarget.response_type === "buttons"
-          ? "branching"
-          : detailTarget.response_type || "none",
+      response_type: detailTarget.response_type || "none",
       button_options: detailTarget.button_options.join("\n"),
       send_mode: detailTarget.send_mode || "immediate",
       send_time: detailTarget.send_time || "",

@@ -106,12 +106,20 @@ export function SingleSelectPicker({
   disabled?: boolean;
 }) {
   const emptyValue = "__empty__";
-  const normalizedOptions = React.useMemo(
-    () => options.map((option) => ({ ...option, value: option.value || emptyValue })),
-    [options],
-  );
-  const selected = options.find((option) => option.value === value);
-  const selectedValue = (selected?.value ?? value) || emptyValue;
+  const normalizedOptions = React.useMemo(() => {
+    const seen = new Set<string>();
+    return options.reduce<SingleOption[]>((items, option) => {
+      const normalizedValue = option.value || emptyValue;
+      if (seen.has(normalizedValue)) {
+        return items;
+      }
+      seen.add(normalizedValue);
+      items.push({ ...option, value: normalizedValue });
+      return items;
+    }, []);
+  }, [options]);
+  const selected = normalizedOptions.find((option) => option.value === (value || emptyValue));
+  const selectedValue = selected ? selected.value : emptyValue;
 
   return (
     <Select

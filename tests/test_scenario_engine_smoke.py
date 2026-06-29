@@ -653,6 +653,60 @@ class ScenarioEngineSmokeTests(unittest.IsolatedAsyncioTestCase):
             mocked_start.assert_awaited_once()
             self.assertEqual(mocked_start.await_args.args[3], "target_flow")
 
+    async def test_handle_button_response_saves_selected_value_to_salary_expectation(self) -> None:
+        init_db()
+        now = datetime.now(UTC).replace(tzinfo=None)
+        scenario_key = f"test_buttons_target_field_{int(datetime.now(UTC).timestamp() * 1000000)}"
+
+        with SessionLocal() as db:
+            scenario = ScenarioTemplate(
+                scenario_key=scenario_key,
+                title="Buttons target field",
+                role_scope="all",
+                scenario_kind="scenario",
+                sort_order=0,
+                trigger_mode="manual_only",
+            )
+            step = FlowStepTemplate(
+                flow_key=scenario_key,
+                step_key="step_one",
+                step_title="Salary step",
+                sort_order=10,
+                default_text="Выбери ожидания по доходу",
+                response_type="buttons",
+                button_options="100 000\n150 000\n200 000",
+                target_field="salary_expectation",
+                send_mode="immediate",
+                day_offset_workdays=0,
+            )
+            next_step = FlowStepTemplate(
+                flow_key=scenario_key,
+                step_key="step_two",
+                step_title="Next step",
+                sort_order=20,
+                default_text="Спасибо",
+                response_type="none",
+                send_mode="immediate",
+                day_offset_workdays=0,
+            )
+            employee = Employee(
+                full_name="Tester",
+                telegram_user_id="123456789",
+                created_at=now,
+                is_flow_scheduled=False,
+                employee_stage="candidate",
+            )
+            db.add_all([scenario, step, next_step, employee])
+            db.commit()
+
+            messenger = FakeMessenger()
+            await send_step(messenger, db, employee, scenario, step)
+            handled = await handle_button_response(messenger, db, employee, scenario_key, "step_one", 1)
+
+            self.assertTrue(handled)
+            db.refresh(employee)
+            self.assertEqual(employee.salary_expectation, "150 000")
+
     async def test_branch_step_can_return_to_later_root_step(self) -> None:
         init_db()
         now = datetime.now(UTC).replace(tzinfo=None)
