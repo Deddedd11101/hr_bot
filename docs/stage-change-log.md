@@ -354,3 +354,37 @@ source_of_truth: true
 - Backup БД не делался: deploy шел через git/systemd restart и не требовал ручной замены `hr_bot.db`.
 - Открытые риски:
   - Telegram media-сообщение теперь несет inline-кнопки; если Telegram API отклонит конкретный тип media/caption/markup, смотреть worker logs и fallback path.
+
+### 2026-06-29 17:03 MSK - app deploy - фиксы scenario workspace select/target fields
+
+- Deploy ref: `stage`.
+- Deployed commit: `0b166ca`.
+- GitHub Actions run: `28377727578`.
+- Влитые feature-ветки:
+  - `codex/fix-step-target-field-persistence` -> `4267ce0`;
+  - `codex/fix-branch-return-select` -> `10b9610`.
+- Что изменено:
+  - `buttons`-шаги в scenario workspace снова сохраняют target field;
+  - `SingleSelectPicker` больше не держит несуществующее текущее значение и дедуплицирует options;
+  - список `Вернуться в основной сценарий` исключает текущий root-шаг ветвления, который backend все равно очистил бы при сохранении;
+  - пересобран `app/static/workspace_v2/scenario-workspace.js`.
+- Локальные проверки перед deploy:
+  - `npm run build`;
+  - `.\.venv\Scripts\python.exe -m compileall app tests tools`;
+  - `.\.venv\Scripts\ruff.exe check --select F821 app tests`;
+  - `.\.venv\Scripts\python.exe -m unittest tests.test_employee_api_smoke tests.test_messaging_identity tests.test_scenario_engine_smoke tests.test_scenario_engine_branching -v` -> 81 tests OK.
+- GitHub Actions preflight:
+  - backend dependencies install;
+  - `compileall`;
+  - `ruff F821`;
+  - backend smoke tests;
+  - frontend build;
+  - smoke imports.
+- Stage smoke checks:
+  - `/app/employees` -> `303`;
+  - `/app/flows/workspace-v2` -> `303`;
+  - `curl -4 -I --connect-timeout 10 https://api.telegram.org/` -> `HTTP/2 302`;
+  - deploy job завершился успешно и вывел `0b166ca`.
+- Backup БД не делался: deploy шел через git/systemd restart и не требовал ручной замены `hr_bot.db`.
+- Открытые риски:
+  - browser может держать cached `scenario-workspace.js?v=1`; при ручной проверке нужен hard refresh.
