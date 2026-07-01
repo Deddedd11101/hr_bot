@@ -418,6 +418,69 @@ class EmployeeApiSmokeTests(unittest.TestCase):
         missing_contracts = sorted(expected_contracts - route_index)
         self.assertEqual([], missing_contracts)
 
+    def test_workspace_api_creates_blank_message_text_for_new_scenario_steps(self) -> None:
+        scenario_key = f"codex_blank_step_{self.unique_tag}"
+        with SessionLocal() as db:
+            scenario = ScenarioTemplate(
+                scenario_key=scenario_key,
+                scenario_kind="scenario",
+                title=f"Blank step scenario {self.unique_tag}",
+                sort_order=10,
+                role_scope="all",
+                trigger_mode="manual_only",
+            )
+            db.add(scenario)
+            db.commit()
+            db.refresh(scenario)
+            scenario_id = scenario.id
+
+        created_step_ids: list[int] = []
+        try:
+            root_response = self.client.post(
+                f"/api/flows/workspace/scenarios/{scenario_id}/steps",
+                json={"title": "Новый шаг"},
+            )
+            self.assertEqual(200, root_response.status_code)
+            root_step_id = int(root_response.json()["step_id"])
+            created_step_ids.append(root_step_id)
+
+            with SessionLocal() as db:
+                root_step = db.get(FlowStepTemplate, root_step_id)
+                self.assertIsNotNone(root_step)
+                root_step.response_type = "branching"
+                root_step.button_options = "Да\nНет"
+                db.commit()
+
+            branch_response = self.client.post(
+                f"/api/flows/workspace/steps/{root_step_id}/branches",
+                json={"option_index": 0},
+            )
+            self.assertEqual(200, branch_response.status_code)
+            branch_step_id = int(branch_response.json()["step_id"])
+            created_step_ids.append(branch_step_id)
+
+            with SessionLocal() as db:
+                branch_step = db.get(FlowStepTemplate, branch_step_id)
+                self.assertIsNotNone(branch_step)
+                branch_step.response_type = "chain"
+                db.commit()
+
+            chain_response = self.client.post(
+                f"/api/flows/workspace/steps/{branch_step_id}/chain",
+                json={"title": "Шаг цепочки"},
+            )
+            self.assertEqual(200, chain_response.status_code)
+            created_step_ids.append(int(chain_response.json()["step_id"]))
+
+            with SessionLocal() as db:
+                default_texts = [db.get(FlowStepTemplate, step_id).default_text for step_id in created_step_ids]
+            self.assertEqual(["", "", ""], default_texts)
+        finally:
+            with SessionLocal() as db:
+                db.query(FlowStepTemplate).filter(FlowStepTemplate.flow_key == scenario_key).delete(synchronize_session=False)
+                db.query(ScenarioTemplate).filter(ScenarioTemplate.scenario_key == scenario_key).delete(synchronize_session=False)
+                db.commit()
+
     def test_dashboard_workspace_api_returns_operational_payload(self) -> None:
         scenario_key = f"codex_dashboard_{self.unique_tag}"
         now = datetime.now(UTC).replace(tzinfo=None)

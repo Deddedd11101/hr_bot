@@ -76,6 +76,7 @@ Scenario engine превращает scenario templates плюс employee state 
 - В React scenario workspace тип ответа теперь явно показывает, блокирует ли шаг поток.
 - `text`, `file`, `buttons` и `branching` считаются интерактивными: после отправки такого шага бот ждет ответ и не переходит дальше автоматически.
 - `none` не блокирует сценарий и должен использоваться для чисто информационных шагов, файлов и текстов, после которых не нужен ответ.
+- Новые scenario-шаги, branch-шаги и chain-шаги не должны сохранять декоративный default text. Поле сообщения остается пустым, а подсказка показывается только как UI placeholder.
 
 ## Read-only graph contract
 
@@ -97,7 +98,7 @@ Scenario engine превращает scenario templates плюс employee state 
 - Transition model к другому scenario еще не semantically clean.
 - `launch_scenario` больше не зависает молча, но продуктовое правило для пустого `launch_scenario_key` все еще стоит считать editor/data-quality проблемой, а не “легальной” runtime-ситуацией.
 - Step notifications прикреплены на уровне step, button notifications — отдельно.
-- Empty или placeholder step content может утечь в user dialog, если templates смоделированы неаккуратно.
+- Empty step content все еще требует отдельной runtime/UI-валидации: новые шаги больше не получают placeholder text, но полностью пустые сценарные сообщения пока остаются допустимым состоянием модели.
 - Attachment-only interactive steps все еще могут потребовать отдельное helper-message, потому что messenger transport пока не умеет captions + inline markup для file/photo delivery.
 - Candidate и employee behavior все еще используют один engine и data model. Это удобно, но продуктово нечисто.
 - `Назад` теперь умеет откатывать только последний подтвержденный ответ внутри живого progress. Это не глобальный time-travel: он не раскатывает цепочку из нескольких уже завершенных сценариев и не обещает undo для внешних side effects вне текущего runtime-контракта.

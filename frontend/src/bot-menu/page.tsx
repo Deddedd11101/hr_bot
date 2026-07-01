@@ -430,6 +430,36 @@ function labelOptions(labels: Record<string, string>) {
   return Object.entries(labels).map(([value, label]) => ({ value, label }));
 }
 
+function actionTypePatch(actionType: string) {
+  return {
+    action_type: actionType,
+    scenario_key: "",
+    target_menu_set_id: null,
+    document_item_id: null,
+  };
+}
+
+function draftActionTypePatch(actionType: string) {
+  return {
+    action_type: actionType,
+    scenario_key: "",
+    target_menu_set_id: "",
+    document_item_id: "",
+  };
+}
+
+function isScenarioAction(actionType: string) {
+  return actionType === "launch_scenario";
+}
+
+function isOpenSetAction(actionType: string) {
+  return actionType === "open_set";
+}
+
+function isSendDocumentAction(actionType: string) {
+  return actionType === "send_document";
+}
+
 export function BotMenuPage({ apiUrl }: BotMenuPageProps) {
   const [workspace, setWorkspace] = React.useState<Workspace | null>(null);
   const [loading, setLoading] = React.useState(true);
@@ -645,47 +675,127 @@ export function BotMenuPage({ apiUrl }: BotMenuPageProps) {
                   </div>
 
                   {menuSet.buttons.map((button) => (
-                    <div key={button.id} className="grid gap-2 rounded-lg border border-border bg-muted/35 p-3 xl:grid-cols-[1.1fr_0.8fr_1fr_1fr_1fr_auto]">
-                      <Input value={button.label} onChange={(event) => updateMenuButtonLocal(button.id, { label: event.target.value })} placeholder="Кнопка" autoComplete="off" />
-                      <AppSelect value={button.action_type} onChange={(value) => updateMenuButtonLocal(button.id, { action_type: value })} options={actionTypeOptions} allowEmpty={false} />
-                      <AppSelect value={button.scenario_key} onChange={(value) => updateMenuButtonLocal(button.id, { scenario_key: value })} options={scenarios} placeholder="Сценарий" />
-                      <AppSelect value={button.target_menu_set_id ? String(button.target_menu_set_id) : ""} onChange={(value) => updateMenuButtonLocal(button.id, { target_menu_set_id: value ? Number(value) : null })} options={menuOptions} placeholder="Набор" />
-                      <AppSelect value={button.document_item_id ? String(button.document_item_id) : ""} onChange={(value) => updateMenuButtonLocal(button.id, { document_item_id: value ? Number(value) : null })} options={workspace.document_options || []} placeholder="Документ" />
-                      <div className="flex gap-2 xl:justify-end">
-                        <Button variant="secondary" size="icon" aria-label="Сохранить кнопку" onClick={() => setWorkspaceFromApi(requestJson(`/api/settings/menu-buttons/${button.id}`, { method: "POST", body: JSON.stringify(button) }), "Кнопка сохранена")}>
-                          <Save />
-                        </Button>
-                        <ConfirmAction
-                          title="Удалить кнопку?"
-                          description="Кнопка исчезнет из этого набора меню. Это действие нельзя отменить."
-                          onConfirm={() => setWorkspaceFromApi(requestJson(`/api/settings/menu-buttons/${button.id}`, { method: "DELETE" }), "Кнопка удалена")}
-                        >
-                          <Button variant="outline" size="icon" aria-label="Удалить кнопку">
-                            <Trash2 />
+                    <div key={button.id} className="grid gap-3 rounded-lg border border-border bg-muted/35 p-3">
+                      <div className="grid gap-3 xl:grid-cols-[1.1fr_0.8fr_auto] xl:items-end">
+                        <Field>
+                          <FieldLabel>Название кнопки</FieldLabel>
+                          <Input value={button.label} onChange={(event) => updateMenuButtonLocal(button.id, { label: event.target.value })} placeholder="Кнопка" autoComplete="off" />
+                        </Field>
+                        <Field>
+                          <FieldLabel>Действие</FieldLabel>
+                          <AppSelect value={button.action_type} onChange={(value) => updateMenuButtonLocal(button.id, actionTypePatch(value))} options={actionTypeOptions} allowEmpty={false} />
+                        </Field>
+                        <div className="flex gap-2 xl:justify-end">
+                          <Button variant="secondary" size="icon" aria-label="Сохранить кнопку" onClick={() => setWorkspaceFromApi(requestJson(`/api/settings/menu-buttons/${button.id}`, { method: "POST", body: JSON.stringify(button) }), "Кнопка сохранена")}>
+                            <Save />
                           </Button>
-                        </ConfirmAction>
+                          <ConfirmAction
+                            title="Удалить кнопку?"
+                            description="Кнопка исчезнет из этого набора меню. Это действие нельзя отменить."
+                            onConfirm={() => setWorkspaceFromApi(requestJson(`/api/settings/menu-buttons/${button.id}`, { method: "DELETE" }), "Кнопка удалена")}
+                          >
+                            <Button variant="outline" size="icon" aria-label="Удалить кнопку">
+                              <Trash2 />
+                            </Button>
+                          </ConfirmAction>
+                        </div>
+                      </div>
+                      <div className="grid gap-3 xl:grid-cols-3">
+                        <Field>
+                          <FieldLabel>Сценарий</FieldLabel>
+                          <AppSelect
+                            value={button.scenario_key}
+                            onChange={(value) => updateMenuButtonLocal(button.id, { scenario_key: value })}
+                            options={scenarios}
+                            placeholder={isScenarioAction(button.action_type) ? "Сценарий" : "Недоступно для этого действия"}
+                            disabled={!isScenarioAction(button.action_type)}
+                          />
+                        </Field>
+                        <Field>
+                          <FieldLabel>Набор для перехода</FieldLabel>
+                          <AppSelect
+                            value={button.target_menu_set_id ? String(button.target_menu_set_id) : ""}
+                            onChange={(value) => updateMenuButtonLocal(button.id, { target_menu_set_id: value ? Number(value) : null })}
+                            options={menuOptions}
+                            placeholder={isOpenSetAction(button.action_type) ? "Набор" : "Недоступно для этого действия"}
+                            disabled={!isOpenSetAction(button.action_type)}
+                          />
+                        </Field>
+                        <Field>
+                          <FieldLabel>Документ</FieldLabel>
+                          <AppSelect
+                            value={button.document_item_id ? String(button.document_item_id) : ""}
+                            onChange={(value) => updateMenuButtonLocal(button.id, { document_item_id: value ? Number(value) : null })}
+                            options={workspace.document_options || []}
+                            placeholder={isSendDocumentAction(button.action_type) ? "Документ" : "Недоступно для этого действия"}
+                            disabled={!isSendDocumentAction(button.action_type)}
+                          />
+                        </Field>
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        Активно только одно целевое поле. При смене действия несовместимые значения очищаются автоматически.
                       </div>
                     </div>
                   ))}
 
-                  <div className="grid gap-2 rounded-lg border border-dashed border-border p-3 xl:grid-cols-[1.1fr_0.8fr_1fr_1fr_1fr_auto]">
-                    <Input value={draft.label} onChange={(event) => setButtonDrafts((current) => ({ ...current, [menuSet.id]: { ...draft, label: event.target.value } }))} placeholder="Новая кнопка" autoComplete="off" />
-                    <AppSelect value={draft.action_type} onChange={(value) => setButtonDrafts((current) => ({ ...current, [menuSet.id]: { ...draft, action_type: value } }))} options={actionTypeOptions} allowEmpty={false} />
-                    <AppSelect value={draft.scenario_key} onChange={(value) => setButtonDrafts((current) => ({ ...current, [menuSet.id]: { ...draft, scenario_key: value } }))} options={scenarios} placeholder="Сценарий" />
-                    <AppSelect value={draft.target_menu_set_id} onChange={(value) => setButtonDrafts((current) => ({ ...current, [menuSet.id]: { ...draft, target_menu_set_id: value } }))} options={menuOptions} placeholder="Набор" />
-                    <AppSelect value={draft.document_item_id} onChange={(value) => setButtonDrafts((current) => ({ ...current, [menuSet.id]: { ...draft, document_item_id: value } }))} options={workspace.document_options || []} placeholder="Документ" />
-                    <Button
-                      aria-label="Создать кнопку"
-                      onClick={() =>
-                        setWorkspaceFromApi(
-                          requestJson(`/api/settings/menu-sets/${menuSet.id}/buttons`, { method: "POST", body: JSON.stringify(draft) }),
-                          "Кнопка создана",
-                        ).then(() => setButtonDrafts((current) => ({ ...current, [menuSet.id]: { label: "", action_type: "inactive", scenario_key: "", target_menu_set_id: "", document_item_id: "" } })))
-                      }
-                    >
-                      <Plus data-icon="inline-start" />
-                      Создать
-                    </Button>
+                  <div className="grid gap-3 rounded-lg border border-dashed border-border p-3">
+                    <div className="grid gap-3 xl:grid-cols-[1.1fr_0.8fr_auto] xl:items-end">
+                      <Field>
+                        <FieldLabel>Название кнопки</FieldLabel>
+                        <Input value={draft.label} onChange={(event) => setButtonDrafts((current) => ({ ...current, [menuSet.id]: { ...draft, label: event.target.value } }))} placeholder="Новая кнопка" autoComplete="off" />
+                      </Field>
+                      <Field>
+                        <FieldLabel>Действие</FieldLabel>
+                        <AppSelect value={draft.action_type} onChange={(value) => setButtonDrafts((current) => ({ ...current, [menuSet.id]: { ...draft, ...draftActionTypePatch(value) } }))} options={actionTypeOptions} allowEmpty={false} />
+                      </Field>
+                      <Button
+                        aria-label="Создать кнопку"
+                        onClick={() =>
+                          setWorkspaceFromApi(
+                            requestJson(`/api/settings/menu-sets/${menuSet.id}/buttons`, { method: "POST", body: JSON.stringify(draft) }),
+                            "Кнопка создана",
+                          ).then(() => setButtonDrafts((current) => ({ ...current, [menuSet.id]: { label: "", action_type: "inactive", scenario_key: "", target_menu_set_id: "", document_item_id: "" } })))
+                        }
+                      >
+                        <Plus data-icon="inline-start" />
+                        Создать
+                      </Button>
+                    </div>
+                    <div className="grid gap-3 xl:grid-cols-3">
+                      <Field>
+                        <FieldLabel>Сценарий</FieldLabel>
+                        <AppSelect
+                          value={draft.scenario_key}
+                          onChange={(value) => setButtonDrafts((current) => ({ ...current, [menuSet.id]: { ...draft, scenario_key: value } }))}
+                          options={scenarios}
+                          placeholder={isScenarioAction(draft.action_type) ? "Сценарий" : "Недоступно для этого действия"}
+                          disabled={!isScenarioAction(draft.action_type)}
+                        />
+                      </Field>
+                      <Field>
+                        <FieldLabel>Набор для перехода</FieldLabel>
+                        <AppSelect
+                          value={draft.target_menu_set_id}
+                          onChange={(value) => setButtonDrafts((current) => ({ ...current, [menuSet.id]: { ...draft, target_menu_set_id: value } }))}
+                          options={menuOptions}
+                          placeholder={isOpenSetAction(draft.action_type) ? "Набор" : "Недоступно для этого действия"}
+                          disabled={!isOpenSetAction(draft.action_type)}
+                        />
+                      </Field>
+                      <Field>
+                        <FieldLabel>Документ</FieldLabel>
+                        <AppSelect
+                          value={draft.document_item_id}
+                          onChange={(value) => setButtonDrafts((current) => ({ ...current, [menuSet.id]: { ...draft, document_item_id: value } }))}
+                          options={workspace.document_options || []}
+                          placeholder={isSendDocumentAction(draft.action_type) ? "Документ" : "Недоступно для этого действия"}
+                          disabled={!isSendDocumentAction(draft.action_type)}
+                        />
+                      </Field>
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      Активно только одно целевое поле. При смене действия несовместимые значения очищаются автоматически.
+                    </div>
                   </div>
                 </CardContent>
               </Card>
