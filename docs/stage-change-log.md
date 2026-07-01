@@ -34,6 +34,36 @@ source_of_truth: true
 
 ## Записи
 
+### 2026-07-01 17:30 MSK - app deploy - blank scenario steps и bot-menu target UX
+
+- Deploy ref: `stage`.
+- Deployed commit: `48fe67e`.
+- GitHub Actions run: `28524810023` -> success.
+- В stage включены:
+  - новые scenario root steps, branch steps и chain steps больше не получают сохраняемый текст `Новое сообщение сценария.`;
+  - React scenario workspace показывает `Введите текст сообщения` как placeholder, а не как отправляемый default text;
+  - legacy `scenario_edit.html` больше не подставляет `Новое сообщение сценария.` при добавлении chain step;
+  - `/app/bot-menu` теперь показывает цели кнопки как взаимоисключающие поля: сценарий, набор для перехода или документ;
+  - неактуальные target-селекты в bot-menu disabled, а при смене `action_type` несовместимые значения очищаются.
+- Локальные проверки на объединенном `stage`:
+  - `.venv\Scripts\python.exe -m compileall app tests tools`;
+  - `.venv\Scripts\ruff.exe check --select F821 app tests`;
+  - `.venv\Scripts\python.exe -m unittest tests.test_employee_api_smoke.EmployeeApiSmokeTests.test_workspace_api_creates_blank_message_text_for_new_scenario_steps -v`;
+  - `.venv\Scripts\python.exe -m unittest tests.test_employee_api_smoke tests.test_messaging_identity tests.test_scenario_engine_smoke tests.test_scenario_engine_branching -v` -> 91 tests OK;
+  - `npm run build` в `frontend`;
+  - `git diff --check`.
+- Stage smoke checks из workflow:
+  - server HEAD -> `48fe67e`;
+  - preflight compile/F821/backend smoke/frontend build/import smoke -> success;
+  - `curl http://127.0.0.1:8000/app/employees` -> `303`;
+  - `curl http://127.0.0.1:8000/app/flows/workspace-v2` -> `303`;
+  - `curl -4 -I --connect-timeout 10 https://api.telegram.org/` прошел в deploy script;
+  - `hr-bot-web`, `hr-bot-worker` и `wg-quick@redshield` прошли `systemctl is-active`;
+  - worker log grep без свежих `TelegramNetworkError`, `Request timeout`, `Traceback`, `Unclosed client session`.
+- Rollback/backup: DB не менялась; отдельный DB backup для этого app deploy не требовался.
+- Открытые риски:
+  - пустой текст шага теперь не маскируется заглушкой, но модель все еще допускает полностью пустой сценарный шаг; отдельная UI/runtime-валидация пустого sendable content остается следующим cleanup.
+
 ### 2026-07-01 16:55 MSK - app deploy - admin auth hardening
 
 - Deploy ref: `stage`.
