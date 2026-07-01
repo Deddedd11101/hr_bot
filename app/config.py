@@ -43,6 +43,8 @@ class Settings:
 
     # Сессии админки
     ADMIN_SESSION_SECRET: str = os.getenv("ADMIN_SESSION_SECRET", "change-me-admin-session-secret")
+    ADMIN_SESSION_MAX_AGE_SECONDS: int = int(os.getenv("ADMIN_SESSION_MAX_AGE_SECONDS", str(60 * 60 * 12)))
+    ADMIN_SESSION_COOKIE_SECURE: bool = os.getenv("ADMIN_SESSION_COOKIE_SECURE", "false").lower() in {"1", "true", "yes"}
 
     # Базовые аккаунты админки
     DEFAULT_ADMIN_LOGIN: str = os.getenv("DEFAULT_ADMIN_LOGIN", "admin")

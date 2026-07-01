@@ -180,7 +180,7 @@ source_of_truth: true
 - После текущей стабилизации следующий продуктовый модуль — `HRB-P2-06` отпуска MVP; Telegram Mini Apps не начинать как отдельный frontend до решения `HRB-DISC-03` по scope/auth/API boundaries.
 - `HRB-DISC-04` определить модель раздельного хранения данных для двух ИП; `HRB-P2-07` не начинать без LLD, потому что это влияет на БД, deploy/runbook, backup и UI context.
 - `HRB-DISC-05` определить модель ролей и доступа админки до расширения account management: директору может быть нужен operational доступ без права управлять аккаунтами, а технический `admin` должен быть отделен от ежедневной HR-работы.
-- `HRB-P2-08` запланировать security/compliance hardening после стабилизации ключевых модулей; auth, identity и data isolation учитывать уже в LLD для двух ИП и Mini Apps.
+- `HRB-P2-08` начат с узкого auth-hardening slice: admin cookie теперь подписанная и с TTL, raw account id больше не авторизует, `/login` имеет базовый rate limit, account management отклоняет слабые новые пароли. Следующий security-шаг для stage — домен + HTTPS reverse proxy + закрытый публичный `:8000`, затем смена `ADMIN_SESSION_SECRET` и `ADMIN_SESSION_COOKIE_SECURE=true`.
 - Первые LLD-кандидаты после стандарта: scenario engine, bot identity, employee lifecycle, notification model, schema/migration strategy и React scenario workspace.
 
 ## Операционные ограничения

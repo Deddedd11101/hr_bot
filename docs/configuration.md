@@ -35,6 +35,8 @@ task_tokens:
 | `FEEDBACK_URL`           | `https://example.com/feedback`   | Ссылка на feedback forms                          | На реальном стенде надо заменить                      |
 | `FILE_STORAGE_DIR`       | `./storage/employee_files`       | Базовая директория файлов сотрудников             | На stage должна указывать на durable writable storage |
 | `ADMIN_SESSION_SECRET`   | `change-me-admin-session-secret` | Секрет сессий админки                             | Обязательно заменить вне локального демо              |
+| `ADMIN_SESSION_MAX_AGE_SECONDS` | `43200`                   | TTL signed-cookie сессии админки                  | 12 часов по умолчанию                                |
+| `ADMIN_SESSION_COOKIE_SECURE` | `false`                    | Добавлять `Secure` к admin cookie                 | На stage включать только после HTTPS reverse proxy    |
 | `DEFAULT_ADMIN_LOGIN`    | `admin`                          | Bootstrap admin login                             | Используется startup seeding                          |
 | `DEFAULT_ADMIN_PASSWORD` | `admin123`                       | Bootstrap admin password                          | Небезопасно вне локального bootstrap                  |
 | `DEFAULT_HR_LOGIN`       | `hr`                             | Bootstrap HR login                                | Используется startup seeding                          |
@@ -46,11 +48,14 @@ task_tokens:
 
 - `TELEGRAM_BOT_TOKEN`
 - `ADMIN_SESSION_SECRET`
+- `ADMIN_SESSION_MAX_AGE_SECONDS`
 
 Без них:
 
 - bot worker не сможет нормально стартовать;
 - integrity admin sessions не является production-safe.
+
+После включения HTTPS на stage дополнительно выставить `ADMIN_SESSION_COOKIE_SECURE=true`. До HTTPS это ломает login по plain HTTP, потому что браузер не сохраняет secure-cookie.
 
 ### Runtime и расписание
 

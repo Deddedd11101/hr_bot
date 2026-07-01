@@ -5,7 +5,7 @@ from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
-from ..auth import ROLE_LABELS, hash_password
+from ..auth import ROLE_LABELS, hash_password, validate_account_password
 from ..database import get_session
 from ..messaging import create_telegram_messenger
 from ..messaging.identity import get_primary_chat_id
@@ -342,11 +342,14 @@ def create_account(
     normalized_login = login.strip()
     existing_account = db.query(AdminAccount).filter(AdminAccount.login == normalized_login).first()
     if normalized_login and not existing_account:
+        password_error = validate_account_password(password)
+        if password_error:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=password_error)
         now = utc_now()
         db.add(
             AdminAccount(
                 login=normalized_login,
-                password_hash=hash_password(password or "change-me"),
+                password_hash=hash_password(password.strip()),
                 role=role if role in ROLE_LABELS else "hr",
                 is_active=is_active == "true",
                 created_at=now,
@@ -376,6 +379,9 @@ def update_account(
         account.role = role if role in ROLE_LABELS else "hr"
         account.is_active = is_active == "true"
         if password.strip():
+            password_error = validate_account_password(password)
+            if password_error:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=password_error)
             account.password_hash = hash_password(password.strip())
         account.updated_at = utc_now()
         db.commit()
@@ -711,11 +717,15 @@ def create_account_api(
     existing_account = db.query(AdminAccount).filter(AdminAccount.login == normalized_login).first()
     if existing_account:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Аккаунт с таким логином уже есть")
+    password = str(payload.get("password") or "").strip()
+    password_error = validate_account_password(password)
+    if password_error:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=password_error)
     now = utc_now()
     db.add(
         AdminAccount(
             login=normalized_login,
-            password_hash=hash_password(str(payload.get("password") or "change-me")),
+            password_hash=hash_password(password),
             role=str(payload.get("role") or "hr") if str(payload.get("role") or "hr") in ROLE_LABELS else "hr",
             is_active=bool(payload.get("is_active", True)),
             created_at=now,
@@ -746,6 +756,9 @@ def update_account_api(
     account.is_active = bool(payload.get("is_active", account.is_active))
     password = str(payload.get("password") or "").strip()
     if password:
+        password_error = validate_account_password(password)
+        if password_error:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=password_error)
         account.password_hash = hash_password(password)
     account.updated_at = utc_now()
     db.commit()
@@ -767,5 +780,4 @@ def delete_account_api(
     db.delete(account)
     db.commit()
     return _settings_workspace_payload(db, current_user)
-
 

@@ -1,4 +1,5 @@
 from datetime import datetime, date, timedelta
+import time
 from typing import List, Optional
 
 from fastapi import Body, Depends, FastAPI, File, Form, HTTPException, Request, UploadFile, status
@@ -11,7 +12,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from .auth import authenticate_account, hash_password
+from .auth import authenticate_account, create_admin_session_token, verify_admin_session_token
 from .config import settings
 from .database import get_session, init_db
 from .employee_card import render_employee_card_png
@@ -121,6 +122,9 @@ from .web.support import (
 
 
 AUTH_COOKIE_NAME = "hr_admin_auth"
+LOGIN_RATE_LIMIT_WINDOW_SECONDS = 10 * 60
+LOGIN_RATE_LIMIT_MAX_FAILURES = 5
+_login_failures: dict[str, list[float]] = {}
 
 OPENAPI_TAGS = [
     {
@@ -215,11 +219,39 @@ def get_db():
 @app.middleware("http")
 async def load_current_user(request: Request, call_next):
     request.state.current_user = None
-    user_id = request.cookies.get(AUTH_COOKIE_NAME)
-    if user_id and str(user_id).isdigit():
+    session_token = request.cookies.get(AUTH_COOKIE_NAME)
+    user_id = verify_admin_session_token(session_token or "")
+    if user_id:
         with get_session() as db:
-            request.state.current_user = db.get(AdminAccount, int(user_id))
+            account = db.get(AdminAccount, user_id)
+            if account and account.is_active:
+                request.state.current_user = account
     return await call_next(request)
+
+
+def _login_rate_limit_key(request: Request, login: str) -> str:
+    client_host = request.client.host if request.client else "unknown"
+    return f"{client_host}:{login.strip().lower()}"
+
+
+def _is_login_rate_limited(request: Request, login: str) -> bool:
+    key = _login_rate_limit_key(request, login)
+    cutoff = time.monotonic() - LOGIN_RATE_LIMIT_WINDOW_SECONDS
+    failures = [failure_at for failure_at in _login_failures.get(key, []) if failure_at >= cutoff]
+    _login_failures[key] = failures
+    return len(failures) >= LOGIN_RATE_LIMIT_MAX_FAILURES
+
+
+def _record_login_failure(request: Request, login: str) -> None:
+    key = _login_rate_limit_key(request, login)
+    cutoff = time.monotonic() - LOGIN_RATE_LIMIT_WINDOW_SECONDS
+    failures = [failure_at for failure_at in _login_failures.get(key, []) if failure_at >= cutoff]
+    failures.append(time.monotonic())
+    _login_failures[key] = failures
+
+
+def _clear_login_failures(request: Request, login: str) -> None:
+    _login_failures.pop(_login_rate_limit_key(request, login), None)
 
 
 def _scenario_matches_employee_role(scenario: ScenarioTemplate, employee: Employee) -> bool:
@@ -269,19 +301,29 @@ def login_submit(
     password: str = Form(""),
     db: Session = Depends(get_db),
 ):
+    if _is_login_rate_limited(request, login):
+        return _render(
+            request,
+            "login.html",
+            {"error_message": "Слишком много неудачных попыток. Попробуйте позже."},
+        )
     account = authenticate_account(db, login, password)
     if not account:
+        _record_login_failure(request, login)
         return _render(
             request,
             "login.html",
             {"error_message": "Неверный логин или пароль."},
         )
+    _clear_login_failures(request, login)
     response = RedirectResponse(url="/app/dashboard", status_code=status.HTTP_303_SEE_OTHER)
     response.set_cookie(
         AUTH_COOKIE_NAME,
-        str(account.id),
+        create_admin_session_token(account.id),
         httponly=True,
         samesite="lax",
+        max_age=settings.ADMIN_SESSION_MAX_AGE_SECONDS,
+        secure=settings.ADMIN_SESSION_COOKIE_SECURE,
     )
     return response
 

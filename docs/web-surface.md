@@ -29,7 +29,8 @@ source_of_truth: true
 
 ## Сессия и модель доступа
 
-- Browser auth использует cookie `hr_admin_auth`.
+- Browser auth использует cookie `hr_admin_auth` со stateless HMAC session token и TTL.
+- Raw account id в `hr_admin_auth` больше не считается валидной авторизацией.
 - Без auth classic routes обычно делают `303` redirect на `/login`.
 - Без auth JSON routes возвращают `401`; это описано в [[api]].
 - Admin-only boundary есть для settings-related pages через `_require_admin()`. Большинство операторских страниц требует только authenticated account.
@@ -39,7 +40,7 @@ source_of_truth: true
 | Method | Path | Surface | Примечания |
 | --- | --- | --- | --- |
 | `GET` | `/login` | HTML page | Login screen |
-| `POST` | `/login` | Form action | Аутентифицирует admin account, ставит auth cookie и ведет на `/app/dashboard` |
+| `POST` | `/login` | Form action | Аутентифицирует admin account, применяет простой rate limit на неудачные попытки, ставит signed auth cookie и ведет на `/app/dashboard` |
 | `POST` | `/logout` | Form action | Очищает auth cookie |
 | `GET` | `/` | Redirecting page | Основная operator landing page после auth; сейчас ведет на `/app/dashboard` |
 

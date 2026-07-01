@@ -9,7 +9,7 @@ from uuid import uuid4
 from fastapi.testclient import TestClient
 from openpyxl import load_workbook
 
-from app.auth import authenticate_account
+from app.auth import authenticate_account, create_admin_session_token
 from app.database import SessionLocal, init_db
 from app.main import AUTH_COOKIE_NAME, app
 from app.messaging.identity import get_primary_chat_id, set_primary_chat_id
@@ -24,6 +24,7 @@ from app.messaging.service import (
 )
 from app.scenario_engine import SINGLE_STEP_REQUEST_PREFIX, handle_button_response, send_step
 from app.models import (
+    AdminAccount,
     BotMenuButton,
     BotMenuSet,
     DocumentLibraryItem,
@@ -78,7 +79,7 @@ class EmployeeApiSmokeTests(unittest.TestCase):
             account = authenticate_account(db, "admin", "admin123")
             if account is None:
                 raise AssertionError("Admin account is not available for API smoke tests.")
-            cls.client.cookies.set(AUTH_COOKIE_NAME, str(account.id))
+            cls.client.cookies.set(AUTH_COOKIE_NAME, create_admin_session_token(account.id))
 
     def setUp(self) -> None:
         self.unique_tag = uuid4().hex[:12]
@@ -494,6 +495,65 @@ class EmployeeApiSmokeTests(unittest.TestCase):
         self.assertEqual(root_response.headers.get("location"), "/app/dashboard")
         self.assertEqual(login_response.status_code, 303)
         self.assertEqual(login_response.headers.get("location"), "/app/dashboard")
+
+    def test_raw_account_id_cookie_does_not_authenticate(self) -> None:
+        client = TestClient(app)
+        client.cookies.set(AUTH_COOKIE_NAME, "1")
+
+        response = client.get("/api/settings/workspace")
+
+        self.assertEqual(response.status_code, 401)
+
+    def test_login_sets_signed_session_cookie(self) -> None:
+        client = TestClient(app)
+
+        response = client.post(
+            "/login",
+            data={"login": "admin", "password": "admin123"},
+            follow_redirects=False,
+        )
+
+        self.assertEqual(response.status_code, 303)
+        self.assertEqual(response.headers.get("location"), "/app/dashboard")
+        session_cookie = response.cookies.get(AUTH_COOKIE_NAME)
+        self.assertIsNotNone(session_cookie)
+        self.assertNotEqual(session_cookie, "1")
+        self.assertEqual(len(session_cookie.split(".")), 3)
+
+    def test_account_api_rejects_weak_passwords(self) -> None:
+        response = self.client.post(
+            "/api/accounts",
+            json={
+                "login": f"codex-weak-{self.unique_tag}",
+                "password": "short",
+                "role": "hr",
+                "is_active": True,
+            },
+        )
+
+        self.assertEqual(response.status_code, 400)
+
+    def test_account_api_accepts_strong_passwords(self) -> None:
+        login = f"codex-strong-{self.unique_tag}"
+
+        response = self.client.post(
+            "/api/accounts",
+            json={
+                "login": login,
+                "password": f"Strong-{self.unique_tag}-2026",
+                "role": "hr",
+                "is_active": True,
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        with SessionLocal() as db:
+            account = db.query(AdminAccount).filter(AdminAccount.login == login).first()
+            self.assertIsNotNone(account)
+            if account is not None:
+                self.assertNotEqual(account.password_hash, f"Strong-{self.unique_tag}-2026")
+                db.delete(account)
+                db.commit()
 
     def test_react_dashboard_template_mounts_bundle(self) -> None:
         response = self.client.get("/app/dashboard")
