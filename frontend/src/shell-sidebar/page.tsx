@@ -2,7 +2,6 @@ import React from "react";
 import {
   BadgeCheck,
   Bot,
-  Braces,
   ClipboardList,
   FolderOpen,
   FileCheck2,
@@ -40,7 +39,6 @@ const primaryItems = [
 ] as const;
 
 const secondaryItems = [
-  { key: "design_system", label: "Дизайн-система", href: "/app/design-system", icon: Braces },
   { key: "bot_menu", label: "Меню бота", href: "/app/bot-menu", icon: Bot },
   { key: "documents", label: "Документы", href: "/app/documents", icon: FolderOpen },
   { key: "settings", label: "Настройки", href: "/app/settings", icon: Settings },

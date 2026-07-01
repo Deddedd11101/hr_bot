@@ -152,6 +152,8 @@ def _load_scenario_editor_data(db: Session, scenario: ScenarioTemplate):
 
 def _workspace_response_label(step: FlowStepTemplate, scenario_kind: str = "scenario") -> str:
     response_type = (step.response_type or "").strip()
+    if scenario_kind == "survey" and response_type == "text" and (step.button_options or "").strip():
+        return "Варианты ответа"
     extra_labels = {
         "chain": "Цепочка шагов",
         "launch_scenario": "Переход к сценарию",

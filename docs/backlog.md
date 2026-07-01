@@ -66,7 +66,8 @@ source_of_truth: true
 
 ### Frontend operating rule
 
-- Для `HRB-P1-07` любые новые admin UI правки обязаны идти через shadcn workflow gate: `npx shadcn@latest info --json`, `npx shadcn@latest docs <component>`, проверка локальных `frontend/src/components/ui/*`, при необходимости `search`/`add --dry-run`/`--diff`, затем сначала `/app/design-system#patterns`, потом live page.
+- Для `HRB-P1-07` любые новые admin UI правки обязаны идти через shadcn workflow gate: `npx shadcn@latest info --json`, `npx shadcn@latest docs <component>`, проверка локальных `frontend/src/components/ui/*`, при необходимости `search`/`add --dry-run`/`--diff`, затем сначала internal `/app/design-system#patterns`, потом live page. `/app/design-system` больше не показывается в operator sidebar, чтобы не торчать на тестовом стенде как обычная админская страница.
+- React scenario workspace снова сохраняет `response_type=buttons` как самостоятельный тип ответа и не маскирует его под `branching`; шаги с вариантами ответа могут сохранять `target_field`, включая `salary_expectation`.
 
 ## Исследования
 

@@ -310,6 +310,56 @@ class ScenarioEngineSmokeTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(matches_role_scope(employee, employee_scenario))
         self.assertFalse(matches_role_scope(candidate, employee_scenario))
 
+    async def test_handle_button_response_persists_target_field_value(self) -> None:
+        init_db()
+        now = datetime.now(UTC).replace(tzinfo=None)
+        scenario_key = f"test_button_target_{int(datetime.now(UTC).timestamp() * 1000000)}"
+
+        with SessionLocal() as db:
+            scenario = ScenarioTemplate(
+                scenario_key=scenario_key,
+                title="Button target field",
+                role_scope="all",
+                scenario_kind="scenario",
+                sort_order=0,
+                trigger_mode="manual_only",
+            )
+            step = FlowStepTemplate(
+                flow_key=scenario_key,
+                step_key="salary_step",
+                step_title="Ожидаемый доход",
+                sort_order=10,
+                default_text="Выбери ожидаемый доход",
+                response_type="buttons",
+                button_options="200000\n300000",
+                send_mode="immediate",
+                day_offset_workdays=0,
+                target_field="salary_expectation",
+            )
+            employee = Employee(
+                full_name="Candidate Tester",
+                telegram_user_id="123456789",
+                created_at=now,
+                is_flow_scheduled=False,
+                employee_stage="candidate",
+            )
+            db.add_all([scenario, step, employee])
+            db.commit()
+            db.refresh(employee)
+
+            messenger = FakeMessenger()
+            await send_step(messenger, db, employee, scenario, step)
+            handled = await handle_button_response(messenger, db, employee, scenario_key, "salary_step", 1)
+
+            self.assertTrue(handled)
+            db.refresh(employee)
+            self.assertEqual(employee.salary_expectation, "300000")
+
+            db.delete(step)
+            db.delete(scenario)
+            db.delete(employee)
+            db.commit()
+
     async def test_handle_back_response_returns_to_previous_interactive_step(self) -> None:
         init_db()
         now = datetime.now(UTC).replace(tzinfo=None)
