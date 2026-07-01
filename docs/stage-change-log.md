@@ -34,6 +34,30 @@ source_of_truth: true
 
 ## Записи
 
+### 2026-07-01 16:24 MSK - app deploy - buttons target field и скрытие design-system из навигации
+
+- Deploy ref: `stage`.
+- Deployed commit: `e7b4cab`.
+- GitHub Actions run: `28520715899` -> success.
+- В stage включены:
+  - `codex/scenario-workspace-ui-foundation` commit `22e9caa`: React scenario workspace снова показывает `response_type=buttons` как самостоятельный тип ответа и сохраняет `target_field`, включая кейс `salary_expectation`;
+  - React `/app/settings` больше не показывает старый блок HR-уведомлений, который дублировал сценарные notification rules;
+  - `/app/design-system` убран из React sidebar и legacy sidebar, чтобы не торчать у админа на тестовом стенде; прямой route оставлен как внутренний dev baseline.
+- Локальные проверки на объединенном `stage`:
+  - `.venv\Scripts\python.exe -m compileall app tests tools`;
+  - `.venv\Scripts\ruff.exe check --select F821 app tests`;
+  - `.venv\Scripts\python.exe -m unittest tests.test_employee_api_smoke tests.test_messaging_identity tests.test_scenario_engine_smoke tests.test_scenario_engine_branching -v` -> 86 tests OK;
+  - `npm run build` в `frontend`.
+- Stage smoke checks из workflow:
+  - server HEAD -> `e7b4cab`;
+  - preflight compile/F821/backend smoke/frontend build/import smoke -> success;
+  - `curl http://127.0.0.1:8000/app/employees` -> `303`;
+  - `curl http://127.0.0.1:8000/app/flows/workspace-v2` -> `303`;
+  - `curl -4 -I https://api.telegram.org/` -> `HTTP/2 302`;
+  - worker log grep без свежих `TelegramNetworkError`, `Request timeout`, `Traceback`, `Unclosed client session`.
+- Rollback/backup: DB не менялась; отдельный DB backup для этого app deploy не требовался.
+- Открытый риск: `/app/design-system` остается доступен по прямой ссылке для разработки; если нужен полный запрет на stage, требуется отдельный env-gated route policy.
+
 ### 2026-06-16 18:26 MSK - app deploy - confirm dialogs, favicon и scenario runtime fixes
 
 - Deploy ref: `stage`.
