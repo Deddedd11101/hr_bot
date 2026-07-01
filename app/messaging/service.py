@@ -76,6 +76,18 @@ def default_menu_set(db: Session) -> Optional[BotMenuSet]:
     return db.query(BotMenuSet).order_by(BotMenuSet.sort_order, BotMenuSet.id).first()
 
 
+def _audience_default_menu_set(db: Session, employee: Employee) -> Optional[BotMenuSet]:
+    hr_settings = db.get(HrSettings, 1)
+    if not hr_settings:
+        return None
+    normalized_employee_stage = (employee.employee_stage or "").strip()
+    if normalized_employee_stage == "candidate" and hr_settings.default_candidate_menu_set_id:
+        return db.get(BotMenuSet, hr_settings.default_candidate_menu_set_id)
+    if normalized_employee_stage != "candidate" and hr_settings.default_employee_menu_set_id:
+        return db.get(BotMenuSet, hr_settings.default_employee_menu_set_id)
+    return None
+
+
 def _deserialize_menu_path(employee: Employee) -> list[int]:
     raw_value = (employee.current_menu_path or "").strip()
     if not raw_value:
@@ -158,6 +170,9 @@ def resolve_menu_set(db: Session, employee: Employee) -> Optional[BotMenuSet]:
 
 
 def resolve_root_menu_set(db: Session, employee: Employee) -> Optional[BotMenuSet]:
+    candidate = _audience_default_menu_set(db, employee)
+    if candidate and menu_set_matches_employee(employee, candidate):
+        return candidate
     hr_settings = db.get(HrSettings, 1)
     if hr_settings and hr_settings.default_menu_set_id:
         candidate = db.get(BotMenuSet, hr_settings.default_menu_set_id)

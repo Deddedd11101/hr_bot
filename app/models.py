@@ -342,6 +342,8 @@ class HrSettings(Base):
     notify_test_task_received: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     notify_user_actions: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     default_menu_set_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    default_employee_menu_set_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    default_candidate_menu_set_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
 

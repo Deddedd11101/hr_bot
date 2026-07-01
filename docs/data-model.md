@@ -78,7 +78,7 @@ source_of_truth: true
 
 | Таблица | Назначение | Ключевые поля | Связи и примечания |
 | --- | --- | --- | --- |
-| `hr_settings` | Глобальные HR notification settings и default menu | recipient ids, notification flags, `default_menu_set_id` | По сути singleton-style configuration |
+| `hr_settings` | Глобальные HR notification settings и root menu defaults | recipient ids, notification flags, `default_menu_set_id`, `default_employee_menu_set_id`, `default_candidate_menu_set_id` | По сути singleton-style configuration |
 | `bot_menu_sets` | Employee-facing bot menu groups | `title`, `description`, `sort_order` | Parent table для menu buttons |
 | `bot_menu_buttons` | Кнопки меню | `menu_set_id`, `label`, `action_type`, `scenario_key`, `target_menu_set_id` | Используется inbound text menu handling |
 | `mass_scenario_actions` | Очередь bulk scenario launches | flow key, scenario kind, targeting fields, `launch_type`, `recipient_count` | Разрешается и обрабатывается scheduler |

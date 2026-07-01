@@ -111,6 +111,8 @@ class EmployeeApiSmokeTests(unittest.TestCase):
                     "notify_test_task_received": hr_settings.notify_test_task_received,
                     "notify_user_actions": hr_settings.notify_user_actions,
                     "default_menu_set_id": hr_settings.default_menu_set_id,
+                    "default_employee_menu_set_id": hr_settings.default_employee_menu_set_id,
+                    "default_candidate_menu_set_id": hr_settings.default_candidate_menu_set_id,
                 }
 
     def tearDown(self) -> None:
@@ -157,6 +159,14 @@ class EmployeeApiSmokeTests(unittest.TestCase):
             db.query(FlowLaunchRequest).filter(FlowLaunchRequest.employee_id == self.employee_id).delete(synchronize_session=False)
             db.query(EmployeeFile).filter(EmployeeFile.employee_id == self.employee_id).delete(synchronize_session=False)
             db.query(EmployeeMessengerAccount).filter(EmployeeMessengerAccount.employee_id == self.employee_id).delete()
+            extra_employees = db.query(Employee).filter(Employee.full_name.like(f"%{self.unique_tag}%")).all()
+            for extra_employee in extra_employees:
+                if extra_employee.id == self.employee_id:
+                    continue
+                db.query(FlowLaunchRequest).filter(FlowLaunchRequest.employee_id == extra_employee.id).delete(synchronize_session=False)
+                db.query(EmployeeFile).filter(EmployeeFile.employee_id == extra_employee.id).delete(synchronize_session=False)
+                db.query(EmployeeMessengerAccount).filter(EmployeeMessengerAccount.employee_id == extra_employee.id).delete()
+                db.delete(extra_employee)
             employee = db.get(Employee, self.employee_id)
             if employee is not None:
                 db.delete(employee)
@@ -170,6 +180,8 @@ class EmployeeApiSmokeTests(unittest.TestCase):
                     hr_settings.notify_test_task_received = self.hr_settings_snapshot["notify_test_task_received"]
                     hr_settings.notify_user_actions = self.hr_settings_snapshot["notify_user_actions"]
                     hr_settings.default_menu_set_id = self.hr_settings_snapshot["default_menu_set_id"]
+                    hr_settings.default_employee_menu_set_id = self.hr_settings_snapshot["default_employee_menu_set_id"]
+                    hr_settings.default_candidate_menu_set_id = self.hr_settings_snapshot["default_candidate_menu_set_id"]
             db.commit()
 
     def test_employee_detail_api_returns_ok(self) -> None:
@@ -2396,6 +2408,28 @@ class EmployeeApiSmokeTests(unittest.TestCase):
             self.assertIsNone(db.get(MassScenarioAction, action_id))
 
     def test_settings_hr_update_api_persists_workspace_fields(self) -> None:
+        candidate_menu_title = f"codex-candidate-root-{self.unique_tag}"
+        employee_menu_title = f"codex-employee-root-{self.unique_tag}"
+        with SessionLocal() as db:
+            candidate_menu = BotMenuSet(
+                title=candidate_menu_title,
+                description="candidate root",
+                sort_order=10,
+                employee_scope="candidates",
+            )
+            employee_menu = BotMenuSet(
+                title=employee_menu_title,
+                description="employee root",
+                sort_order=20,
+                employee_scope="employees",
+            )
+            db.add_all([candidate_menu, employee_menu])
+            db.commit()
+            db.refresh(candidate_menu)
+            db.refresh(employee_menu)
+            candidate_menu_id = candidate_menu.id
+            employee_menu_id = employee_menu.id
+
         response = self.client.post(
             "/api/settings/hr",
             json={
@@ -2403,6 +2437,8 @@ class EmployeeApiSmokeTests(unittest.TestCase):
                 "telegram_user_id": f"tg-{self.unique_tag}",
                 "notification_recipient_ids": f"tg-a-{self.unique_tag},tg-b-{self.unique_tag}",
                 "default_menu_set_id": None,
+                "default_employee_menu_set_id": employee_menu_id,
+                "default_candidate_menu_set_id": candidate_menu_id,
                 "notify_scenario_completed": False,
                 "notify_test_task_received": True,
                 "notify_user_actions": False,
@@ -2417,8 +2453,59 @@ class EmployeeApiSmokeTests(unittest.TestCase):
             self.assertIsNotNone(hr_settings)
             self.assertEqual(hr_settings.hr_name, f"codex-hr-{self.unique_tag}")
             self.assertEqual(hr_settings.telegram_user_id, f"tg-{self.unique_tag}")
+            self.assertEqual(hr_settings.default_employee_menu_set_id, employee_menu_id)
+            self.assertEqual(hr_settings.default_candidate_menu_set_id, candidate_menu_id)
             self.assertFalse(hr_settings.notify_scenario_completed)
             self.assertFalse(hr_settings.notify_user_actions)
+
+    def test_bot_root_menu_uses_explicit_audience_defaults(self) -> None:
+        with SessionLocal() as db:
+            candidate = db.get(Employee, self.employee_id)
+            self.assertIsNotNone(candidate)
+            candidate.employee_stage = "candidate"
+            candidate.candidate_work_stage = "testing"
+
+            employee = Employee(
+                full_name=f"Staff Root {self.unique_tag}",
+                telegram_user_id=None,
+                first_workday=None,
+                created_at=datetime.now(UTC).replace(tzinfo=None),
+                is_flow_scheduled=False,
+                employee_stage="staff",
+                candidate_work_stage=None,
+            )
+            candidate_root = BotMenuSet(
+                title=f"codex-candidate-root-{self.unique_tag}",
+                description="candidate root",
+                sort_order=10,
+                employee_scope="candidates",
+            )
+            employee_root = BotMenuSet(
+                title=f"codex-employee-root-{self.unique_tag}",
+                description="employee root",
+                sort_order=20,
+                employee_scope="employees",
+            )
+            db.add_all([employee, candidate_root, employee_root])
+            db.commit()
+            db.refresh(employee)
+            db.refresh(candidate_root)
+            db.refresh(employee_root)
+
+            hr_settings = db.query(HrSettings).first()
+            self.assertIsNotNone(hr_settings)
+            hr_settings.default_menu_set_id = None
+            hr_settings.default_candidate_menu_set_id = candidate_root.id
+            hr_settings.default_employee_menu_set_id = employee_root.id
+            db.commit()
+
+            candidate_resolved = current_menu_set(db, candidate)
+            employee_resolved = current_menu_set(db, employee)
+
+            self.assertIsNotNone(candidate_resolved)
+            self.assertIsNotNone(employee_resolved)
+            self.assertEqual(candidate_resolved.id, candidate_root.id)
+            self.assertEqual(employee_resolved.id, employee_root.id)
 
     def test_settings_menu_set_api_supports_react_workspace_create_and_delete(self) -> None:
         title = f"codex-menu-{self.unique_tag}"

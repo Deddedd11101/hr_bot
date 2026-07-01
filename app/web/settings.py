@@ -23,6 +23,8 @@ def _get_or_create_hr_settings(db: Session) -> HrSettings:
         notify_test_task_received=True,
         notify_user_actions=True,
         default_menu_set_id=None,
+        default_employee_menu_set_id=None,
+        default_candidate_menu_set_id=None,
         created_at=now,
         updated_at=now,
     )
@@ -42,6 +44,8 @@ def _serialize_hr_settings(settings_row: HrSettings) -> dict:
         "notify_test_task_received": bool(settings_row.notify_test_task_received),
         "notify_user_actions": bool(settings_row.notify_user_actions),
         "default_menu_set_id": settings_row.default_menu_set_id,
+        "default_employee_menu_set_id": settings_row.default_employee_menu_set_id,
+        "default_candidate_menu_set_id": settings_row.default_candidate_menu_set_id,
     }
 
 

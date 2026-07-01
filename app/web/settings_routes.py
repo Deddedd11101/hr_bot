@@ -149,6 +149,10 @@ def delete_menu_set(
         hr_settings = _get_or_create_hr_settings(db)
         if hr_settings.default_menu_set_id == menu_set_id:
             hr_settings.default_menu_set_id = None
+        if hr_settings.default_employee_menu_set_id == menu_set_id:
+            hr_settings.default_employee_menu_set_id = None
+        if hr_settings.default_candidate_menu_set_id == menu_set_id:
+            hr_settings.default_candidate_menu_set_id = None
         db.delete(menu_set)
         db.commit()
     return RedirectResponse(url="/settings", status_code=status.HTTP_303_SEE_OTHER)
@@ -492,10 +496,18 @@ def update_hr_settings_api(
     current_user = require_api_auth(request)
     hr_settings = _get_or_create_hr_settings(db)
     default_menu_set_id = payload.get("default_menu_set_id")
+    default_employee_menu_set_id = payload.get("default_employee_menu_set_id")
+    default_candidate_menu_set_id = payload.get("default_candidate_menu_set_id")
     hr_settings.hr_name = str(payload.get("hr_name") or "").strip() or None
     hr_settings.telegram_user_id = str(payload.get("telegram_user_id") or "").strip() or None
     hr_settings.notification_recipient_ids = str(payload.get("notification_recipient_ids") or "").strip() or None
     hr_settings.default_menu_set_id = int(default_menu_set_id) if str(default_menu_set_id or "").isdigit() else None
+    hr_settings.default_employee_menu_set_id = (
+        int(default_employee_menu_set_id) if str(default_employee_menu_set_id or "").isdigit() else None
+    )
+    hr_settings.default_candidate_menu_set_id = (
+        int(default_candidate_menu_set_id) if str(default_candidate_menu_set_id or "").isdigit() else None
+    )
     hr_settings.notify_scenario_completed = bool(payload.get("notify_scenario_completed"))
     hr_settings.notify_test_task_received = bool(payload.get("notify_test_task_received"))
     hr_settings.notify_user_actions = bool(payload.get("notify_user_actions"))
@@ -609,6 +621,10 @@ def delete_menu_set_api(
     hr_settings = _get_or_create_hr_settings(db)
     if hr_settings.default_menu_set_id == menu_set_id:
         hr_settings.default_menu_set_id = None
+    if hr_settings.default_employee_menu_set_id == menu_set_id:
+        hr_settings.default_employee_menu_set_id = None
+    if hr_settings.default_candidate_menu_set_id == menu_set_id:
+        hr_settings.default_candidate_menu_set_id = None
     db.delete(menu_set)
     db.commit()
     return _settings_workspace_payload(db, current_user)
@@ -780,4 +796,3 @@ def delete_account_api(
     db.delete(account)
     db.commit()
     return _settings_workspace_payload(db, current_user)
-

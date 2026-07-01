@@ -257,7 +257,7 @@ source_of_truth: true
 | Method | Path | Назначение | Основные inputs | Response | Side effects | Частые errors |
 | --- | --- | --- | --- | --- | --- | --- |
 | `GET` | `/api/settings/workspace` | Вернуть HR settings, menu sets/buttons, scenarios и admin accounts для React settings. | Нет | Settings workspace payload | Создает default `hr_settings` row, если его нет | `401` |
-| `POST` | `/api/settings/hr` | Обновить HR notification settings. | JSON: `hr_name`, `telegram_user_id`, `notification_recipient_ids`, `default_menu_set_id`, notification booleans | Settings workspace payload | Обновляет `hr_settings` | `401` |
+| `POST` | `/api/settings/hr` | Обновить HR notification settings и root-menu defaults. | JSON: `hr_name`, `telegram_user_id`, `notification_recipient_ids`, `default_menu_set_id`, `default_employee_menu_set_id`, `default_candidate_menu_set_id`, notification booleans | Settings workspace payload | Обновляет `hr_settings` | `401` |
 | `POST` | `/api/settings/menu-sets` | Создать menu set. | JSON: `title`, optional `description` | Settings workspace payload | Создает `bot_menu_sets` | `401` |
 | `POST` | `/api/settings/menu-sets/{menu_set_id}` | Обновить menu set. | JSON: `title`, `description` | Settings workspace payload | Обновляет `bot_menu_sets` | `401`, `404` |
 | `DELETE` | `/api/settings/menu-sets/{menu_set_id}` | Удалить menu set. | Path: `menu_set_id` | Settings workspace payload | Удаляет buttons внутри set, отвязывает переходы на set, очищает `employees.current_menu_set_id` и default menu setting | `401`, `404` |

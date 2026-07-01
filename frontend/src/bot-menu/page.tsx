@@ -56,6 +56,8 @@ type MenuSet = {
 
 type HrSettings = {
   default_menu_set_id: number | null;
+  default_employee_menu_set_id: number | null;
+  default_candidate_menu_set_id: number | null;
 };
 
 type Workspace = {
@@ -131,7 +133,12 @@ async function requestBroadcast(path: string, options: RequestInit = {}) {
 function normalizeWorkspace(workspace: Workspace): Workspace {
   return {
     ...workspace,
-    hr_settings: workspace.hr_settings || { default_menu_set_id: null },
+    hr_settings: {
+      default_menu_set_id: null,
+      default_employee_menu_set_id: null,
+      default_candidate_menu_set_id: null,
+      ...(workspace.hr_settings || {}),
+    },
     menu_role_scope_labels: workspace.menu_role_scope_labels || { all: "Для всех ролей" },
     menu_employee_scope_labels:
       workspace.menu_employee_scope_labels || {
@@ -285,6 +292,18 @@ function MultiCheckboxField({
 
 function menuSetOptions(menuSets: MenuSet[]): SelectOption[] {
   return menuSets.map((menuSet) => ({ value: String(menuSet.id), label: menuSet.title }));
+}
+
+function rootMenuOptionsForAudience(menuSets: MenuSet[], audience: "employees" | "candidates"): SelectOption[] {
+  return menuSets
+    .filter((menuSet) => {
+      const scope = menuSet.employee_scope || "all";
+      if (audience === "employees") {
+        return scope !== "candidates";
+      }
+      return scope !== "employees";
+    })
+    .map((menuSet) => ({ value: String(menuSet.id), label: menuSet.title }));
 }
 
 function selectedEmployeeIdsByOtherMenuSets(workspace: Workspace, currentMenuSetId: number): Set<number> {
@@ -534,6 +553,8 @@ export function BotMenuPage({ apiUrl }: BotMenuPageProps) {
   }
 
   const menuOptions = menuSetOptions(workspace.menu_sets);
+  const employeeRootMenuOptions = rootMenuOptionsForAudience(workspace.menu_sets, "employees");
+  const candidateRootMenuOptions = rootMenuOptionsForAudience(workspace.menu_sets, "candidates");
   const scenarios = scenarioOptions(workspace.available_scenarios);
   const menuRoleOptions = labelOptions(workspace.menu_role_scope_labels || { all: "Для всех ролей" });
   const menuEmployeeScopeOptions = labelOptions(
@@ -553,13 +574,31 @@ export function BotMenuPage({ apiUrl }: BotMenuPageProps) {
       <StatusAlert type="error" message={error} />
 
       <SettingsCard title="Наборы меню">
-        <div className="grid gap-4 rounded-lg border border-border bg-muted/35 p-3 lg:grid-cols-[minmax(0,1fr)_auto_auto] lg:items-end">
+        <div className="grid gap-4 rounded-lg border border-border bg-muted/35 p-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto_auto] xl:items-end">
           <Field>
-            <FieldLabel>Главный набор меню</FieldLabel>
+            <FieldLabel>Общий fallback-набор</FieldLabel>
             <AppSelect
               value={workspace.hr_settings.default_menu_set_id ? String(workspace.hr_settings.default_menu_set_id) : ""}
               onChange={(value) => updateHrSettingsLocal({ default_menu_set_id: value ? Number(value) : null })}
               options={menuOptions}
+              placeholder="Автовыбор по аудитории"
+            />
+          </Field>
+          <Field>
+            <FieldLabel>Главный набор для сотрудников</FieldLabel>
+            <AppSelect
+              value={workspace.hr_settings.default_employee_menu_set_id ? String(workspace.hr_settings.default_employee_menu_set_id) : ""}
+              onChange={(value) => updateHrSettingsLocal({ default_employee_menu_set_id: value ? Number(value) : null })}
+              options={employeeRootMenuOptions}
+              placeholder="Не выбран"
+            />
+          </Field>
+          <Field>
+            <FieldLabel>Главный набор для кандидатов</FieldLabel>
+            <AppSelect
+              value={workspace.hr_settings.default_candidate_menu_set_id ? String(workspace.hr_settings.default_candidate_menu_set_id) : ""}
+              onChange={(value) => updateHrSettingsLocal({ default_candidate_menu_set_id: value ? Number(value) : null })}
+              options={candidateRootMenuOptions}
               placeholder="Не выбран"
             />
           </Field>
@@ -571,12 +610,12 @@ export function BotMenuPage({ apiUrl }: BotMenuPageProps) {
                   method: "POST",
                   body: JSON.stringify(workspace.hr_settings),
                 }),
-                "Главный набор меню сохранён",
+                "Настройки главного меню сохранены",
               )
             }
           >
             <Save data-icon="inline-start" />
-            Сохранить главный набор
+            Сохранить root-меню
           </Button>
           <Button
             onClick={async () => {
