@@ -2,6 +2,7 @@ from sqlalchemy.orm import Session
 
 from ..auth import ROLE_LABELS
 from ..flow_templates import EMPLOYEE_SCOPE_LABELS, ROLE_SCOPE_LABELS
+from ..messaging.service import MENU_BACK_BUTTON_TEXT, MENU_HOME_BUTTON_TEXT
 from ..models import AdminAccount, BotMenuButton, BotMenuSet, DocumentLibraryItem, Employee, HrSettings, ScenarioTemplate
 from ..time_utils import utc_now
 from .employees import CANDIDATE_WORK_STAGE_VALUES, EMPLOYEE_STAGE_VALUES
@@ -241,6 +242,8 @@ def _apply_menu_button_payload(button: BotMenuButton, payload: dict) -> None:
 
 
 def _validate_menu_button_payload_refs(db: Session, button: BotMenuButton) -> str | None:
+    if button.label.strip() in {MENU_BACK_BUTTON_TEXT, MENU_HOME_BUTTON_TEXT}:
+        return "Названия «Назад» и «Главное меню» зарезервированы для навигации бота"
     if button.action_type == "open_set" and button.target_menu_set_id:
         if db.get(BotMenuSet, button.target_menu_set_id) is None:
             return "Целевой набор меню не найден"
@@ -261,6 +264,6 @@ def _delete_menu_set_relations(db: Session, menu_set_id: int) -> None:
         synchronize_session=False,
     )
     db.query(Employee).filter(Employee.current_menu_set_id == menu_set_id).update(
-        {Employee.current_menu_set_id: None},
+        {Employee.current_menu_set_id: None, Employee.current_menu_path: None},
         synchronize_session=False,
     )

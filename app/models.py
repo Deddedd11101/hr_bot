@@ -29,6 +29,11 @@ class Employee(Base):
         nullable=True,
         doc="Текущий набор кнопок чат-бота, показанный пользователю.",
     )
+    current_menu_path: Mapped[Optional[str]] = mapped_column(
+        String(1024),
+        nullable=True,
+        doc="Стек открытых наборов меню чат-бота для навигации назад.",
+    )
     first_workday: Mapped[Optional[date]] = mapped_column(
         Date,
         nullable=True,

@@ -7,7 +7,11 @@ from sqlalchemy.orm import Session
 
 from ..auth import ROLE_LABELS, hash_password
 from ..database import get_session
-from ..models import AdminAccount, BotMenuButton, BotMenuSet
+from ..messaging import create_telegram_messenger
+from ..messaging.identity import get_primary_chat_id
+from ..messaging.service import show_main_menu
+from ..models import AdminAccount, BotMenuButton, BotMenuSet, Employee
+from ..config import settings
 from ..time_utils import utc_now
 from .settings import (
     _apply_menu_button_payload,
@@ -492,6 +496,39 @@ def update_hr_settings_api(
     hr_settings.updated_at = utc_now()
     db.commit()
     return _settings_workspace_payload(db, current_user)
+
+
+@router.post("/api/settings/bot-menu/broadcast")
+async def broadcast_bot_menu_api(
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    current_user = require_api_auth(request)
+    if not settings.TELEGRAM_BOT_TOKEN.strip():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Telegram bot token не настроен")
+    messenger = create_telegram_messenger(settings.TELEGRAM_BOT_TOKEN)
+    refreshed_count = 0
+    try:
+        employees = db.query(Employee).order_by(Employee.id).all()
+        for employee in employees:
+            if employee.is_bot_blocked:
+                continue
+            if not get_primary_chat_id(employee, db=db):
+                continue
+            opened = await show_main_menu(
+                messenger,
+                db,
+                employee,
+                "Меню обновлено. Выберите действие.",
+            )
+            if opened:
+                refreshed_count += 1
+        return {
+            "workspace": _settings_workspace_payload(db, current_user),
+            "refreshed_count": refreshed_count,
+        }
+    finally:
+        await messenger.close()
 
 
 @router.post("/api/settings/menu-sets")

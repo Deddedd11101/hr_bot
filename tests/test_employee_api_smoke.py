@@ -3,6 +3,7 @@ import asyncio
 from io import BytesIO
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from unittest.mock import patch
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
@@ -12,7 +13,15 @@ from app.auth import authenticate_account
 from app.database import SessionLocal, init_db
 from app.main import AUTH_COOKIE_NAME, app
 from app.messaging.identity import get_primary_chat_id, set_primary_chat_id
-from app.messaging.service import current_menu_set, get_or_create_employee_by_chat, handle_menu_button
+from app.messaging.service import (
+    MENU_BACK_BUTTON_TEXT,
+    MENU_HOME_BUTTON_TEXT,
+    current_menu_set,
+    get_or_create_employee_by_chat,
+    handle_menu_button,
+    handle_start_command,
+    handle_text_event,
+)
 from app.scenario_engine import SINGLE_STEP_REQUEST_PREFIX, handle_button_response, send_step
 from app.models import (
     BotMenuButton,
@@ -54,6 +63,9 @@ class DummyMessenger:
 
     async def send_document_path(self, chat_id: str, path, filename=None, reply_markup=None, caption=None) -> None:
         self.sent_documents.append((chat_id, str(path) if path is not None else None, filename))
+        return None
+
+    async def close(self) -> None:
         return None
 
 
@@ -115,7 +127,7 @@ class EmployeeApiSmokeTests(unittest.TestCase):
                     synchronize_session=False,
                 )
                 db.query(Employee).filter(Employee.current_menu_set_id.in_(created_menu_set_ids)).update(
-                    {Employee.current_menu_set_id: None},
+                    {Employee.current_menu_set_id: None, Employee.current_menu_path: None},
                     synchronize_session=False,
                 )
                 for menu_set in created_menu_sets:
@@ -2364,6 +2376,9 @@ class EmployeeApiSmokeTests(unittest.TestCase):
             employee.candidate_work_stage = "testing"
             employee.desired_position = "Дизайнер"
             employee.current_menu_set_id = None
+            hr_settings = db.query(HrSettings).first()
+            if hr_settings is not None:
+                hr_settings.default_menu_set_id = None
             broad_menu = BotMenuSet(
                 title=f"codex-broad-{self.unique_tag}",
                 description="all",
@@ -2427,6 +2442,201 @@ class EmployeeApiSmokeTests(unittest.TestCase):
             self.assertEqual(employee.current_menu_set_id, root_menu.id)
             self.assertTrue(messenger.sent_menus)
             self.assertIn("недоступен", messenger.sent_menus[-1][1].lower())
+
+    def test_bot_start_resets_user_to_root_menu(self) -> None:
+        with SessionLocal() as db:
+            employee = db.get(Employee, self.employee_id)
+            self.assertIsNotNone(employee)
+            employee.employee_stage = "candidate"
+            employee.candidate_work_stage = "testing"
+            chat_id = str(930000000000 + (uuid4().int % 100000000000))
+            set_primary_chat_id(employee, chat_id, db=db)
+            root_menu = BotMenuSet(
+                title=f"codex-root-{self.unique_tag}",
+                description="root",
+                sort_order=10,
+                employee_scope="candidates",
+            )
+            child_menu = BotMenuSet(
+                title=f"codex-child-{self.unique_tag}",
+                description="child",
+                sort_order=20,
+                employee_scope="candidates",
+            )
+            db.add_all([root_menu, child_menu])
+            db.commit()
+            db.refresh(root_menu)
+            db.refresh(child_menu)
+            hr_settings = db.query(HrSettings).first()
+            self.assertIsNotNone(hr_settings)
+            hr_settings.default_menu_set_id = root_menu.id
+            employee.current_menu_set_id = child_menu.id
+            employee.current_menu_path = f"{root_menu.id},{child_menu.id}"
+            child_button = BotMenuButton(
+                menu_set_id=child_menu.id,
+                label=f"codex-child-btn-{self.unique_tag}",
+                sort_order=10,
+                action_type="inactive",
+            )
+            root_button = BotMenuButton(
+                menu_set_id=root_menu.id,
+                label=f"codex-root-btn-{self.unique_tag}",
+                sort_order=10,
+                action_type="inactive",
+            )
+            db.add_all([child_button, root_button])
+            db.commit()
+            messenger = DummyMessenger()
+
+            asyncio.run(handle_start_command(messenger, db, chat_id, employee.telegram_username))
+
+            db.refresh(employee)
+            self.assertEqual(employee.current_menu_set_id, root_menu.id)
+            self.assertEqual(employee.current_menu_path, str(root_menu.id))
+            self.assertTrue(messenger.sent_menus)
+            self.assertEqual(messenger.sent_menus[-1][2], [root_button.label])
+
+    def test_bot_menu_back_returns_to_previous_menu(self) -> None:
+        with SessionLocal() as db:
+            employee = db.get(Employee, self.employee_id)
+            self.assertIsNotNone(employee)
+            employee.employee_stage = "candidate"
+            employee.candidate_work_stage = "testing"
+            chat_id = str(940000000000 + (uuid4().int % 100000000000))
+            set_primary_chat_id(employee, chat_id, db=db)
+            root_menu = BotMenuSet(
+                title=f"codex-root-{self.unique_tag}",
+                description="root",
+                sort_order=10,
+                employee_scope="candidates",
+            )
+            child_menu = BotMenuSet(
+                title=f"codex-child-{self.unique_tag}",
+                description="child",
+                sort_order=20,
+                employee_scope="candidates",
+            )
+            db.add_all([root_menu, child_menu])
+            db.commit()
+            db.refresh(root_menu)
+            db.refresh(child_menu)
+            root_button = BotMenuButton(
+                menu_set_id=root_menu.id,
+                label=f"codex-root-btn-{self.unique_tag}",
+                sort_order=10,
+                action_type="open_set",
+                target_menu_set_id=child_menu.id,
+            )
+            child_button = BotMenuButton(
+                menu_set_id=child_menu.id,
+                label=f"codex-child-btn-{self.unique_tag}",
+                sort_order=10,
+                action_type="inactive",
+            )
+            db.add_all([root_button, child_button])
+            employee.current_menu_set_id = child_menu.id
+            employee.current_menu_path = f"{root_menu.id},{child_menu.id}"
+            db.commit()
+            messenger = DummyMessenger()
+
+            result = asyncio.run(handle_text_event(messenger, db, chat_id, employee.telegram_username, MENU_BACK_BUTTON_TEXT))
+
+            db.refresh(employee)
+            self.assertEqual(result, "handled")
+            self.assertEqual(employee.current_menu_set_id, root_menu.id)
+            self.assertEqual(employee.current_menu_path, str(root_menu.id))
+            self.assertTrue(messenger.sent_menus)
+            self.assertEqual(messenger.sent_menus[-1][2], [root_button.label])
+
+    def test_bot_menu_api_rejects_reserved_navigation_button_labels(self) -> None:
+        create_set_response = self.client.post(
+            "/api/settings/menu-sets",
+            json={"title": f"codex-root-{self.unique_tag}"},
+        )
+        self.assertEqual(create_set_response.status_code, 200)
+        created_menu_set = next(
+            (item for item in create_set_response.json()["menu_sets"] if item["title"] == f"codex-root-{self.unique_tag}"),
+            None,
+        )
+        self.assertIsNotNone(created_menu_set)
+
+        response = self.client.post(
+            f"/api/settings/menu-sets/{created_menu_set['id']}/buttons",
+            json={
+                "label": MENU_HOME_BUTTON_TEXT,
+                "action_type": "inactive",
+            },
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("зарезервированы", response.json()["detail"].lower())
+
+    def test_bot_menu_broadcast_api_pushes_main_menu_to_linked_users(self) -> None:
+        with SessionLocal() as db:
+            employee = db.get(Employee, self.employee_id)
+            self.assertIsNotNone(employee)
+            employee.employee_stage = "candidate"
+            employee.candidate_work_stage = "testing"
+            chat_id = str(950000000000 + (uuid4().int % 100000000000))
+            set_primary_chat_id(employee, chat_id, db=db)
+            root_menu = BotMenuSet(
+                title=f"codex-root-{self.unique_tag}",
+                description="root",
+                sort_order=10,
+                employee_scope="candidates",
+            )
+            child_menu = BotMenuSet(
+                title=f"codex-child-{self.unique_tag}",
+                description="child",
+                sort_order=20,
+                employee_scope="candidates",
+            )
+            db.add_all([root_menu, child_menu])
+            db.commit()
+            db.refresh(root_menu)
+            db.refresh(child_menu)
+            hr_settings = db.query(HrSettings).first()
+            self.assertIsNotNone(hr_settings)
+            hr_settings.default_menu_set_id = root_menu.id
+            root_button = BotMenuButton(
+                menu_set_id=root_menu.id,
+                label=f"codex-root-btn-{self.unique_tag}",
+                sort_order=10,
+                action_type="open_set",
+                target_menu_set_id=child_menu.id,
+            )
+            child_button = BotMenuButton(
+                menu_set_id=child_menu.id,
+                label=f"codex-child-btn-{self.unique_tag}",
+                sort_order=10,
+                action_type="inactive",
+            )
+            db.add_all([root_button, child_button])
+            employee.current_menu_set_id = child_menu.id
+            employee.current_menu_path = f"{root_menu.id},{child_menu.id}"
+            db.commit()
+
+        messenger = DummyMessenger()
+        with (
+            patch("app.web.settings_routes.settings.TELEGRAM_BOT_TOKEN", "test-token"),
+            patch("app.web.settings_routes.create_telegram_messenger", return_value=messenger),
+        ):
+            response = self.client.post("/api/settings/bot-menu/broadcast")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertGreaterEqual(payload["refreshed_count"], 1)
+        self.assertTrue(
+            any(buttons == [f"codex-root-btn-{self.unique_tag}"] for _, _, buttons in messenger.sent_menus)
+        )
+
+        with SessionLocal() as db:
+            employee = db.get(Employee, self.employee_id)
+            self.assertIsNotNone(employee)
+            root_menu_id = db.query(BotMenuSet.id).filter(BotMenuSet.title == f"codex-root-{self.unique_tag}").scalar()
+            self.assertIsNotNone(root_menu_id)
+            self.assertEqual(employee.current_menu_set_id, root_menu_id)
+            self.assertEqual(employee.current_menu_path, str(root_menu_id))
 
     def test_documents_workspace_api_returns_created_link_item(self) -> None:
         response = self.client.post(

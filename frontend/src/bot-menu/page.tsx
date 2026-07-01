@@ -54,7 +54,12 @@ type MenuSet = {
   buttons: MenuButton[];
 };
 
+type HrSettings = {
+  default_menu_set_id: number | null;
+};
+
 type Workspace = {
+  hr_settings: HrSettings;
   menu_role_scope_labels?: Record<string, string>;
   menu_employee_scope_labels?: Record<string, string>;
   menu_sets: MenuSet[];
@@ -106,9 +111,27 @@ async function requestJson(path: string, options: RequestInit = {}) {
   return response.json() as Promise<Workspace>;
 }
 
+async function requestBroadcast(path: string, options: RequestInit = {}) {
+  const response = await fetch(path, {
+    credentials: "same-origin",
+    headers: {
+      Accept: "application/json",
+      ...(options.body ? { "Content-Type": "application/json" } : {}),
+      ...(options.headers || {}),
+    },
+    ...options,
+  });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}));
+    throw new Error(payload.detail || "Запрос не выполнен");
+  }
+  return response.json() as Promise<{ workspace: Workspace; refreshed_count: number }>;
+}
+
 function normalizeWorkspace(workspace: Workspace): Workspace {
   return {
     ...workspace,
+    hr_settings: workspace.hr_settings || { default_menu_set_id: null },
     menu_role_scope_labels: workspace.menu_role_scope_labels || { all: "Для всех ролей" },
     menu_employee_scope_labels:
       workspace.menu_employee_scope_labels || {
@@ -133,6 +156,7 @@ function normalizeWorkspace(workspace: Workspace): Workspace {
 function cloneWorkspace(workspace: Workspace): Workspace {
   return {
     ...workspace,
+    hr_settings: { ...workspace.hr_settings },
     menu_sets: workspace.menu_sets.map((menuSet) => ({
       ...menuSet,
       target_employee_ids: [...menuSet.target_employee_ids],
@@ -442,6 +466,15 @@ export function BotMenuPage({ apiUrl }: BotMenuPageProps) {
     });
   };
 
+  const updateHrSettingsLocal = (patch: Partial<HrSettings>) => {
+    setWorkspace((current) => {
+      if (!current) return current;
+      const next = cloneWorkspace(current);
+      next.hr_settings = { ...next.hr_settings, ...patch };
+      return next;
+    });
+  };
+
   const updateMenuButtonLocal = (buttonId: number, patch: Partial<MenuButton>) => {
     setWorkspace((current) => {
       if (!current) return current;
@@ -490,6 +523,49 @@ export function BotMenuPage({ apiUrl }: BotMenuPageProps) {
       <StatusAlert type="error" message={error} />
 
       <SettingsCard title="Наборы меню">
+        <div className="grid gap-4 rounded-lg border border-border bg-muted/35 p-3 lg:grid-cols-[minmax(0,1fr)_auto_auto] lg:items-end">
+          <Field>
+            <FieldLabel>Главный набор меню</FieldLabel>
+            <AppSelect
+              value={workspace.hr_settings.default_menu_set_id ? String(workspace.hr_settings.default_menu_set_id) : ""}
+              onChange={(value) => updateHrSettingsLocal({ default_menu_set_id: value ? Number(value) : null })}
+              options={menuOptions}
+              placeholder="Не выбран"
+            />
+          </Field>
+          <Button
+            variant="secondary"
+            onClick={() =>
+              setWorkspaceFromApi(
+                requestJson("/api/settings/hr", {
+                  method: "POST",
+                  body: JSON.stringify(workspace.hr_settings),
+                }),
+                "Главный набор меню сохранён",
+              )
+            }
+          >
+            <Save data-icon="inline-start" />
+            Сохранить главный набор
+          </Button>
+          <Button
+            onClick={async () => {
+              setError("");
+              setMessage("");
+              try {
+                const result = await requestBroadcast("/api/settings/bot-menu/broadcast", { method: "POST" });
+                setWorkspace(normalizeWorkspace(result.workspace));
+                setMessage(`Главное меню отправлено ${result.refreshed_count} пользователям`);
+              } catch (err) {
+                setError(err instanceof Error ? err.message : "Не удалось обновить меню у пользователей");
+              }
+            }}
+          >
+            <Plus data-icon="inline-start" />
+            Разослать главное меню
+          </Button>
+        </div>
+
         <div className="grid gap-3 rounded-lg border border-border bg-muted/35 p-3 md:grid-cols-[minmax(260px,1fr)_auto] md:items-end">
           <Field>
             <FieldLabel>Новый набор кнопок</FieldLabel>
