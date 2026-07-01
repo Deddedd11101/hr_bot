@@ -423,3 +423,50 @@ source_of_truth: true
 - Backup БД не делался: deploy шел через git/systemd restart и schema compatibility добавляет колонку без ручной замены `hr_bot.db`.
 - Открытые риски:
   - операторам нужно явно выбрать главный набор на `/app/bot-menu`, если текущий первый/targeted fallback не соответствует ожидаемому root UX.
+
+### 2026-07-01 12:08 MSK - manual stage maintenance - очистка сотрудников и кандидатов
+
+- Тип изменения: ручная maintenance-операция на stage SQLite DB без deploy кода.
+- Stage app dir: `/opt/hr_bot`.
+- App commit на сервере во время операции: `c5c201c`.
+- Backup перед очисткой:
+  - DB: `/opt/hr_bot/backups/hr_bot.before-clean-employees.20260701-090739.db`;
+  - employee files: `/opt/hr_bot/backups/employee_files.before-clean-employees.20260701-090739.tgz`.
+- Что очищено:
+  - `employees`;
+  - `employee_messenger_accounts`;
+  - `employee_files`;
+  - `employee_document_links`;
+  - `scenario_progress`;
+  - `survey_answers`;
+  - `flow_launch_requests`;
+  - `mass_scenario_actions`;
+  - `mass_message_actions`;
+  - filesystem: `storage/employee_files`.
+- Что сохранено:
+  - scenario templates и scenario step files;
+  - bot menu sets;
+  - HR/system settings;
+  - document/scenario storage outside `storage/employee_files`.
+- Дополнительно очищены stale references:
+  - `bot_menu_sets.target_employee_id`;
+  - `bot_menu_sets.target_employee_ids`;
+  - `scenario_templates.target_employee_id`.
+- Проверка после очистки:
+  - `employees` -> `0`;
+  - `employee_messenger_accounts` -> `0`;
+  - `employee_files` -> `0`;
+  - `employee_document_links` -> `0`;
+  - `scenario_progress` -> `0`;
+  - `survey_answers` -> `0`;
+  - `flow_launch_requests` -> `0`;
+  - `mass_scenario_actions` -> `0`;
+  - `mass_message_actions` -> `0`;
+  - `storage/employee_files` -> `0 files`;
+  - `storage/scenario_step_files` сохранен: `6 files`;
+  - `hr-bot-web`, `hr-bot-worker`, `wg-quick@redshield` active;
+  - `/app/employees` -> `303`;
+  - `/app/flows/workspace-v2` -> `303`;
+  - worker log grep не нашел свежие `TelegramNetworkError`, `Request timeout`, `Traceback`, `Unclosed client session`.
+- Открытые риски:
+  - если на тестовом стенде нужны demo employees/candidates, их нужно создать заново через UI или seed/script; старые карточки восстановимы из backup DB.
