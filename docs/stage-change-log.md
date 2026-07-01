@@ -34,6 +34,33 @@ source_of_truth: true
 
 ## Записи
 
+### 2026-07-01 16:55 MSK - app deploy - admin auth hardening
+
+- Deploy ref: `stage`.
+- Deployed commit: `7b5183f`.
+- GitHub Actions run: `28522721044` -> success.
+- В stage включены:
+  - `hr_admin_auth` больше не принимает raw `account.id`; admin session cookie теперь stateless HMAC token `account_id.issued_at.signature`;
+  - session TTL управляется `ADMIN_SESSION_MAX_AGE_SECONDS`, cookie `Secure` флагом управляет `ADMIN_SESSION_COOKIE_SECURE`;
+  - middleware заново проверяет active account из БД на каждом request;
+  - `/login` получил простой in-memory rate limit на неудачные попытки;
+  - classic/API account management отклоняет пустые, короткие и дефолтные новые пароли;
+  - задокументирован deferred stage HTTPS baseline: домен + reverse proxy + закрытый внешний `:8000`, без VPN-only на первом шаге.
+- Локальные проверки на объединенном `stage`:
+  - `.venv\Scripts\python.exe -m compileall app tests tools`;
+  - `.venv\Scripts\ruff.exe check --select F821 app tests`;
+  - focused auth tests: raw cookie rejected, login signed-cookie, weak password rejected, strong password accepted;
+  - `.venv\Scripts\python.exe -m unittest tests.test_employee_api_smoke tests.test_messaging_identity tests.test_scenario_engine_smoke tests.test_scenario_engine_branching -v` -> 90 tests OK.
+- Stage smoke checks из workflow:
+  - server HEAD -> `7b5183f`;
+  - preflight compile/F821/backend smoke/frontend build/import smoke -> success;
+  - `curl http://127.0.0.1:8000/app/employees` -> `303`;
+  - `curl http://127.0.0.1:8000/app/flows/workspace-v2` -> `303`;
+  - `curl -4 -I https://api.telegram.org/` -> `HTTP/2 302`;
+  - worker log grep без свежих `TelegramNetworkError`, `Request timeout`, `Traceback`, `Unclosed client session`.
+- Rollback/backup: DB не менялась; отдельный DB backup для этого app deploy не требовался.
+- Открытый риск: пока не сменен `ADMIN_SESSION_SECRET`, старые signed-cookie будут валидны до TTL; после смены секрета и перезапуска web все текущие сессии будут принудительно разлогинены. `ADMIN_SESSION_COOKIE_SECURE=true` включать только после рабочего HTTPS.
+
 ### 2026-07-01 16:24 MSK - app deploy - buttons target field и скрытие design-system из навигации
 
 - Deploy ref: `stage`.
