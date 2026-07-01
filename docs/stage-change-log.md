@@ -34,6 +34,37 @@ source_of_truth: true
 
 ## Записи
 
+### 2026-07-01 17:50 MSK - app deploy - audience-specific bot root menus
+
+- Deploy ref: `stage`.
+- Deployed commit: `862d6f2`.
+- GitHub Actions run: `28526111235` -> success.
+- В stage включены:
+  - в `HrSettings` добавлены отдельные root defaults: `default_employee_menu_set_id` и `default_candidate_menu_set_id`;
+  - SQLite schema compatibility добавляет эти колонки в существующую `hr_settings`;
+  - runtime выбора root-menu теперь сначала смотрит профильный root по аудитории пользователя, потом общий `default_menu_set_id`, потом обычный matching/scoring по menu set rules;
+  - `/app/bot-menu` показывает три явных селекта: общий fallback-набор, главный набор для сотрудников, главный набор для кандидатов;
+  - root-селекты сотрудников/кандидатов фильтруют варианты по `employee_scope`, чтобы не подставлять явно несовместимый root;
+  - broadcast главного меню продолжает вызывать `show_main_menu`, теперь фактически отправляя каждому пользователю его audience-specific root.
+- Локальные проверки на объединенном `stage`:
+  - `.venv\Scripts\python.exe -m compileall app tests tools`;
+  - `.venv\Scripts\ruff.exe check --select F821 app tests`;
+  - `.venv\Scripts\python.exe -m unittest tests.test_employee_api_smoke.EmployeeApiSmokeTests.test_settings_hr_update_api_persists_workspace_fields tests.test_employee_api_smoke.EmployeeApiSmokeTests.test_bot_root_menu_uses_explicit_audience_defaults -v`;
+  - `.venv\Scripts\python.exe -m unittest tests.test_employee_api_smoke tests.test_messaging_identity tests.test_scenario_engine_smoke tests.test_scenario_engine_branching -v` -> 92 tests OK;
+  - `npm run build` в `frontend`;
+  - `git diff --check`.
+- Stage smoke checks из workflow:
+  - server HEAD -> `862d6f2`;
+  - preflight compile/F821/backend smoke/frontend build/import smoke -> success;
+  - `curl http://127.0.0.1:8000/app/employees` -> `303`;
+  - `curl http://127.0.0.1:8000/app/flows/workspace-v2` -> `303`;
+  - `curl -4 -I --connect-timeout 10 https://api.telegram.org/` прошел в deploy script;
+  - `hr-bot-web`, `hr-bot-worker` и `wg-quick@redshield` прошли `systemctl is-active`;
+  - worker log grep без свежих `TelegramNetworkError`, `Request timeout`, `Traceback`, `Unclosed client session`.
+- Rollback/backup: DB backup отдельно не делался; изменение схемы additive nullable columns через compatibility path. Rollback к старому коду оставит лишние nullable columns в SQLite, что не должно ломать старый runtime.
+- Открытые риски:
+  - backend API пока не запрещает прямым JSON-запросом назначить несовместимый root; UI фильтрует варианты, а runtime дополнительно проверяет `menu_set_matches_employee` и в таком случае уходит в fallback/scoring.
+
 ### 2026-07-01 17:30 MSK - app deploy - blank scenario steps и bot-menu target UX
 
 - Deploy ref: `stage`.
