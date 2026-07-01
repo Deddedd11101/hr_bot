@@ -388,3 +388,38 @@ source_of_truth: true
 - Backup БД не делался: deploy шел через git/systemd restart и не требовал ручной замены `hr_bot.db`.
 - Открытые риски:
   - browser может держать cached `scenario-workspace.js?v=1`; при ручной проверке нужен hard refresh.
+
+### 2026-07-01 12:03 MSK - app deploy - navigation contract для меню бота
+
+- Deploy ref: `stage`.
+- Deployed commit: `c5c201c`.
+- GitHub Actions run: `28506038067`.
+- Что изменено:
+  - добавлен явный root menu contract для Telegram-меню: `/start` возвращает пользователя в главный набор;
+  - добавлен стек подменю `Employee.current_menu_path`, runtime-кнопки `Назад` и `Главное меню`;
+  - пользовательские кнопки с названиями `Назад` и `Главное меню` теперь запрещены, чтобы не конфликтовать с навигацией;
+  - на `/app/bot-menu` добавлен выбор главного набора и действие `Разослать главное меню`;
+  - добавлен API `POST /api/settings/bot-menu/broadcast` для отправки root menu уже привязанным пользователям;
+  - SQLite schema compatibility добавляет `employees.current_menu_path`.
+- Локальные проверки перед deploy:
+  - `.\.venv\Scripts\python.exe -m compileall app tests tools`;
+  - `.\.venv\Scripts\ruff.exe check --select F821 app tests`;
+  - `.\.venv\Scripts\python.exe -m unittest tests.test_employee_api_smoke tests.test_messaging_identity tests.test_scenario_engine_smoke tests.test_scenario_engine_branching -v` -> 85 tests OK;
+  - `npm run build`.
+- GitHub Actions preflight:
+  - backend dependencies install;
+  - `compileall`;
+  - `ruff F821`;
+  - backend smoke tests;
+  - frontend build;
+  - smoke imports.
+- Stage smoke checks:
+  - `/app/employees` -> `303`;
+  - `/app/flows/workspace-v2` -> `303`;
+  - `curl -4 -I --connect-timeout 10 https://api.telegram.org/` -> `HTTP/2 302`;
+  - `hr-bot-web`, `hr-bot-worker` и `wg-quick@redshield` прошли `systemctl is-active`;
+  - worker log grep не нашел свежие `TelegramNetworkError`, `Request timeout`, `Traceback`, `Unclosed client session`;
+  - deploy job завершился успешно и вывел `c5c201c`.
+- Backup БД не делался: deploy шел через git/systemd restart и schema compatibility добавляет колонку без ручной замены `hr_bot.db`.
+- Открытые риски:
+  - операторам нужно явно выбрать главный набор на `/app/bot-menu`, если текущий первый/targeted fallback не соответствует ожидаемому root UX.
