@@ -115,11 +115,11 @@ export function detailTargetFromItem(item: WorkspaceItem | null) {
 }
 
 export function supportsButtonOptions(responseType: string) {
-  return responseType === "branching";
+  return responseType === "buttons" || responseType === "branching";
 }
 
 export function supportsTargetField(responseType: string) {
-  return responseType === "text" || responseType === "file";
+  return responseType === "text" || responseType === "file" || responseType === "buttons";
 }
 
 export function responseTypeWaitState(responseType: string) {

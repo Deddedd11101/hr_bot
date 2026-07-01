@@ -102,7 +102,6 @@ export function ScenarioWorkspacePage() {
   const responseTypeOptions = React.useMemo(() => {
     const labels = payload?.workspace?.response_type_labels || FALLBACK_RESPONSE_TYPE_LABELS;
     return Object.entries(labels).filter(([value]) => {
-      if (value === "buttons") return false;
       if (value === "chain") return detailTarget?.kind === "branch_step";
       return true;
     });
@@ -260,10 +259,7 @@ export function ScenarioWorkspacePage() {
     setForm({
       title: detailTarget.title || "",
       text: detailTarget.text || "",
-      response_type:
-        !isSurveyWorkspace && detailTarget.response_type === "buttons"
-          ? "branching"
-          : detailTarget.response_type || "none",
+      response_type: detailTarget.response_type || "none",
       button_options: detailTarget.button_options.join("\n"),
       send_mode: detailTarget.send_mode || "immediate",
       send_time: detailTarget.send_time || "",

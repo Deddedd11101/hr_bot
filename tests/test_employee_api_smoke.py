@@ -3,6 +3,7 @@ import asyncio
 from io import BytesIO
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from unittest.mock import patch
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
@@ -12,7 +13,15 @@ from app.auth import authenticate_account
 from app.database import SessionLocal, init_db
 from app.main import AUTH_COOKIE_NAME, app
 from app.messaging.identity import get_primary_chat_id, set_primary_chat_id
-from app.messaging.service import current_menu_set, get_or_create_employee_by_chat, handle_menu_button
+from app.messaging.service import (
+    MENU_BACK_BUTTON_TEXT,
+    MENU_HOME_BUTTON_TEXT,
+    current_menu_set,
+    get_or_create_employee_by_chat,
+    handle_menu_button,
+    handle_start_command,
+    handle_text_event,
+)
 from app.scenario_engine import handle_button_response, send_step
 from app.models import (
     BotMenuButton,
@@ -54,6 +63,9 @@ class DummyMessenger:
 
     async def send_document_path(self, chat_id: str, path, filename=None) -> None:
         self.sent_documents.append((chat_id, str(path) if path is not None else None, filename))
+        return None
+
+    async def close(self) -> None:
         return None
 
 
@@ -923,6 +935,41 @@ class EmployeeApiSmokeTests(unittest.TestCase):
             self.assertIsNone(employee)
             self.assertEqual(db.query(Employee).count(), before_count)
 
+    def test_bot_start_reclaims_chat_id_from_orphaned_messenger_account(self) -> None:
+        with SessionLocal() as db:
+            employee = db.get(Employee, self.employee_id)
+            self.assertIsNotNone(employee)
+            unique_suffix = uuid4().hex[:12]
+            chat_id = str(920000000000 + (int(unique_suffix, 16) % 100000000000))
+            now = datetime.now(UTC).replace(tzinfo=None)
+            db.add(
+                EmployeeMessengerAccount(
+                    employee_id=999_999_999,
+                    channel="telegram",
+                    external_user_id=chat_id,
+                    external_username=None,
+                    is_primary=True,
+                    is_active=True,
+                    created_at=now,
+                    updated_at=now,
+                )
+            )
+            db.commit()
+
+            set_primary_chat_id(employee, chat_id, db=db)
+            db.commit()
+
+            linked_accounts = (
+                db.query(EmployeeMessengerAccount)
+                .filter(
+                    EmployeeMessengerAccount.channel == "telegram",
+                    EmployeeMessengerAccount.external_user_id == chat_id,
+                )
+                .all()
+            )
+            self.assertEqual(len(linked_accounts), 1)
+            self.assertEqual(linked_accounts[0].employee_id, employee.id)
+
     def test_update_employee_api_persists_shared_fields_for_candidate(self) -> None:
         response = self.client.post(
             f"/api/employees/{self.employee_id}",
@@ -1144,6 +1191,71 @@ class EmployeeApiSmokeTests(unittest.TestCase):
             self.assertEqual(notifications[0].recipient_ids, f"employee:{self.employee_id}")
             self.assertEqual(notifications[1].rule_index, 1)
             self.assertEqual(notifications[1].message_text, "Дублирующее уведомление для HR")
+
+    def test_workspace_step_api_persists_target_field_for_buttons(self) -> None:
+        scenario_key = f"codex_button_target_{self.unique_tag}"
+        with SessionLocal() as db:
+            scenario = ScenarioTemplate(
+                scenario_key=scenario_key,
+                title=f"codex-button-target-{self.unique_tag}",
+                sort_order=10,
+                scenario_kind="scenario",
+                role_scope="all",
+                employee_scope="all",
+                trigger_mode="manual_only",
+            )
+            db.add(scenario)
+            db.flush()
+            step = FlowStepTemplate(
+                flow_key=scenario_key,
+                step_key=f"{scenario_key}_step_1",
+                step_title="Ожидаемый доход",
+                sort_order=10,
+                default_text="Выбери ожидаемый доход",
+                custom_text=None,
+                response_type="buttons",
+                button_options="200000\n300000",
+                send_mode="immediate",
+                send_time=None,
+                day_offset_workdays=0,
+                target_field=None,
+                send_employee_card=False,
+            )
+            db.add(step)
+            db.commit()
+            db.refresh(step)
+            step_id = step.id
+
+        response = self.client.post(
+            f"/api/flows/workspace/steps/{step_id}",
+            json={
+                "title": "Ожидаемый доход",
+                "text": "Выбери ожидаемый доход",
+                "response_type": "buttons",
+                "button_options": "200000\n300000",
+                "send_mode": "immediate",
+                "send_time": "",
+                "target_field": "salary_expectation",
+                "launch_scenario_key": "",
+                "send_employee_card": False,
+                "notify_on_send_text": "",
+                "notify_on_send_recipient_ids": "",
+                "notify_on_send_recipient_scope": "",
+                "button_notifications": [],
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()["payload"]["workspace"]["root_steps"][0]
+        self.assertEqual(payload["response_type"], "buttons")
+        self.assertEqual(payload["target_field"], "salary_expectation")
+        self.assertEqual(payload["target_field_label"], "Ожидания по доходу")
+
+        with SessionLocal() as db:
+            step = db.get(FlowStepTemplate, step_id)
+            self.assertIsNotNone(step)
+            self.assertEqual(step.response_type, "buttons")
+            self.assertEqual(step.target_field, "salary_expectation")
 
     def test_workspace_step_api_normalizes_survey_question_flow(self) -> None:
         scenario_key = f"codex_survey_flow_{self.unique_tag}"
@@ -1846,6 +1958,123 @@ class EmployeeApiSmokeTests(unittest.TestCase):
         self.assertEqual(second_response.status_code, 409)
         self.assertIn("уже привязаны", second_response.json()["detail"])
 
+    def test_settings_workspace_api_excludes_surveys_from_menu_scenario_options(self) -> None:
+        scenario_key = f"codex-menu-scenario-{self.unique_tag}"
+        survey_key = f"codex-menu-survey-{self.unique_tag}"
+        with SessionLocal() as db:
+            db.add_all(
+                [
+                    ScenarioTemplate(
+                        scenario_key=scenario_key,
+                        scenario_kind="scenario",
+                        title=f"Scenario {self.unique_tag}",
+                        sort_order=10,
+                        role_scope="all",
+                        employee_scope="all",
+                        trigger_mode="manual_only",
+                        description="scenario option for bot menu",
+                    ),
+                    ScenarioTemplate(
+                        scenario_key=survey_key,
+                        scenario_kind="survey",
+                        title=f"Survey {self.unique_tag}",
+                        sort_order=20,
+                        role_scope="all",
+                        employee_scope="all",
+                        trigger_mode="manual_only",
+                        description="survey option for bot menu",
+                    ),
+                ]
+            )
+            db.commit()
+
+        response = self.client.get("/api/settings/workspace")
+
+        self.assertEqual(response.status_code, 200)
+        available_keys = {item["scenario_key"] for item in response.json()["available_scenarios"]}
+        self.assertIn(scenario_key, available_keys)
+        self.assertNotIn(survey_key, available_keys)
+
+    def test_settings_workspace_api_exposes_employee_role_metadata_for_menu_filtering(self) -> None:
+        now = datetime.now(UTC).replace(tzinfo=None)
+        with SessionLocal() as db:
+            employee = db.get(Employee, self.employee_id)
+            self.assertIsNotNone(employee)
+            employee.full_name = f"Candidate {self.unique_tag}"
+            employee.desired_position = "Дизайнер"
+            employee.employee_stage = "candidate"
+            employee.candidate_work_stage = "testing"
+            staff_employee = Employee(
+                full_name=f"Staff {self.unique_tag}",
+                telegram_user_id=None,
+                first_workday=None,
+                created_at=now,
+                is_flow_scheduled=False,
+                employee_stage="staff",
+                desired_position="Project manager",
+            )
+            db.add(staff_employee)
+            db.commit()
+            db.refresh(staff_employee)
+            staff_employee_id = staff_employee.id
+
+        response = self.client.get("/api/settings/workspace")
+
+        self.assertEqual(response.status_code, 200)
+        options = {item["id"]: item for item in response.json()["employee_options"]}
+        candidate_option = options[self.employee_id]
+        staff_option = options[staff_employee_id]
+        self.assertEqual(candidate_option["audience"], "candidate")
+        self.assertEqual(candidate_option["role_scope"], "designer")
+        self.assertEqual(candidate_option["desired_position"], "Дизайнер")
+        self.assertEqual(staff_option["audience"], "employee")
+        self.assertEqual(staff_option["role_scope"], "project_manager")
+        self.assertEqual(staff_option["desired_position"], "Project manager")
+
+        with SessionLocal() as db:
+            staff_employee = db.get(Employee, staff_employee_id)
+            if staff_employee is not None:
+                db.delete(staff_employee)
+                db.commit()
+
+    def test_settings_menu_button_api_rejects_survey_binding_for_launch_action(self) -> None:
+        title = f"codex-menu-set-{self.unique_tag}"
+        survey_key = f"codex-button-survey-{self.unique_tag}"
+        create_set_response = self.client.post(
+            "/api/settings/menu-sets",
+            json={"title": title},
+        )
+        self.assertEqual(create_set_response.status_code, 200)
+        created_menu_set = next((item for item in create_set_response.json()["menu_sets"] if item["title"] == title), None)
+        self.assertIsNotNone(created_menu_set)
+
+        with SessionLocal() as db:
+            db.add(
+                ScenarioTemplate(
+                    scenario_key=survey_key,
+                    scenario_kind="survey",
+                    title=f"Survey button {self.unique_tag}",
+                    sort_order=10,
+                    role_scope="all",
+                    employee_scope="all",
+                    trigger_mode="manual_only",
+                    description="survey for menu validation",
+                )
+            )
+            db.commit()
+
+        response = self.client.post(
+            f"/api/settings/menu-sets/{created_menu_set['id']}/buttons",
+            json={
+                "label": "Open survey",
+                "action_type": "launch_scenario",
+                "scenario_key": survey_key,
+            },
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["detail"], "Для кнопки меню можно выбрать только сценарий, а не опрос")
+
     def test_bot_current_menu_set_prefers_matching_candidate_audience_set(self) -> None:
         with SessionLocal() as db:
             employee = db.get(Employee, self.employee_id)
@@ -1917,6 +2146,194 @@ class EmployeeApiSmokeTests(unittest.TestCase):
             self.assertEqual(employee.current_menu_set_id, root_menu.id)
             self.assertTrue(messenger.sent_menus)
             self.assertIn("недоступен", messenger.sent_menus[-1][1].lower())
+
+    def test_bot_start_resets_user_to_root_menu(self) -> None:
+        with SessionLocal() as db:
+            employee = db.get(Employee, self.employee_id)
+            self.assertIsNotNone(employee)
+            employee.employee_stage = "candidate"
+            employee.candidate_work_stage = "testing"
+            set_primary_chat_id(employee, "123456789", db=db)
+            root_menu = BotMenuSet(
+                title=f"codex-root-{self.unique_tag}",
+                description="root",
+                sort_order=10,
+                employee_scope="candidates",
+            )
+            child_menu = BotMenuSet(
+                title=f"codex-child-{self.unique_tag}",
+                description="child",
+                sort_order=20,
+                employee_scope="candidates",
+            )
+            db.add_all([root_menu, child_menu])
+            db.commit()
+            db.refresh(root_menu)
+            db.refresh(child_menu)
+            hr_settings = db.query(HrSettings).first()
+            self.assertIsNotNone(hr_settings)
+            hr_settings.default_menu_set_id = root_menu.id
+            employee.current_menu_set_id = child_menu.id
+            employee.current_menu_path = f"{root_menu.id},{child_menu.id}"
+            child_button = BotMenuButton(
+                menu_set_id=child_menu.id,
+                label=f"codex-child-btn-{self.unique_tag}",
+                sort_order=10,
+                action_type="inactive",
+            )
+            root_button = BotMenuButton(
+                menu_set_id=root_menu.id,
+                label=f"codex-root-btn-{self.unique_tag}",
+                sort_order=10,
+                action_type="inactive",
+            )
+            db.add_all([child_button, root_button])
+            db.commit()
+            messenger = DummyMessenger()
+
+            asyncio.run(handle_start_command(messenger, db, "123456789", employee.telegram_username))
+
+            db.refresh(employee)
+            self.assertEqual(employee.current_menu_set_id, root_menu.id)
+            self.assertEqual(employee.current_menu_path, str(root_menu.id))
+            self.assertTrue(messenger.sent_menus)
+            self.assertEqual(messenger.sent_menus[-1][2], [root_button.label])
+
+    def test_bot_menu_back_returns_to_previous_menu(self) -> None:
+        with SessionLocal() as db:
+            employee = db.get(Employee, self.employee_id)
+            self.assertIsNotNone(employee)
+            employee.employee_stage = "candidate"
+            employee.candidate_work_stage = "testing"
+            set_primary_chat_id(employee, "123456789", db=db)
+            root_menu = BotMenuSet(
+                title=f"codex-root-{self.unique_tag}",
+                description="root",
+                sort_order=10,
+                employee_scope="candidates",
+            )
+            child_menu = BotMenuSet(
+                title=f"codex-child-{self.unique_tag}",
+                description="child",
+                sort_order=20,
+                employee_scope="candidates",
+            )
+            db.add_all([root_menu, child_menu])
+            db.commit()
+            db.refresh(root_menu)
+            db.refresh(child_menu)
+            root_button = BotMenuButton(
+                menu_set_id=root_menu.id,
+                label=f"codex-root-btn-{self.unique_tag}",
+                sort_order=10,
+                action_type="open_set",
+                target_menu_set_id=child_menu.id,
+            )
+            child_button = BotMenuButton(
+                menu_set_id=child_menu.id,
+                label=f"codex-child-btn-{self.unique_tag}",
+                sort_order=10,
+                action_type="inactive",
+            )
+            db.add_all([root_button, child_button])
+            employee.current_menu_set_id = child_menu.id
+            employee.current_menu_path = f"{root_menu.id},{child_menu.id}"
+            db.commit()
+            messenger = DummyMessenger()
+
+            result = asyncio.run(handle_text_event(messenger, db, "123456789", employee.telegram_username, MENU_BACK_BUTTON_TEXT))
+
+            db.refresh(employee)
+            self.assertEqual(result, "handled")
+            self.assertEqual(employee.current_menu_set_id, root_menu.id)
+            self.assertEqual(employee.current_menu_path, str(root_menu.id))
+            self.assertTrue(messenger.sent_menus)
+            self.assertEqual(messenger.sent_menus[-1][2], [root_button.label])
+
+    def test_bot_menu_api_rejects_reserved_navigation_button_labels(self) -> None:
+        create_set_response = self.client.post(
+            "/api/settings/menu-sets",
+            json={"title": f"codex-root-{self.unique_tag}"},
+        )
+        self.assertEqual(create_set_response.status_code, 200)
+        created_menu_set = next(
+            (item for item in create_set_response.json()["menu_sets"] if item["title"] == f"codex-root-{self.unique_tag}"),
+            None,
+        )
+        self.assertIsNotNone(created_menu_set)
+
+        response = self.client.post(
+            f"/api/settings/menu-sets/{created_menu_set['id']}/buttons",
+            json={
+                "label": MENU_HOME_BUTTON_TEXT,
+                "action_type": "inactive",
+            },
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("зарезервированы", response.json()["detail"].lower())
+
+    def test_bot_menu_broadcast_api_pushes_main_menu_to_linked_users(self) -> None:
+        with SessionLocal() as db:
+            employee = db.get(Employee, self.employee_id)
+            self.assertIsNotNone(employee)
+            employee.employee_stage = "candidate"
+            employee.candidate_work_stage = "testing"
+            set_primary_chat_id(employee, "123456789", db=db)
+            root_menu = BotMenuSet(
+                title=f"codex-root-{self.unique_tag}",
+                description="root",
+                sort_order=10,
+                employee_scope="candidates",
+            )
+            child_menu = BotMenuSet(
+                title=f"codex-child-{self.unique_tag}",
+                description="child",
+                sort_order=20,
+                employee_scope="candidates",
+            )
+            db.add_all([root_menu, child_menu])
+            db.commit()
+            db.refresh(root_menu)
+            db.refresh(child_menu)
+            hr_settings = db.query(HrSettings).first()
+            self.assertIsNotNone(hr_settings)
+            hr_settings.default_menu_set_id = root_menu.id
+            root_button = BotMenuButton(
+                menu_set_id=root_menu.id,
+                label=f"codex-root-btn-{self.unique_tag}",
+                sort_order=10,
+                action_type="open_set",
+                target_menu_set_id=child_menu.id,
+            )
+            child_button = BotMenuButton(
+                menu_set_id=child_menu.id,
+                label=f"codex-child-btn-{self.unique_tag}",
+                sort_order=10,
+                action_type="inactive",
+            )
+            db.add_all([root_button, child_button])
+            employee.current_menu_set_id = child_menu.id
+            employee.current_menu_path = f"{root_menu.id},{child_menu.id}"
+            db.commit()
+
+        messenger = DummyMessenger()
+        with patch("app.web.settings_routes.create_telegram_messenger", return_value=messenger):
+            response = self.client.post("/api/settings/bot-menu/broadcast")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertGreaterEqual(payload["refreshed_count"], 1)
+        self.assertTrue(
+            any(buttons == [f"codex-root-btn-{self.unique_tag}"] for _, _, buttons in messenger.sent_menus)
+        )
+
+        with SessionLocal() as db:
+            employee = db.get(Employee, self.employee_id)
+            self.assertIsNotNone(employee)
+            self.assertIsNotNone(root_menu_id := db.query(BotMenuSet.id).filter(BotMenuSet.title == f"codex-root-{self.unique_tag}").scalar())
+            self.assertEqual(employee.current_menu_set_id, root_menu_id)
+            self.assertEqual(employee.current_menu_path, str(root_menu_id))
 
     def test_documents_workspace_api_returns_created_link_item(self) -> None:
         response = self.client.post(

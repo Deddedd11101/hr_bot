@@ -116,8 +116,6 @@ def _workspace_response_label(step: FlowStepTemplate, scenario_kind: str = "scen
     response_type = (step.response_type or "").strip()
     if scenario_kind == "survey" and response_type == "text" and (step.button_options or "").strip():
         return "Варианты ответа"
-    if response_type == "buttons":
-        response_type = "branching"
     extra_labels = {
         "chain": "Цепочка шагов",
         "launch_scenario": "Переход к сценарию",
@@ -126,7 +124,7 @@ def _workspace_response_label(step: FlowStepTemplate, scenario_kind: str = "scen
 
 
 def _workspace_response_type_labels() -> dict[str, str]:
-    labels = {key: value for key, value in RESPONSE_TYPE_LABELS.items() if key != "buttons"}
+    labels = dict(RESPONSE_TYPE_LABELS)
     labels["launch_scenario"] = "Переход к сценарию"
     labels["chain"] = "Цепочка шагов"
     return labels

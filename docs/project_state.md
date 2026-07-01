@@ -52,6 +52,7 @@ source_of_truth: true
 - Mass actions, onboarding scheduler и scenario portability tooling уже есть в коде.
 - Unknown Telegram users больше не создают candidate records автоматически.
 - Bot access можно заблокировать per employee через `is_bot_blocked`.
+- Bot menu navigation перестала зависеть только от `/start`: у пользователя теперь может храниться stack подменю, runtime умеет `Назад` / `Главное меню`, а админка получила явный выбор root menu set и server-side broadcast главного меню для уже привязанных пользователей.
 - Incoming Telegram photos обрабатываются как first-class inbound files вместе с documents.
 - Mass actions могут target employee stages и candidate stages отдельно.
 - В репозитории теперь есть explicit live docs для JSON API, operator web routes, schema behavior, env/config и текущего stage deploy path.
@@ -91,6 +92,7 @@ source_of_truth: true
 - Classic settings tails тоже уже вынесены из `app/main.py` в `app/web/settings_routes.py`: HR settings form, menu set/button CRUD, bulk button saves и classic account management теперь сидят рядом с settings router, а не в монолите.
 - Swagger/OpenAPI теперь намеренно API-only: `/docs`, alias `/swagger` и `/openapi.json` показывают только JSON routes под `/api/*`, а browser/form/React bootstrap/download surfaces остаются в [[web-surface]].
 - По уведомлениям зафиксирована рабочая продуктовая граница на потом: сценарные уведомления не должны переопределяться глобальными настройками; глобальный слой должен отвечать за системные события и delivery rules, а не за смысл конкретного сценария.
+- React `/app/settings` больше не показывает старый блок HR-уведомлений для сценарных событий: он дублировал новую notification-модель внутри самих сценариев и создавал ложную вторую точку управления. Backend-поля пока оставлены как compatibility seam для системных событий и старого контракта.
 
 ## Активные проблемы
 
@@ -115,6 +117,7 @@ source_of_truth: true
 - Один из главных scenario parity gaps уже закрыт: React workspace теперь читает и сохраняет per-button notifications через `button_notifications`, а `/api/flows/workspace/steps/{id}` синхронизирует `StepButtonNotification` без classic form submit. Это не убирает `scenario_edit.html` целиком, но сужает его реальную ценность до remaining legacy update-flow edges.
 - Per-button notifications в React workspace больше не ограничены одной записью на кнопку: у каждой кнопки теперь есть список notification rules с add/edit/delete через modal workflow. Важная backend-граница тоже исправлена: explicit recipients из React больше не притворяются raw chat ids, а сохраняются как `employee:{id}` tokens и резолвятся в реальные chat ids только в runtime.
 - React workspace теперь так же умеет редактировать и step-level notifications как список правил, а не как один плоский набор полей. Для этого добавлена отдельная сущность `StepSendNotification`: runtime отправляет все правила по порядку, copy/delete flows сценариев сохраняют эти правила, а legacy `notify_on_send_*` поля оставлены только как compatibility seam для first-rule fallback.
+- В React scenario workspace восстановлен самостоятельный тип ответа `buttons`: редактор больше не маскирует его под `branching`, поэтому шаги с вариантами ответа снова могут сохранять `target_field` вроде `salary_expectation`, а runtime-контракт покрыт smoke-тестом.
 - Проверено, что apparent loss step-level notification rules возникает при рассинхронизации нового frontend bundle со старым непререзапущенным backend-процессом: новый API contract сохраняет rules корректно, regression smoke теперь покрывает и повторное редактирование существующего списка.
 - Survey workspace больше не притворяется “сценарием с урезанным UI”. Для опросов question flow теперь принудительно нормализован: один вопрос как единая сущность (`title/text` синхронизируются), `send_mode` всегда `immediate`, `launch_scenario`/`target_field`/step notifications очищаются, а варианты ответа живут как список текстовых option buttons без branching semantics.
 - В React scenario workspace добавлен базовый editor guardrail против ложных “поломок бота”: карточки шагов и detail-pane теперь явно показывают, блокирует ли выбранный `response_type` поток (`Ждёт ответ`) или это чистый автопереход (`Автопереход`).

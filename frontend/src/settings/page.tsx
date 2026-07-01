@@ -4,9 +4,8 @@ import { Save, Shield, Trash2 } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
 import { ConfirmAction } from "@/components/ui/confirm-action";
-import { Field, FieldContent, FieldGroup, FieldLabel, FieldLegend, FieldSet, FieldTitle } from "@/components/ui/field";
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -16,7 +15,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 
 type HrSettings = {
@@ -380,36 +378,6 @@ export function SettingsPage({ apiUrl }: SettingsPageProps) {
             <FieldLabel>Основной ID получателя</FieldLabel>
             <Input value={workspace.hr_settings.telegram_user_id} onChange={(event) => updateHrSettings({ telegram_user_id: event.target.value })} placeholder="123456789" inputMode="numeric" autoComplete="off" />
           </Field>
-          <Field className="md:col-span-2">
-            <FieldLabel>Дополнительные ID получателей</FieldLabel>
-            <Textarea
-              value={workspace.hr_settings.notification_recipient_ids}
-              onChange={(event) => updateHrSettings({ notification_recipient_ids: event.target.value })}
-              rows={3}
-              placeholder={"123456789\n987654321"}
-              autoComplete="off"
-            />
-          </Field>
-          <FieldSet className="rounded-lg border border-border bg-muted/35 p-3 md:col-span-2">
-            <FieldLegend className="sr-only">Уведомления</FieldLegend>
-            <FieldGroup className="grid gap-2 xl:grid-cols-3">
-            {[
-              ["notify_scenario_completed", "По завершению сценариев"],
-              ["notify_test_task_received", "По получению тестового задания"],
-              ["notify_user_actions", "По действиям других пользователей"],
-            ].map(([key, label]) => (
-              <Field orientation="horizontal" key={key}>
-                <Checkbox
-                  checked={Boolean(workspace.hr_settings[key as keyof HrSettings])}
-                  onCheckedChange={(checked) => updateHrSettings({ [key]: Boolean(checked) } as Partial<HrSettings>)}
-                />
-                <FieldContent>
-                  <FieldTitle>{label}</FieldTitle>
-                </FieldContent>
-              </Field>
-            ))}
-            </FieldGroup>
-          </FieldSet>
         </FieldGroup>
         <div className="flex justify-end">
           <Button onClick={() => setWorkspaceFromApi(requestJson("/api/settings/hr", { method: "POST", body: JSON.stringify(workspace.hr_settings) }), "HR-настройки сохранены")}>
