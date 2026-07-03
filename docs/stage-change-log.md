@@ -34,6 +34,35 @@ source_of_truth: true
 
 ## Записи
 
+### 2026-07-03 12:50 MSK - app deploy - branching target field preservation
+
+- Deploy ref: `stage`.
+- Deployed commit: `f73b2e1`.
+- GitHub Actions run: `28652589152` -> success.
+- В stage включены:
+  - scenario workspace frontend больше не скрывает `target_field` для `response_type=branching`;
+  - backend workspace update больше не сбрасывает `target_field` у branching-step при сохранении;
+  - `buttons` и `branching` теперь оба могут сохранять выбранный вариант в поля карточки, включая `salary_expectation`;
+  - добавлен regression smoke `test_workspace_step_api_preserves_branching_target_field`.
+- Локальные проверки на объединенном `stage`:
+  - `.venv\Scripts\python.exe -m compileall app tests tools`;
+  - `.venv\Scripts\ruff.exe check --select F821 app tests`;
+  - `.venv\Scripts\python.exe -m unittest tests.test_employee_api_smoke.EmployeeApiSmokeTests.test_workspace_step_api_preserves_buttons_target_field tests.test_employee_api_smoke.EmployeeApiSmokeTests.test_workspace_step_api_preserves_branching_target_field -v`;
+  - `.venv\Scripts\python.exe -m unittest tests.test_employee_api_smoke tests.test_messaging_identity tests.test_scenario_engine_smoke tests.test_scenario_engine_branching -v` -> 93 tests OK;
+  - `npm run build` в `frontend`;
+  - `git diff --check`.
+- Stage smoke checks из workflow:
+  - server HEAD -> `f73b2e1`;
+  - preflight compile/F821/backend smoke/frontend build/import smoke -> success;
+  - `curl http://127.0.0.1:8000/app/employees` -> `303`;
+  - `curl http://127.0.0.1:8000/app/flows/workspace-v2` -> `303`;
+  - `curl -4 -I --connect-timeout 10 https://api.telegram.org/` прошел в deploy script;
+  - `hr-bot-web`, `hr-bot-worker` и `wg-quick@redshield` прошли `systemctl is-active`;
+  - worker log grep без свежих `TelegramNetworkError`, `Request timeout`, `Traceback`, `Unclosed client session`.
+- Rollback/backup: DB не менялась; отдельный DB backup для этого app deploy не требовался.
+- Открытые риски:
+  - `branching` с `target_field` теперь технически допустим, но оператору все еще нужно продуктово понимать разницу между `buttons` как простой выбор и `branching` как выбор с ветками.
+
 ### 2026-07-01 17:50 MSK - app deploy - audience-specific bot root menus
 
 - Deploy ref: `stage`.
