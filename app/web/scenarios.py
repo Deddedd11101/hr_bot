@@ -28,6 +28,7 @@ from ..models import (
     SurveyAnswer,
 )
 from .employees import OFFER_DOCUMENT_TITLE, _all_employee_options
+from .settings import _get_or_create_hr_settings
 
 
 def _load_scenario_editor_data(db: Session, scenario: ScenarioTemplate):
@@ -95,6 +96,28 @@ def _load_scenario_editor_data(db: Session, scenario: ScenarioTemplate):
         step_send_notifications_by_step[notification.step_id].append(notification)
     available_scenarios = db.query(ScenarioTemplate).order_by(ScenarioTemplate.title, ScenarioTemplate.id).all()
     employee_options = _all_employee_options(db)
+    hr_settings = _get_or_create_hr_settings(db)
+    notification_recipient_options = []
+    hr_chat_id = (hr_settings.telegram_user_id or "").strip()
+    hr_name = (hr_settings.hr_name or "").strip() or "HR"
+    if hr_chat_id:
+        notification_recipient_options.append(
+            {
+                "token": "hr",
+                "label": hr_name,
+                "description": "HR из системных настроек",
+                "kind": "hr",
+            }
+        )
+    notification_recipient_options.extend(
+        {
+            "token": f"employee:{option['id']}",
+            "label": option["label"],
+            "description": "Кандидат" if option["kind"] == "candidates" else "Сотрудник",
+            "kind": option["kind"],
+        }
+        for option in employee_options
+    )
     return {
         "steps": steps,
         "branch_steps_by_parent": dict(branch_steps_by_parent),
@@ -108,6 +131,7 @@ def _load_scenario_editor_data(db: Session, scenario: ScenarioTemplate):
         },
         "available_scenarios": available_scenarios,
         "employee_options": employee_options,
+        "notification_recipient_options": notification_recipient_options,
         "document_tag_titles": [OFFER_DOCUMENT_TITLE],
     }
 
@@ -383,6 +407,7 @@ def _build_scenario_workspace_payload(
             "notification_recipient_scope_labels": NOTIFICATION_RECIPIENT_SCOPE_LABELS,
             "document_tag_titles": editor_data["document_tag_titles"],
             "employee_options": editor_data["employee_options"],
+            "notification_recipient_options": editor_data["notification_recipient_options"],
             "available_scenarios": [
                 {
                     "value": item.scenario_key,
@@ -459,7 +484,7 @@ def _apply_workspace_step_update(step: FlowStepTemplate, payload: dict, scenario
 
     if step.response_type not in {"buttons", "branching"}:
         step.button_options = None
-    if step.response_type in {"branching", "chain"}:
+    if step.response_type == "chain":
         step.target_field = None
 
     return step

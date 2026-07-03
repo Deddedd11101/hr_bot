@@ -9,7 +9,7 @@ from uuid import uuid4
 from fastapi.testclient import TestClient
 from openpyxl import load_workbook
 
-from app.auth import authenticate_account
+from app.auth import authenticate_account, create_admin_session_token
 from app.database import SessionLocal, init_db
 from app.main import AUTH_COOKIE_NAME, app
 from app.messaging.identity import get_primary_chat_id, set_primary_chat_id
@@ -24,6 +24,7 @@ from app.messaging.service import (
 )
 from app.scenario_engine import handle_button_response, send_step
 from app.models import (
+    AdminAccount,
     BotMenuButton,
     BotMenuSet,
     DocumentLibraryItem,
@@ -78,7 +79,7 @@ class EmployeeApiSmokeTests(unittest.TestCase):
             account = authenticate_account(db, "admin", "admin123")
             if account is None:
                 raise AssertionError("Admin account is not available for API smoke tests.")
-            cls.client.cookies.set(AUTH_COOKIE_NAME, str(account.id))
+            cls.client.cookies.set(AUTH_COOKIE_NAME, create_admin_session_token(account.id))
 
     def setUp(self) -> None:
         self.unique_tag = uuid4().hex[:12]
@@ -110,6 +111,8 @@ class EmployeeApiSmokeTests(unittest.TestCase):
                     "notify_test_task_received": hr_settings.notify_test_task_received,
                     "notify_user_actions": hr_settings.notify_user_actions,
                     "default_menu_set_id": hr_settings.default_menu_set_id,
+                    "default_employee_menu_set_id": hr_settings.default_employee_menu_set_id,
+                    "default_candidate_menu_set_id": hr_settings.default_candidate_menu_set_id,
                 }
 
     def tearDown(self) -> None:
@@ -156,6 +159,14 @@ class EmployeeApiSmokeTests(unittest.TestCase):
             db.query(FlowLaunchRequest).filter(FlowLaunchRequest.employee_id == self.employee_id).delete(synchronize_session=False)
             db.query(EmployeeFile).filter(EmployeeFile.employee_id == self.employee_id).delete(synchronize_session=False)
             db.query(EmployeeMessengerAccount).filter(EmployeeMessengerAccount.employee_id == self.employee_id).delete()
+            extra_employees = db.query(Employee).filter(Employee.full_name.like(f"%{self.unique_tag}%")).all()
+            for extra_employee in extra_employees:
+                if extra_employee.id == self.employee_id:
+                    continue
+                db.query(FlowLaunchRequest).filter(FlowLaunchRequest.employee_id == extra_employee.id).delete(synchronize_session=False)
+                db.query(EmployeeFile).filter(EmployeeFile.employee_id == extra_employee.id).delete(synchronize_session=False)
+                db.query(EmployeeMessengerAccount).filter(EmployeeMessengerAccount.employee_id == extra_employee.id).delete()
+                db.delete(extra_employee)
             employee = db.get(Employee, self.employee_id)
             if employee is not None:
                 db.delete(employee)
@@ -169,6 +180,8 @@ class EmployeeApiSmokeTests(unittest.TestCase):
                     hr_settings.notify_test_task_received = self.hr_settings_snapshot["notify_test_task_received"]
                     hr_settings.notify_user_actions = self.hr_settings_snapshot["notify_user_actions"]
                     hr_settings.default_menu_set_id = self.hr_settings_snapshot["default_menu_set_id"]
+                    hr_settings.default_employee_menu_set_id = self.hr_settings_snapshot["default_employee_menu_set_id"]
+                    hr_settings.default_candidate_menu_set_id = self.hr_settings_snapshot["default_candidate_menu_set_id"]
             db.commit()
 
     def test_employee_detail_api_returns_ok(self) -> None:
@@ -177,6 +190,44 @@ class EmployeeApiSmokeTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertEqual(payload["employee"]["id"], self.employee_id)
+
+    def test_workspace_payload_exposes_hr_notification_recipient(self) -> None:
+        with SessionLocal() as db:
+            hr_settings = db.get(HrSettings, 1)
+            self.assertIsNotNone(hr_settings)
+            hr_settings.hr_name = f"HR {self.unique_tag}"
+            hr_settings.telegram_user_id = "770001"
+            db.commit()
+
+        scenario_key = f"codex-hr-recipient-{self.unique_tag}"
+        with SessionLocal() as db:
+            scenario = ScenarioTemplate(
+                scenario_key=scenario_key,
+                title=f"codex-hr-recipient-{self.unique_tag}",
+                role_scope="all",
+                scenario_kind="scenario",
+                sort_order=0,
+                trigger_mode="manual_only",
+            )
+            db.add(scenario)
+            db.commit()
+            db.refresh(scenario)
+            scenario_id = scenario.id
+
+        response = self.client.get(f"/api/flows/workspace?scenario_id={scenario_id}")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        options = payload["workspace"]["notification_recipient_options"]
+        self.assertIn(
+            {
+                "token": "hr",
+                "label": f"HR {self.unique_tag}",
+                "description": "HR из системных настроек",
+                "kind": "hr",
+            },
+            options,
+        )
 
     def test_employee_detail_update_supports_staff_selects_and_adaptation_dates(self) -> None:
         now = datetime.now(UTC).replace(tzinfo=None)
@@ -416,6 +467,69 @@ class EmployeeApiSmokeTests(unittest.TestCase):
         missing_contracts = sorted(expected_contracts - route_index)
         self.assertEqual([], missing_contracts)
 
+    def test_workspace_api_creates_blank_message_text_for_new_scenario_steps(self) -> None:
+        scenario_key = f"codex_blank_step_{self.unique_tag}"
+        with SessionLocal() as db:
+            scenario = ScenarioTemplate(
+                scenario_key=scenario_key,
+                scenario_kind="scenario",
+                title=f"Blank step scenario {self.unique_tag}",
+                sort_order=10,
+                role_scope="all",
+                trigger_mode="manual_only",
+            )
+            db.add(scenario)
+            db.commit()
+            db.refresh(scenario)
+            scenario_id = scenario.id
+
+        created_step_ids: list[int] = []
+        try:
+            root_response = self.client.post(
+                f"/api/flows/workspace/scenarios/{scenario_id}/steps",
+                json={"title": "Новый шаг"},
+            )
+            self.assertEqual(200, root_response.status_code)
+            root_step_id = int(root_response.json()["step_id"])
+            created_step_ids.append(root_step_id)
+
+            with SessionLocal() as db:
+                root_step = db.get(FlowStepTemplate, root_step_id)
+                self.assertIsNotNone(root_step)
+                root_step.response_type = "branching"
+                root_step.button_options = "Да\nНет"
+                db.commit()
+
+            branch_response = self.client.post(
+                f"/api/flows/workspace/steps/{root_step_id}/branches",
+                json={"option_index": 0},
+            )
+            self.assertEqual(200, branch_response.status_code)
+            branch_step_id = int(branch_response.json()["step_id"])
+            created_step_ids.append(branch_step_id)
+
+            with SessionLocal() as db:
+                branch_step = db.get(FlowStepTemplate, branch_step_id)
+                self.assertIsNotNone(branch_step)
+                branch_step.response_type = "chain"
+                db.commit()
+
+            chain_response = self.client.post(
+                f"/api/flows/workspace/steps/{branch_step_id}/chain",
+                json={"title": "Шаг цепочки"},
+            )
+            self.assertEqual(200, chain_response.status_code)
+            created_step_ids.append(int(chain_response.json()["step_id"]))
+
+            with SessionLocal() as db:
+                default_texts = [db.get(FlowStepTemplate, step_id).default_text for step_id in created_step_ids]
+            self.assertEqual(["", "", ""], default_texts)
+        finally:
+            with SessionLocal() as db:
+                db.query(FlowStepTemplate).filter(FlowStepTemplate.flow_key == scenario_key).delete(synchronize_session=False)
+                db.query(ScenarioTemplate).filter(ScenarioTemplate.scenario_key == scenario_key).delete(synchronize_session=False)
+                db.commit()
+
     def test_dashboard_workspace_api_returns_operational_payload(self) -> None:
         scenario_key = f"codex_dashboard_{self.unique_tag}"
         now = datetime.now(UTC).replace(tzinfo=None)
@@ -493,6 +607,65 @@ class EmployeeApiSmokeTests(unittest.TestCase):
         self.assertEqual(root_response.headers.get("location"), "/app/dashboard")
         self.assertEqual(login_response.status_code, 303)
         self.assertEqual(login_response.headers.get("location"), "/app/dashboard")
+
+    def test_raw_account_id_cookie_does_not_authenticate(self) -> None:
+        client = TestClient(app)
+        client.cookies.set(AUTH_COOKIE_NAME, "1")
+
+        response = client.get("/api/settings/workspace")
+
+        self.assertEqual(response.status_code, 401)
+
+    def test_login_sets_signed_session_cookie(self) -> None:
+        client = TestClient(app)
+
+        response = client.post(
+            "/login",
+            data={"login": "admin", "password": "admin123"},
+            follow_redirects=False,
+        )
+
+        self.assertEqual(response.status_code, 303)
+        self.assertEqual(response.headers.get("location"), "/app/dashboard")
+        session_cookie = response.cookies.get(AUTH_COOKIE_NAME)
+        self.assertIsNotNone(session_cookie)
+        self.assertNotEqual(session_cookie, "1")
+        self.assertEqual(len(session_cookie.split(".")), 3)
+
+    def test_account_api_rejects_weak_passwords(self) -> None:
+        response = self.client.post(
+            "/api/accounts",
+            json={
+                "login": f"codex-weak-{self.unique_tag}",
+                "password": "short",
+                "role": "hr",
+                "is_active": True,
+            },
+        )
+
+        self.assertEqual(response.status_code, 400)
+
+    def test_account_api_accepts_strong_passwords(self) -> None:
+        login = f"codex-strong-{self.unique_tag}"
+
+        response = self.client.post(
+            "/api/accounts",
+            json={
+                "login": login,
+                "password": f"Strong-{self.unique_tag}-2026",
+                "role": "hr",
+                "is_active": True,
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        with SessionLocal() as db:
+            account = db.query(AdminAccount).filter(AdminAccount.login == login).first()
+            self.assertIsNotNone(account)
+            if account is not None:
+                self.assertNotEqual(account.password_hash, f"Strong-{self.unique_tag}-2026")
+                db.delete(account)
+                db.commit()
 
     def test_react_dashboard_template_mounts_bundle(self) -> None:
         response = self.client.get("/app/dashboard")
@@ -1257,6 +1430,71 @@ class EmployeeApiSmokeTests(unittest.TestCase):
             self.assertEqual(step.response_type, "buttons")
             self.assertEqual(step.target_field, "salary_expectation")
 
+    def test_workspace_step_api_persists_target_field_for_branching(self) -> None:
+        scenario_key = f"codex_branch_target_{self.unique_tag}"
+        with SessionLocal() as db:
+            scenario = ScenarioTemplate(
+                scenario_key=scenario_key,
+                title=f"codex-branch-target-{self.unique_tag}",
+                sort_order=10,
+                scenario_kind="scenario",
+                role_scope="all",
+                employee_scope="all",
+                trigger_mode="manual_only",
+            )
+            db.add(scenario)
+            db.flush()
+            step = FlowStepTemplate(
+                flow_key=scenario_key,
+                step_key=f"{scenario_key}_step_1",
+                step_title="Ожидаемый доход через ветвление",
+                sort_order=10,
+                default_text="Выбери ожидаемый доход",
+                custom_text=None,
+                response_type="branching",
+                button_options="200000\n300000",
+                send_mode="immediate",
+                send_time=None,
+                day_offset_workdays=0,
+                target_field=None,
+                send_employee_card=False,
+            )
+            db.add(step)
+            db.commit()
+            db.refresh(step)
+            step_id = step.id
+
+        response = self.client.post(
+            f"/api/flows/workspace/steps/{step_id}",
+            json={
+                "title": "Ожидаемый доход через ветвление",
+                "text": "Выбери ожидаемый доход",
+                "response_type": "branching",
+                "button_options": "200000\n300000",
+                "send_mode": "immediate",
+                "send_time": "",
+                "target_field": "salary_expectation",
+                "launch_scenario_key": "",
+                "send_employee_card": False,
+                "notify_on_send_text": "",
+                "notify_on_send_recipient_ids": "",
+                "notify_on_send_recipient_scope": "",
+                "button_notifications": [],
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()["payload"]["workspace"]["root_steps"][0]
+        self.assertEqual(payload["response_type"], "branching")
+        self.assertEqual(payload["target_field"], "salary_expectation")
+        self.assertEqual(payload["target_field_label"], "Ожидания по доходу")
+
+        with SessionLocal() as db:
+            step = db.get(FlowStepTemplate, step_id)
+            self.assertIsNotNone(step)
+            self.assertEqual(step.response_type, "branching")
+            self.assertEqual(step.target_field, "salary_expectation")
+
     def test_workspace_step_api_normalizes_survey_question_flow(self) -> None:
         scenario_key = f"codex_survey_flow_{self.unique_tag}"
         with SessionLocal() as db:
@@ -1863,6 +2101,28 @@ class EmployeeApiSmokeTests(unittest.TestCase):
             self.assertIsNone(db.get(MassScenarioAction, action_id))
 
     def test_settings_hr_update_api_persists_workspace_fields(self) -> None:
+        candidate_menu_title = f"codex-candidate-root-{self.unique_tag}"
+        employee_menu_title = f"codex-employee-root-{self.unique_tag}"
+        with SessionLocal() as db:
+            candidate_menu = BotMenuSet(
+                title=candidate_menu_title,
+                description="candidate root",
+                sort_order=10,
+                employee_scope="candidates",
+            )
+            employee_menu = BotMenuSet(
+                title=employee_menu_title,
+                description="employee root",
+                sort_order=20,
+                employee_scope="employees",
+            )
+            db.add_all([candidate_menu, employee_menu])
+            db.commit()
+            db.refresh(candidate_menu)
+            db.refresh(employee_menu)
+            candidate_menu_id = candidate_menu.id
+            employee_menu_id = employee_menu.id
+
         response = self.client.post(
             "/api/settings/hr",
             json={
@@ -1870,6 +2130,8 @@ class EmployeeApiSmokeTests(unittest.TestCase):
                 "telegram_user_id": f"tg-{self.unique_tag}",
                 "notification_recipient_ids": f"tg-a-{self.unique_tag},tg-b-{self.unique_tag}",
                 "default_menu_set_id": None,
+                "default_employee_menu_set_id": employee_menu_id,
+                "default_candidate_menu_set_id": candidate_menu_id,
                 "notify_scenario_completed": False,
                 "notify_test_task_received": True,
                 "notify_user_actions": False,
@@ -1884,8 +2146,59 @@ class EmployeeApiSmokeTests(unittest.TestCase):
             self.assertIsNotNone(hr_settings)
             self.assertEqual(hr_settings.hr_name, f"codex-hr-{self.unique_tag}")
             self.assertEqual(hr_settings.telegram_user_id, f"tg-{self.unique_tag}")
+            self.assertEqual(hr_settings.default_employee_menu_set_id, employee_menu_id)
+            self.assertEqual(hr_settings.default_candidate_menu_set_id, candidate_menu_id)
             self.assertFalse(hr_settings.notify_scenario_completed)
             self.assertFalse(hr_settings.notify_user_actions)
+
+    def test_bot_root_menu_uses_explicit_audience_defaults(self) -> None:
+        with SessionLocal() as db:
+            candidate = db.get(Employee, self.employee_id)
+            self.assertIsNotNone(candidate)
+            candidate.employee_stage = "candidate"
+            candidate.candidate_work_stage = "testing"
+
+            employee = Employee(
+                full_name=f"Staff Root {self.unique_tag}",
+                telegram_user_id=None,
+                first_workday=None,
+                created_at=datetime.now(UTC).replace(tzinfo=None),
+                is_flow_scheduled=False,
+                employee_stage="staff",
+                candidate_work_stage=None,
+            )
+            candidate_root = BotMenuSet(
+                title=f"codex-candidate-root-{self.unique_tag}",
+                description="candidate root",
+                sort_order=10,
+                employee_scope="candidates",
+            )
+            employee_root = BotMenuSet(
+                title=f"codex-employee-root-{self.unique_tag}",
+                description="employee root",
+                sort_order=20,
+                employee_scope="employees",
+            )
+            db.add_all([employee, candidate_root, employee_root])
+            db.commit()
+            db.refresh(employee)
+            db.refresh(candidate_root)
+            db.refresh(employee_root)
+
+            hr_settings = db.query(HrSettings).first()
+            self.assertIsNotNone(hr_settings)
+            hr_settings.default_menu_set_id = None
+            hr_settings.default_candidate_menu_set_id = candidate_root.id
+            hr_settings.default_employee_menu_set_id = employee_root.id
+            db.commit()
+
+            candidate_resolved = current_menu_set(db, candidate)
+            employee_resolved = current_menu_set(db, employee)
+
+            self.assertIsNotNone(candidate_resolved)
+            self.assertIsNotNone(employee_resolved)
+            self.assertEqual(candidate_resolved.id, candidate_root.id)
+            self.assertEqual(employee_resolved.id, employee_root.id)
 
     def test_settings_menu_set_api_supports_react_workspace_create_and_delete(self) -> None:
         title = f"codex-menu-{self.unique_tag}"
@@ -2489,4 +2802,3 @@ class EmployeeApiSmokeTests(unittest.TestCase):
             self.assertTrue(handled)
             self.assertTrue(messenger.sent_texts)
             self.assertIn("https://example.com/policy", messenger.sent_texts[-1][1])
-

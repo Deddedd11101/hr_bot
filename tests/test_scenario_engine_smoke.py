@@ -5,7 +5,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from app.database import SessionLocal, init_db
-from app.models import Employee, FlowStepTemplate, ScenarioProgress, ScenarioTemplate
+from app.models import Employee, FlowStepTemplate, HrSettings, ScenarioProgress, ScenarioTemplate
 from app.scenario_engine import (
     SCENARIO_BACK_BUTTON_TEXT,
     handle_button_response,
@@ -154,6 +154,31 @@ class ScenarioEngineSmokeTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(recipients, ["hr-id", "123456"])
             db.delete(employee)
             db.delete(manager)
+            db.commit()
+
+    def test_resolve_notification_recipients_supports_hr_token(self) -> None:
+        init_db()
+        with SessionLocal() as db:
+            settings = db.get(HrSettings, 1)
+            if settings is None:
+                settings = HrSettings(id=1, telegram_user_id="555001")
+                db.add(settings)
+            previous_chat_id = settings.telegram_user_id
+            settings.telegram_user_id = "555001"
+            db.commit()
+            employee = SimpleNamespace(
+                manager_employee_id=None,
+                mentor_adaptation_employee_id=None,
+                mentor_ipr_employee_id=None,
+                manager_telegram_id=None,
+                mentor_adaptation_telegram_id=None,
+                mentor_ipr_telegram_id=None,
+            )
+
+            recipients = resolve_notification_recipients(db, employee, explicit_ids="hr", recipient_scope="")
+
+            self.assertEqual(recipients, ["555001"])
+            settings.telegram_user_id = previous_chat_id
             db.commit()
 
     def test_matches_role_scope_respects_candidate_and_employee_scope(self) -> None:

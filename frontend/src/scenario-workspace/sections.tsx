@@ -926,6 +926,7 @@ export function WorkspaceStepDetailPane(props: {
                           ref={textRef}
                           className="min-h-[140px] px-3 py-3 pr-12 text-sm leading-6"
                           value={form?.text || ""}
+                          placeholder="Введите текст сообщения"
                           onChange={(event) => onFormChange((prev) => (prev ? { ...prev, text: event.target.value } : prev))}
                         />
                         <div className="absolute right-2.5 bottom-2.5">
@@ -1322,7 +1323,7 @@ export function WorkspaceStepDetailPane(props: {
             <label className="grid gap-2">
               <span className="text-sm font-semibold text-foreground/75">Получатели</span>
               <NotificationRecipientsPicker
-                employeeOptions={payloadWorkspace?.employee_options || []}
+                recipientOptions={payloadWorkspace?.notification_recipient_options || []}
                 value={notificationRuleEditor?.recipient_ids || ""}
                 onChange={(next) =>
                   setNotificationRuleEditor((prev) => (prev ? { ...prev, recipient_ids: next } : prev))
@@ -1368,7 +1369,7 @@ export function WorkspaceStepDetailPane(props: {
             <label className="grid gap-2">
               <span className="text-sm font-semibold text-foreground/75">Получатели</span>
               <NotificationRecipientsPicker
-                employeeOptions={payloadWorkspace?.employee_options || []}
+                recipientOptions={payloadWorkspace?.notification_recipient_options || []}
                 value={stepNotificationRuleEditor?.recipient_ids || ""}
                 onChange={(next) =>
                   setStepNotificationRuleEditor((prev) => (prev ? { ...prev, recipient_ids: next } : prev))
