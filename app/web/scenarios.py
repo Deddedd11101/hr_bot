@@ -805,7 +805,7 @@ def _apply_workspace_step_update(db: Session, step: FlowStepTemplate, payload: d
 
     if step.response_type not in {"buttons", "branching"}:
         step.button_options = None
-    if step.response_type in {"branching", "chain"}:
+    if step.response_type == "chain":
         step.target_field = None
 
     return step

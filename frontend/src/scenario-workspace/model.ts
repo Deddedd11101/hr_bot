@@ -146,7 +146,7 @@ export function supportsButtonOptions(responseType: string) {
 }
 
 export function supportsTargetField(responseType: string) {
-  return responseType === "text" || responseType === "file" || responseType === "buttons";
+  return responseType === "text" || responseType === "file" || responseType === "buttons" || responseType === "branching";
 }
 
 export function responseTypeWaitState(responseType: string) {

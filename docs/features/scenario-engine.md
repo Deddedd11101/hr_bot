@@ -77,6 +77,7 @@ Scenario engine превращает scenario templates плюс employee state 
 - `text`, `file`, `buttons` и `branching` считаются интерактивными: после отправки такого шага бот ждет ответ и не переходит дальше автоматически.
 - `none` не блокирует сценарий и должен использоваться для чисто информационных шагов, файлов и текстов, после которых не нужен ответ.
 - Новые scenario-шаги, branch-шаги и chain-шаги не должны сохранять декоративный default text. Поле сообщения остается пустым, а подсказка показывается только как UI placeholder.
+- `buttons` и `branching` могут сохранять выбранный вариант в `target_field`, включая `salary_expectation`; editor не должен сбрасывать это поле при сохранении branching step.
 
 ## Read-only graph contract
 
