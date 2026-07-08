@@ -395,8 +395,7 @@ async def handle_start_command(messenger: MessengerClient, db: Session, chat_use
         chat_id=chat_user_id,
         text="Привет! Я HR-бот.",
     )
-    if not await show_main_menu(messenger, db, employee, "Меню обновлено. Выберите действие."):
-        await messenger.send_text(chat_id=chat_user_id, text="Для вас пока не настроено доступное меню.")
+    await show_main_menu(messenger, db, employee, "Меню обновлено. Выберите действие.")
 
 
 async def save_incoming_file(

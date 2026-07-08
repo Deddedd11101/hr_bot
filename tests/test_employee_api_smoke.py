@@ -2809,6 +2809,29 @@ class EmployeeApiSmokeTests(unittest.TestCase):
             self.assertTrue(messenger.sent_menus)
             self.assertEqual(messenger.sent_menus[-1][2], [root_button.label])
 
+    def test_bot_start_without_menu_does_not_send_empty_menu_warning(self) -> None:
+        with SessionLocal() as db:
+            employee = db.get(Employee, self.employee_id)
+            self.assertIsNotNone(employee)
+            chat_id = str(950000000000 + (uuid4().int % 100000000000))
+            set_primary_chat_id(employee, chat_id, db=db)
+            employee.current_menu_set_id = None
+            employee.current_menu_path = None
+            hr_settings = db.query(HrSettings).first()
+            self.assertIsNotNone(hr_settings)
+            hr_settings.default_menu_set_id = None
+            hr_settings.default_employee_menu_set_id = None
+            hr_settings.default_candidate_menu_set_id = None
+            db.query(BotMenuButton).delete(synchronize_session=False)
+            db.query(BotMenuSet).delete(synchronize_session=False)
+            db.commit()
+            messenger = DummyMessenger()
+
+            asyncio.run(handle_start_command(messenger, db, chat_id, employee.telegram_username))
+
+            self.assertEqual(messenger.sent_texts, [(chat_id, "Привет! Я HR-бот.")])
+            self.assertEqual(messenger.sent_menus, [])
+
     def test_bot_menu_back_returns_to_previous_menu(self) -> None:
         with SessionLocal() as db:
             employee = db.get(Employee, self.employee_id)
