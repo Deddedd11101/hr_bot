@@ -670,3 +670,39 @@ source_of_truth: true
   - worker log grep не нашел свежие `TelegramNetworkError`, `Request timeout`, `Traceback`, `Unclosed client session`.
 - Открытые риски:
   - если на тестовом стенде нужны demo employees/candidates, их нужно создать заново через UI или seed/script; старые карточки восстановимы из backup DB.
+
+### 2026-07-08 11:11 MSK - app deploy - date response для сценариев
+
+- Deploy ref: `stage`.
+- Deployed commit: `ce1b7f6`.
+- GitHub Actions run: `28927670013`.
+- Что изменено:
+  - добавлен новый тип ответа сценария `date`;
+  - scenario workspace позволяет выбрать `Выбор даты` и привязать результат к `first_workday`;
+  - Telegram runtime показывает inline-календарь на callback-кнопках;
+  - выбранная дата сохраняется в карточку сотрудника в `first_workday`;
+  - добавлены regression-тесты на workspace persistence и runtime сохранение даты.
+- Локальные проверки перед deploy:
+  - `.\.venv\Scripts\python.exe -m compileall app tests`;
+  - `.\.venv\Scripts\ruff.exe check --select F821 app tests`;
+  - `.\.venv\Scripts\python.exe -m unittest tests.test_employee_api_smoke tests.test_messaging_identity tests.test_scenario_engine_smoke tests.test_scenario_engine_branching -v` -> 98 tests OK;
+  - `npm run build`;
+  - `git diff --check`.
+- GitHub Actions preflight:
+  - backend dependencies install;
+  - `compileall`;
+  - `ruff F821`;
+  - backend smoke tests;
+  - frontend build;
+  - smoke imports.
+- Stage smoke checks:
+  - `/app/employees` -> `303`;
+  - `/app/flows/workspace-v2` -> `303`;
+  - `curl -4 -I --connect-timeout 10 https://api.telegram.org/` -> `HTTP/2 302`;
+  - `hr-bot-web`, `hr-bot-worker` и `wg-quick@redshield` прошли `systemctl is-active`;
+  - worker log grep не нашел свежие `TelegramNetworkError`, `Request timeout`, `Traceback`, `Unclosed client session`;
+  - deploy job завершился успешно и вывел `ce1b7f6`.
+- Backup БД не делался: deploy шел через git/systemd restart и не менял схему/данные SQLite вручную.
+- Открытые риски:
+  - это inline-календарь внутри Telegram-бота, а не native date picker: у обычных Telegram-ботов нативного date picker нет;
+  - поддержка сейчас сфокусирована на сохранении даты в `first_workday`; для других date-полей нужен отдельный contract.
