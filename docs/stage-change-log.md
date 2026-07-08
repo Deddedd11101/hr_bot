@@ -706,3 +706,38 @@ source_of_truth: true
 - Открытые риски:
   - это inline-календарь внутри Telegram-бота, а не native date picker: у обычных Telegram-ботов нативного date picker нет;
   - поддержка сейчас сфокусирована на сохранении даты в `first_workday`; для других date-полей нужен отдельный contract.
+
+### 2026-07-08 11:35 MSK - app deploy - catch-up первого timed step
+
+- Deploy ref: `stage`.
+- Deployed commit: `1211af4`.
+- GitHub Actions run: `28929072248`.
+- Что изменено:
+  - scheduler для time-based сценариев теперь ставит первый непройденный шаг на немедленную отправку, если сценарий активирован сегодня и время первого шага уже прошло;
+  - `send_step` больше не создает internal `FlowLaunchRequest` для следующего `specific_time` шага, когда текущий timed step был вызван scheduler;
+  - добавлен `tests/test_scheduler_smoke.py` с проверками same-day catch-up, отсутствия catch-up после уже начатого сценария и отсутствия лишнего follow-up после scheduler step;
+  - обновлены runtime docs по scenario engine, `project_state` и backlog.
+- Локальные проверки перед deploy:
+  - `.\.venv\Scripts\python.exe -m compileall app tests`;
+  - `.\.venv\Scripts\ruff.exe check --select F821 app tests`;
+  - `.\.venv\Scripts\python.exe -m unittest tests.test_scheduler_smoke tests.test_scenario_engine_smoke.ScenarioEngineSmokeTests.test_resolve_notification_recipients_supports_hr_token tests.test_employee_api_smoke.EmployeeApiSmokeTests.test_bot_current_menu_set_prefers_matching_candidate_audience_set -v` -> 5 tests OK;
+  - `.\.venv\Scripts\python.exe -m unittest tests.test_employee_api_smoke tests.test_messaging_identity tests.test_scenario_engine_smoke tests.test_scenario_engine_branching tests.test_scheduler_smoke -v` -> 101 tests OK;
+  - `git diff --cached --check`.
+- GitHub Actions preflight:
+  - backend dependencies install;
+  - `compileall`;
+  - `ruff F821`;
+  - backend smoke tests;
+  - frontend build;
+  - smoke imports.
+- Stage smoke checks:
+  - `/app/employees` -> `303`;
+  - `/app/flows/workspace-v2` -> `303`;
+  - `curl -4 -I --connect-timeout 10 https://api.telegram.org/` -> `HTTP/2 302`;
+  - `hr-bot-web`, `hr-bot-worker` и `wg-quick@redshield` прошли `systemctl is-active`;
+  - worker log grep не нашел свежие `TelegramNetworkError`, `Request timeout`, `Traceback`, `Unclosed client session`;
+  - deploy job завершился успешно и вывел `1211af4`.
+- Backup БД не делался: deploy шел через git/systemd restart и не менял схему/данные SQLite вручную.
+- Открытые риски:
+  - catch-up намеренно узкий: только первый непройденный шаг в день активации, если сценарий еще не начинался;
+  - late-start сценарии за прошлые даты по-прежнему не догоняются автоматически, чтобы не слать устаревшие сообщения пачкой.
