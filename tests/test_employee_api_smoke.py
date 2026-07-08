@@ -2563,6 +2563,28 @@ class EmployeeApiSmokeTests(unittest.TestCase):
             self.assertTrue(messenger.sent_menus)
             self.assertEqual(messenger.sent_menus[-1][2], [root_button.label])
 
+    def test_bot_start_without_menu_does_not_send_empty_menu_warning(self) -> None:
+        with SessionLocal() as db:
+            employee = db.get(Employee, self.employee_id)
+            self.assertIsNotNone(employee)
+            set_primary_chat_id(employee, "123456789", db=db)
+            employee.current_menu_set_id = None
+            employee.current_menu_path = None
+            hr_settings = db.query(HrSettings).first()
+            self.assertIsNotNone(hr_settings)
+            hr_settings.default_menu_set_id = None
+            hr_settings.default_employee_menu_set_id = None
+            hr_settings.default_candidate_menu_set_id = None
+            db.query(BotMenuButton).delete(synchronize_session=False)
+            db.query(BotMenuSet).delete(synchronize_session=False)
+            db.commit()
+            messenger = DummyMessenger()
+
+            asyncio.run(handle_start_command(messenger, db, "123456789", employee.telegram_username))
+
+            self.assertEqual(messenger.sent_texts, [("123456789", "Привет! Я HR-бот.")])
+            self.assertEqual(messenger.sent_menus, [])
+
     def test_bot_menu_api_rejects_reserved_navigation_button_labels(self) -> None:
         create_set_response = self.client.post(
             "/api/settings/menu-sets",
