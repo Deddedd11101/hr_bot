@@ -2891,6 +2891,54 @@ class EmployeeApiSmokeTests(unittest.TestCase):
             self.assertEqual(messenger.sent_texts, [(chat_id, "Привет! Я HR-бот.")])
             self.assertEqual(messenger.sent_menus, [])
 
+    def test_bot_start_launches_registration_scenario_on_new_telegram_link(self) -> None:
+        scenario_key = f"codex-registration-{self.unique_tag}"
+        username = f"codex_user_{self.unique_tag}"
+        chat_id = str(960000000000 + (uuid4().int % 100000000000))
+        registration_text = f"codex registration step {self.unique_tag}"
+        with SessionLocal() as db:
+            employee = db.get(Employee, self.employee_id)
+            self.assertIsNotNone(employee)
+            employee.telegram_username = username
+            employee.telegram_user_id = None
+            employee.employee_stage = "candidate"
+            scenario = ScenarioTemplate(
+                scenario_key=scenario_key,
+                title=f"codex-registration-{self.unique_tag}",
+                role_scope="all",
+                employee_scope="candidates",
+                scenario_kind="scenario",
+                sort_order=-100,
+                trigger_mode="bot_registration",
+            )
+            db.add(scenario)
+            db.add(
+                FlowStepTemplate(
+                    flow_key=scenario_key,
+                    step_key="registration_start",
+                    step_title="Registration start",
+                    sort_order=10,
+                    default_text=registration_text,
+                    response_type="none",
+                    send_mode="immediate",
+                )
+            )
+            db.commit()
+            messenger = DummyMessenger()
+
+            asyncio.run(handle_start_command(messenger, db, chat_id, username))
+
+            db.refresh(employee)
+            self.assertEqual(get_primary_chat_id(employee, db=db), chat_id)
+            self.assertIn((chat_id, "Привет! Я HR-бот."), messenger.sent_texts)
+            self.assertIn((chat_id, registration_text), messenger.sent_texts)
+            self.assertEqual(messenger.sent_menus, [])
+
+            messenger.sent_texts.clear()
+            asyncio.run(handle_start_command(messenger, db, chat_id, username))
+
+            self.assertNotIn((chat_id, registration_text), messenger.sent_texts)
+
     def test_bot_menu_back_returns_to_previous_menu(self) -> None:
         with SessionLocal() as db:
             employee = db.get(Employee, self.employee_id)

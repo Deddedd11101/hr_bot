@@ -22,12 +22,15 @@ task_tokens:
 2. Если не найден, попробовать public Telegram username.
 3. Если все еще не найден, не создавать record и вернуть короткую инструкцию обратиться в HR.
 4. Если employee record есть, но `is_bot_blocked = true`, запретить все bot interaction с коротким отказом.
+5. Если `/start` впервые привязал numeric Telegram chat ID к карточке, сразу запускается первый подходящий scenario с `trigger_mode=bot_registration`.
+6. Повторный `/start` не перезапускает registration-сценарий и работает как возврат к root menu.
 
 ## Что изменилось в P0
 
 - `/start`, text, file, photo и callback entrypoints теперь используют один inbound access resolution path.
 - Unknown users больше не создают `employees` rows или `employee_files`.
 - Known users все еще могут быть linked по сохраненному public username, если пишут с нового Telegram ID.
+- Registration-сценарий привязан к факту новой Telegram-привязки, а не к scheduler interval или каждому повторному `/start`.
 - Blocked users не могут открывать menu flows, отвечать на scenario steps, upload files или получать new launches через scheduler/manual start.
 - Known stray text вне expected scenario response игнорируется без service noise.
 

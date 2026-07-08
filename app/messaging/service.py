@@ -16,6 +16,7 @@ from ..scenario_engine import (
     handle_date_response_by_step_id,
     handle_file_response,
     handle_text_response,
+    matches_role_scope,
     start_scenario,
 )
 from ..time_utils import utc_now
@@ -39,6 +40,7 @@ MENU_HOME_BUTTON_TEXT = "Главное меню"
 class InboundAccess(NamedTuple):
     employee: Optional[Employee]
     state: Literal["ok", "unknown", "blocked"]
+    newly_linked: bool = False
 
 
 def detect_category_from_caption(caption: Optional[str]) -> str:
@@ -56,9 +58,11 @@ def detect_category_from_caption(caption: Optional[str]) -> str:
     return "candidate_file"
 
 
-def _sync_employee_after_inbound(db: Session, employee: Employee, chat_user_id: str, username: Optional[str]) -> None:
+def _sync_employee_after_inbound(db: Session, employee: Employee, chat_user_id: str, username: Optional[str]) -> bool:
     changed = False
-    if get_public_chat_handle(employee, db=db) != username:
+    had_primary_chat_id = bool(get_primary_chat_id(employee, db=db))
+    normalized_username = username.strip() if isinstance(username, str) and username.strip() else None
+    if get_public_chat_handle(employee, db=db) != normalized_username:
         set_public_chat_handle(employee, username, db=db)
         changed = True
     if get_primary_chat_id(employee, db=db) != chat_user_id:
@@ -69,6 +73,23 @@ def _sync_employee_after_inbound(db: Session, employee: Employee, chat_user_id: 
         changed = True
     if changed:
         db.commit()
+    return not had_primary_chat_id and bool(get_primary_chat_id(employee, db=db))
+
+
+def _registration_scenario(db: Session, employee: Employee) -> Optional[ScenarioTemplate]:
+    scenarios = (
+        db.query(ScenarioTemplate)
+        .filter(
+            ScenarioTemplate.trigger_mode == "bot_registration",
+            ScenarioTemplate.scenario_kind == "scenario",
+        )
+        .order_by(ScenarioTemplate.sort_order.asc(), ScenarioTemplate.id.asc())
+        .all()
+    )
+    for scenario in scenarios:
+        if scenario and matches_role_scope(employee, scenario):
+            return scenario
+    return None
 
 
 def default_menu_set(db: Session) -> Optional[BotMenuSet]:
@@ -364,14 +385,14 @@ async def handle_menu_button(messenger: MessengerClient, db: Session, employee: 
 def resolve_inbound_access(db: Session, chat_user_id: str, username: Optional[str]) -> InboundAccess:
     employee = find_employee_by_channel_user_id(db, channel="telegram", external_user_id=chat_user_id)
     if employee:
-        _sync_employee_after_inbound(db, employee, chat_user_id, username)
-        return InboundAccess(employee, "blocked" if employee.is_bot_blocked else "ok")
+        newly_linked = _sync_employee_after_inbound(db, employee, chat_user_id, username)
+        return InboundAccess(employee, "blocked" if employee.is_bot_blocked else "ok", newly_linked)
 
     employee = find_employee_by_public_chat_handle(db, channel="telegram", external_username=username)
     if employee:
-        _sync_employee_after_inbound(db, employee, chat_user_id, username)
-        return InboundAccess(employee, "blocked" if employee.is_bot_blocked else "ok")
-    return InboundAccess(None, "unknown")
+        newly_linked = _sync_employee_after_inbound(db, employee, chat_user_id, username)
+        return InboundAccess(employee, "blocked" if employee.is_bot_blocked else "ok", newly_linked)
+    return InboundAccess(None, "unknown", False)
 
 
 def get_or_create_employee_by_chat(db: Session, chat_user_id: str, username: Optional[str]) -> tuple[Optional[Employee], bool]:
@@ -397,6 +418,10 @@ async def handle_start_command(messenger: MessengerClient, db: Session, chat_use
         chat_id=chat_user_id,
         text="Привет! Я HR-бот.",
     )
+    if access.newly_linked:
+        scenario = _registration_scenario(db, employee)
+        if scenario and await start_scenario(messenger, db, employee, scenario.scenario_key):
+            return
     await show_main_menu(messenger, db, employee, "Меню обновлено. Выберите действие.")
 
 
