@@ -777,3 +777,40 @@ source_of_truth: true
 - Backup БД не делался: deploy шел через git/systemd restart и не менял схему/данные SQLite вручную.
 - Открытые риски:
   - stale jobs отбрасываются silently; если оператору понадобится audit “почему не отправилось”, потребуется отдельный журнал delivery skip reasons.
+
+### 2026-07-08 15:08 MSK - app deploy - immediate bot registration scenario
+
+- Deploy ref: `stage`.
+- Deployed commit: `59ca3c6`.
+- GitHub Actions run: `28941290233`.
+- Что изменено:
+  - `/start` теперь запускает первый подходящий сценарий с `trigger_mode=bot_registration` сразу при новой Telegram-привязке карточки;
+  - повторный `/start` не перезапускает registration-сценарий и остается навигационным возвратом в root menu;
+  - сценарий стартует только после появления первичного numeric Telegram chat id у карточки;
+  - обновлены docs по bot identity/runtime и project state;
+  - добавлен regression-тест на немедленный запуск registration-сценария при первой Telegram-привязке.
+- Локальные проверки перед deploy:
+  - `.\.venv\Scripts\python.exe -m compileall app tests`;
+  - `.\.venv\Scripts\ruff.exe check --select F821 app\messaging\service.py tests\test_employee_api_smoke.py`;
+  - focused `/start` tests -> 3 tests OK;
+  - `.\.venv\Scripts\python.exe -m unittest tests.test_employee_api_smoke tests.test_messaging_identity tests.test_scenario_engine_smoke tests.test_scenario_engine_branching tests.test_scheduler_smoke -v` -> 103 tests OK;
+  - `.\.venv\Scripts\ruff.exe check --select F821 app tests`;
+  - `git diff --check`.
+- GitHub Actions preflight:
+  - backend dependencies install;
+  - `compileall`;
+  - `ruff F821`;
+  - backend smoke tests;
+  - frontend build;
+  - smoke imports.
+- Stage smoke checks:
+  - `/app/employees` -> `303`;
+  - `/app/flows/workspace-v2` -> `303`;
+  - `curl -4 -I --connect-timeout 10 https://api.telegram.org/` -> `HTTP/2 302`;
+  - `hr-bot-web`, `hr-bot-worker` и `wg-quick@redshield` прошли `systemctl is-active`;
+  - worker log grep не нашел свежие `TelegramNetworkError`, `Request timeout`, `Traceback`, `Unclosed client session`;
+  - deploy job завершился успешно и вывел `59ca3c6`.
+- Backup БД не делался: deploy шел через git/systemd restart и не менял схему/данные SQLite вручную.
+- Открытые риски:
+  - если настроено несколько `bot_registration` сценариев, выбирается первый подходящий по `sort_order`/`id`;
+  - если пользователь пишет в бот без совпадающей карточки, unknown-user поведение не менялось.
