@@ -34,6 +34,34 @@ source_of_truth: true
 
 ## Записи
 
+### 2026-07-08 10:48 MSK - app deploy - hide empty menu fallback on `/start`
+
+- Deploy ref: `stage`.
+- Deployed commit: `a23e9d2`.
+- GitHub Actions run: `28926426686` -> success.
+- В stage включены:
+  - `/start` для привязанного пользователя по-прежнему отправляет приветствие;
+  - если доступное root-меню найдено, бот как раньше открывает меню;
+  - если меню не настроено, бот больше не отправляет системный fallback-текст `Для вас пока не настроено доступное меню.`;
+  - добавлен regression smoke `test_bot_start_without_menu_does_not_send_empty_menu_warning`.
+- Локальные проверки на объединенном `stage`:
+  - `.venv\Scripts\python.exe -m compileall app tests`;
+  - `.venv\Scripts\python.exe -m unittest tests.test_employee_api_smoke.EmployeeApiSmokeTests.test_bot_start_resets_user_to_root_menu tests.test_employee_api_smoke.EmployeeApiSmokeTests.test_bot_menu_back_returns_to_previous_menu tests.test_employee_api_smoke.EmployeeApiSmokeTests.test_bot_start_without_menu_does_not_send_empty_menu_warning -v`;
+  - `.venv\Scripts\python.exe -m unittest tests.test_employee_api_smoke tests.test_messaging_identity tests.test_scenario_engine_smoke tests.test_scenario_engine_branching -v` -> 96 tests OK;
+  - `.venv\Scripts\ruff.exe check --select F821 app tests`;
+  - `git diff --check`.
+- Stage smoke checks из workflow:
+  - server HEAD -> `a23e9d2`;
+  - preflight compile/F821/backend smoke/frontend build/import smoke -> success;
+  - `curl http://127.0.0.1:8000/app/employees` -> `303`;
+  - `curl http://127.0.0.1:8000/app/flows/workspace-v2` -> `303`;
+  - `curl -4 -I --connect-timeout 10 https://api.telegram.org/` -> `HTTP/2 302`;
+  - `hr-bot-web`, `hr-bot-worker` и `wg-quick@redshield` прошли `systemctl is-active`;
+  - worker log grep без свежих `TelegramNetworkError`, `Request timeout`, `Traceback`, `Unclosed client session`.
+- Rollback/backup: DB schema/data не менялись; отдельный DB backup для этого app deploy не требовался.
+- Открытые риски:
+  - поведение намеренно тихое: если тестировщик ожидает меню, отсутствие меню теперь нужно проверять в `/app/bot-menu`, а не по фразе в Telegram.
+
 ### 2026-07-08 10:36 MSK - app deploy - HR recipient token for scenario notifications
 
 - Deploy ref: `stage`.
