@@ -29,6 +29,7 @@ Scenario engine превращает scenario templates плюс employee state 
 
 - `none` — информационный шаг без user response.
 - `text` — ждет text input.
+- `date` — ждет выбор даты через inline-календарь Telegram; свободный текст для такого шага не принимается.
 - `file` — ждет file upload.
 - `buttons` / `branching` — ждет один из configured button options.
 - `chain` — nested chain structure.
@@ -38,11 +39,11 @@ Scenario engine превращает scenario templates плюс employee state 
 
 1. Найти scenario и первый step.
 2. Отрендерить step text с employee context.
-3. Отправить text, optional employee card, optional attachment и optional buttons.
+3. Отправить text, optional employee card, optional attachment и optional buttons/date calendar.
 4. Сохранить progress в `scenario_progress`, включая короткую историю предыдущих интерактивных шагов и undo-снимок последнего подтвержденного ответа.
 5. Если user response не нужен, auto-advance к следующему step или schedule follow-up delivery.
-6. Если response нужен, ждать text/file/button input и применить result к employee state.
-7. Для активного интерактивного шага runtime поддерживает default `Назад`: для text/file это reply button, для button/branching — inline button. Откат возвращает на предыдущий интерактивный шаг в рамках текущего незавершенного сценария и откатывает последний подтвержденный ответ: целевое поле карточки, `candidate_status`, survey answer и загруженный file record, если именно этот ответ их создал/изменил.
+6. Если response нужен, ждать text/date/file/button input и применить result к employee state.
+7. Для активного интерактивного шага runtime поддерживает default `Назад`: для text/file это reply button, для date/button/branching — inline button. Откат возвращает на предыдущий интерактивный шаг в рамках текущего незавершенного сценария и откатывает последний подтвержденный ответ: целевое поле карточки, `candidate_status`, survey answer и загруженный file record, если именно этот ответ их создал/изменил.
 8. Если step имеет `response_type=launch_scenario`, runtime теперь завершает текущий progress и сразу вызывает `start_scenario(...)` для `launch_scenario_key`. Раньше это работало только в branch-specific path и ломалось для обычных шагов.
 
 ## Launch audit и follow-up jobs
@@ -74,10 +75,11 @@ Scenario engine превращает scenario templates плюс employee state 
 ## Editor guardrails
 
 - В React scenario workspace тип ответа теперь явно показывает, блокирует ли шаг поток.
-- `text`, `file`, `buttons` и `branching` считаются интерактивными: после отправки такого шага бот ждет ответ и не переходит дальше автоматически.
+- `text`, `date`, `file`, `buttons` и `branching` считаются интерактивными: после отправки такого шага бот ждет ответ и не переходит дальше автоматически.
 - `none` не блокирует сценарий и должен использоваться для чисто информационных шагов, файлов и текстов, после которых не нужен ответ.
 - Новые scenario-шаги, branch-шаги и chain-шаги не должны сохранять декоративный default text. Поле сообщения остается пустым, а подсказка показывается только как UI placeholder.
 - `buttons` и `branching` могут сохранять выбранный вариант в `target_field`, включая `salary_expectation`; editor не должен сбрасывать это поле при сохранении branching step.
+- `date` может сохранять выбранную дату в `target_field=first_workday`; это MVP inline-календарь на кнопках, потому что обычный Telegram bot API не дает нативный date picker.
 
 ## Сценарные уведомления
 

@@ -53,6 +53,7 @@ TRIGGER_MODE_LABELS = {
 RESPONSE_TYPE_LABELS = {
     "none": "Без ответа",
     "text": "Текстовый ответ",
+    "date": "Выбор даты",
     "file": "Загрузка файла",
     "buttons": "Выбор кнопками",
     "branching": "Ветвление",
@@ -66,6 +67,7 @@ SEND_MODE_LABELS = {
 TARGET_FIELD_LABELS = {
     "": "Не сохранять в поле сотрудника",
     "full_name": "ФИО",
+    "first_workday": "Первый день выхода",
     "desired_position": "Желаемая должность",
     "salary_expectation": "Ожидания по доходу",
     "personal_data_consent": "Согласие на ПДн кандидата",

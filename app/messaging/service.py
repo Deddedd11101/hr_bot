@@ -10,8 +10,10 @@ from ..models import BotMenuButton, BotMenuSet, DocumentLibraryItem, Employee, E
 from ..notifications import notify_hr_test_task_received
 from ..scenario_engine import (
     SCENARIO_BACK_BUTTON_TEXT,
+    DATE_CALLBACK_PREFIX,
     handle_back_response,
     handle_button_response_by_step_id,
+    handle_date_response_by_step_id,
     handle_file_response,
     handle_text_response,
     start_scenario,
@@ -491,6 +493,35 @@ async def handle_button_event(
         option_index,
     )
     return "handled" if handled else "ignored"
+
+
+async def handle_date_event(
+    messenger: MessengerClient,
+    db: Session,
+    chat_user_id: str,
+    username: Optional[str],
+    callback_data: str,
+) -> tuple[Literal["handled", "ignored", "unknown", "blocked"], object | None]:
+    access = resolve_inbound_access(db, chat_user_id, username)
+    if access.state != "ok" or access.employee is None:
+        return access.state, None
+    if not callback_data.startswith(DATE_CALLBACK_PREFIX):
+        return "ignored", None
+    parts = callback_data.split(":", 4)
+    if len(parts) != 5:
+        return "ignored", None
+    _, _, step_id_raw, action, value = parts
+    if not step_id_raw.isdigit():
+        return "ignored", None
+    result = await handle_date_response_by_step_id(
+        messenger,
+        db,
+        access.employee,
+        int(step_id_raw),
+        action,
+        value,
+    )
+    return ("handled" if result.handled else "ignored"), result
 
 
 async def handle_back_event(

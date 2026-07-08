@@ -16,10 +16,12 @@ from .file_storage import build_employee_file_path
 from .messaging import create_telegram_messenger
 from .messaging.service import (
     BLOCKED_USER_TEXT,
+    DATE_CALLBACK_PREFIX,
     UNKNOWN_USER_TEXT,
     detect_category_from_caption,
     handle_back_event,
     handle_button_event,
+    handle_date_event,
     handle_saved_document,
     handle_start_command,
     handle_text_event,
@@ -176,6 +178,15 @@ async def on_scenario_button(callback: CallbackQuery) -> None:
                 str(user.id),
                 _telegram_username(user),
             )
+            date_result = None
+        elif callback.data.startswith(DATE_CALLBACK_PREFIX):
+            handled, date_result = await handle_date_event(
+                messenger,
+                db,
+                str(user.id),
+                _telegram_username(user),
+                callback.data,
+            )
         else:
             _, step_id, option_index = callback.data.split(":", 2)
             handled = await handle_button_event(
@@ -186,6 +197,7 @@ async def on_scenario_button(callback: CallbackQuery) -> None:
                 int(step_id),
                 int(option_index),
             )
+            date_result = None
         await messenger.close()
         if handled == "unknown":
             await callback.answer(UNKNOWN_USER_TEXT, show_alert=True)
@@ -193,8 +205,13 @@ async def on_scenario_button(callback: CallbackQuery) -> None:
         if handled == "blocked":
             await callback.answer(BLOCKED_USER_TEXT, show_alert=True)
             return
+        if handled == "handled" and date_result is not None and callback.message:
+            if getattr(date_result, "action", None) == "updated" and getattr(date_result, "reply_markup", None) is not None:
+                await callback.message.edit_reply_markup(reply_markup=date_result.reply_markup)
+            elif getattr(date_result, "action", None) == "selected":
+                await callback.message.edit_reply_markup(reply_markup=None)
     if handled == "handled":
-        await callback.answer("Принято")
+        await callback.answer("Принято" if date_result is None or getattr(date_result, "action", None) == "selected" else "")
     else:
         await callback.answer()
 

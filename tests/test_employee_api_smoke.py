@@ -1546,6 +1546,65 @@ class EmployeeApiSmokeTests(unittest.TestCase):
             self.assertEqual(step.response_type, "buttons")
             self.assertEqual(step.target_field, "salary_expectation")
 
+    def test_workspace_step_api_persists_date_response_for_first_workday(self) -> None:
+        scenario_key = f"codex-date-step-{self.unique_tag}"
+        with SessionLocal() as db:
+            scenario = ScenarioTemplate(
+                scenario_key=scenario_key,
+                title=f"codex-date-step-{self.unique_tag}",
+                role_scope="all",
+                scenario_kind="scenario",
+                sort_order=0,
+                trigger_mode="manual_only",
+            )
+            step = FlowStepTemplate(
+                flow_key=scenario_key,
+                step_key="offer_date",
+                step_title="Дата выхода",
+                sort_order=10,
+                default_text="Когда выходишь?",
+                response_type="text",
+                send_mode="immediate",
+                day_offset_workdays=0,
+                target_field=None,
+            )
+            db.add_all([scenario, step])
+            db.commit()
+            db.refresh(step)
+            step_id = step.id
+
+        response = self.client.post(
+            f"/api/flows/workspace/steps/{step_id}",
+            json={
+                "title": "Дата выхода",
+                "text": "{name}, с какого числа ты планируешь присоединиться к команде Зефира?",
+                "response_type": "date",
+                "button_options": "",
+                "send_mode": "immediate",
+                "send_time": "",
+                "target_field": "first_workday",
+                "launch_scenario_key": "",
+                "send_employee_card": False,
+                "notify_on_send_text": "",
+                "notify_on_send_recipient_ids": "",
+                "notify_on_send_recipient_scope": "",
+                "step_send_notifications": [],
+                "button_notifications": [],
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()["payload"]["workspace"]["root_steps"][0]
+        self.assertEqual(payload["response_type"], "date")
+        self.assertEqual(payload["target_field"], "first_workday")
+        self.assertEqual(payload["target_field_label"], "Первый день выхода")
+
+        with SessionLocal() as db:
+            step = db.get(FlowStepTemplate, step_id)
+            self.assertIsNotNone(step)
+            self.assertEqual(step.response_type, "date")
+            self.assertEqual(step.target_field, "first_workday")
+
     def test_workspace_step_api_preserves_branching_target_field(self) -> None:
         scenario_key = f"codex_branch_target_{self.unique_tag}"
         with SessionLocal() as db:

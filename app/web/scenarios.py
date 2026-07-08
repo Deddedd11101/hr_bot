@@ -279,7 +279,7 @@ def _workspace_graph_branch_slot_node_id(parent_step_id: int, option_index: int)
 
 
 def _workspace_graph_waits_for_response(response_type: str) -> bool:
-    return response_type in {"text", "file", "buttons", "branching"}
+    return response_type in {"text", "date", "file", "buttons", "branching"}
 
 
 def _flatten_workspace_graph_steps(root_steps: list[dict[str, Any]]) -> tuple[dict[int, dict[str, Any]], list[dict[str, Any]]]:
@@ -768,7 +768,7 @@ def _build_scenario_workspace_payload(
 
 def _normalize_workspace_response_type(value: str, step: FlowStepTemplate) -> str:
     normalized = (value or "").strip()
-    allowed = {"none", "text", "file", "buttons", "branching", "launch_scenario"}
+    allowed = {"none", "text", "date", "file", "buttons", "branching", "launch_scenario"}
     if step.parent_step_id is not None and step.branch_option_index is not None:
         allowed.add("chain")
     return normalized if normalized in allowed else (step.response_type or "none")

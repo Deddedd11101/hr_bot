@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import calendar
 import html
 import json
 import re
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Literal, NamedTuple, Optional
 
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, Message, ReplyKeyboardMarkup
 from pytz import timezone as tz_get
@@ -23,18 +24,40 @@ from .time_utils import utc_now
 
 CALLBACK_PREFIX = "scenario:"
 BACK_CALLBACK_DATA = f"{CALLBACK_PREFIX}back"
+DATE_CALLBACK_PREFIX = f"{CALLBACK_PREFIX}date:"
 SCENARIO_BACK_BUTTON_TEXT = "Назад"
 RECRUITMENT_SCENARIO_KEY = "recruitment_hiring"
 FIRST_DAY_SCENARIO_KEY = "first_day"
 PROBATION_SCENARIO_KEYS = {"mid_probation", "end_probation"}
 DOCUMENT_TAG_RE = re.compile(r"\{doc:([^}]+)\}")
 SINGLE_STEP_REQUEST_PREFIX = "__single_step__:"
-INTERACTIVE_RESPONSE_TYPES = {"text", "file", "buttons", "branching"}
+INTERACTIVE_RESPONSE_TYPES = {"text", "date", "file", "buttons", "branching"}
+DATE_WEEKDAY_LABELS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
+DATE_MONTH_LABELS = [
+    "Январь",
+    "Февраль",
+    "Март",
+    "Апрель",
+    "Май",
+    "Июнь",
+    "Июль",
+    "Август",
+    "Сентябрь",
+    "Октябрь",
+    "Ноябрь",
+    "Декабрь",
+]
 NOTIFICATION_SCOPE_TO_EMPLOYEE_FIELD = {
     "manager": ("manager_employee_id", "manager_telegram_id"),
     "mentor_adaptation": ("mentor_adaptation_employee_id", "mentor_adaptation_telegram_id"),
     "mentor_ipr": ("mentor_ipr_employee_id", "mentor_ipr_telegram_id"),
 }
+
+
+class DateCallbackResult(NamedTuple):
+    handled: bool
+    action: Literal["noop", "updated", "selected"]
+    reply_markup: InlineKeyboardMarkup | None = None
 
 
 def get_scenario_steps(db: Session, scenario_key: str) -> list[FlowStepTemplate]:
@@ -519,6 +542,74 @@ def _get_tz():
     return tz_get(settings.TIMEZONE)
 
 
+def _parse_iso_date(value: str) -> date | None:
+    try:
+        return datetime.strptime(value, "%Y-%m-%d").date()
+    except ValueError:
+        return None
+
+
+def _parse_year_month(value: str) -> date | None:
+    try:
+        parsed = datetime.strptime(value, "%Y-%m").date()
+    except ValueError:
+        return None
+    return parsed.replace(day=1)
+
+
+def _month_shift(value: date, delta: int) -> date:
+    month_index = value.month - 1 + delta
+    year = value.year + month_index // 12
+    month = month_index % 12 + 1
+    return date(year, month, 1)
+
+
+def _date_step_markup(
+    step: FlowStepTemplate,
+    include_back: bool = False,
+    month_cursor: date | None = None,
+) -> InlineKeyboardMarkup:
+    month = (month_cursor or datetime.now(_get_tz()).date()).replace(day=1)
+    cal = calendar.Calendar(firstweekday=0)
+    rows: list[list[InlineKeyboardButton]] = [
+        [
+            InlineKeyboardButton(
+                text="◀",
+                callback_data=f"{DATE_CALLBACK_PREFIX}{step.id}:nav:{_month_shift(month, -1).strftime('%Y-%m')}",
+            ),
+            InlineKeyboardButton(
+                text=f"{DATE_MONTH_LABELS[month.month - 1]} {month.year}",
+                callback_data=f"{DATE_CALLBACK_PREFIX}{step.id}:noop",
+            ),
+            InlineKeyboardButton(
+                text="▶",
+                callback_data=f"{DATE_CALLBACK_PREFIX}{step.id}:nav:{_month_shift(month, 1).strftime('%Y-%m')}",
+            ),
+        ],
+        [
+            InlineKeyboardButton(text=label, callback_data=f"{DATE_CALLBACK_PREFIX}{step.id}:noop")
+            for label in DATE_WEEKDAY_LABELS
+        ],
+    ]
+    for week in cal.monthdayscalendar(month.year, month.month):
+        week_row: list[InlineKeyboardButton] = []
+        for day_value in week:
+            if day_value <= 0:
+                week_row.append(InlineKeyboardButton(text=" ", callback_data=f"{DATE_CALLBACK_PREFIX}{step.id}:noop"))
+                continue
+            selected = date(month.year, month.month, day_value)
+            week_row.append(
+                InlineKeyboardButton(
+                    text=str(day_value),
+                    callback_data=f"{DATE_CALLBACK_PREFIX}{step.id}:set:{selected.strftime('%Y-%m-%d')}",
+                )
+            )
+        rows.append(week_row)
+    if include_back:
+        rows.append([InlineKeyboardButton(text=SCENARIO_BACK_BUTTON_TEXT, callback_data=BACK_CALLBACK_DATA)])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
 def _combine_date_time(value: date, hour: int, minute: int) -> datetime:
     tz = _get_tz()
     naive = datetime.combine(value, time(hour=hour, minute=minute))
@@ -741,6 +832,8 @@ def get_button_notifications(db: Session, step_id: int, option_index: int) -> li
 
 
 def step_reply_markup(step: FlowStepTemplate, include_back: bool = False) -> Optional[InlineKeyboardMarkup]:
+    if step.response_type == "date":
+        return _date_step_markup(step, include_back=include_back)
     if step.response_type not in {"text", "buttons", "branching"}:
         return None
     buttons = []
@@ -880,6 +973,12 @@ def apply_response_to_employee(
     if target_field == "full_name":
         employee.full_name = normalized or None
         return bool(normalized)
+    if target_field == "first_workday":
+        parsed_date = _parse_iso_date(normalized)
+        if not parsed_date:
+            return False
+        employee.first_workday = parsed_date
+        return True
     if target_field == "desired_position":
         # Custom button values for a role should not block the scenario flow.
         employee.desired_position = normalized or None
@@ -1022,7 +1121,7 @@ async def send_step(
     if needs_fallback_inline_buttons_message:
         await messenger.send_text(
             chat_id=chat_id,
-            text="\u2060",
+            text="Выберите дату:" if step.response_type == "date" else "\u2060",
             reply_markup=reply_markup,
         )
 
@@ -1139,6 +1238,54 @@ async def handle_text_response(messenger_or_bot: Any, db: Session, employee: Emp
     db.commit()
     await advance_after_response(messenger_or_bot, db, employee, scenario, step)
     return True
+
+
+async def handle_date_response_by_step_id(
+    messenger_or_bot: Any,
+    db: Session,
+    employee: Employee,
+    step_id: int,
+    action: str,
+    value: str,
+) -> DateCallbackResult:
+    if employee.is_bot_blocked:
+        return DateCallbackResult(False, "noop", None)
+    step = db.get(FlowStepTemplate, step_id)
+    if not step or step.response_type != "date":
+        return DateCallbackResult(False, "noop", None)
+    progress = get_waiting_progress_for_step(db, employee.id, step.flow_key, step.step_key)
+    if not progress:
+        return DateCallbackResult(False, "noop", None)
+    scenario = db.query(ScenarioTemplate).filter(ScenarioTemplate.scenario_key == step.flow_key).first()
+    if not scenario:
+        return DateCallbackResult(False, "noop", None)
+    if action == "noop":
+        return DateCallbackResult(True, "noop", None)
+    if action == "nav":
+        month_cursor = _parse_year_month(value)
+        if not month_cursor:
+            return DateCallbackResult(False, "noop", None)
+        return DateCallbackResult(
+            True,
+            "updated",
+            _date_step_markup(step, include_back=progress_has_back_step(progress), month_cursor=month_cursor),
+        )
+    if action != "set":
+        return DateCallbackResult(False, "noop", None)
+
+    selected_date = _parse_iso_date(value)
+    if not selected_date:
+        return DateCallbackResult(False, "noop", None)
+    undo_snapshot = _capture_response_undo_snapshot(db, employee, scenario, step)
+    store_survey_answer(db, employee, scenario, step, selected_date.isoformat())
+    if not apply_response_to_employee(db, employee, step, selected_date.isoformat()):
+        _restore_response_undo_snapshot(db, employee, scenario, step, undo_snapshot)
+        return DateCallbackResult(False, "noop", None)
+    employee.candidate_status = step.step_key
+    _push_response_undo_snapshot(progress, undo_snapshot)
+    db.commit()
+    await advance_after_response(messenger_or_bot, db, employee, scenario, step)
+    return DateCallbackResult(True, "selected", None)
 
 
 async def handle_button_response(messenger_or_bot: Any, db: Session, employee: Employee, scenario_key: str, step_key: str, option_index: int) -> bool:
@@ -1318,4 +1465,3 @@ async def start_scenario(messenger_or_bot: Any, db: Session, employee: Employee,
     db.commit()
     await send_step(messenger, db, employee, scenario, first_step)
     return True
-
