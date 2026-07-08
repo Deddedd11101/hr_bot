@@ -126,6 +126,11 @@ def _load_sent_event_keys(db: Session, employee_id: int) -> set[str]:
     return {row[0] for row in events}
 
 
+def _scenario_has_sent_steps(steps: list[FlowStepTemplate], sent_keys: set[str]) -> bool:
+    scenario_step_keys = {step.step_key for step in steps}
+    return any(step_key in sent_keys for step_key in scenario_step_keys)
+
+
 def _compute_step_run_at(anchor_date, step: FlowStepTemplate, manual: bool) -> Optional[datetime]:
     tz = _get_tz()
     if settings.DEMO_MODE or manual:
@@ -187,6 +192,7 @@ def schedule_employee_scenario(
     sent_keys: set[str],
     manual: bool,
     skip_step_key: Optional[str] = None,
+    now: Optional[datetime] = None,
 ) -> None:
     if employee.is_bot_blocked:
         return
@@ -201,7 +207,7 @@ def schedule_employee_scenario(
     if not steps:
         return
 
-    now = datetime.now(_get_tz())
+    now = now or datetime.now(_get_tz())
     if settings.DEMO_MODE or manual:
         step_interval = timedelta(minutes=settings.DEMO_STEP_MINUTES if settings.DEMO_MODE else settings.MANUAL_STEP_MINUTES)
         run_at = now if manual else now + step_interval
@@ -228,6 +234,8 @@ def schedule_employee_scenario(
             run_at = run_at + step_interval
         return
 
+    scenario_has_sent_steps = _scenario_has_sent_steps(steps, sent_keys)
+    scheduled_same_day_catchup = False
     for step in steps:
         if step.step_key in sent_keys:
             continue
@@ -235,7 +243,15 @@ def schedule_employee_scenario(
         if not run_at:
             continue
         if run_at < now - timedelta(minutes=1):
-            continue
+            should_send_first_unsent_now = (
+                not scenario_has_sent_steps
+                and not scheduled_same_day_catchup
+                and anchor_date == now.date()
+            )
+            if not should_send_first_unsent_now:
+                continue
+            run_at = now
+            scheduled_same_day_catchup = True
         job_id = f"employee-{employee.id}-{scenario.scenario_key}-{step.step_key}"
         if scheduler.get_job(job_id):
             continue
@@ -353,5 +369,4 @@ async def schedule_all_employees(scheduler: AsyncIOScheduler, bot) -> None:
 
         if employees or pending_requests:
             db.commit()
-
 

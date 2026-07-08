@@ -1181,6 +1181,8 @@ async def send_step(
             except Exception:
                 pass
             return
+        if scheduled_at is not None and next_step.send_mode == "specific_time":
+            return
         if settings.DEMO_MODE or next_step.send_mode == "immediate":
             await send_step(messenger, db, employee, scenario, next_step)
         else:
