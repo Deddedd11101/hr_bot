@@ -741,3 +741,39 @@ source_of_truth: true
 - Открытые риски:
   - catch-up намеренно узкий: только первый непройденный шаг в день активации, если сценарий еще не начинался;
   - late-start сценарии за прошлые даты по-прежнему не догоняются автоматически, чтобы не слать устаревшие сообщения пачкой.
+
+### 2026-07-08 14:37 MSK - app deploy - guard stale scheduled deliveries
+
+- Deploy ref: `stage`.
+- Deployed commit: `a8ce9a6`.
+- GitHub Actions run: `28939538436`.
+- Что изменено:
+  - `run_scheduled_step` перед отправкой заново проверяет, что сценарий все еще подходит текущей карточке по scope/stage;
+  - scheduled delivery для time-based сценариев больше не отправляется, если у карточки уже нет валидного anchor date;
+  - pending `FlowLaunchRequest` помечается processed без отправки, если сценарий уже несовместим с текущим состоянием сотрудника/кандидата;
+  - добавлен regression-тест на кейс stale scheduled step после смены `employee_stage`;
+  - обновлены docs по scenario engine, project state и backlog.
+- Локальные проверки перед deploy:
+  - `.\.venv\Scripts\python.exe -m compileall app tests`;
+  - `.\.venv\Scripts\ruff.exe check --select F821 app\scheduler.py tests\test_scheduler_smoke.py`;
+  - `.\.venv\Scripts\python.exe -m unittest tests.test_scheduler_smoke -v` -> 4 tests OK;
+  - `.\.venv\Scripts\ruff.exe check --select F821 app tests`;
+  - `.\.venv\Scripts\python.exe -m unittest tests.test_employee_api_smoke tests.test_messaging_identity tests.test_scenario_engine_smoke tests.test_scenario_engine_branching tests.test_scheduler_smoke -v` -> 102 tests OK;
+  - `git diff --cached --check`.
+- GitHub Actions preflight:
+  - backend dependencies install;
+  - `compileall`;
+  - `ruff F821`;
+  - backend smoke tests;
+  - frontend build;
+  - smoke imports.
+- Stage smoke checks:
+  - `/app/employees` -> `303`;
+  - `/app/flows/workspace-v2` -> `303`;
+  - `curl -4 -I --connect-timeout 10 https://api.telegram.org/` -> `HTTP/2 302`;
+  - `hr-bot-web`, `hr-bot-worker` и `wg-quick@redshield` прошли `systemctl is-active`;
+  - worker log grep не нашел свежие `TelegramNetworkError`, `Request timeout`, `Traceback`, `Unclosed client session`;
+  - deploy job завершился успешно и вывел `a8ce9a6`.
+- Backup БД не делался: deploy шел через git/systemd restart и не менял схему/данные SQLite вручную.
+- Открытые риски:
+  - stale jobs отбрасываются silently; если оператору понадобится audit “почему не отправилось”, потребуется отдельный журнал delivery skip reasons.
