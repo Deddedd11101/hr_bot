@@ -152,6 +152,13 @@ async def run_scheduled_step(bot, employee_id: int, scenario_key: str, step_key:
             return
         if employee.is_bot_blocked:
             return
+        if not matches_role_scope(employee, scenario):
+            return
+        if (
+            scenario.trigger_mode not in {"manual_only", "bot_registration", "scenario_transition"}
+            and not scenario_anchor_date(employee, scenario)
+        ):
+            return
         if not get_primary_chat_id(employee, db=db):
             return
         await send_step(bot, db, employee, scenario, step, scheduled_at=scheduled_at)
@@ -309,6 +316,15 @@ async def schedule_all_employees(scheduler: AsyncIOScheduler, bot) -> None:
                 request.processed_at = utc_now()
                 continue
             if employee.is_bot_blocked:
+                request.processed_at = utc_now()
+                continue
+            if not matches_role_scope(employee, scenario):
+                request.processed_at = utc_now()
+                continue
+            if (
+                scenario.trigger_mode not in {"manual_only", "bot_registration", "scenario_transition"}
+                and not scenario_anchor_date(employee, scenario)
+            ):
                 request.processed_at = utc_now()
                 continue
             if not get_primary_chat_id(employee, db=db):

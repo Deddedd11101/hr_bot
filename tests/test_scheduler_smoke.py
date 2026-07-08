@@ -7,7 +7,7 @@ from app.config import settings
 from app.database import SessionLocal, init_db
 from app.messaging.identity import set_primary_chat_id
 from app.models import Employee, EmployeeMessengerAccount, FlowLaunchRequest, FlowStepTemplate, OnboardingEvent, ScenarioProgress, ScenarioTemplate
-from app.scheduler import schedule_employee_scenario
+from app.scheduler import run_scheduled_step, schedule_employee_scenario
 from app.scenario_engine import send_step
 
 
@@ -241,3 +241,31 @@ class SchedulerSmokeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(messenger.sent_texts, [("700000001", "Первый шаг")])
         self.assertEqual(len(launch_requests), 0)
         self.assertEqual([event.event_key for event in sent_events], ["first_step"])
+
+    async def test_run_scheduled_step_skips_stale_scenario_after_employee_stage_changed(self) -> None:
+        employee, scenario = self._create_scenario_with_employee()
+        messenger = _FakeMessenger()
+
+        with SessionLocal() as db:
+            db_employee = db.get(Employee, employee.id)
+            assert db_employee is not None
+            db_employee.employee_stage = "candidate"
+            db.commit()
+
+        await run_scheduled_step(
+            messenger,
+            employee.id,
+            self.scenario_key,
+            "second_step",
+            datetime(2026, 7, 8, 11, 30),
+        )
+
+        with SessionLocal() as db:
+            sent_events = (
+                db.query(OnboardingEvent)
+                .filter(OnboardingEvent.employee_id == employee.id)
+                .all()
+            )
+
+        self.assertEqual(messenger.sent_texts, [])
+        self.assertEqual(sent_events, [])

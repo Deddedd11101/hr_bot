@@ -47,6 +47,7 @@ Scenario engine превращает scenario templates плюс employee state 
 
 - если сценарий активировали в тот же день, но время первого шага уже прошло, scheduler обязан отправить первый непройденный шаг немедленно, а не перескакивать к следующему time slot;
 - если timed step был вызван самим scheduler, `send_step` не должен самостоятельно queue'ить следующий `specific_time` шаг через `FlowLaunchRequest`: дальнейшее расписание в этом режиме принадлежит scheduler, иначе возникают дубли и late-start skips.
+- перед фактической отправкой scheduler обязан повторно проверить, что сценарий все еще совместим с текущим состоянием карточки; stale jobs и pending requests после смены `employee_stage` / даты-якоря должны silently отбрасываться, а не утекать в чат.
 
 ## Editor guardrails
 
