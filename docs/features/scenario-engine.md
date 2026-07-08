@@ -43,17 +43,23 @@ Scenario engine превращает scenario templates плюс employee state 
 6. Если response нужен, ждать text/file/button input и применить result к employee state.
 7. Для активного интерактивного шага runtime поддерживает default `Назад`: для text/file это reply button, для button/branching — inline button. Откат возвращает только на предыдущий интерактивный шаг в рамках текущего незавершенного сценария.
 
+Для time-based сценариев есть дополнительное правило:
+
+- если сценарий активировали в тот же день, но время первого шага уже прошло, scheduler обязан отправить первый непройденный шаг немедленно, а не перескакивать к следующему time slot;
+- если timed step был вызван самим scheduler, `send_step` не должен самостоятельно queue'ить следующий `specific_time` шаг через `FlowLaunchRequest`: дальнейшее расписание в этом режиме принадлежит scheduler, иначе возникают дубли и late-start skips.
+
 ## Editor guardrails
 
 - В React scenario workspace тип ответа теперь явно показывает, блокирует ли шаг поток.
 - `text`, `file`, `buttons` и `branching` считаются интерактивными: после отправки такого шага бот ждет ответ и не переходит дальше автоматически.
 - `none` не блокирует сценарий и должен использоваться для чисто информационных шагов, файлов и текстов, после которых не нужен ответ.
+- Новые scenario-шаги, branch-шаги и chain-шаги не должны сохранять декоративный default text. Поле сообщения остается пустым, а подсказка показывается только как UI placeholder.
 
 ## Известные ограничения
 
 - Transition model к другому scenario еще не semantically clean.
 - Step notifications прикреплены на уровне step, button notifications — отдельно.
-- Empty или placeholder step content может утечь в user dialog, если templates смоделированы неаккуратно.
+- Empty step content все еще требует отдельной runtime/UI-валидации: новые шаги больше не получают placeholder text, но полностью пустые сценарные сообщения пока остаются допустимым состоянием модели.
 - Candidate и employee behavior все еще используют один engine и data model. Это удобно, но продуктово нечисто.
 - `Назад` пока не является полноценным time-travel: он не откатывает уже совершенные side effects и не resurrect'ит сценарий, который уже был terminally completed ответом вроде отказа на consent step.
 
