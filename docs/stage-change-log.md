@@ -34,6 +34,37 @@ source_of_truth: true
 
 ## Записи
 
+### 2026-07-08 10:36 MSK - app deploy - HR recipient token for scenario notifications
+
+- Deploy ref: `stage`.
+- Deployed commit: `832bf06`.
+- GitHub Actions run: `28925737249` -> success.
+- В stage включены:
+  - сценарные notification recipients теперь поддерживают системный token `hr`;
+  - runtime резолвит `hr` в `HrSettings.telegram_user_id`, не требуя заводить HR как сотрудника/кандидата;
+  - workspace API отдает отдельный `notification_recipient_options` список: HR из настроек, если задан Telegram ID, плюс обычные `employee:<id>` получатели;
+  - React scenario workspace использует этот список в picker получателей и корректно показывает выбранный HR в summary правил;
+  - добавлены regression tests на workspace payload и runtime resolver.
+- Локальные проверки на объединенном `stage`:
+  - `.venv\Scripts\python.exe -m compileall app tests tools`;
+  - `.venv\Scripts\ruff.exe check --select F821 app tests`;
+  - `.venv\Scripts\python.exe -m unittest tests.test_scenario_engine_smoke.ScenarioEngineSmokeTests.test_resolve_notification_recipients_supports_hr_token tests.test_employee_api_smoke.EmployeeApiSmokeTests.test_workspace_payload_exposes_hr_notification_recipient -v`;
+  - CI-equivalent backend smoke с `TELEGRAM_BOT_TOKEN=ci-dummy-token`, `DATABASE_URL=sqlite:///./ci.db`, `ADMIN_SESSION_SECRET=ci-admin-session-secret`: `.venv\Scripts\python.exe -m unittest tests.test_scenario_engine_smoke tests.test_messaging_identity tests.test_employee_api_smoke -v` -> 92 tests OK;
+  - `.venv\Scripts\python.exe -m unittest tests.test_employee_api_smoke tests.test_messaging_identity tests.test_scenario_engine_smoke tests.test_scenario_engine_branching -v` -> 95 tests OK;
+  - `npm run build` в `frontend`;
+  - `git diff --check`.
+- Stage smoke checks из workflow:
+  - server HEAD -> `832bf06`;
+  - preflight compile/F821/backend smoke/frontend build/import smoke -> success;
+  - `curl http://127.0.0.1:8000/app/employees` -> `303`;
+  - `curl http://127.0.0.1:8000/app/flows/workspace-v2` -> `303`;
+  - `curl -4 -I --connect-timeout 10 https://api.telegram.org/` -> `HTTP/2 302`;
+  - `hr-bot-web`, `hr-bot-worker` и `wg-quick@redshield` прошли `systemctl is-active`;
+  - worker log grep без свежих `TelegramNetworkError`, `Request timeout`, `Traceback`, `Unclosed client session`.
+- Rollback/backup: DB schema/data не менялись; отдельный DB backup для этого app deploy не требовался.
+- Открытые риски:
+  - старый глобальный слой `app/notifications.py` все еще требует отдельного product cleanup, чтобы системные уведомления не конфликтовали со сценарными per-step rules.
+
 ### 2026-07-03 12:50 MSK - app deploy - branching target field preservation
 
 - Deploy ref: `stage`.
