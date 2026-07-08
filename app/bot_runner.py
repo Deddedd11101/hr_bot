@@ -3,8 +3,6 @@ from typing import Optional
 
 from aiohttp import ClientError
 from aiogram import Bot, Dispatcher
-from aiogram.client.default import DefaultBotProperties
-from aiogram.enums import ParseMode
 from aiogram.exceptions import TelegramNetworkError
 from aiogram.filters import CommandStart
 from aiogram.types import CallbackQuery, Message
@@ -13,13 +11,15 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from .config import settings
 from .database import SessionLocal, init_db
 from .file_storage import build_employee_file_path
-from .messaging import create_telegram_messenger
+from .messaging import TelegramMessenger, create_telegram_bot
 from .messaging.service import (
     BLOCKED_USER_TEXT,
+    DATE_CALLBACK_PREFIX,
     UNKNOWN_USER_TEXT,
     detect_category_from_caption,
     handle_back_event,
     handle_button_event,
+    handle_date_event,
     handle_saved_document,
     handle_start_command,
     handle_text_event,
@@ -35,7 +35,7 @@ def _telegram_username(user) -> Optional[str]:
     return username.strip() if isinstance(username, str) and username.strip() else None
 
 
-async def on_start(message: Message) -> None:
+async def on_start(message: Message, bot: Bot) -> None:
     user = message.from_user
     if not user:
         await message.answer("Не удалось определить ваш Telegram ID. Попробуйте ещё раз.")
@@ -44,9 +44,8 @@ async def on_start(message: Message) -> None:
     user_id_str = str(user.id)
     username = _telegram_username(user)
     with SessionLocal() as db:
-        messenger = create_telegram_messenger(settings.TELEGRAM_BOT_TOKEN)
+        messenger = TelegramMessenger(bot)
         await handle_start_command(messenger, db, user_id_str, username)
-        await messenger.close()
 
 
 async def on_document(message: Message, bot: Bot) -> None:
@@ -56,20 +55,17 @@ async def on_document(message: Message, bot: Bot) -> None:
         return
 
     with SessionLocal() as db:
-        messenger = create_telegram_messenger(settings.TELEGRAM_BOT_TOKEN)
+        messenger = TelegramMessenger(bot)
         username = _telegram_username(user)
         access = resolve_inbound_access(db, str(user.id), username)
         if access.state == "unknown":
             await messenger.send_text(chat_id=str(user.id), text=UNKNOWN_USER_TEXT)
-            await messenger.close()
             return
         if access.state == "blocked":
             await messenger.send_text(chat_id=str(user.id), text=BLOCKED_USER_TEXT)
-            await messenger.close()
             return
         employee = access.employee
         if employee is None:
-            await messenger.close()
             return
         file_info = await bot.get_file(document.file_id)
         original_name = document.file_name or f"{document.file_unique_id}.bin"
@@ -88,10 +84,8 @@ async def on_document(message: Message, bot: Bot) -> None:
             external_unique_id=document.file_unique_id,
         )
         if save_state != "saved" or employee is None or db_file is None:
-            await messenger.close()
             return
         handled = await handle_saved_document(messenger, db, employee, db_file)
-        await messenger.close()
         if handled:
             return
 
@@ -103,20 +97,17 @@ async def on_photo(message: Message, bot: Bot) -> None:
         return
 
     with SessionLocal() as db:
-        messenger = create_telegram_messenger(settings.TELEGRAM_BOT_TOKEN)
+        messenger = TelegramMessenger(bot)
         username = _telegram_username(user)
         access = resolve_inbound_access(db, str(user.id), username)
         if access.state == "unknown":
             await messenger.send_text(chat_id=str(user.id), text=UNKNOWN_USER_TEXT)
-            await messenger.close()
             return
         if access.state == "blocked":
             await messenger.send_text(chat_id=str(user.id), text=BLOCKED_USER_TEXT)
-            await messenger.close()
             return
         employee = access.employee
         if employee is None:
-            await messenger.close()
             return
         photo = photos[-1]
         file_info = await bot.get_file(photo.file_id)
@@ -136,22 +127,19 @@ async def on_photo(message: Message, bot: Bot) -> None:
             external_unique_id=photo.file_unique_id,
         )
         if save_state != "saved" or employee is None or db_file is None:
-            await messenger.close()
             return
         await handle_saved_document(messenger, db, employee, db_file)
-        await messenger.close()
 
 
-async def on_candidate_text(message: Message) -> None:
+async def on_candidate_text(message: Message, bot: Bot) -> None:
     user = message.from_user
     if not user or not message.text:
         return
 
     with SessionLocal() as db:
-        messenger = create_telegram_messenger(settings.TELEGRAM_BOT_TOKEN)
+        messenger = TelegramMessenger(bot)
         username = _telegram_username(user)
         handled = await handle_text_event(messenger, db, str(user.id), username, message.text)
-        await messenger.close()
         if handled == "handled":
             return
         if handled == "unknown":
@@ -162,19 +150,28 @@ async def on_candidate_text(message: Message) -> None:
             return
 
 
-async def on_scenario_button(callback: CallbackQuery) -> None:
+async def on_scenario_button(callback: CallbackQuery, bot: Bot) -> None:
     user = callback.from_user
     if not user or not callback.data or not callback.data.startswith(CALLBACK_PREFIX):
         return
 
     with SessionLocal() as db:
-        messenger = create_telegram_messenger(settings.TELEGRAM_BOT_TOKEN)
+        messenger = TelegramMessenger(bot)
         if callback.data == f"{CALLBACK_PREFIX}back":
             handled = await handle_back_event(
                 messenger,
                 db,
                 str(user.id),
                 _telegram_username(user),
+            )
+            date_result = None
+        elif callback.data.startswith(DATE_CALLBACK_PREFIX):
+            handled, date_result = await handle_date_event(
+                messenger,
+                db,
+                str(user.id),
+                _telegram_username(user),
+                callback.data,
             )
         else:
             _, step_id, option_index = callback.data.split(":", 2)
@@ -186,15 +183,20 @@ async def on_scenario_button(callback: CallbackQuery) -> None:
                 int(step_id),
                 int(option_index),
             )
-        await messenger.close()
+            date_result = None
         if handled == "unknown":
             await callback.answer(UNKNOWN_USER_TEXT, show_alert=True)
             return
         if handled == "blocked":
             await callback.answer(BLOCKED_USER_TEXT, show_alert=True)
             return
+        if handled == "handled" and date_result is not None and callback.message:
+            if getattr(date_result, "action", None) == "updated" and getattr(date_result, "reply_markup", None) is not None:
+                await callback.message.edit_reply_markup(reply_markup=date_result.reply_markup)
+            elif getattr(date_result, "action", None) == "selected":
+                await callback.message.edit_reply_markup(reply_markup=None)
     if handled == "handled":
-        await callback.answer("Принято")
+        await callback.answer("Принято" if date_result is None or getattr(date_result, "action", None) == "selected" else "")
     else:
         await callback.answer()
 
@@ -205,10 +207,7 @@ async def main() -> None:
 
     init_db()
 
-    bot = Bot(
-        token=settings.TELEGRAM_BOT_TOKEN,
-        default=DefaultBotProperties(parse_mode=ParseMode.HTML),
-    )
+    bot = create_telegram_bot(settings.TELEGRAM_BOT_TOKEN)
     dp = Dispatcher()
 
     dp.message.register(on_start, CommandStart())

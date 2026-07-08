@@ -5,13 +5,14 @@ import type { Container, WorkspaceData, WorkspaceItem } from "./types";
 export const FALLBACK_RESPONSE_TYPE_LABELS: Record<string, string> = {
   none: "Без ответа",
   text: "Текстовый ответ",
+  date: "Выбор даты",
   file: "Загрузка файла",
   branching: "Ветвление",
   launch_scenario: "Переход к сценарию",
   chain: "Цепочка шагов",
 };
 
-const INTERACTIVE_RESPONSE_TYPES = new Set(["text", "file", "buttons", "branching"]);
+const INTERACTIVE_RESPONSE_TYPES = new Set(["text", "date", "file", "buttons", "branching"]);
 
 export function payloadLabel(kind: "scenario" | "survey") {
   return kind === "survey" ? "опрос" : "сценарий";
@@ -119,7 +120,7 @@ export function supportsButtonOptions(responseType: string) {
 }
 
 export function supportsTargetField(responseType: string) {
-  return responseType === "text" || responseType === "file" || responseType === "buttons";
+  return responseType === "text" || responseType === "date" || responseType === "file" || responseType === "buttons" || responseType === "branching";
 }
 
 export function responseTypeWaitState(responseType: string) {

@@ -8,8 +8,10 @@ from app.database import SessionLocal, init_db
 from app.models import Employee, FlowStepTemplate, HrSettings, ScenarioProgress, ScenarioTemplate
 from app.scenario_engine import (
     SCENARIO_BACK_BUTTON_TEXT,
+    DATE_CALLBACK_PREFIX,
     handle_button_response,
     handle_back_response,
+    handle_date_response_by_step_id,
     matches_role_scope,
     resolve_notification_recipients,
     scenario_anchor_date,
@@ -237,6 +239,63 @@ class ScenarioEngineSmokeTests(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(handled)
             db.refresh(employee)
             self.assertEqual(employee.salary_expectation, "300000")
+
+            db.delete(step)
+            db.delete(scenario)
+            db.delete(employee)
+            db.commit()
+
+    async def test_handle_date_response_persists_first_workday(self) -> None:
+        init_db()
+        now = datetime.now(UTC).replace(tzinfo=None)
+        scenario_key = f"test_date_target_{int(datetime.now(UTC).timestamp() * 1000000)}"
+
+        with SessionLocal() as db:
+            scenario = ScenarioTemplate(
+                scenario_key=scenario_key,
+                title="Date target field",
+                role_scope="all",
+                scenario_kind="scenario",
+                sort_order=0,
+                trigger_mode="manual_only",
+            )
+            step = FlowStepTemplate(
+                flow_key=scenario_key,
+                step_key="workday_step",
+                step_title="Дата выхода",
+                sort_order=10,
+                default_text="Выбери дату выхода",
+                response_type="date",
+                send_mode="immediate",
+                day_offset_workdays=0,
+                target_field="first_workday",
+            )
+            employee = Employee(
+                full_name="Offer Candidate",
+                telegram_user_id="123456789",
+                created_at=now,
+                is_flow_scheduled=False,
+                employee_stage="candidate",
+            )
+            db.add_all([scenario, step, employee])
+            db.commit()
+            db.refresh(employee)
+
+            messenger = FakeMessenger()
+            await send_step(messenger, db, employee, scenario, step)
+            result = await handle_date_response_by_step_id(
+                messenger,
+                db,
+                employee,
+                step.id,
+                "set",
+                "2026-07-15",
+            )
+
+            self.assertTrue(result.handled)
+            self.assertEqual(result.action, "selected")
+            db.refresh(employee)
+            self.assertEqual(employee.first_workday.isoformat() if employee.first_workday else None, "2026-07-15")
 
             db.delete(step)
             db.delete(scenario)
