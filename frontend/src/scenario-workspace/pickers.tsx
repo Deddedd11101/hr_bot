@@ -18,11 +18,11 @@ import { parseRecipientIds } from "./model";
 import type { SingleOption, WorkspaceData } from "./types";
 
 export function NotificationRecipientsPicker({
-  employeeOptions,
+  recipientOptions,
   value,
   onChange,
 }: {
-  employeeOptions: WorkspaceData["employee_options"];
+  recipientOptions: WorkspaceData["notification_recipient_options"];
   value: string;
   onChange: (next: string) => void;
 }) {
@@ -30,21 +30,20 @@ export function NotificationRecipientsPicker({
   const [search, setSearch] = React.useState("");
   const selectedIds = React.useMemo(() => parseRecipientIds(value), [value]);
 
-  const filteredEmployees = React.useMemo(() => {
-    if (!search.trim()) return employeeOptions;
+  const filteredRecipients = React.useMemo(() => {
+    if (!search.trim()) return recipientOptions;
     const query = search.toLowerCase();
-    return employeeOptions.filter((option) => option.label.toLowerCase().includes(query));
-  }, [employeeOptions, search]);
+    return recipientOptions.filter((option) => option.label.toLowerCase().includes(query));
+  }, [recipientOptions, search]);
 
-  const toggleRecipient = (employeeId: string) => {
-    const token = `employee:${employeeId}`;
+  const toggleRecipient = (token: string) => {
     const nextIds = selectedIds.includes(token)
       ? selectedIds.filter((value) => value !== token)
       : selectedIds.concat(token);
     onChange(nextIds.join(","));
   };
 
-  const summary = selectedIds.length === 0 ? "Выбери сотрудников" : `${selectedIds.length} выбр.`;
+  const summary = selectedIds.length === 0 ? "Выбери получателей" : `${selectedIds.length} выбр.`;
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -59,27 +58,25 @@ export function NotificationRecipientsPicker({
             <Input
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-              placeholder="Найти сотрудника"
+              placeholder="Найти получателя"
               className="pl-9"
             />
           </div>
         </div>
         <div className="h-72 overflow-auto">
           <div className="flex flex-col gap-1 p-2">
-            {filteredEmployees.map((option) => {
-              const checked = selectedIds.includes(`employee:${String(option.id)}`);
+            {filteredRecipients.map((option) => {
+              const checked = selectedIds.includes(option.token);
               return (
                 <button
-                  key={option.id}
+                  key={option.token}
                   type="button"
-                  onClick={() => toggleRecipient(String(option.id))}
+                  onClick={() => toggleRecipient(option.token)}
                   className="flex items-center justify-between gap-3 rounded-lg px-3 py-2 text-left transition-colors hover:bg-muted"
                 >
                   <div className="min-w-0">
                     <div className="truncate text-sm font-medium">{option.label}</div>
-                    <div className="text-xs text-muted-foreground">
-                      {option.kind === "candidates" ? "Кандидат" : "Сотрудник"}
-                    </div>
+                    <div className="text-xs text-muted-foreground">{option.description}</div>
                   </div>
                   <Checkbox checked={checked} aria-label={`Выбрать ${option.label}`} />
                 </button>

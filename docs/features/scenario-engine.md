@@ -79,6 +79,14 @@ Scenario engine превращает scenario templates плюс employee state 
 - Новые scenario-шаги, branch-шаги и chain-шаги не должны сохранять декоративный default text. Поле сообщения остается пустым, а подсказка показывается только как UI placeholder.
 - `buttons` и `branching` могут сохранять выбранный вариант в `target_field`, включая `salary_expectation`; editor не должен сбрасывать это поле при сохранении branching step.
 
+## Сценарные уведомления
+
+- Explicit recipients в сценарных уведомлениях хранятся как tokens.
+- `employee:<id>` резолвится в основной Telegram chat id выбранного сотрудника/кандидата.
+- `hr` резолвится через singleton `HrSettings.telegram_user_id`.
+- React workspace строит список получателей из отдельного `notification_recipient_options`: сначала системный HR, если у него задан Telegram ID, затем сотрудники/кандидаты.
+- HR не должен создаваться как фейковая запись `employees` только ради выбора в уведомлениях.
+
 ## Read-only graph contract
 
 - Workspace API теперь дополнительно отдает `workspace.graph` для read-only overview режима.

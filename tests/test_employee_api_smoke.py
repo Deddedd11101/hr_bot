@@ -191,6 +191,44 @@ class EmployeeApiSmokeTests(unittest.TestCase):
         payload = response.json()
         self.assertEqual(payload["employee"]["id"], self.employee_id)
 
+    def test_workspace_payload_exposes_hr_notification_recipient(self) -> None:
+        with SessionLocal() as db:
+            hr_settings = db.get(HrSettings, 1)
+            self.assertIsNotNone(hr_settings)
+            hr_settings.hr_name = f"HR {self.unique_tag}"
+            hr_settings.telegram_user_id = "770001"
+            db.commit()
+
+        scenario_key = f"codex-hr-recipient-{self.unique_tag}"
+        with SessionLocal() as db:
+            scenario = ScenarioTemplate(
+                scenario_key=scenario_key,
+                title=f"codex-hr-recipient-{self.unique_tag}",
+                role_scope="all",
+                scenario_kind="scenario",
+                sort_order=0,
+                trigger_mode="manual_only",
+            )
+            db.add(scenario)
+            db.commit()
+            db.refresh(scenario)
+            scenario_id = scenario.id
+
+        response = self.client.get(f"/api/flows/workspace?scenario_id={scenario_id}")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        options = payload["workspace"]["notification_recipient_options"]
+        self.assertIn(
+            {
+                "token": "hr",
+                "label": f"HR {self.unique_tag}",
+                "description": "HR из системных настроек",
+                "kind": "hr",
+            },
+            options,
+        )
+
     def test_employee_detail_update_supports_staff_selects_and_adaptation_dates(self) -> None:
         now = datetime.now(UTC).replace(tzinfo=None)
         with SessionLocal() as db:

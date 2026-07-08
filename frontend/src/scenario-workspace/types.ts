@@ -147,6 +147,7 @@ export type WorkspaceData = {
   notification_recipient_scope_labels: Record<string, string>;
   document_tag_titles: string[];
   employee_options: Array<{ id: number; label: string; kind: string }>;
+  notification_recipient_options: Array<{ token: string; label: string; description: string; kind: string }>;
   available_scenarios: Array<{ value: string; label: string }>;
 };
 

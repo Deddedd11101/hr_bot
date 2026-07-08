@@ -16,7 +16,7 @@ from .employee_card import render_employee_card_png
 from .flow_templates import EMPLOYEE_ROLE_VALUES
 from .messaging.identity import get_primary_chat_id
 from .messaging import as_messenger
-from .models import Employee, EmployeeDocumentLink, EmployeeFile, FlowLaunchRequest, FlowStepTemplate, OnboardingEvent, ScenarioProgress, ScenarioTemplate, StepButtonNotification, StepSendNotification, SurveyAnswer
+from .models import Employee, EmployeeDocumentLink, EmployeeFile, FlowLaunchRequest, FlowStepTemplate, HrSettings, OnboardingEvent, ScenarioProgress, ScenarioTemplate, StepButtonNotification, StepSendNotification, SurveyAnswer
 from .notifications import notify_hr_stage
 from .time_utils import utc_now
 
@@ -639,6 +639,10 @@ def _resolve_explicit_notification_recipient(db: Session | None, raw_value: str)
     normalized = (raw_value or "").strip()
     if not normalized:
         return None
+    if normalized == "hr" and db is not None:
+        hr_settings = db.get(HrSettings, 1)
+        hr_chat_id = (getattr(hr_settings, "telegram_user_id", None) or "").strip()
+        return hr_chat_id or None
     if normalized.startswith("employee:") and db is not None:
         employee_id_raw = normalized.split(":", 1)[1].strip()
         if employee_id_raw.isdigit():
@@ -1314,5 +1318,4 @@ async def start_scenario(messenger_or_bot: Any, db: Session, employee: Employee,
     db.commit()
     await send_step(messenger, db, employee, scenario, first_step)
     return True
-
 

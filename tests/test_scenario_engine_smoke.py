@@ -19,6 +19,7 @@ from app.scenario_engine import (
     send_step,
     send_step_attachment,
 )
+from app.web.settings import _get_or_create_hr_settings
 
 
 class FakeBot:
@@ -296,6 +297,28 @@ class ScenarioEngineSmokeTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(recipients, ["hr-id", "123456"])
             db.delete(employee)
             db.delete(manager)
+            db.commit()
+
+    def test_resolve_notification_recipients_supports_hr_token(self) -> None:
+        init_db()
+        with SessionLocal() as db:
+            settings = _get_or_create_hr_settings(db)
+            previous_chat_id = settings.telegram_user_id
+            settings.telegram_user_id = "555001"
+            db.commit()
+            employee = SimpleNamespace(
+                manager_employee_id=None,
+                mentor_adaptation_employee_id=None,
+                mentor_ipr_employee_id=None,
+                manager_telegram_id=None,
+                mentor_adaptation_telegram_id=None,
+                mentor_ipr_telegram_id=None,
+            )
+
+            recipients = resolve_notification_recipients(db, employee, explicit_ids="hr", recipient_scope="")
+
+            self.assertEqual(recipients, ["555001"])
+            settings.telegram_user_id = previous_chat_id
             db.commit()
 
     def test_matches_role_scope_respects_candidate_and_employee_scope(self) -> None:

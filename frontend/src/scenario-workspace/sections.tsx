@@ -868,8 +868,8 @@ export function WorkspaceStepDetailPane(props: {
     setStepNotificationRuleEditor(null);
   }, [detailTarget?.id, selectedItem?.kind]);
 
-  const employeeLabelById = React.useMemo(() => {
-    const entries = (payloadWorkspace?.employee_options || []).map((option) => [String(option.id), option.label]);
+  const recipientLabelByToken = React.useMemo(() => {
+    const entries = (payloadWorkspace?.notification_recipient_options || []).map((option) => [option.token, option.label]);
     return Object.fromEntries(entries) as Record<string, string>;
   }, [payloadWorkspace]);
   const waitState = React.useMemo(
@@ -1239,8 +1239,7 @@ export function WorkspaceStepDetailPane(props: {
                                   const recipientSummary = selectedIds.length
                                     ? selectedIds
                                         .map((id) => {
-                                          const employeeId = id.startsWith("employee:") ? id.split(":")[1] : id;
-                                          return employeeLabelById[employeeId] || `Сотрудник #${employeeId}`;
+                                          return recipientLabelByToken[id] || id;
                                         })
                                         .join(", ")
                                     : "Получатели не выбраны";
@@ -1404,8 +1403,7 @@ export function WorkspaceStepDetailPane(props: {
                               const recipientSummary = selectedIds.length
                                 ? selectedIds
                                     .map((id) => {
-                                      const employeeId = id.startsWith("employee:") ? id.split(":")[1] : id;
-                                      return employeeLabelById[employeeId] || `Сотрудник #${employeeId}`;
+                                      return recipientLabelByToken[id] || id;
                                     })
                                     .join(", ")
                                 : "Получатели не выбраны";
@@ -1504,7 +1502,7 @@ export function WorkspaceStepDetailPane(props: {
             <label className="grid gap-2">
               <span className="text-sm font-semibold text-foreground/75">Получатели</span>
               <NotificationRecipientsPicker
-                employeeOptions={payloadWorkspace?.employee_options || []}
+                recipientOptions={payloadWorkspace?.notification_recipient_options || []}
                 value={notificationRuleEditor?.recipient_ids || ""}
                 onChange={(next) =>
                   setNotificationRuleEditor((prev) => (prev ? { ...prev, recipient_ids: next } : prev))
@@ -1550,7 +1548,7 @@ export function WorkspaceStepDetailPane(props: {
             <label className="grid gap-2">
               <span className="text-sm font-semibold text-foreground/75">Получатели</span>
               <NotificationRecipientsPicker
-                employeeOptions={payloadWorkspace?.employee_options || []}
+                recipientOptions={payloadWorkspace?.notification_recipient_options || []}
                 value={stepNotificationRuleEditor?.recipient_ids || ""}
                 onChange={(next) =>
                   setStepNotificationRuleEditor((prev) => (prev ? { ...prev, recipient_ids: next } : prev))
