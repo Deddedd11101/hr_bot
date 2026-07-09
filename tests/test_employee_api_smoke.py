@@ -29,6 +29,7 @@ from app.models import (
     BotMenuSet,
     DocumentLibraryItem,
     Employee,
+    EmployeeDocumentLink,
     EmployeeMessengerAccount,
     EmployeeFile,
     FlowLaunchRequest,
@@ -190,6 +191,32 @@ class EmployeeApiSmokeTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertEqual(payload["employee"]["id"], self.employee_id)
+
+    def test_employee_offer_document_file_api_persists_slot_payload(self) -> None:
+        response = self.client.post(
+            f"/api/employees/{self.employee_id}/document-slots/offer/file",
+            files={"upload": ("offer.pdf", b"fake-offer-pdf", "application/pdf")},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["item"]["slot_key"], "offer")
+        self.assertEqual(payload["item"]["item_kind"], "file")
+        self.assertEqual(payload["item"]["title"], "Оффер")
+        self.assertIn(f"/employees/{self.employee_id}/files/", payload["item"]["url"])
+        self.assertEqual(payload["payload"]["offer_document"]["slot_key"], "offer")
+
+        with SessionLocal() as db:
+            link_row = (
+                db.query(EmployeeDocumentLink)
+                .filter(EmployeeDocumentLink.employee_id == self.employee_id)
+                .first()
+            )
+            self.assertIsNotNone(link_row)
+            if link_row is not None:
+                self.assertEqual(link_row.slot_key, "offer")
+                self.assertEqual(link_row.item_kind, "file")
+                self.assertIsNotNone(link_row.employee_file_id)
 
     def test_workspace_payload_exposes_hr_notification_recipient(self) -> None:
         with SessionLocal() as db:

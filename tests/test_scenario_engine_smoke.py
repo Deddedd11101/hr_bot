@@ -5,7 +5,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from app.database import SessionLocal, init_db
-from app.models import Employee, FlowStepTemplate, HrSettings, ScenarioProgress, ScenarioTemplate
+from app.models import Employee, EmployeeDocumentLink, EmployeeFile, FlowStepTemplate, HrSettings, ScenarioProgress, ScenarioTemplate
 from app.scenario_engine import (
     SCENARIO_BACK_BUTTON_TEXT,
     DATE_CALLBACK_PREFIX,
@@ -14,6 +14,7 @@ from app.scenario_engine import (
     handle_date_response_by_step_id,
     matches_role_scope,
     resolve_notification_recipients,
+    resolve_tagged_employee_documents,
     scenario_anchor_date,
     send_step,
     send_step_attachment,
@@ -194,6 +195,68 @@ class ScenarioEngineSmokeTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(matches_role_scope(employee, candidate_scenario))
         self.assertTrue(matches_role_scope(employee, employee_scenario))
         self.assertFalse(matches_role_scope(candidate, employee_scenario))
+
+    def test_resolve_tagged_employee_documents_returns_file_backed_offer_slot(self) -> None:
+        init_db()
+        now = datetime.now(UTC).replace(tzinfo=None)
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            offer_path = Path(tmp_dir) / "offer.pdf"
+            offer_path.write_bytes(b"fake-offer")
+            with SessionLocal() as db:
+                employee = Employee(
+                    full_name="Offer Candidate",
+                    telegram_user_id="555001",
+                    first_workday=None,
+                    created_at=now,
+                    is_flow_scheduled=False,
+                    employee_stage="candidate",
+                )
+                db.add(employee)
+                db.commit()
+                db.refresh(employee)
+
+                employee_file = EmployeeFile(
+                    employee_id=employee.id,
+                    direction="outbound",
+                    category="offer_document",
+                    telegram_file_id=None,
+                    telegram_file_unique_id=None,
+                    original_filename="offer.pdf",
+                    stored_path=str(offer_path),
+                    mime_type="application/pdf",
+                    file_size=10,
+                    created_at=now,
+                )
+                db.add(employee_file)
+                db.commit()
+                db.refresh(employee_file)
+
+                db.add(
+                    EmployeeDocumentLink(
+                        employee_id=employee.id,
+                        slot_key="offer",
+                        title="Оффер",
+                        url="",
+                        item_kind="file",
+                        employee_file_id=employee_file.id,
+                        created_at=now,
+                    )
+                )
+                db.commit()
+
+                files = resolve_tagged_employee_documents(
+                    db,
+                    "Мы счастливы! Лови наш {doc:Оффер}",
+                    employee,
+                )
+
+                self.assertEqual(len(files), 1)
+                self.assertEqual(files[0].id, employee_file.id)
+
+                db.query(EmployeeDocumentLink).filter(EmployeeDocumentLink.employee_id == employee.id).delete(synchronize_session=False)
+                db.query(EmployeeFile).filter(EmployeeFile.employee_id == employee.id).delete(synchronize_session=False)
+                db.delete(employee)
+                db.commit()
 
     async def test_handle_button_response_persists_target_field_value(self) -> None:
         init_db()

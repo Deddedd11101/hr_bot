@@ -12,7 +12,7 @@ class Base(DeclarativeBase):
 
 engine = create_engine(
     settings.DATABASE_URL,
-    connect_args={"check_same_thread": False} if settings.DATABASE_URL.startswith("sqlite") else {},
+    connect_args={"check_same_thread": False, "timeout": 30} if settings.DATABASE_URL.startswith("sqlite") else {},
 )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -55,6 +55,7 @@ def _ensure_sqlite_schema() -> None:
         required = {
             "telegram_username": "TEXT",
             "current_menu_set_id": "INTEGER",
+            "current_menu_path": "TEXT",
             "desired_position": "TEXT",
             "work_email": "TEXT",
             "work_hours": "TEXT",
@@ -429,6 +430,26 @@ def _ensure_sqlite_schema() -> None:
             if "step_history" not in progress_columns:
                 conn.execute(text("ALTER TABLE scenario_progress ADD COLUMN step_history TEXT"))
 
+        employee_document_link_columns = {
+            row[1] for row in conn.execute(text("PRAGMA table_info(employee_document_links)")).fetchall()
+        }
+        if employee_document_link_columns:
+            if "slot_key" not in employee_document_link_columns:
+                conn.execute(text("ALTER TABLE employee_document_links ADD COLUMN slot_key TEXT"))
+                conn.execute(
+                    text(
+                        """
+                        UPDATE employee_document_links
+                        SET slot_key = 'offer'
+                        WHERE title = 'Оффер' AND (slot_key IS NULL OR slot_key = '')
+                        """
+                    )
+                )
+            if "item_kind" not in employee_document_link_columns:
+                conn.execute(text("ALTER TABLE employee_document_links ADD COLUMN item_kind TEXT NOT NULL DEFAULT 'link'"))
+            if "employee_file_id" not in employee_document_link_columns:
+                conn.execute(text("ALTER TABLE employee_document_links ADD COLUMN employee_file_id INTEGER"))
+
         survey_answers_info = conn.execute(text("PRAGMA table_info(survey_answers)")).fetchall()
         if not survey_answers_info:
             conn.execute(
@@ -489,6 +510,8 @@ def _ensure_sqlite_schema() -> None:
             "notify_test_task_received": "BOOLEAN NOT NULL DEFAULT 1",
             "notify_user_actions": "BOOLEAN NOT NULL DEFAULT 1",
             "default_menu_set_id": "INTEGER",
+            "default_employee_menu_set_id": "INTEGER",
+            "default_candidate_menu_set_id": "INTEGER",
         }
         for col, ddl in hr_settings_required.items():
             if hr_settings_columns and col not in hr_settings_columns:

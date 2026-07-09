@@ -23,6 +23,7 @@ Scenario engine превращает scenario templates плюс employee state 
 - `scenario_progress` — runtime state.
 - `employees` — personalization и field updates.
 - `flow_launch_requests` — delayed или manual launches.
+- `employee_document_links` / `employee_files` — персональные document slots для тегов вида `{doc:...}`.
 
 ## Текущие типы шагов
 
@@ -38,10 +39,13 @@ Scenario engine превращает scenario templates плюс employee state 
 1. Найти scenario и первый step.
 2. Отрендерить step text с employee context.
 3. Отправить text, optional employee card, optional attachment и optional buttons.
-4. Сохранить progress в `scenario_progress`, включая короткую историю предыдущих интерактивных шагов.
-5. Если user response не нужен, auto-advance к следующему step или schedule follow-up delivery.
-6. Если response нужен, ждать text/file/button input и применить result к employee state.
-7. Для активного интерактивного шага runtime поддерживает default `Назад`: для text/file это reply button, для button/branching — inline button. Откат возвращает только на предыдущий интерактивный шаг в рамках текущего незавершенного сценария.
+4. Если в тексте есть `{doc:...}`, runtime резолвит персональный document slot сотрудника:
+   - для link-based slot подставляет кликабельную ссылку в текст;
+   - для file-based slot оставляет human-readable title в тексте и дополнительно отправляет сам файл в чат.
+5. Сохранить progress в `scenario_progress`, включая короткую историю предыдущих интерактивных шагов.
+6. Если user response не нужен, auto-advance к следующему step или schedule follow-up delivery.
+7. Если response нужен, ждать text/file/button input и применить result к employee state.
+8. Для активного интерактивного шага runtime поддерживает default `Назад`: для text/file это reply button, для button/branching — inline button. Откат возвращает только на предыдущий интерактивный шаг в рамках текущего незавершенного сценария.
 
 Для time-based сценариев есть дополнительное правило:
 

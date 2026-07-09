@@ -56,6 +56,7 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
     const [fileForm, setFileForm] = React.useState({
         upload: null as File | null,
     });
+    const [offerFile, setOfferFile] = React.useState<File | null>(null);
 
     React.useEffect(function () {
         let isMounted = true;
@@ -216,7 +217,7 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
     }
 
     function handleOfferDelete(linkId: number) {
-        if (!window.confirm("Удалить ссылку на оффер?")) {
+        if (!window.confirm("Удалить оффер из карточки?")) {
             return;
         }
         setOpsState({ message: "", error: false, working: true });
@@ -236,10 +237,47 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
             .then(function (payload) {
                 updatePayloadState(setState, setForm, payload);
                 setOfferUrl("");
-                setOperationMessage("Ссылка на оффер удалена", false);
+                setOfferFile(null);
+                setOperationMessage("Оффер удален из карточки", false);
             })
             .catch(function (error) {
                 setOperationMessage(error.message || "Не удалось удалить ссылку", true);
+            });
+    }
+
+    function handleOfferFileSubmit(event: React.FormEvent<HTMLFormElement>) {
+        event.preventDefault();
+        if (!offerFile) {
+            setOperationMessage("Выбери файл оффера", true);
+            return;
+        }
+        setOpsState({ message: "", error: false, working: true });
+        const formData = new FormData();
+        formData.append("upload", offerFile);
+        fetch(apiUrl + "/document-slots/offer/file", {
+            method: "POST",
+            credentials: "same-origin",
+            body: formData,
+        })
+            .then(function (response) {
+                if (!response.ok) {
+                    return response.json().catch(function () { return {}; }).then(function (payload) {
+                        throw new Error(payload.detail || "Не удалось загрузить оффер");
+                    });
+                }
+                return response.json();
+            })
+            .then(function (payload) {
+                updatePayloadState(setState, setForm, payload.payload);
+                setOfferFile(null);
+                const fileInput = document.getElementById("react-offer-file-input") as HTMLInputElement | null;
+                if (fileInput) {
+                    fileInput.value = "";
+                }
+                setOperationMessage("Оффер загружен", false);
+            })
+            .catch(function (error) {
+                setOperationMessage(error.message || "Не удалось загрузить оффер", true);
             });
     }
 
@@ -504,18 +542,19 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
         return file.direction !== "inbound";
     });
 
-    const documentItems = payload.document_links.map(function (item: any) {
-        return {
-            id: item.id,
-            title: item.title,
-            subtitle: item.scenario_tag,
-            link: item.url,
-            linkLabel: "Открыть",
-            deleteAction: function () { handleOfferDelete(item.id); },
-            deleteActionLabel: "Удалить ссылку",
-        };
-    });
-
+    const offerDocumentItem = payload.offer_document
+        ? {
+            id: payload.offer_document.id,
+            title: payload.offer_document.title,
+            subtitle: payload.offer_document.item_kind === "file"
+                ? "Файл оффера"
+                : payload.offer_document.scenario_tag,
+            link: payload.offer_document.url,
+            linkLabel: payload.offer_document.item_kind === "file" ? "Скачать" : "Открыть",
+            deleteAction: function () { handleOfferDelete(payload.offer_document.id); },
+            deleteActionLabel: "Удалить",
+        }
+        : null;
     const launchItems = payload.scheduled_launches.map(function (item: any) {
         return {
             id: "scheduled-" + item.id,
@@ -574,6 +613,9 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
                     opsState={opsState}
                     offerUrl={offerUrl}
                     setOfferUrl={setOfferUrl}
+                    offerFile={offerFile}
+                    setOfferFile={setOfferFile}
+                    offerDocumentItem={offerDocumentItem}
                     payload={payload}
                     form={form}
                     scheduleForm={scheduleForm}
@@ -583,6 +625,7 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
                     fileForm={fileForm}
                     setFileForm={setFileForm}
                     handleOfferSubmit={handleOfferSubmit}
+                    handleOfferFileSubmit={handleOfferFileSubmit}
                     handleOfferDelete={handleOfferDelete}
                     handleScheduleSubmit={handleScheduleSubmit}
                     handleLaunchSubmit={handleLaunchSubmit}
@@ -591,7 +634,6 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
                     handleDeleteEmployee={handleDeleteEmployee}
                     employeeFileItems={employeeFileItems}
                     hrFileItems={hrFileItems}
-                    documentItems={documentItems}
                     launchItems={launchItems}
                     manualLaunchItems={manualLaunchItems}
                     isCandidate={isCandidate}
