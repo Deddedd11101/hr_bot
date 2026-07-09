@@ -34,6 +34,33 @@ source_of_truth: true
 
 ## Записи
 
+### 2026-07-09 14:29 MSK - app deploy - offer document slot
+
+- Deploy ref: `stage`.
+- Deployed commit: `4dbf711`.
+- GitHub Actions run: `29014650258` -> success.
+- В stage включены:
+  - персональный document slot `offer` для ссылки или загруженного файла;
+  - отдельный блок `Оффер` в React-карточке сотрудника/кандидата;
+  - `{doc:Оффер}` подставляет ссылку либо отправляет file-backed оффер в Telegram;
+  - замена и удаление оффера очищают связанный файл без orphan-записей.
+- Локальные проверки на объединенном `stage`:
+  - `python -m compileall app tests`;
+  - `python -m ruff check --select F821 app tests`;
+  - backend smoke -> 98 tests OK;
+  - `npm ci && npm run build`;
+  - `git diff --check`.
+- Stage smoke checks из workflow:
+  - server HEAD -> `4dbf711`;
+  - preflight compile/F821/backend smoke/frontend build/import smoke -> success;
+  - `/app/employees` -> `303`;
+  - `/app/flows/workspace-v2` -> `303`;
+  - Telegram API -> `HTTP/2 302`;
+  - `hr-bot-web`, `hr-bot-worker` и `wg-quick@redshield` active;
+  - worker log grep без свежих `TelegramNetworkError`, `Request timeout`, `Traceback`, `Unclosed client session`.
+- Rollback/backup: deploy добавляет nullable/defaulted колонки в SQLite; workflow не зафиксировал pre-deploy DB backup в логе.
+- Открытый риск: добавить обязательный timestamped SQLite backup в `Deploy Stage` до запуска приложения с новой schema.
+
 ### 2026-07-08 10:48 MSK - app deploy - hide empty menu fallback on `/start`
 
 - Deploy ref: `stage`.
