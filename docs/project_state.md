@@ -44,6 +44,7 @@ source_of_truth: true
 - Local run model: рабочая команда запуска админки зафиксирована в [[local-runbook]]; запуск без `--reload` является основной командой.
 - UI migration model: принят LLD-подход для перевода classic admin UI на React default с сохранением classic direct routes как временного rollback.
 - Delivery model: параллельная работа субагентов теперь разделена на feature-фазу и integration-фазу. Субагенты пушат отдельные feature-ветки, интегратор собирает общий `stage` ref, а GitHub Actions `Deploy Stage` запускается вручную с `ref=stage`.
+- Stage deploy теперь обязан создавать проверенный SQLite backup до checkout/restart и сверять fingerprint конфигурации сценариев до/после запуска сервисов.
 
 ## Что работает
 

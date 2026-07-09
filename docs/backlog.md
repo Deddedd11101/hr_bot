@@ -26,6 +26,8 @@ source_of_truth: true
 
 Stage candidate: персональный slot `offer` поддерживает ссылку или файл без добавления нового one-off поля в карточку.
 
+Deploy safety: `Deploy Stage` создаёт проверенный SQLite backup и обнаруживает неожиданные изменения scenario templates/steps во время restart.
+
 Словарь статусов:
 
 - `todo` — согласовано, но не начато
