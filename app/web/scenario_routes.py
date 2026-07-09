@@ -20,6 +20,7 @@ from ..flow_templates import (
     SEND_MODE_LABELS,
     TARGET_FIELD_LABELS,
     TRIGGER_MODE_LABELS,
+    serialize_role_scope_values,
 )
 from ..models import Employee, FlowStepTemplate, ScenarioTemplate, StepButtonNotification, SurveyAnswer
 from ..time_utils import utc_now
@@ -52,6 +53,12 @@ templates = Jinja2Templates(directory="app/templates")
 def get_db():
     with get_session() as db:
         yield db
+
+
+def _role_scope_from_payload(payload: dict) -> str:
+    if isinstance(payload.get("role_scopes"), list):
+        return serialize_role_scope_values(payload.get("role_scopes"))
+    return serialize_role_scope_values(payload.get("role_scope"))
 
 
 @router.post("/flows/reorder")
@@ -193,13 +200,13 @@ def update_workspace_scenario_api(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Сценарий или опрос не найден")
 
     description = str(payload.get("description") or "").strip()
-    role_scope = str(payload.get("role_scope") or "").strip()
+    role_scope = _role_scope_from_payload(payload)
     employee_scope = str(payload.get("employee_scope") or "").strip()
     trigger_mode = str(payload.get("trigger_mode") or "").strip()
     target_employee_id = str(payload.get("target_employee_id") or "").strip()
 
     scenario.description = description[:50] or None
-    scenario.role_scope = role_scope if role_scope in ROLE_SCOPE_LABELS else "all"
+    scenario.role_scope = role_scope
     scenario.employee_scope = employee_scope if employee_scope in EMPLOYEE_SCOPE_LABELS else "all"
     scenario.trigger_mode = trigger_mode if trigger_mode in TRIGGER_MODE_LABELS else "manual_only"
     scenario.target_employee_id = int(target_employee_id) if target_employee_id.isdigit() else None
@@ -813,7 +820,7 @@ def _create_template_entity(
         scenario_kind=kind,
         title=title.strip() or meta["new_title"],
         sort_order=(last_scenario.sort_order + 10) if last_scenario else 10,
-        role_scope=role_scope if role_scope in ROLE_SCOPE_LABELS else "all",
+        role_scope=serialize_role_scope_values(role_scope),
         employee_scope=employee_scope if employee_scope in EMPLOYEE_SCOPE_LABELS else "all",
         target_employee_id=int(target_employee_id) if (target_employee_id or "").strip().isdigit() else None,
         trigger_mode=trigger_mode if trigger_mode in TRIGGER_MODE_LABELS else "manual_only",
@@ -1047,7 +1054,7 @@ async def update_scenario(
 
         target_step_id_int = int(target_step_id) if (target_step_id or "").strip().isdigit() else None
         scenario.title = title.strip() or scenario.title
-        scenario.role_scope = role_scope if role_scope in ROLE_SCOPE_LABELS else "all"
+        scenario.role_scope = serialize_role_scope_values(role_scope)
         scenario.employee_scope = employee_scope if employee_scope in EMPLOYEE_SCOPE_LABELS else "all"
         scenario.target_employee_id = int(target_employee_id) if (target_employee_id or "").strip().isdigit() else None
         scenario.trigger_mode = "manual_only" if scenario.scenario_kind == "survey" else (trigger_mode if trigger_mode in TRIGGER_MODE_LABELS else "manual_only")

@@ -25,6 +25,13 @@ Scenario engine превращает scenario templates плюс employee state 
 - `flow_launch_requests` — delayed или manual launches.
 - `employee_document_links` / `employee_files` — персональные document slots для тегов вида `{doc:...}`.
 
+## Audience targeting
+
+- `employee_scope` продолжает отвечать за coarse split `кандидаты / сотрудники / все`.
+- `role_scope` теперь допускает не одну должность, а нормализованный набор ролей в одном поле `scenario_templates.role_scope`.
+- Для MVP набор хранится как CSV (`designer,analyst`), но API workspace отдает и raw `role_scope`, и нормализованный массив `role_scopes`.
+- Значение `all` остается взаимоисключающим shorthand: если выбрано оно, остальные роли игнорируются.
+
 ## Текущие типы шагов
 
 - `none` — информационный шаг без user response.

@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from .config import settings
 from .employee_card import render_employee_card_png
-from .flow_templates import EMPLOYEE_ROLE_VALUES
+from .flow_templates import EMPLOYEE_ROLE_VALUES, ROLE_SCOPE_ALL, ROLE_SCOPE_POSITION_MAP, normalize_role_scope_values
 from .messaging.identity import get_primary_chat_id
 from .messaging import as_messenger
 from .models import Employee, EmployeeDocumentLink, EmployeeFile, FlowLaunchRequest, FlowStepTemplate, HrSettings, OnboardingEvent, ScenarioProgress, ScenarioTemplate, StepButtonNotification, StepSendNotification, SurveyAnswer
@@ -484,14 +484,11 @@ def matches_role_scope(employee: Employee, scenario: ScenarioTemplate) -> bool:
     if getattr(scenario, "target_employee_id", None) and scenario.target_employee_id != employee.id:
         return False
 
-    if scenario.role_scope == "all":
+    role_scopes = normalize_role_scope_values(getattr(scenario, "role_scope", None))
+    if ROLE_SCOPE_ALL in role_scopes:
         return True
-    role_map = {
-        "designer": "Дизайнер",
-        "project_manager": "Project manager",
-        "analyst": "Аналитик",
-    }
-    return (employee.desired_position or "") == role_map.get(scenario.role_scope, "")
+    employee_position = (employee.desired_position or "").strip()
+    return employee_position in {ROLE_SCOPE_POSITION_MAP.get(value, "") for value in role_scopes}
 
 
 def format_message(db: Session, template: str, employee: Employee, anchor_date: date, step_time: Optional[str]) -> str:

@@ -1275,7 +1275,7 @@ class EmployeeApiSmokeTests(unittest.TestCase):
                 f"/api/flows/workspace/scenarios/{scenario_id}/settings",
                 json={
                     "description": "x" * 60,
-                    "role_scope": "analyst",
+                    "role_scopes": ["designer", "analyst"],
                     "employee_scope": "employees",
                     "trigger_mode": "bot_registration",
                     "target_employee_id": str(self.employee_id),
@@ -1285,7 +1285,9 @@ class EmployeeApiSmokeTests(unittest.TestCase):
             self.assertEqual(response.status_code, 200)
             scenario_payload = response.json()["payload"]["workspace"]["scenario"]
             self.assertEqual(scenario_payload["description"], "x" * 50)
-            self.assertEqual(scenario_payload["role_scope"], "analyst")
+            self.assertEqual(scenario_payload["role_scope"], "designer,analyst")
+            self.assertEqual(scenario_payload["role_scopes"], ["designer", "analyst"])
+            self.assertEqual(scenario_payload["role_scope_label"], "Дизайнер, Аналитик")
             self.assertEqual(scenario_payload["employee_scope"], "employees")
             self.assertEqual(scenario_payload["trigger_mode"], "bot_registration")
             self.assertEqual(scenario_payload["target_employee_id"], self.employee_id)

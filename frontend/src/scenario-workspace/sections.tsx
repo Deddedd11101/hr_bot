@@ -28,7 +28,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 
 import { buildChildContainer, crumbIcon, itemKey, parseRecipientIds, responseTypeWaitState, summarizeItem, workspaceItemTitle } from "./model";
-import { NotificationRecipientsPicker, SingleSelectPicker } from "./pickers";
+import { MultiCheckboxPicker, NotificationRecipientsPicker, SingleSelectPicker } from "./pickers";
 import type {
   Container,
   ScenarioSettingsForm,
@@ -430,11 +430,11 @@ export function WorkspaceCanvasSection(props: {
                     </label>
                     <label className="grid min-w-0 gap-2.5">
                       <span className="text-sm font-semibold text-foreground/75">Должность</span>
-                      <SingleSelectPicker
+                      <MultiCheckboxPicker
                         options={roleScopeOptions}
-                        value={scenarioSettingsForm.role_scope}
+                        value={scenarioSettingsForm.role_scopes}
                         placeholder="Должность"
-                        onChange={(nextValue) => onScenarioSettingsFormChange((prev) => (prev ? { ...prev, role_scope: nextValue } : prev))}
+                        onChange={(nextValue) => onScenarioSettingsFormChange((prev) => (prev ? { ...prev, role_scopes: nextValue } : prev))}
                       />
                     </label>
                     <label className="grid min-w-0 gap-2.5">

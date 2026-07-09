@@ -132,3 +132,63 @@ export function SingleSelectPicker({
     </Select>
   );
 }
+
+export function MultiCheckboxPicker({
+  options,
+  value,
+  onChange,
+  placeholder,
+}: {
+  options: SingleOption[];
+  value: string[];
+  onChange: (next: string[]) => void;
+  placeholder: string;
+}) {
+  const [open, setOpen] = React.useState(false);
+  const selectedValues = React.useMemo(() => value.filter(Boolean), [value]);
+  const selectedLabels = React.useMemo(
+    () => options.filter((option) => selectedValues.includes(option.value)).map((option) => option.label),
+    [options, selectedValues],
+  );
+
+  const toggleValue = (optionValue: string) => {
+    const isAll = optionValue === "all";
+    if (isAll) {
+      onChange(["all"]);
+      return;
+    }
+    const nextValues = selectedValues.includes(optionValue)
+      ? selectedValues.filter((value) => value !== optionValue)
+      : selectedValues.filter((value) => value !== "all").concat(optionValue);
+    onChange(nextValues.length ? nextValues : ["all"]);
+  };
+
+  const summary = selectedLabels.length ? selectedLabels.join(", ") : placeholder;
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger render={<Button variant="secondary" className="w-full justify-between" />}>
+        <span className="truncate text-left">{summary}</span>
+        <ChevronsUpDown className="opacity-60" />
+      </PopoverTrigger>
+      <PopoverContent className="w-[320px] p-2" align="start">
+        <div className="flex flex-col gap-1">
+          {options.map((option) => {
+            const checked = selectedValues.includes(option.value);
+            return (
+              <button
+                key={`${option.value}-${option.label}`}
+                type="button"
+                onClick={() => toggleValue(option.value)}
+                className="flex items-center justify-between gap-3 rounded-lg px-3 py-2 text-left transition-colors hover:bg-muted"
+              >
+                <span className="min-w-0 truncate text-sm">{option.label}</span>
+                <Checkbox checked={checked} aria-label={`Выбрать ${option.label}`} />
+              </button>
+            );
+          })}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}

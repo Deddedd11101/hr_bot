@@ -284,7 +284,7 @@ export function ScenarioWorkspacePage() {
     }
     setScenarioSettingsForm({
       description: scenario.description || "",
-      role_scope: scenario.role_scope || "all",
+      role_scopes: scenario.role_scopes?.length ? scenario.role_scopes : scenario.role_scope ? [scenario.role_scope] : ["all"],
       employee_scope: scenario.employee_scope || "all",
       trigger_mode: scenario.trigger_mode || "manual_only",
       target_employee_id: scenario.target_employee_id ? String(scenario.target_employee_id) : "",
@@ -340,6 +340,7 @@ export function ScenarioWorkspacePage() {
     if (!scenarioId || !scenarioSettingsForm) return;
     const settingsPayload = {
       ...scenarioSettingsForm,
+      role_scopes: scenarioSettingsForm.role_scopes.length ? scenarioSettingsForm.role_scopes : ["all"],
       trigger_mode: isSurveyWorkspace ? "manual_only" : scenarioSettingsForm.trigger_mode,
     };
     setScenarioSettingsState({ saving: true, message: "", error: false });

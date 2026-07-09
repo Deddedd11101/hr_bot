@@ -3,6 +3,7 @@ export type ScenarioSummary = {
   title: string;
   description: string;
   role_scope_label: string;
+  role_scopes?: string[];
   employee_scope_label: string;
   trigger_mode_label: string;
   steps_count: number;
@@ -78,6 +79,7 @@ export type WorkspaceData = {
     title: string;
     description: string;
     role_scope: string;
+    role_scopes: string[];
     role_scope_label: string;
     employee_scope: string;
     employee_scope_label: string;
@@ -142,7 +144,7 @@ export type SingleOption = {
 
 export type ScenarioSettingsForm = {
   description: string;
-  role_scope: string;
+  role_scopes: string[];
   employee_scope: string;
   trigger_mode: string;
   target_employee_id: string;

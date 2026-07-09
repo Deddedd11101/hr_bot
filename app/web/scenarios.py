@@ -17,6 +17,8 @@ from ..flow_templates import (
     SEND_MODE_LABELS,
     TARGET_FIELD_LABELS,
     TRIGGER_MODE_LABELS,
+    normalize_role_scope_values,
+    summarize_role_scope,
 )
 from ..models import (
     FlowLaunchRequest,
@@ -350,7 +352,8 @@ def _build_scenario_workspace_payload(
                 "id": scenario.id,
                 "title": scenario.title,
                 "description": scenario.description or "",
-                "role_scope_label": ROLE_SCOPE_LABELS.get(scenario.role_scope, scenario.role_scope),
+                "role_scope_label": summarize_role_scope(scenario.role_scope),
+                "role_scopes": normalize_role_scope_values(scenario.role_scope),
                 "employee_scope_label": EMPLOYEE_SCOPE_LABELS.get(
                     getattr(scenario, "employee_scope", "all"),
                     getattr(scenario, "employee_scope", "all"),
@@ -382,7 +385,8 @@ def _build_scenario_workspace_payload(
                 "title": selected_scenario.title,
                 "description": selected_scenario.description or "",
                 "role_scope": selected_scenario.role_scope,
-                "role_scope_label": ROLE_SCOPE_LABELS.get(selected_scenario.role_scope, selected_scenario.role_scope),
+                "role_scopes": normalize_role_scope_values(selected_scenario.role_scope),
+                "role_scope_label": summarize_role_scope(selected_scenario.role_scope),
                 "employee_scope": getattr(selected_scenario, "employee_scope", "all"),
                 "employee_scope_label": EMPLOYEE_SCOPE_LABELS.get(
                     getattr(selected_scenario, "employee_scope", "all"),

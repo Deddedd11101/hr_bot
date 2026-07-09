@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Optional
+from typing import Iterable, Optional
 
 from .database import SessionLocal
 from .models import FlowStepTemplate, ScenarioTemplate
@@ -17,6 +17,12 @@ ROLE_SCOPE_LABELS = {
     ROLE_SCOPE_PROJECT_MANAGER: "Project manager",
     ROLE_SCOPE_ANALYST: "Аналитик",
 }
+
+ROLE_SCOPE_ORDER = [
+    ROLE_SCOPE_DESIGNER,
+    ROLE_SCOPE_PROJECT_MANAGER,
+    ROLE_SCOPE_ANALYST,
+]
 
 EMPLOYEE_SCOPE_ALL = "all"
 EMPLOYEE_SCOPE_EMPLOYEES = "employees"
@@ -81,6 +87,50 @@ EMPLOYEE_ROLE_VALUES = [
     "Project manager",
     "Аналитик",
 ]
+
+ROLE_SCOPE_POSITION_MAP = {
+    ROLE_SCOPE_DESIGNER: "Дизайнер",
+    ROLE_SCOPE_PROJECT_MANAGER: "Project manager",
+    ROLE_SCOPE_ANALYST: "Аналитик",
+}
+
+
+def normalize_role_scope_values(raw_value: str | Iterable[str] | None) -> list[str]:
+    if raw_value is None:
+        return [ROLE_SCOPE_ALL]
+    if isinstance(raw_value, str):
+        raw_items = [item.strip() for item in raw_value.split(",")]
+    else:
+        raw_items = [str(item).strip() for item in raw_value]
+    allowed = set(ROLE_SCOPE_LABELS)
+    normalized: list[str] = []
+    for item in raw_items:
+        if not item or item not in allowed:
+            continue
+        if item == ROLE_SCOPE_ALL:
+            return [ROLE_SCOPE_ALL]
+        if item not in normalized:
+            normalized.append(item)
+    if not normalized:
+        return [ROLE_SCOPE_ALL]
+    return [value for value in ROLE_SCOPE_ORDER if value in normalized]
+
+
+def serialize_role_scope_values(raw_value: str | Iterable[str] | None) -> str:
+    return ",".join(normalize_role_scope_values(raw_value))
+
+
+def role_scope_labels_for_value(raw_value: str | Iterable[str] | None) -> list[str]:
+    return [ROLE_SCOPE_LABELS.get(value, value) for value in normalize_role_scope_values(raw_value)]
+
+
+def summarize_role_scope(raw_value: str | Iterable[str] | None) -> str:
+    labels = role_scope_labels_for_value(raw_value)
+    if not labels:
+        return ROLE_SCOPE_LABELS[ROLE_SCOPE_ALL]
+    if len(labels) == 1:
+        return labels[0]
+    return ", ".join(labels)
 
 SCENARIO_DEFINITIONS = [
     {

@@ -196,6 +196,16 @@ class ScenarioEngineSmokeTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(matches_role_scope(employee, employee_scenario))
         self.assertFalse(matches_role_scope(candidate, employee_scenario))
 
+    def test_matches_role_scope_accepts_multiple_roles(self) -> None:
+        designer = SimpleNamespace(id=10, employee_stage="staff", desired_position="Дизайнер")
+        analyst = SimpleNamespace(id=11, employee_stage="staff", desired_position="Аналитик")
+        manager = SimpleNamespace(id=12, employee_stage="staff", desired_position="Project manager")
+        scenario = SimpleNamespace(employee_scope="employees", target_employee_id=None, role_scope="designer,analyst")
+
+        self.assertTrue(matches_role_scope(designer, scenario))
+        self.assertTrue(matches_role_scope(analyst, scenario))
+        self.assertFalse(matches_role_scope(manager, scenario))
+
     def test_resolve_tagged_employee_documents_returns_file_backed_offer_slot(self) -> None:
         init_db()
         now = datetime.now(UTC).replace(tzinfo=None)
