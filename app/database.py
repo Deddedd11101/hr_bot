@@ -439,6 +439,26 @@ def _ensure_sqlite_schema() -> None:
             if "response_undo_history" not in progress_columns:
                 conn.execute(text("ALTER TABLE scenario_progress ADD COLUMN response_undo_history TEXT"))
 
+        employee_document_link_columns = {
+            row[1] for row in conn.execute(text("PRAGMA table_info(employee_document_links)")).fetchall()
+        }
+        if employee_document_link_columns:
+            if "slot_key" not in employee_document_link_columns:
+                conn.execute(text("ALTER TABLE employee_document_links ADD COLUMN slot_key TEXT"))
+                conn.execute(
+                    text(
+                        """
+                        UPDATE employee_document_links
+                        SET slot_key = 'offer'
+                        WHERE title = 'Оффер' AND (slot_key IS NULL OR slot_key = '')
+                        """
+                    )
+                )
+            if "item_kind" not in employee_document_link_columns:
+                conn.execute(text("ALTER TABLE employee_document_links ADD COLUMN item_kind TEXT NOT NULL DEFAULT 'link'"))
+            if "employee_file_id" not in employee_document_link_columns:
+                conn.execute(text("ALTER TABLE employee_document_links ADD COLUMN employee_file_id INTEGER"))
+
         survey_answers_info = conn.execute(text("PRAGMA table_info(survey_answers)")).fetchall()
         if not survey_answers_info:
             conn.execute(

@@ -23,6 +23,7 @@ Scenario engine превращает scenario templates плюс employee state 
 - `scenario_progress` — runtime state.
 - `employees` — personalization и field updates.
 - `flow_launch_requests` — delayed или manual launches.
+- `employee_document_links` / `employee_files` — персональные document slots для тегов вида `{doc:...}`.
 - `candidate_work_stage` changes в employee detail — отдельный trigger source для HR-driven candidate lifecycle.
 
 ## Текущие типы шагов
@@ -40,11 +41,12 @@ Scenario engine превращает scenario templates плюс employee state 
 1. Найти scenario и первый step.
 2. Отрендерить step text с employee context.
 3. Отправить text, optional employee card, optional attachment и optional buttons/date calendar.
-4. Сохранить progress в `scenario_progress`, включая короткую историю предыдущих интерактивных шагов и undo-снимок последнего подтвержденного ответа.
-5. Если user response не нужен, auto-advance к следующему step или schedule follow-up delivery.
-6. Если response нужен, ждать text/date/file/button input и применить result к employee state.
-7. Для активного интерактивного шага runtime поддерживает default `Назад`: для text/file это reply button, для date/button/branching — inline button. Откат возвращает на предыдущий интерактивный шаг в рамках текущего незавершенного сценария и откатывает последний подтвержденный ответ: целевое поле карточки, `candidate_status`, survey answer и загруженный file record, если именно этот ответ их создал/изменил.
-8. Если step имеет `response_type=launch_scenario`, runtime теперь завершает текущий progress и сразу вызывает `start_scenario(...)` для `launch_scenario_key`. Раньше это работало только в branch-specific path и ломалось для обычных шагов.
+4. Для `{doc:...}` подставить ссылку либо отправить файл из персонального document slot.
+5. Сохранить progress в `scenario_progress`, включая короткую историю предыдущих интерактивных шагов и undo-снимок последнего подтвержденного ответа.
+6. Если user response не нужен, auto-advance к следующему step или schedule follow-up delivery.
+7. Если response нужен, ждать text/date/file/button input и применить result к employee state.
+8. Для активного интерактивного шага runtime поддерживает default `Назад`: для text/file это reply button, для date/button/branching — inline button. Откат возвращает на предыдущий интерактивный шаг в рамках текущего незавершенного сценария и откатывает последний подтвержденный ответ: целевое поле карточки, `candidate_status`, survey answer и загруженный file record, если именно этот ответ их создал/изменил.
+9. Если step имеет `response_type=launch_scenario`, runtime теперь завершает текущий progress и сразу вызывает `start_scenario(...)` для `launch_scenario_key`. Раньше это работало только в branch-specific path и ломалось для обычных шагов.
 
 ## Launch audit и follow-up jobs
 

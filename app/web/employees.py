@@ -32,6 +32,7 @@ from ..scenario_engine import SINGLE_STEP_REQUEST_PREFIX, add_workdays, get_firs
 from ..time_utils import utc_now
 
 OFFER_DOCUMENT_TITLE = "Оффер"
+OFFER_DOCUMENT_SLOT = "offer"
 
 EMPLOYEE_STAGE_VALUES = {
     "candidate": "Кандидат",
@@ -559,10 +560,19 @@ def _serialize_employee_file(file_row: EmployeeFile, employee_id: int, can_send_
 
 
 def _serialize_document_link(link_row: EmployeeDocumentLink, employee_id: int) -> dict:
+    file_download_url = (
+        f"/employees/{employee_id}/files/{link_row.employee_file_id}/download"
+        if getattr(link_row, "employee_file_id", None)
+        else None
+    )
+    effective_url = file_download_url or link_row.url
     return {
         "id": link_row.id,
+        "slot_key": getattr(link_row, "slot_key", None) or "",
         "title": link_row.title,
-        "url": link_row.url,
+        "url": effective_url,
+        "item_kind": getattr(link_row, "item_kind", "link") or "link",
+        "employee_file_id": getattr(link_row, "employee_file_id", None),
         "scenario_tag": f"{{doc:{link_row.title}}}",
         "delete_url": f"/employees/{employee_id}/document-links/{link_row.id}/delete",
     }
@@ -585,34 +595,139 @@ def _serialize_launch_request(
     }
 
 
+def _get_employee_document_slot(
+    db: Session,
+    employee_id: int,
+    *,
+    slot_key: str,
+) -> Optional[EmployeeDocumentLink]:
+    query = db.query(EmployeeDocumentLink).filter(EmployeeDocumentLink.employee_id == employee_id)
+    if slot_key == OFFER_DOCUMENT_SLOT:
+        query = query.filter(
+            (EmployeeDocumentLink.slot_key == slot_key)
+            | (EmployeeDocumentLink.title == OFFER_DOCUMENT_TITLE)
+        )
+    else:
+        query = query.filter(EmployeeDocumentLink.slot_key == slot_key)
+    return query.order_by(EmployeeDocumentLink.id.asc()).first()
+
+
 def _save_offer_document_link(db: Session, employee_id: int, url: str) -> tuple[Optional[EmployeeDocumentLink], Optional[str]]:
     url_value = url.strip()
     if not url_value:
         return None, "Укажи ссылку на оффер."
 
-    existing_link = (
-        db.query(EmployeeDocumentLink)
-        .filter(
-            EmployeeDocumentLink.employee_id == employee_id,
-            EmployeeDocumentLink.title == OFFER_DOCUMENT_TITLE,
-        )
-        .order_by(EmployeeDocumentLink.id.asc())
-        .first()
-    )
+    existing_link = _get_employee_document_slot(db, employee_id, slot_key=OFFER_DOCUMENT_SLOT)
     if existing_link:
+        previous_file_id = existing_link.employee_file_id
+        existing_link.slot_key = OFFER_DOCUMENT_SLOT
         existing_link.url = url_value
+        existing_link.item_kind = "link"
+        existing_link.employee_file_id = None
         link_row = existing_link
     else:
         link_row = EmployeeDocumentLink(
             employee_id=employee_id,
+            slot_key=OFFER_DOCUMENT_SLOT,
             title=OFFER_DOCUMENT_TITLE,
             url=url_value,
+            item_kind="link",
+            employee_file_id=None,
             created_at=utc_now(),
         )
         db.add(link_row)
+        previous_file_id = None
+    if previous_file_id:
+        previous_file = db.get(EmployeeFile, previous_file_id)
+        if previous_file:
+            previous_path = Path(previous_file.stored_path)
+            try:
+                if previous_path.exists():
+                    previous_path.unlink()
+            except OSError:
+                pass
+            db.delete(previous_file)
     db.commit()
     db.refresh(link_row)
     return link_row, None
+
+
+def _save_offer_document_file(
+    db: Session,
+    employee: Employee,
+    *,
+    filename: str,
+    content: bytes,
+    mime_type: Optional[str],
+) -> EmployeeDocumentLink:
+    destination = build_employee_file_path(employee.id, filename)
+    destination.write_bytes(content)
+    db_file = EmployeeFile(
+        employee_id=employee.id,
+        direction="outbound",
+        category="offer_document",
+        telegram_file_id=None,
+        telegram_file_unique_id=None,
+        original_filename=filename,
+        stored_path=str(destination),
+        mime_type=mime_type,
+        file_size=len(content),
+        created_at=utc_now(),
+    )
+    db.add(db_file)
+    db.flush()
+
+    existing_link = _get_employee_document_slot(db, employee.id, slot_key=OFFER_DOCUMENT_SLOT)
+    previous_file_id = existing_link.employee_file_id if existing_link else None
+    if existing_link:
+        existing_link.slot_key = OFFER_DOCUMENT_SLOT
+        existing_link.url = ""
+        existing_link.item_kind = "file"
+        existing_link.employee_file_id = db_file.id
+        existing_link.title = OFFER_DOCUMENT_TITLE
+        link_row = existing_link
+    else:
+        link_row = EmployeeDocumentLink(
+            employee_id=employee.id,
+            slot_key=OFFER_DOCUMENT_SLOT,
+            title=OFFER_DOCUMENT_TITLE,
+            url="",
+            item_kind="file",
+            employee_file_id=db_file.id,
+            created_at=utc_now(),
+        )
+        db.add(link_row)
+
+    if previous_file_id and previous_file_id != db_file.id:
+        previous_file = db.get(EmployeeFile, previous_file_id)
+        if previous_file:
+            previous_path = Path(previous_file.stored_path)
+            try:
+                if previous_path.exists():
+                    previous_path.unlink()
+            except OSError:
+                pass
+            db.delete(previous_file)
+
+    db.commit()
+    db.refresh(link_row)
+    return link_row
+
+
+def _delete_employee_document_link(db: Session, link_row: EmployeeDocumentLink) -> None:
+    employee_file_id = getattr(link_row, "employee_file_id", None)
+    db.delete(link_row)
+    if employee_file_id:
+        employee_file = db.get(EmployeeFile, employee_file_id)
+        if employee_file:
+            file_path = Path(employee_file.stored_path)
+            try:
+                if file_path.exists():
+                    file_path.unlink()
+            except OSError:
+                pass
+            db.delete(employee_file)
+    db.commit()
 
 
 def _delete_employee_record(db: Session, employee: Employee) -> str:
@@ -651,6 +766,7 @@ def _promote_candidate_to_adaptation(db: Session, employee: Employee) -> Employe
     employee.employee_stage = "adaptation"
     employee.candidate_work_stage = None
     employee.current_menu_set_id = None
+    employee.current_menu_path = None
     if employee.adaptation_midpoint is None:
         employee.adaptation_midpoint = add_workdays(employee.first_workday, settings.PROBATION_WORKDAYS // 2)
     if employee.adaptation_end is None:
@@ -790,11 +906,11 @@ def _build_employee_detail_payload(db: Session, employee: Employee) -> dict:
         db.query(EmployeeDocumentLink)
         .filter(
             EmployeeDocumentLink.employee_id == employee.id,
-            EmployeeDocumentLink.title == OFFER_DOCUMENT_TITLE,
         )
         .order_by(EmployeeDocumentLink.created_at.desc(), EmployeeDocumentLink.id.desc())
         .all()
     )
+    offer_document_link = _get_employee_document_slot(db, employee.id, slot_key=OFFER_DOCUMENT_SLOT)
     scenarios = _available_scenarios_for_employee(db, employee)
     scenario_by_key = {scenario.scenario_key: scenario for scenario in db.query(ScenarioTemplate).all()}
     pending_scheduled_launches = (
@@ -888,6 +1004,7 @@ def _build_employee_detail_payload(db: Session, employee: Employee) -> dict:
         },
         "files": [_serialize_employee_file(file_row, employee.id, bool(primary_chat_id)) for file_row in employee_files],
         "document_links": [_serialize_document_link(link_row, employee.id) for link_row in employee_document_links],
+        "offer_document": _serialize_document_link(offer_document_link, employee.id) if offer_document_link else None,
         "scheduled_launches": [
             _serialize_launch_request(launch_request, scenario_by_key, employee.id)
             for launch_request in pending_scheduled_launches

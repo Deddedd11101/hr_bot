@@ -692,12 +692,18 @@ def format_message(db: Session, template: str, employee: Employee, anchor_date: 
         .all()
     )
     links_by_title = {(link.title or "").strip().lower(): link for link in links}
+    links_by_slot = {
+        (getattr(link, "slot_key", None) or "").strip().lower(): link
+        for link in links
+        if (getattr(link, "slot_key", None) or "").strip()
+    }
 
     def replace_document_tag(match: re.Match[str]) -> str:
         document_title = match.group(1).strip()
         if not document_title:
             return ""
-        link = links_by_title.get(document_title.lower())
+        normalized_key = document_title.lower()
+        link = links_by_title.get(normalized_key) or links_by_slot.get(normalized_key)
         if not link or not (link.url or "").strip():
             return document_title
         href = html.escape(link.url.strip(), quote=True)
@@ -817,6 +823,56 @@ def get_step_send_notifications(db: Session, step_id: int) -> list[StepSendNotif
         .order_by(StepSendNotification.rule_index.asc(), StepSendNotification.id.asc())
         .all()
     )
+
+
+def resolve_tagged_employee_documents(db: Session, template: str, employee: Employee) -> list[EmployeeFile]:
+    if not template.strip():
+        return []
+    links = (
+        db.query(EmployeeDocumentLink)
+        .filter(EmployeeDocumentLink.employee_id == employee.id)
+        .all()
+    )
+    links_by_title = {(link.title or "").strip().lower(): link for link in links}
+    links_by_slot = {
+        (getattr(link, "slot_key", None) or "").strip().lower(): link
+        for link in links
+        if (getattr(link, "slot_key", None) or "").strip()
+    }
+    files: list[EmployeeFile] = []
+    seen_file_ids: set[int] = set()
+    for match in DOCUMENT_TAG_RE.finditer(template):
+        document_key = match.group(1).strip().lower()
+        link = links_by_title.get(document_key) or links_by_slot.get(document_key)
+        if not link or (getattr(link, "item_kind", "link") or "link") != "file":
+            continue
+        employee_file_id = getattr(link, "employee_file_id", None)
+        if not employee_file_id or employee_file_id in seen_file_ids:
+            continue
+        employee_file = db.get(EmployeeFile, employee_file_id)
+        if employee_file:
+            seen_file_ids.add(employee_file_id)
+            files.append(employee_file)
+    return files
+
+
+async def send_tagged_employee_documents(
+    messenger_or_bot: Any,
+    db: Session,
+    chat_id: str,
+    template: str,
+    employee: Employee,
+) -> None:
+    messenger = as_messenger(messenger_or_bot)
+    for employee_file in resolve_tagged_employee_documents(db, template, employee):
+        file_path = Path(employee_file.stored_path)
+        if not file_path.exists():
+            continue
+        filename = employee_file.original_filename or file_path.name
+        if file_path.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}:
+            await messenger.send_photo_path(chat_id=chat_id, path=file_path, filename=filename)
+        else:
+            await messenger.send_document_path(chat_id=chat_id, path=file_path, filename=filename)
 
 
 def get_button_notifications(db: Session, step_id: int, option_index: int) -> list[StepButtonNotification]:
@@ -1088,7 +1144,8 @@ async def send_step(
                 _serialize_step_history(progress, history)
 
     anchor_date = scenario_anchor_date(employee, scenario) or datetime.now(_get_tz()).date()
-    message_text = format_message(db, resolve_step_message_template(step), employee, anchor_date, step.send_time)
+    message_template = resolve_step_message_template(step)
+    message_text = format_message(db, message_template, employee, anchor_date, step.send_time)
     has_attachment = bool((getattr(step, "attachment_path", None) or "").strip())
     send_employee_card = bool(getattr(step, "send_employee_card", False))
     reply_markup = step_reply_markup(step, include_back=include_back)
@@ -1118,6 +1175,7 @@ async def send_step(
             step,
             reply_markup=media_reply_markup,
         )
+    await send_tagged_employee_documents(messenger, db, chat_id, message_template, employee)
     if needs_fallback_inline_buttons_message:
         await messenger.send_text(
             chat_id=chat_id,

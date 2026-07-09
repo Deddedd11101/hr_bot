@@ -680,6 +680,9 @@ export function EmployeeOperationsSection(props: any) {
         opsState,
         offerUrl,
         setOfferUrl,
+        offerFile,
+        setOfferFile,
+        offerDocumentItem,
         payload,
         form,
         scheduleForm,
@@ -689,6 +692,7 @@ export function EmployeeOperationsSection(props: any) {
         fileForm,
         setFileForm,
         handleOfferSubmit,
+        handleOfferFileSubmit,
         handleOfferDelete,
         handleScheduleSubmit,
         handleLaunchSubmit,
@@ -698,7 +702,6 @@ export function EmployeeOperationsSection(props: any) {
         handleDeleteEmployee,
         employeeFileItems,
         hrFileItems,
-        documentItems,
         launchItems,
         manualLaunchItems,
         isCandidate,
@@ -889,14 +892,15 @@ export function EmployeeOperationsSection(props: any) {
             />
 
             <DocumentList
-                title="Ссылки HR"
-                items={documentItems}
-                emptyTitle="Ссылок нет"
+                title="Оффер"
+                items={offerDocumentItem ? [offerDocumentItem] : []}
+                emptyTitle="Оффер пока не добавлен"
             >
+                <div className="employee-ops-stack">
                     <form className="employee-inline-form" onSubmit={handleOfferSubmit}>
                         <FieldGroup>
                             <Field>
-                                <FieldLabel>Новая ссылка</FieldLabel>
+                                <FieldLabel>Ссылка на оффер</FieldLabel>
                                 <Input
                                     type="url"
                                     value={offerUrl}
@@ -909,11 +913,44 @@ export function EmployeeOperationsSection(props: any) {
                             <div className="employee-action-row">
                                 <Button type="submit" variant="outline">
                                     <Link2 data-icon="inline-start" />
-                                    Добавить ссылку
+                                    Сохранить ссылку
                                 </Button>
                             </div>
                         </FieldGroup>
                     </form>
+                    <form className="employee-inline-form" onSubmit={handleOfferFileSubmit}>
+                        <FieldGroup>
+                            <Field>
+                                <FieldLabel>Файл оффера</FieldLabel>
+                                <Input
+                                    id="react-offer-file-input"
+                                    className="employee-file-native"
+                                    type="file"
+                                    onChange={function (event) {
+                                        const file = event.target.files && event.target.files[0] ? event.target.files[0] : null;
+                                        setOfferFile(file);
+                                    }}
+                                />
+                                <div className="employee-file-picker">
+                                    <label
+                                        htmlFor="react-offer-file-input"
+                                        className={buttonVariants({ variant: "outline", size: "sm" })}
+                                    >
+                                        <Upload data-icon="inline-start" />
+                                        Выбрать файл
+                                    </label>
+                                    <span>{offerFile ? offerFile.name : "Файл не выбран"}</span>
+                                </div>
+                            </Field>
+                            <div className="employee-action-row">
+                                <Button type="submit" variant="secondary">
+                                    <Upload data-icon="inline-start" />
+                                    Загрузить оффер
+                                </Button>
+                            </div>
+                        </FieldGroup>
+                    </form>
+                </div>
             </DocumentList>
 
             <DetailCard>

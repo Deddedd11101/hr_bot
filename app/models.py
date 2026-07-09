@@ -298,8 +298,11 @@ class EmployeeDocumentLink(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     employee_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    slot_key: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     url: Mapped[str] = mapped_column(String(2048), nullable=False)
+    item_kind: Mapped[str] = mapped_column(String(16), nullable=False, default="link")
+    employee_file_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
 
 
