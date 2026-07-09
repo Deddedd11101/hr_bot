@@ -34,6 +34,21 @@ source_of_truth: true
 
 ## Записи
 
+### 2026-07-09 15:20 MSK - docs/process - verified SQLite backup and scenario deploy guard
+
+- Workflow commit in `main`: `b972d79`.
+- Deploy ref/commit: `stage` / `4bda586`.
+- GitHub Actions run: `29016881593` -> success.
+- Перед checkout/restart workflow создал SQLite backup через Backup API и выполнил `PRAGMA quick_check`:
+  - `backups/hr_bot.before-deploy.20260709-121959.db`.
+- Fingerprint `scenario_templates` и `flow_step_templates` до/после restart совпал.
+- Stage smoke:
+  - `/app/employees` -> `303`;
+  - `/app/flows/workspace-v2` -> `303`;
+  - Telegram API -> `HTTP/2 302`;
+  - web, worker и WireGuard active; worker log guard прошёл.
+- Открытый риск: backup позволяет восстановление, но для выяснения исторических откатов сценариев всё ещё нужны конкретные timestamp/scenario key и сравнение сохранения через API с последующим deploy.
+
 ### 2026-07-09 14:29 MSK - app deploy - offer document slot
 
 - Deploy ref: `stage`.
