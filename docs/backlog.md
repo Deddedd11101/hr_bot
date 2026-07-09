@@ -24,6 +24,7 @@ source_of_truth: true
 
 # Бэклог HR Bot
 
+Deploy safety: `Deploy Stage` создаёт проверенный SQLite backup и обнаруживает неожиданные изменения scenario templates/steps во время restart.
 Словарь статусов:
 
 - `todo` — согласовано, но не начато

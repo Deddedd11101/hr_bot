@@ -61,7 +61,8 @@ task_tokens:
    - smoke imports;
 4. подключается по SSH через GitHub secrets;
 5. отказывается деплоить, если stage worktree грязный;
-6. выполняет:
+6. до checkout/restart создаёт консистентный SQLite backup через Python `sqlite3.Connection.backup`, проверяет его через `PRAGMA quick_check` и снимает fingerprint таблиц сценариев;
+7. выполняет:
    - `cd "${{ secrets.STAGE_APP_DIR }}"`;
    - `git fetch --prune origin`;
    - `git checkout -B stage-deploy <ref>`;
@@ -74,6 +75,7 @@ task_tokens:
    - HTTP smoke checks;
    - Telegram API reachability check;
    - worker log check на свежие Telegram/network tracebacks.
+8. после restart сверяет fingerprint `scenario_templates` и `flow_step_templates`; неожиданное изменение конфигурации сценариев делает deploy failed и требует анализа созданного backup.
 
 Нужные GitHub secrets:
 
@@ -82,6 +84,7 @@ task_tokens:
 - `STAGE_USERNAME`
 - `STAGE_PASSWORD`
 - `STAGE_APP_DIR`
+- `STAGE_DB_PATH` — optional; абсолютный или относительный к `STAGE_APP_DIR` путь к SQLite. Если secret не задан, используется `hr_bot.db`.
 
 ## Наблюдаемые факты stage
 

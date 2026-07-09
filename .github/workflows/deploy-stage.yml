@@ -67,6 +67,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       DEPLOY_REF: ${{ inputs.ref }}
+      STAGE_DB_PATH: ${{ secrets.STAGE_DB_PATH }}
 
     steps:
       - name: Deploy over SSH
@@ -76,7 +77,7 @@ jobs:
           username: ${{ secrets.STAGE_USERNAME }}
           password: ${{ secrets.STAGE_PASSWORD }}
           port: ${{ secrets.STAGE_PORT }}
-          envs: DEPLOY_REF
+          envs: DEPLOY_REF,STAGE_DB_PATH
           script: |
             set -euo pipefail
             cd "${{ secrets.STAGE_APP_DIR }}"
@@ -85,6 +86,47 @@ jobs:
               git status --short
               exit 1
             fi
+            db_path="${STAGE_DB_PATH:-hr_bot.db}"
+            if [ ! -f "${db_path}" ]; then
+              echo "Stage SQLite database not found: ${db_path}"
+              exit 1
+            fi
+            mkdir -p backups
+            backup_path="backups/hr_bot.before-deploy.$(date +%Y%m%d-%H%M%S).db"
+            scenario_snapshot="$(mktemp)"
+            .venv/bin/python - "${db_path}" "${backup_path}" "${scenario_snapshot}" <<'PY'
+            import json
+            import sqlite3
+            import sys
+
+            source_path, backup_path, snapshot_path = sys.argv[1:4]
+            with sqlite3.connect(source_path) as source, sqlite3.connect(backup_path) as backup:
+                source.backup(backup)
+                result = backup.execute("PRAGMA quick_check").fetchone()
+                if not result or result[0] != "ok":
+                    raise SystemExit(f"SQLite backup integrity check failed: {result}")
+
+                snapshot = {}
+                for table in ("scenario_templates", "flow_step_templates"):
+                    columns = [
+                        row[1]
+                        for row in source.execute(f'PRAGMA table_info("{table}")').fetchall()
+                    ]
+                    rows = source.execute(
+                        f'SELECT * FROM "{table}" ORDER BY id'
+                    ).fetchall()
+                    snapshot[table] = {"columns": columns, "rows": rows}
+                with open(snapshot_path, "w", encoding="utf-8") as handle:
+                    json.dump(
+                        snapshot,
+                        handle,
+                        ensure_ascii=False,
+                        sort_keys=True,
+                        default=str,
+                    )
+
+            print(f"SQLite backup created and verified: {backup_path}")
+            PY
             git fetch --prune origin
             if git rev-parse --verify --quiet "origin/${DEPLOY_REF}^{commit}" >/dev/null; then
               target_ref="origin/${DEPLOY_REF}"
@@ -98,6 +140,33 @@ jobs:
             systemctl is-active --quiet hr-bot-web
             systemctl is-active --quiet hr-bot-worker
             systemctl is-active --quiet wg-quick@redshield
+            .venv/bin/python - "${db_path}" "${scenario_snapshot}" <<'PY'
+            import json
+            import sqlite3
+            import sys
+
+            database_path, snapshot_path = sys.argv[1:3]
+            with open(snapshot_path, encoding="utf-8") as handle:
+                expected = json.load(handle)
+            with sqlite3.connect(database_path) as connection:
+                current = {}
+                for table, table_snapshot in expected.items():
+                    columns = table_snapshot["columns"]
+                    column_list = ", ".join(f'"{column}"' for column in columns)
+                    rows = connection.execute(
+                        f'SELECT {column_list} FROM "{table}" ORDER BY id'
+                    ).fetchall()
+                    current[table] = {
+                        "columns": columns,
+                        "rows": [list(row) for row in rows],
+                    }
+            if current != expected:
+                raise SystemExit(
+                    "Scenario configuration changed during deploy; "
+                    "inspect the verified pre-deploy SQLite backup before continuing."
+                )
+            print("Scenario configuration fingerprint unchanged.")
+            PY
             wait_http_status() {
               path="$1"
               expected="$2"
