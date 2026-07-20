@@ -34,6 +34,40 @@ source_of_truth: true
 
 ## Записи
 
+### 2026-07-21 01:52 MSK - app deploy - bot menu drill-down editor
+
+- Deploy ref: `stage`.
+- Deployed commit: `1b93597`.
+- GitHub Actions run: `29785297424` -> success.
+- В stage включены:
+  - `/app/bot-menu` теперь открывается как drill-down редактор: обзор наборов как папок и вход в конкретный набор через `?set_id=`;
+  - в карточке набора добавлена навигация по родительским и дочерним menu sets;
+  - для кнопок `open_set` добавлен быстрый переход к целевому набору;
+  - root-блок сотрудников, кандидатов и fallback оставлен в верхней части страницы.
+- Локальные проверки перед deploy:
+  - `npm run build` в `D:\HRBot\hr_bot_stage_pipeline\frontend`;
+  - `.\.venv\Scripts\python.exe -m compileall app tests tools`;
+  - `.\.venv\Scripts\python.exe -m unittest tests.test_employee_api_smoke -v` -> 75 tests OK;
+  - `git diff --check`.
+- GitHub Actions preflight:
+  - backend dependencies install;
+  - `compileall`;
+  - `ruff F821`;
+  - backend smoke tests;
+  - frontend build;
+  - smoke imports.
+- Stage safety checks:
+  - verified SQLite backup created before checkout/restart: `backups/hr_bot.before-deploy.20260720-***5206.db` in Actions log;
+  - scenario configuration fingerprint unchanged.
+- Stage smoke checks:
+  - `/app/employees` -> `303` after short restart wait;
+  - `/app/flows/workspace-v2` -> `303`;
+  - Telegram API -> `HTTP/2 302`;
+  - `hr-bot-web`, `hr-bot-worker` и `wg-quick@redshield` passed `systemctl is-active`;
+  - worker log guard did not find fresh `TelegramNetworkError`, `Request timeout`, `Traceback`, `Unclosed client session`.
+- Открытый риск:
+  - ручной visual smoke через Playwright не выполнялся, потому что задача была изолирована как frontend bundle deploy; проверить страницу оператором в браузере после login.
+
 ### 2026-07-09 15:20 MSK - docs/process - verified SQLite backup and scenario deploy guard
 
 - Workflow commit in `main`: `b972d79`.
