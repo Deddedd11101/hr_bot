@@ -1,5 +1,5 @@
 import React from "react";
-import { Plus, Save, Trash2, X } from "lucide-react";
+import { ArrowLeft, FolderOpen, Plus, Save, Trash2, X } from "lucide-react";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -7,6 +7,15 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ConfirmAction } from "@/components/ui/confirm-action";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { Field, FieldContent, FieldGroup, FieldLabel, FieldTitle } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import {
@@ -133,11 +142,10 @@ async function requestBroadcast(path: string, options: RequestInit = {}) {
 function normalizeWorkspace(workspace: Workspace): Workspace {
   return {
     ...workspace,
-    hr_settings: {
+    hr_settings: workspace.hr_settings || {
       default_menu_set_id: null,
       default_employee_menu_set_id: null,
       default_candidate_menu_set_id: null,
-      ...(workspace.hr_settings || {}),
     },
     menu_role_scope_labels: workspace.menu_role_scope_labels || { all: "Для всех ролей" },
     menu_employee_scope_labels:
@@ -294,14 +302,17 @@ function menuSetOptions(menuSets: MenuSet[]): SelectOption[] {
   return menuSets.map((menuSet) => ({ value: String(menuSet.id), label: menuSet.title }));
 }
 
-function rootMenuOptionsForAudience(menuSets: MenuSet[], audience: "employees" | "candidates"): SelectOption[] {
+function rootMenuOptionsForAudience(menuSets: MenuSet[], audience: "all" | "employees" | "candidates"): SelectOption[] {
   return menuSets
     .filter((menuSet) => {
       const scope = menuSet.employee_scope || "all";
       if (audience === "employees") {
         return scope !== "candidates";
       }
-      return scope !== "employees";
+      if (audience === "candidates") {
+        return scope !== "employees";
+      }
+      return true;
     })
     .map((menuSet) => ({ value: String(menuSet.id), label: menuSet.title }));
 }
@@ -479,13 +490,66 @@ function isSendDocumentAction(actionType: string) {
   return actionType === "send_document";
 }
 
+function readSelectedMenuSetId() {
+  if (typeof window === "undefined") return null;
+  const value = Number(new URLSearchParams(window.location.search).get("set_id"));
+  return Number.isInteger(value) && value > 0 ? value : null;
+}
+
+function writeSelectedMenuSetId(menuSetId: number | null) {
+  if (typeof window === "undefined") return;
+  const url = new URL(window.location.href);
+  if (menuSetId) {
+    url.searchParams.set("set_id", String(menuSetId));
+  } else {
+    url.searchParams.delete("set_id");
+  }
+  window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+}
+
+function menuSetTitle(workspace: Workspace, menuSetId: number | null) {
+  if (!menuSetId) return "Не выбран";
+  return workspace.menu_sets.find((menuSet) => menuSet.id === menuSetId)?.title || `Набор #${menuSetId}`;
+}
+
+function childMenuSets(workspace: Workspace, menuSetId: number) {
+  const childIds = new Set(
+    workspace.menu_sets
+      .flatMap((menuSet) => menuSet.buttons)
+      .filter((button) => button.action_type === "open_set" && button.menu_set_id === menuSetId && button.target_menu_set_id)
+      .map((button) => Number(button.target_menu_set_id)),
+  );
+  return workspace.menu_sets.filter((menuSet) => childIds.has(menuSet.id));
+}
+
+function parentMenuSets(workspace: Workspace, menuSetId: number) {
+  const parentIds = new Set(
+    workspace.menu_sets
+      .filter((menuSet) =>
+        menuSet.buttons.some((button) => button.action_type === "open_set" && button.target_menu_set_id === menuSetId),
+      )
+      .map((menuSet) => menuSet.id),
+  );
+  return workspace.menu_sets.filter((menuSet) => parentIds.has(menuSet.id));
+}
+
+function rootBadges(workspace: Workspace, menuSetId: number) {
+  const badges: string[] = [];
+  if (workspace.hr_settings.default_employee_menu_set_id === menuSetId) badges.push("root сотрудников");
+  if (workspace.hr_settings.default_candidate_menu_set_id === menuSetId) badges.push("root кандидатов");
+  if (workspace.hr_settings.default_menu_set_id === menuSetId) badges.push("fallback");
+  return badges;
+}
+
 export function BotMenuPage({ apiUrl }: BotMenuPageProps) {
   const [workspace, setWorkspace] = React.useState<Workspace | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [message, setMessage] = React.useState("");
   const [error, setError] = React.useState("");
   const [newMenuSetTitle, setNewMenuSetTitle] = React.useState("");
+  const [createMenuSetOpen, setCreateMenuSetOpen] = React.useState(false);
   const [buttonDrafts, setButtonDrafts] = React.useState<Record<number, DraftButton>>({});
+  const [selectedMenuSetId, setSelectedMenuSetId] = React.useState<number | null>(() => readSelectedMenuSetId());
 
   React.useEffect(() => {
     requestJson(apiUrl)
@@ -494,6 +558,19 @@ export function BotMenuPage({ apiUrl }: BotMenuPageProps) {
       .finally(() => setLoading(false));
   }, [apiUrl]);
 
+  React.useEffect(() => {
+    if (!workspace || !selectedMenuSetId) return;
+    if (!workspace.menu_sets.some((menuSet) => menuSet.id === selectedMenuSetId)) {
+      setSelectedMenuSetId(null);
+      writeSelectedMenuSetId(null);
+    }
+  }, [workspace, selectedMenuSetId]);
+
+  const navigateToMenuSet = (menuSetId: number | null) => {
+    setSelectedMenuSetId(menuSetId);
+    writeSelectedMenuSetId(menuSetId);
+  };
+
   const setWorkspaceFromApi = async (promise: Promise<Workspace>, successMessage: string) => {
     setError("");
     setMessage("");
@@ -501,8 +578,10 @@ export function BotMenuPage({ apiUrl }: BotMenuPageProps) {
       const nextWorkspace = await promise;
       setWorkspace(normalizeWorkspace(nextWorkspace));
       setMessage(successMessage);
+      return true;
     } catch (err) {
       setError(err instanceof Error ? err.message : "Операция не выполнена");
+      return false;
     }
   };
 
@@ -536,6 +615,27 @@ export function BotMenuPage({ apiUrl }: BotMenuPageProps) {
     });
   };
 
+  const saveMenuSet = async (menuSet: MenuSet) => {
+    setError("");
+    setMessage("");
+    try {
+      let nextWorkspace = await requestJson(`/api/settings/menu-sets/${menuSet.id}`, {
+        method: "POST",
+        body: JSON.stringify(menuSet),
+      });
+      for (const button of menuSet.buttons) {
+        nextWorkspace = await requestJson(`/api/settings/menu-buttons/${button.id}`, {
+          method: "POST",
+          body: JSON.stringify(button),
+        });
+      }
+      setWorkspace(normalizeWorkspace(nextWorkspace));
+      setMessage("Изменения набора сохранены");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Не удалось сохранить набор");
+    }
+  };
+
   if (loading) {
     return (
       <Card className="admin-page-shell border border-border/80 bg-card shadow-none ring-0">
@@ -553,6 +653,9 @@ export function BotMenuPage({ apiUrl }: BotMenuPageProps) {
   }
 
   const menuOptions = menuSetOptions(workspace.menu_sets);
+  const selectedMenuSet = selectedMenuSetId
+    ? workspace.menu_sets.find((menuSet) => menuSet.id === selectedMenuSetId) || null
+    : null;
   const employeeRootMenuOptions = rootMenuOptionsForAudience(workspace.menu_sets, "employees");
   const candidateRootMenuOptions = rootMenuOptionsForAudience(workspace.menu_sets, "candidates");
   const scenarios = scenarioOptions(workspace.available_scenarios);
@@ -573,13 +676,15 @@ export function BotMenuPage({ apiUrl }: BotMenuPageProps) {
       <StatusAlert type="success" message={message} />
       <StatusAlert type="error" message={error} />
 
-      <SettingsCard title="Наборы меню">
+      <SettingsCard title={selectedMenuSet ? selectedMenuSet.title || "Набор меню" : "Наборы меню"}>
         <div className="grid gap-4 rounded-lg border border-border bg-muted/35 p-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto_auto] xl:items-end">
           <Field>
             <FieldLabel>Общий fallback-набор</FieldLabel>
             <AppSelect
               value={workspace.hr_settings.default_menu_set_id ? String(workspace.hr_settings.default_menu_set_id) : ""}
-              onChange={(value) => updateHrSettingsLocal({ default_menu_set_id: value ? Number(value) : null })}
+              onChange={(value) =>
+                updateHrSettingsLocal({ default_menu_set_id: value ? Number(value) : null })
+              }
               options={menuOptions}
               placeholder="Автовыбор по аудитории"
             />
@@ -588,7 +693,9 @@ export function BotMenuPage({ apiUrl }: BotMenuPageProps) {
             <FieldLabel>Главный набор для сотрудников</FieldLabel>
             <AppSelect
               value={workspace.hr_settings.default_employee_menu_set_id ? String(workspace.hr_settings.default_employee_menu_set_id) : ""}
-              onChange={(value) => updateHrSettingsLocal({ default_employee_menu_set_id: value ? Number(value) : null })}
+              onChange={(value) =>
+                updateHrSettingsLocal({ default_employee_menu_set_id: value ? Number(value) : null })
+              }
               options={employeeRootMenuOptions}
               placeholder="Не выбран"
             />
@@ -597,7 +704,9 @@ export function BotMenuPage({ apiUrl }: BotMenuPageProps) {
             <FieldLabel>Главный набор для кандидатов</FieldLabel>
             <AppSelect
               value={workspace.hr_settings.default_candidate_menu_set_id ? String(workspace.hr_settings.default_candidate_menu_set_id) : ""}
-              onChange={(value) => updateHrSettingsLocal({ default_candidate_menu_set_id: value ? Number(value) : null })}
+              onChange={(value) =>
+                updateHrSettingsLocal({ default_candidate_menu_set_id: value ? Number(value) : null })
+              }
               options={candidateRootMenuOptions}
               placeholder="Не выбран"
             />
@@ -631,216 +740,455 @@ export function BotMenuPage({ apiUrl }: BotMenuPageProps) {
             }}
           >
             <Plus data-icon="inline-start" />
-            Разослать главное меню
+            Разослать актуальные root-меню
           </Button>
         </div>
-
-        <div className="grid gap-3 rounded-lg border border-border bg-muted/35 p-3 md:grid-cols-[minmax(260px,1fr)_auto] md:items-end">
-          <Field>
-            <FieldLabel>Новый набор кнопок</FieldLabel>
-            <Input value={newMenuSetTitle} onChange={(event) => setNewMenuSetTitle(event.target.value)} placeholder="Главное меню" autoComplete="off" />
-          </Field>
-          <Button
-            onClick={() =>
-              setWorkspaceFromApi(
-                requestJson("/api/settings/menu-sets", { method: "POST", body: JSON.stringify({ title: newMenuSetTitle }) }),
-                "Набор кнопок создан",
-              ).then(() => setNewMenuSetTitle(""))
-            }
-          >
-            <Plus data-icon="inline-start" />
-            Создать
-          </Button>
+        <div className="rounded-lg border border-border/70 bg-background px-3 py-2 text-sm text-muted-foreground">
+          Для кандидатов и сотрудников можно задать разные главные меню. Если профильный root не указан, бот попробует взять общий fallback-набор, а затем подобрать подходящий набор по аудитории автоматически.
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-2 text-sm text-muted-foreground">
+            {selectedMenuSet ? (
+              <>
+                <Button variant="ghost" size="sm" onClick={() => navigateToMenuSet(null)}>
+                  <ArrowLeft data-icon="inline-start" />
+                  Все наборы
+                </Button>
+                <span className="truncate">/ {selectedMenuSet.title}</span>
+              </>
+            ) : (
+              <span>Выбери набор, чтобы редактировать его отдельно от общей карты меню.</span>
+            )}
+          </div>
+          <Dialog open={createMenuSetOpen} onOpenChange={setCreateMenuSetOpen}>
+            <DialogTrigger render={<Button />}>
+              <Plus data-icon="inline-start" />
+              Создать набор
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Создать набор кнопок</DialogTitle>
+                <DialogDescription>Название можно изменить после создания.</DialogDescription>
+              </DialogHeader>
+              <Field>
+                <FieldLabel>Название</FieldLabel>
+                <Input value={newMenuSetTitle} onChange={(event) => setNewMenuSetTitle(event.target.value)} placeholder="Главное меню" autoComplete="off" />
+              </Field>
+              <DialogFooter>
+                <Button
+                  disabled={!newMenuSetTitle.trim()}
+                  onClick={() =>
+                    setWorkspaceFromApi(
+                      requestJson("/api/settings/menu-sets", { method: "POST", body: JSON.stringify({ title: newMenuSetTitle }) }),
+                      "Набор кнопок создан",
+                    ).then((created) => {
+                      if (!created) return;
+                      setNewMenuSetTitle("");
+                      setCreateMenuSetOpen(false);
+                    })
+                  }
+                >
+                  Создать
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </div>
 
-        <div className="grid gap-4">
-          {workspace.menu_sets.map((menuSet) => {
-            const draft = buttonDrafts[menuSet.id] || { label: "", action_type: "inactive", scenario_key: "", target_menu_set_id: "", document_item_id: "" };
-            return (
-              <Card key={menuSet.id} size="sm" className="border border-border bg-background shadow-none ring-0">
-                <CardHeader className="border-b border-border/70 pb-3">
-                  <div className="grid gap-3 xl:grid-cols-[1fr_1fr_auto] xl:items-end">
-                    <Field>
-                      <FieldLabel>Название набора</FieldLabel>
-                      <Input value={menuSet.title} onChange={(event) => updateMenuSetLocal(menuSet.id, { title: event.target.value })} autoComplete="off" />
-                    </Field>
-                    <Field>
-                      <FieldLabel>Описание</FieldLabel>
-                      <Input value={menuSet.description} onChange={(event) => updateMenuSetLocal(menuSet.id, { description: event.target.value })} autoComplete="off" />
-                    </Field>
-                    <div className="flex gap-2 xl:justify-end">
-                      <Button variant="secondary" onClick={() => setWorkspaceFromApi(requestJson(`/api/settings/menu-sets/${menuSet.id}`, { method: "POST", body: JSON.stringify(menuSet) }), "Набор сохранен")}>
-                        <Save data-icon="inline-start" />
-                        Сохранить
+        {selectedMenuSet ? (
+          <div className="grid gap-4 xl:grid-cols-[280px_minmax(0,1fr)]">
+            <Card size="sm" className="border border-border bg-background shadow-none ring-0">
+              <CardHeader className="border-b border-border/70 pb-3">
+                <CardTitle className="text-sm font-semibold">Навигация</CardTitle>
+              </CardHeader>
+              <CardContent className="grid gap-3 pt-3">
+                <Button variant="secondary" className="justify-start" onClick={() => navigateToMenuSet(null)}>
+                  <FolderOpen data-icon="inline-start" />
+                  Все наборы
+                </Button>
+                <div className="grid gap-2">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Родители</div>
+                  {parentMenuSets(workspace, selectedMenuSet.id).length ? (
+                    parentMenuSets(workspace, selectedMenuSet.id).map((menuSet) => (
+                      <Button key={menuSet.id} variant="ghost" className="justify-start" onClick={() => navigateToMenuSet(menuSet.id)}>
+                        {menuSet.title}
                       </Button>
-                      <ConfirmAction
-                        title="Удалить набор меню?"
-                        description="Набор и его кнопки будут удалены из меню бота. Это действие нельзя отменить."
-                        onConfirm={() => setWorkspaceFromApi(requestJson(`/api/settings/menu-sets/${menuSet.id}`, { method: "DELETE" }), "Набор удален")}
-                      >
-                        <Button variant="outline" size="icon" aria-label="Удалить набор">
-                          <Trash2 />
-                        </Button>
-                      </ConfirmAction>
+                    ))
+                  ) : (
+                    <div className="rounded-lg border border-dashed border-border px-3 py-2 text-sm text-muted-foreground">
+                      В этот набор пока никто не ведет.
+                    </div>
+                  )}
+                </div>
+                <div className="grid gap-2">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Вложенные наборы</div>
+                  {childMenuSets(workspace, selectedMenuSet.id).length ? (
+                    childMenuSets(workspace, selectedMenuSet.id).map((menuSet) => (
+                      <Button key={menuSet.id} variant="ghost" className="justify-start" onClick={() => navigateToMenuSet(menuSet.id)}>
+                        {menuSet.title}
+                      </Button>
+                    ))
+                  ) : (
+                    <div className="rounded-lg border border-dashed border-border px-3 py-2 text-sm text-muted-foreground">
+                      Вложенных наборов нет.
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card size="sm" className="border border-border bg-background shadow-none ring-0">
+              <CardHeader className="border-b border-border/70 pb-3">
+                <div className="grid gap-3 xl:grid-cols-[1fr_1fr_auto] xl:items-end">
+                  <Field>
+                    <FieldLabel>Название набора</FieldLabel>
+                    <Input
+                      value={selectedMenuSet.title}
+                      onChange={(event) => updateMenuSetLocal(selectedMenuSet.id, { title: event.target.value })}
+                      autoComplete="off"
+                    />
+                  </Field>
+                  <Field>
+                    <FieldLabel>Описание</FieldLabel>
+                    <Input
+                      value={selectedMenuSet.description}
+                      onChange={(event) => updateMenuSetLocal(selectedMenuSet.id, { description: event.target.value })}
+                      autoComplete="off"
+                    />
+                  </Field>
+                  <div className="flex gap-2 xl:justify-end">
+                    <Button variant="secondary" onClick={() => saveMenuSet(selectedMenuSet)}>
+                      <Save data-icon="inline-start" />
+                      Сохранить
+                    </Button>
+                    <ConfirmAction
+                      title="Удалить набор меню?"
+                      description="Набор и его кнопки будут удалены из меню бота. Это действие нельзя отменить."
+                      onConfirm={() =>
+                        setWorkspaceFromApi(
+                          requestJson(`/api/settings/menu-sets/${selectedMenuSet.id}`, { method: "DELETE" }),
+                          "Набор удален",
+                        ).then((deleted) => {
+                          if (deleted) navigateToMenuSet(null);
+                        })
+                      }
+                    >
+                      <Button variant="outline" size="icon" aria-label="Удалить набор">
+                        <Trash2 />
+                      </Button>
+                    </ConfirmAction>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="grid gap-4 pt-4">
+                <div className="flex flex-wrap gap-2">
+                  {rootBadges(workspace, selectedMenuSet.id).map((badge) => (
+                    <Badge key={badge} variant="secondary">
+                      {badge}
+                    </Badge>
+                  ))}
+                  <Badge variant="outline">{selectedMenuSet.buttons.length} кнопок</Badge>
+                  <Badge variant="outline">{childMenuSets(workspace, selectedMenuSet.id).length} вложенных наборов</Badge>
+                </div>
+
+                <div className="grid gap-4 rounded-lg border border-border bg-muted/35 p-3 lg:grid-cols-2">
+                  <Field>
+                    <FieldLabel>Аудитория</FieldLabel>
+                    <AppSelect
+                      value={selectedMenuSet.employee_scope}
+                      onChange={(value) => updateMenuSetLocal(selectedMenuSet.id, { employee_scope: value })}
+                      options={menuEmployeeScopeOptions}
+                      allowEmpty={false}
+                    />
+                  </Field>
+                  <Field>
+                    <FieldLabel>Должность</FieldLabel>
+                    <AppSelect
+                      value={selectedMenuSet.role_scope}
+                      onChange={(value) => updateMenuSetLocal(selectedMenuSet.id, { role_scope: value })}
+                      options={menuRoleOptions}
+                      allowEmpty={false}
+                      placeholder="Все должности"
+                    />
+                  </Field>
+                  <EmployeeTargetSelect
+                    workspace={workspace}
+                    menuSet={selectedMenuSet}
+                    onChange={(ids) => updateMenuSetLocal(selectedMenuSet.id, { target_employee_ids: ids })}
+                  />
+                </div>
+
+                <div className="grid gap-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <h3 className="text-base font-semibold">Кнопки набора</h3>
+                      <p className="text-sm text-muted-foreground">Редактируется только текущая “папка”, без раскрытия всех меню сразу.</p>
                     </div>
                   </div>
-                </CardHeader>
-                <CardContent className="grid gap-3 pt-4">
-                  <div className="grid gap-4 rounded-lg border border-border bg-muted/35 p-3 lg:grid-cols-2">
-                    <Field>
-                      <FieldLabel>Аудитория</FieldLabel>
-                      <AppSelect
-                        value={menuSet.employee_scope}
-                        onChange={(value) => updateMenuSetLocal(menuSet.id, { employee_scope: value })}
-                        options={menuEmployeeScopeOptions}
-                        allowEmpty={false}
-                      />
-                    </Field>
-                    <Field>
-                      <FieldLabel>Должность</FieldLabel>
-                      <AppSelect
-                        value={menuSet.role_scope}
-                        onChange={(value) => updateMenuSetLocal(menuSet.id, { role_scope: value })}
-                        options={menuRoleOptions}
-                        allowEmpty={false}
-                        placeholder="Все должности"
-                      />
-                    </Field>
-                    <EmployeeTargetSelect
-                      workspace={workspace}
-                      menuSet={menuSet}
-                      onChange={(ids) => updateMenuSetLocal(menuSet.id, { target_employee_ids: ids })}
-                    />
-                  </div>
 
-                  {menuSet.buttons.map((button) => (
-                    <div key={button.id} className="grid gap-3 rounded-lg border border-border bg-muted/35 p-3">
-                      <div className="grid gap-3 xl:grid-cols-[1.1fr_0.8fr_auto] xl:items-end">
-                        <Field>
-                          <FieldLabel>Название кнопки</FieldLabel>
-                          <Input value={button.label} onChange={(event) => updateMenuButtonLocal(button.id, { label: event.target.value })} placeholder="Кнопка" autoComplete="off" />
-                        </Field>
-                        <Field>
-                          <FieldLabel>Действие</FieldLabel>
-                          <AppSelect value={button.action_type} onChange={(value) => updateMenuButtonLocal(button.id, actionTypePatch(value))} options={actionTypeOptions} allowEmpty={false} />
-                        </Field>
-                        <div className="flex gap-2 xl:justify-end">
-                          <Button variant="secondary" size="icon" aria-label="Сохранить кнопку" onClick={() => setWorkspaceFromApi(requestJson(`/api/settings/menu-buttons/${button.id}`, { method: "POST", body: JSON.stringify(button) }), "Кнопка сохранена")}>
-                            <Save />
-                          </Button>
-                          <ConfirmAction
-                            title="Удалить кнопку?"
-                            description="Кнопка исчезнет из этого набора меню. Это действие нельзя отменить."
-                            onConfirm={() => setWorkspaceFromApi(requestJson(`/api/settings/menu-buttons/${button.id}`, { method: "DELETE" }), "Кнопка удалена")}
-                          >
-                            <Button variant="outline" size="icon" aria-label="Удалить кнопку">
-                              <Trash2 />
-                            </Button>
-                          </ConfirmAction>
+                  {selectedMenuSet.buttons.length ? (
+                    selectedMenuSet.buttons.map((button) => (
+                      <div key={button.id} className="grid gap-3 rounded-lg border border-border bg-muted/35 p-3">
+                        <div className="grid gap-3 xl:grid-cols-[1.1fr_0.8fr_auto] xl:items-end">
+                          <Field>
+                            <FieldLabel>Название кнопки</FieldLabel>
+                            <Input
+                              value={button.label}
+                              onChange={(event) => updateMenuButtonLocal(button.id, { label: event.target.value })}
+                              placeholder="Кнопка"
+                              autoComplete="off"
+                            />
+                          </Field>
+                          <Field>
+                            <FieldLabel>Действие</FieldLabel>
+                            <AppSelect
+                              value={button.action_type}
+                              onChange={(value) => updateMenuButtonLocal(button.id, actionTypePatch(value))}
+                              options={actionTypeOptions}
+                              allowEmpty={false}
+                            />
+                          </Field>
+                          <div className="flex gap-2 xl:justify-end">
+                            {isOpenSetAction(button.action_type) && button.target_menu_set_id ? (
+                              <Button variant="secondary" onClick={() => navigateToMenuSet(Number(button.target_menu_set_id))}>
+                                Открыть набор
+                              </Button>
+                            ) : null}
+                            <ConfirmAction
+                              title="Удалить кнопку?"
+                              description="Кнопка исчезнет из этого набора меню. Это действие нельзя отменить."
+                              onConfirm={() =>
+                                setWorkspaceFromApi(
+                                  requestJson(`/api/settings/menu-buttons/${button.id}`, { method: "DELETE" }),
+                                  "Кнопка удалена",
+                                )
+                              }
+                            >
+                              <Button variant="outline" size="icon" aria-label="Удалить кнопку">
+                                <Trash2 />
+                              </Button>
+                            </ConfirmAction>
+                          </div>
+                        </div>
+                        <div className="grid gap-3 xl:grid-cols-3">
+                          <Field>
+                            <FieldLabel>Сценарий</FieldLabel>
+                            <AppSelect
+                              value={button.scenario_key}
+                              onChange={(value) => updateMenuButtonLocal(button.id, { scenario_key: value })}
+                              options={scenarios}
+                              placeholder={isScenarioAction(button.action_type) ? "Сценарий" : "Недоступно для этого действия"}
+                              disabled={!isScenarioAction(button.action_type)}
+                            />
+                          </Field>
+                          <Field>
+                            <FieldLabel>Набор для перехода</FieldLabel>
+                            <AppSelect
+                              value={button.target_menu_set_id ? String(button.target_menu_set_id) : ""}
+                              onChange={(value) => updateMenuButtonLocal(button.id, { target_menu_set_id: value ? Number(value) : null })}
+                              options={menuOptions}
+                              placeholder={isOpenSetAction(button.action_type) ? "Набор" : "Недоступно для этого действия"}
+                              disabled={!isOpenSetAction(button.action_type)}
+                            />
+                          </Field>
+                          <Field>
+                            <FieldLabel>Документ</FieldLabel>
+                            <AppSelect
+                              value={button.document_item_id ? String(button.document_item_id) : ""}
+                              onChange={(value) => updateMenuButtonLocal(button.id, { document_item_id: value ? Number(value) : null })}
+                              options={workspace.document_options || []}
+                              placeholder={isSendDocumentAction(button.action_type) ? "Документ" : "Недоступно для этого действия"}
+                              disabled={!isSendDocumentAction(button.action_type)}
+                            />
+                          </Field>
                         </div>
                       </div>
-                      <div className="grid gap-3 xl:grid-cols-3">
-                        <Field>
-                          <FieldLabel>Сценарий</FieldLabel>
-                          <AppSelect
-                            value={button.scenario_key}
-                            onChange={(value) => updateMenuButtonLocal(button.id, { scenario_key: value })}
-                            options={scenarios}
-                            placeholder={isScenarioAction(button.action_type) ? "Сценарий" : "Недоступно для этого действия"}
-                            disabled={!isScenarioAction(button.action_type)}
-                          />
-                        </Field>
-                        <Field>
-                          <FieldLabel>Набор для перехода</FieldLabel>
-                          <AppSelect
-                            value={button.target_menu_set_id ? String(button.target_menu_set_id) : ""}
-                            onChange={(value) => updateMenuButtonLocal(button.id, { target_menu_set_id: value ? Number(value) : null })}
-                            options={menuOptions}
-                            placeholder={isOpenSetAction(button.action_type) ? "Набор" : "Недоступно для этого действия"}
-                            disabled={!isOpenSetAction(button.action_type)}
-                          />
-                        </Field>
-                        <Field>
-                          <FieldLabel>Документ</FieldLabel>
-                          <AppSelect
-                            value={button.document_item_id ? String(button.document_item_id) : ""}
-                            onChange={(value) => updateMenuButtonLocal(button.id, { document_item_id: value ? Number(value) : null })}
-                            options={workspace.document_options || []}
-                            placeholder={isSendDocumentAction(button.action_type) ? "Документ" : "Недоступно для этого действия"}
-                            disabled={!isSendDocumentAction(button.action_type)}
-                          />
-                        </Field>
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        Активно только одно целевое поле. При смене действия несовместимые значения очищаются автоматически.
-                      </div>
+                    ))
+                  ) : (
+                    <div className="rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
+                      В этом наборе пока нет кнопок.
                     </div>
-                  ))}
+                  )}
 
-                  <div className="grid gap-3 rounded-lg border border-dashed border-border p-3">
-                    <div className="grid gap-3 xl:grid-cols-[1.1fr_0.8fr_auto] xl:items-end">
-                      <Field>
-                        <FieldLabel>Название кнопки</FieldLabel>
-                        <Input value={draft.label} onChange={(event) => setButtonDrafts((current) => ({ ...current, [menuSet.id]: { ...draft, label: event.target.value } }))} placeholder="Новая кнопка" autoComplete="off" />
-                      </Field>
-                      <Field>
-                        <FieldLabel>Действие</FieldLabel>
-                        <AppSelect value={draft.action_type} onChange={(value) => setButtonDrafts((current) => ({ ...current, [menuSet.id]: { ...draft, ...draftActionTypePatch(value) } }))} options={actionTypeOptions} allowEmpty={false} />
-                      </Field>
-                      <Button
-                        aria-label="Создать кнопку"
-                        onClick={() =>
-                          setWorkspaceFromApi(
-                            requestJson(`/api/settings/menu-sets/${menuSet.id}/buttons`, { method: "POST", body: JSON.stringify(draft) }),
-                            "Кнопка создана",
-                          ).then(() => setButtonDrafts((current) => ({ ...current, [menuSet.id]: { label: "", action_type: "inactive", scenario_key: "", target_menu_set_id: "", document_item_id: "" } })))
-                        }
-                      >
-                        <Plus data-icon="inline-start" />
-                        Создать
-                      </Button>
+                  {(() => {
+                    const draft =
+                      buttonDrafts[selectedMenuSet.id] || {
+                        label: "",
+                        action_type: "inactive",
+                        scenario_key: "",
+                        target_menu_set_id: "",
+                        document_item_id: "",
+                      };
+                    return (
+                      <div className="grid gap-3 rounded-lg border border-dashed border-border p-3">
+                        <div className="grid gap-3 xl:grid-cols-[1.1fr_0.8fr_auto] xl:items-end">
+                          <Field>
+                            <FieldLabel>Новая кнопка</FieldLabel>
+                            <Input
+                              value={draft.label}
+                              onChange={(event) =>
+                                setButtonDrafts((current) => ({
+                                  ...current,
+                                  [selectedMenuSet.id]: { ...draft, label: event.target.value },
+                                }))
+                              }
+                              placeholder="Новая кнопка"
+                              autoComplete="off"
+                            />
+                          </Field>
+                          <Field>
+                            <FieldLabel>Действие</FieldLabel>
+                            <AppSelect
+                              value={draft.action_type}
+                              onChange={(value) =>
+                                setButtonDrafts((current) => ({
+                                  ...current,
+                                  [selectedMenuSet.id]: { ...draft, ...draftActionTypePatch(value) },
+                                }))
+                              }
+                              options={actionTypeOptions}
+                              allowEmpty={false}
+                            />
+                          </Field>
+                          <Button
+                            aria-label="Создать кнопку"
+                            onClick={() =>
+                              setWorkspaceFromApi(
+                                requestJson(`/api/settings/menu-sets/${selectedMenuSet.id}/buttons`, {
+                                  method: "POST",
+                                  body: JSON.stringify(draft),
+                                }),
+                                "Кнопка создана",
+                              ).then((created) => {
+                                if (!created) return;
+                                setButtonDrafts((current) => ({
+                                  ...current,
+                                  [selectedMenuSet.id]: {
+                                    label: "",
+                                    action_type: "inactive",
+                                    scenario_key: "",
+                                    target_menu_set_id: "",
+                                    document_item_id: "",
+                                  },
+                                }));
+                              })
+                            }
+                          >
+                            <Plus data-icon="inline-start" />
+                            Создать
+                          </Button>
+                        </div>
+                        <div className="grid gap-3 xl:grid-cols-3">
+                          <Field>
+                            <FieldLabel>Сценарий</FieldLabel>
+                            <AppSelect
+                              value={draft.scenario_key}
+                              onChange={(value) =>
+                                setButtonDrafts((current) => ({
+                                  ...current,
+                                  [selectedMenuSet.id]: { ...draft, scenario_key: value },
+                                }))
+                              }
+                              options={scenarios}
+                              placeholder={isScenarioAction(draft.action_type) ? "Сценарий" : "Недоступно для этого действия"}
+                              disabled={!isScenarioAction(draft.action_type)}
+                            />
+                          </Field>
+                          <Field>
+                            <FieldLabel>Набор для перехода</FieldLabel>
+                            <AppSelect
+                              value={draft.target_menu_set_id}
+                              onChange={(value) =>
+                                setButtonDrafts((current) => ({
+                                  ...current,
+                                  [selectedMenuSet.id]: { ...draft, target_menu_set_id: value },
+                                }))
+                              }
+                              options={menuOptions}
+                              placeholder={isOpenSetAction(draft.action_type) ? "Набор" : "Недоступно для этого действия"}
+                              disabled={!isOpenSetAction(draft.action_type)}
+                            />
+                          </Field>
+                          <Field>
+                            <FieldLabel>Документ</FieldLabel>
+                            <AppSelect
+                              value={draft.document_item_id}
+                              onChange={(value) =>
+                                setButtonDrafts((current) => ({
+                                  ...current,
+                                  [selectedMenuSet.id]: { ...draft, document_item_id: value },
+                                }))
+                              }
+                              options={workspace.document_options || []}
+                              placeholder={isSendDocumentAction(draft.action_type) ? "Документ" : "Недоступно для этого действия"}
+                              disabled={!isSendDocumentAction(draft.action_type)}
+                            />
+                          </Field>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        ) : (
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+            <div className="grid gap-3 sm:grid-cols-2">
+              {workspace.menu_sets.map((menuSet) => {
+                const childCount = childMenuSets(workspace, menuSet.id).length;
+                const parentCount = parentMenuSets(workspace, menuSet.id).length;
+                return (
+                  <button
+                    key={menuSet.id}
+                    type="button"
+                    onClick={() => navigateToMenuSet(menuSet.id)}
+                    className="group rounded-xl border border-border bg-background p-4 text-left shadow-none transition-colors hover:border-primary/40 hover:bg-muted/40 focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] focus-visible:outline-none"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="truncate text-base font-semibold">{menuSet.title}</div>
+                        <div className="mt-1 line-clamp-2 text-sm text-muted-foreground">
+                          {menuSet.description || "Описание не задано"}
+                        </div>
+                      </div>
+                      <FolderOpen className="size-5 shrink-0 text-muted-foreground transition-colors group-hover:text-primary" />
                     </div>
-                    <div className="grid gap-3 xl:grid-cols-3">
-                      <Field>
-                        <FieldLabel>Сценарий</FieldLabel>
-                        <AppSelect
-                          value={draft.scenario_key}
-                          onChange={(value) => setButtonDrafts((current) => ({ ...current, [menuSet.id]: { ...draft, scenario_key: value } }))}
-                          options={scenarios}
-                          placeholder={isScenarioAction(draft.action_type) ? "Сценарий" : "Недоступно для этого действия"}
-                          disabled={!isScenarioAction(draft.action_type)}
-                        />
-                      </Field>
-                      <Field>
-                        <FieldLabel>Набор для перехода</FieldLabel>
-                        <AppSelect
-                          value={draft.target_menu_set_id}
-                          onChange={(value) => setButtonDrafts((current) => ({ ...current, [menuSet.id]: { ...draft, target_menu_set_id: value } }))}
-                          options={menuOptions}
-                          placeholder={isOpenSetAction(draft.action_type) ? "Набор" : "Недоступно для этого действия"}
-                          disabled={!isOpenSetAction(draft.action_type)}
-                        />
-                      </Field>
-                      <Field>
-                        <FieldLabel>Документ</FieldLabel>
-                        <AppSelect
-                          value={draft.document_item_id}
-                          onChange={(value) => setButtonDrafts((current) => ({ ...current, [menuSet.id]: { ...draft, document_item_id: value } }))}
-                          options={workspace.document_options || []}
-                          placeholder={isSendDocumentAction(draft.action_type) ? "Документ" : "Недоступно для этого действия"}
-                          disabled={!isSendDocumentAction(draft.action_type)}
-                        />
-                      </Field>
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      {rootBadges(workspace, menuSet.id).map((badge) => (
+                        <Badge key={badge} variant="secondary">
+                          {badge}
+                        </Badge>
+                      ))}
+                      <Badge variant="outline">{menuSet.buttons.length} кнопок</Badge>
+                      <Badge variant="outline">{childCount} внутри</Badge>
+                      {parentCount ? <Badge variant="outline">{parentCount} входов</Badge> : null}
                     </div>
-                    <div className="text-xs text-muted-foreground">
-                      Активно только одно целевое поле. При смене действия несовместимые значения очищаются автоматически.
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
+                  </button>
+                );
+              })}
+            </div>
+            <Card size="sm" className="border border-border bg-background shadow-none ring-0">
+              <CardHeader className="border-b border-border/70 pb-3">
+                <CardTitle className="text-sm font-semibold">Root-наборы</CardTitle>
+              </CardHeader>
+              <CardContent className="grid gap-3 pt-3 text-sm">
+                <button type="button" className="rounded-lg border border-border p-3 text-left hover:bg-muted/40" onClick={() => navigateToMenuSet(workspace.hr_settings.default_employee_menu_set_id)}>
+                  <div className="font-semibold">Сотрудники</div>
+                  <div className="text-muted-foreground">{menuSetTitle(workspace, workspace.hr_settings.default_employee_menu_set_id)}</div>
+                </button>
+                <button type="button" className="rounded-lg border border-border p-3 text-left hover:bg-muted/40" onClick={() => navigateToMenuSet(workspace.hr_settings.default_candidate_menu_set_id)}>
+                  <div className="font-semibold">Кандидаты</div>
+                  <div className="text-muted-foreground">{menuSetTitle(workspace, workspace.hr_settings.default_candidate_menu_set_id)}</div>
+                </button>
+                <button type="button" className="rounded-lg border border-border p-3 text-left hover:bg-muted/40" onClick={() => navigateToMenuSet(workspace.hr_settings.default_menu_set_id)}>
+                  <div className="font-semibold">Fallback</div>
+                  <div className="text-muted-foreground">{menuSetTitle(workspace, workspace.hr_settings.default_menu_set_id)}</div>
+                </button>
+              </CardContent>
+            </Card>
+          </div>
+        )}
       </SettingsCard>
     </div>
   );
