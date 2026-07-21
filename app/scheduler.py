@@ -32,6 +32,13 @@ from .scenario_engine import (
 )
 from .time_utils import utc_now
 
+IMMEDIATE_TRIGGER_MODES = {
+    "manual_only",
+    "bot_registration",
+    "scenario_transition",
+    "manager_assigned_adaptation",
+}
+
 
 def _get_tz():
     return tz_get(settings.TIMEZONE)
@@ -167,7 +174,7 @@ async def run_scheduled_step(bot, employee_id: int, scenario_key: str, step_key:
         if not matches_role_scope(employee, scenario):
             return
         if (
-            scenario.trigger_mode not in {"manual_only", "bot_registration", "scenario_transition"}
+            scenario.trigger_mode not in IMMEDIATE_TRIGGER_MODES
             and not scenario_anchor_date(employee, scenario)
         ):
             return
@@ -277,7 +284,7 @@ async def schedule_all_employees(scheduler: AsyncIOScheduler, bot) -> None:
         employees = _load_all_employees(db)
         scenarios = _load_scenarios(db)
         scheduled_scenarios = [
-            scenario for scenario in scenarios if scenario.trigger_mode not in {"manual_only", "bot_registration", "scenario_transition"}
+            scenario for scenario in scenarios if scenario.trigger_mode not in IMMEDIATE_TRIGGER_MODES
         ]
 
         for employee in employees:
@@ -348,7 +355,7 @@ async def schedule_all_employees(scheduler: AsyncIOScheduler, bot) -> None:
                 request.processed_at = utc_now()
                 continue
             if (
-                scenario.trigger_mode not in {"manual_only", "bot_registration", "scenario_transition"}
+                scenario.trigger_mode not in IMMEDIATE_TRIGGER_MODES
                 and not scenario_anchor_date(employee, scenario)
             ):
                 request.processed_at = utc_now()

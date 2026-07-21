@@ -270,6 +270,7 @@ class EmployeeApiSmokeTests(unittest.TestCase):
                 created_at=now,
                 is_flow_scheduled=False,
                 employee_stage="staff",
+                is_manager=True,
             )
             mentor_adaptation = Employee(
                 full_name=f"Mentor Adaptation {self.unique_tag}",
@@ -278,6 +279,7 @@ class EmployeeApiSmokeTests(unittest.TestCase):
                 created_at=now,
                 is_flow_scheduled=False,
                 employee_stage="staff",
+                is_mentor=True,
             )
             mentor_ipr = Employee(
                 full_name=f"Mentor IPR {self.unique_tag}",
@@ -286,17 +288,29 @@ class EmployeeApiSmokeTests(unittest.TestCase):
                 created_at=now,
                 is_flow_scheduled=False,
                 employee_stage="staff",
+                is_mentor=True,
+            )
+            plain_staff = Employee(
+                full_name=f"Plain Staff {self.unique_tag}",
+                telegram_user_id="700004",
+                first_workday=None,
+                created_at=now,
+                is_flow_scheduled=False,
+                employee_stage="staff",
             )
             db.add(manager)
             db.add(mentor_adaptation)
             db.add(mentor_ipr)
+            db.add(plain_staff)
             db.commit()
             db.refresh(manager)
             db.refresh(mentor_adaptation)
             db.refresh(mentor_ipr)
+            db.refresh(plain_staff)
             manager_id = manager.id
             mentor_adaptation_id = mentor_adaptation.id
             mentor_ipr_id = mentor_ipr.id
+            plain_staff_id = plain_staff.id
 
         response = self.client.post(
             f"/api/employees/{self.employee_id}",
@@ -309,6 +323,8 @@ class EmployeeApiSmokeTests(unittest.TestCase):
                 "birth_date": "1999-04-10",
                 "work_email": "employee@example.com",
                 "work_hours": "10:00-19:00",
+                "is_manager": True,
+                "is_mentor": True,
                 "manager_employee_id": str(manager_id),
                 "mentor_adaptation_employee_id": str(mentor_adaptation_id),
                 "mentor_ipr_employee_id": str(mentor_ipr_id),
@@ -332,25 +348,117 @@ class EmployeeApiSmokeTests(unittest.TestCase):
         self.assertEqual(payload["employee"]["manager_employee_id"], str(manager_id))
         self.assertEqual(payload["employee"]["mentor_adaptation_employee_id"], str(mentor_adaptation_id))
         self.assertEqual(payload["employee"]["mentor_ipr_employee_id"], str(mentor_ipr_id))
+        self.assertTrue(payload["employee"]["is_manager"])
+        self.assertTrue(payload["employee"]["is_mentor"])
         self.assertEqual(payload["employee"]["adaptation_tasks_url"], "https://example.com/tasks")
         self.assertEqual(payload["employee"]["adaptation_feedback_url"], "https://example.com/feedback")
         self.assertEqual(payload["employee"]["adaptation_midpoint"], "2026-06-24")
         self.assertEqual(payload["employee"]["adaptation_end"], "2026-07-10")
         self.assertTrue(any(option["value"] == str(manager_id) for option in payload["options"]["staff_employee_values"]))
+        self.assertTrue(any(option["value"] == str(manager_id) for option in payload["options"]["manager_employee_values"]))
+        self.assertFalse(any(option["value"] == str(plain_staff_id) for option in payload["options"]["manager_employee_values"]))
+        self.assertTrue(any(option["value"] == str(mentor_adaptation_id) for option in payload["options"]["mentor_employee_values"]))
+        self.assertFalse(any(option["value"] == str(plain_staff_id) for option in payload["options"]["mentor_employee_values"]))
 
         with SessionLocal() as db:
             employee = db.get(Employee, self.employee_id)
             self.assertEqual(employee.manager_employee_id, manager_id)
             self.assertEqual(employee.mentor_adaptation_employee_id, mentor_adaptation_id)
             self.assertEqual(employee.mentor_ipr_employee_id, mentor_ipr_id)
+            self.assertTrue(employee.is_manager)
+            self.assertTrue(employee.is_mentor)
             self.assertEqual(employee.manager_telegram_id, "700001")
             self.assertEqual(employee.adaptation_midpoint.isoformat(), "2026-06-24")
             self.assertEqual(employee.adaptation_end.isoformat(), "2026-07-10")
 
-            for related_employee_id in (manager_id, mentor_adaptation_id, mentor_ipr_id):
+            for related_employee_id in (manager_id, mentor_adaptation_id, mentor_ipr_id, plain_staff_id):
                 related_employee = db.get(Employee, related_employee_id)
                 if related_employee is not None:
                     db.delete(related_employee)
+            db.commit()
+
+    def test_update_employee_api_enqueues_manager_trigger_for_adaptation_assignment(self) -> None:
+        scenario_key = f"manager_assign_{self.unique_tag}"
+        with SessionLocal() as db:
+            employee = db.get(Employee, self.employee_id)
+            self.assertIsNotNone(employee)
+            employee.employee_stage = "adaptation"
+            employee.first_workday = datetime(2026, 6, 10).date()
+            manager = Employee(
+                full_name=f"Manager Trigger {self.unique_tag}",
+                telegram_user_id="710001",
+                first_workday=None,
+                created_at=datetime.now(UTC).replace(tzinfo=None),
+                is_flow_scheduled=False,
+                employee_stage="staff",
+                is_manager=True,
+            )
+            scenario = ScenarioTemplate(
+                scenario_key=scenario_key,
+                title=f"Manager Trigger {self.unique_tag}",
+                sort_order=10,
+                scenario_kind="scenario",
+                role_scope="all",
+                employee_scope="employees",
+                trigger_mode="manager_assigned_adaptation",
+            )
+            db.add(manager)
+            db.add(scenario)
+            db.commit()
+            db.refresh(manager)
+            manager_id = manager.id
+
+        response = self.client.post(
+            f"/api/employees/{self.employee_id}",
+            json={
+                "full_name": "API Smoke Employee",
+                "chat_id": "",
+                "chat_handle": "",
+                "first_workday": "2026-06-10",
+                "desired_position": "Аналитик",
+                "birth_date": "1999-04-10",
+                "work_email": "employee@example.com",
+                "work_hours": "10:00-19:00",
+                "is_manager": False,
+                "is_mentor": False,
+                "manager_employee_id": str(manager_id),
+                "mentor_adaptation_employee_id": "",
+                "mentor_ipr_employee_id": "",
+                "adaptation_tasks_url": "",
+                "adaptation_feedback_url": "",
+                "adaptation_midpoint": "",
+                "adaptation_end": "",
+                "employee_stage": "adaptation",
+                "candidate_work_stage": "",
+                "salary_expectation": "",
+                "personal_data_consent": False,
+                "employee_data_consent": True,
+                "is_bot_blocked": False,
+                "test_task_due_at": "",
+                "notes": "",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        with SessionLocal() as db:
+            request_row = (
+                db.query(FlowLaunchRequest)
+                .filter(
+                    FlowLaunchRequest.employee_id == manager_id,
+                    FlowLaunchRequest.flow_key == scenario_key,
+                    FlowLaunchRequest.launch_type == "trigger",
+                    FlowLaunchRequest.processed_at.is_(None),
+                )
+                .first()
+            )
+            self.assertIsNotNone(request_row)
+            manager = db.get(Employee, manager_id)
+            scenario = db.query(ScenarioTemplate).filter(ScenarioTemplate.scenario_key == scenario_key).first()
+            if manager is not None:
+                db.delete(manager)
+            if scenario is not None:
+                db.delete(scenario)
             db.commit()
 
     def test_promote_candidate_to_adaptation_api_switches_employee_stage(self) -> None:

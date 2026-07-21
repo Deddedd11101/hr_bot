@@ -82,6 +82,8 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
                             employee_stage_values: [],
                             candidate_work_stage_values: [],
                             staff_employee_values: [],
+                            manager_employee_values: [],
+                            mentor_employee_values: [],
                             scenarios: [],
                         },
                         payload.options || {},
