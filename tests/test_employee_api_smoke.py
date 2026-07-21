@@ -461,6 +461,62 @@ class EmployeeApiSmokeTests(unittest.TestCase):
                 db.delete(scenario)
             db.commit()
 
+    def test_employee_detail_payload_keeps_selected_manager_and_mentors_visible_when_flags_missing(self) -> None:
+        with SessionLocal() as db:
+            employee = db.get(Employee, self.employee_id)
+            self.assertIsNotNone(employee)
+            employee.employee_stage = "staff"
+            manager = Employee(
+                full_name=f"Legacy Manager {self.unique_tag}",
+                telegram_user_id="720001",
+                first_workday=None,
+                created_at=datetime.now(UTC).replace(tzinfo=None),
+                is_flow_scheduled=False,
+                employee_stage="staff",
+                is_manager=False,
+            )
+            mentor_adaptation = Employee(
+                full_name=f"Legacy Adapt Mentor {self.unique_tag}",
+                telegram_user_id="720002",
+                first_workday=None,
+                created_at=datetime.now(UTC).replace(tzinfo=None),
+                is_flow_scheduled=False,
+                employee_stage="staff",
+                is_mentor=False,
+            )
+            mentor_ipr = Employee(
+                full_name=f"Legacy IPR Mentor {self.unique_tag}",
+                telegram_user_id="720003",
+                first_workday=None,
+                created_at=datetime.now(UTC).replace(tzinfo=None),
+                is_flow_scheduled=False,
+                employee_stage="staff",
+                is_mentor=False,
+            )
+            db.add_all([manager, mentor_adaptation, mentor_ipr])
+            db.commit()
+            db.refresh(manager)
+            db.refresh(mentor_adaptation)
+            db.refresh(mentor_ipr)
+            employee.manager_employee_id = manager.id
+            employee.mentor_adaptation_employee_id = mentor_adaptation.id
+            employee.mentor_ipr_employee_id = mentor_ipr.id
+            db.commit()
+
+            payload = self.client.get(f"/api/employees/{self.employee_id}").json()
+            manager_values = payload["options"]["manager_employee_values"]
+            mentor_values = payload["options"]["mentor_employee_values"]
+
+            self.assertTrue(any(option["value"] == str(manager.id) for option in manager_values))
+            self.assertTrue(any(option["value"] == str(mentor_adaptation.id) for option in mentor_values))
+            self.assertTrue(any(option["value"] == str(mentor_ipr.id) for option in mentor_values))
+
+            for related_employee in (manager, mentor_adaptation, mentor_ipr):
+                row = db.get(Employee, related_employee.id)
+                if row is not None:
+                    db.delete(row)
+            db.commit()
+
     def test_promote_candidate_to_adaptation_api_switches_employee_stage(self) -> None:
         with SessionLocal() as db:
             employee = db.get(Employee, self.employee_id)
