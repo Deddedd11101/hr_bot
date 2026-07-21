@@ -34,6 +34,40 @@ source_of_truth: true
 
 ## Записи
 
+### 2026-07-21 17:23 MSK - app deploy - keep assigned staff visible in employee selects
+
+- Deploy ref: `stage`.
+- Deployed commit: `9ccda70`.
+- GitHub Actions run: `29838783742` -> success.
+- В stage включено:
+  - employee detail payload теперь всегда добавляет уже выбранных `manager_employee_id`, `mentor_adaptation_employee_id` и `mentor_ipr_employee_id` в соответствующие option lists;
+  - это предотвращает отображение сырого numeric id в селектах руководителя/наставников, если текущий выбранный человек еще не размечен `is_manager=true` или `is_mentor=true`.
+- Локальные проверки перед deploy:
+  - `.\.venv\Scripts\python.exe -m compileall app tests tools`;
+  - focused employee detail tests -> 2 tests OK;
+  - `.\.venv\Scripts\python.exe -m ruff check --select F821 app tests`;
+  - `.\.venv\Scripts\python.exe -m unittest tests.test_employee_api_smoke tests.test_messaging_identity tests.test_scenario_engine_smoke tests.test_scheduler_smoke -v` -> 104 tests OK;
+  - `git diff --check HEAD~1..HEAD`.
+- GitHub Actions preflight:
+  - backend dependencies install;
+  - `compileall`;
+  - `ruff F821`;
+  - backend smoke tests;
+  - frontend build;
+  - smoke imports.
+- Stage safety checks:
+  - verified SQLite backup created before checkout/restart: `backups/hr_bot.before-deploy.20260721-142327.db`;
+  - scenario configuration fingerprint unchanged.
+- Stage smoke checks:
+  - `/app/employees` -> `303`;
+  - `/app/flows/workspace-v2` -> `303`;
+  - Telegram API -> `HTTP/2 302`;
+  - `hr-bot-web`, `hr-bot-worker` и `wg-quick@redshield` passed `systemctl is-active`;
+  - worker log guard did not find fresh `TelegramNetworkError`, `Request timeout`, `Traceback`, `Unclosed client session`;
+  - deploy job завершился успешно и вывел `9ccda70`.
+- Открытый риск:
+  - это compatibility guard для старых данных; для нового назначения руководителей/наставников все равно нужно корректно размечать сотрудников role flags.
+
 ### 2026-07-21 17:14 MSK - app deploy - manager assignment scenario trigger
 
 - Deploy ref: `stage`.
