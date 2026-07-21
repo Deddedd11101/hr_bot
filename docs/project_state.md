@@ -51,7 +51,7 @@ source_of_truth: true
 - Telegram bot умеет отправлять шаги, собирать text/files/button responses и писать progress в SQLite.
 - Mass actions, onboarding scheduler и scenario portability tooling уже есть в коде.
 - Unknown Telegram users больше не создают candidate records автоматически.
-- Для штатных сотрудников выбран и реализован первый устойчивый linking flow: unknown или username-only staff user не привязывается автоматически, а подтверждает рабочую почту `work_email` через OTP; кандидаты при этом не получают обратно self-registration.
+- Для штатных сотрудников выбран и реализован первый устойчивый linking flow: known staff user не привязывается автоматически, а подтверждает рабочую почту `work_email` через OTP. Параллельно `/start` для нераспознанного пользователя снова может создавать candidate-card и запускать candidate registration scenario, но только как controlled HR entrypoint.
 - Bot access можно заблокировать per employee через `is_bot_blocked`.
 - Bot menu navigation перестала зависеть только от `/start`: у пользователя теперь может храниться stack подменю, runtime умеет `Назад` / `Главное меню`, а админка получила явный выбор root menu set и server-side broadcast главного меню для уже привязанных пользователей.
 - Root-логика bot menu стала явнее: кроме общего fallback набора теперь можно отдельно назначать главный набор для сотрудников и для кандидатов, а `/app/bot-menu` показывает это как явные audience-specific roots вместо прежнего полускрытого scoring-поведения.
@@ -174,7 +174,7 @@ source_of_truth: true
 - Для backend-слоя главный structural шаг уже завершен: `main.py` стал composition root, а vertical slices `employees`, `bulk-actions`, `settings`, `scenario/surveys` вынесены в `app/web/*` с green smoke после каждого этапа.
 - Следующий backend-шаг теперь не “еще один slice”, а финальный cleanup после декомпозиции: parity-pass remaining classic surfaces, точечное удаление ненужных fallback pages и отдельная нормализация shared helpers/tests там, где ownership уже разнесен.
 - После структурных pass по `employees-list`, `scenario-workspace` и `employee detail` следующий frontend-шаг уже не очередной split файлов, а parity-pass и последовательное удаление classic-only хвостов без rollback gap.
-- После выбора `HRB-DISC-01` следующий identity-шаг уже не “как бы еще поискать сотрудника”, а product-решение по invite/self-service кандидатов и по lifecycle-переходу `candidate -> staff`, чтобы `/start` окончательно перестал смешивать разные аудитории.
+- После выбора `HRB-DISC-01` следующий identity-шаг уже не “как бы еще поискать сотрудника”, а product-решение по lifecycle-переходу `candidate -> staff` и по защите candidate auto-create на случай, если бот выйдет за пределы controlled HR-distribution.
 - После текущей стабилизации следующий продуктовый модуль — `HRB-P2-06` отпуска MVP; Telegram Mini Apps не начинать как отдельный frontend до решения `HRB-DISC-03` по scope/auth/API boundaries.
 - `HRB-DISC-04` определить модель раздельного хранения данных для двух ИП; `HRB-P2-07` не начинать без LLD, потому что это влияет на БД, deploy/runbook, backup и UI context.
 - `HRB-DISC-05` определить модель ролей и доступа админки до расширения account management: директору может быть нужен operational доступ без права управлять аккаунтами, а технический `admin` должен быть отделен от ежедневной HR-работы.

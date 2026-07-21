@@ -1138,20 +1138,58 @@ class EmployeeApiSmokeTests(unittest.TestCase):
             self.assertTrue(messenger.sent_menus)
             self.assertEqual(
                 messenger.sent_menus[-1][2],
-                [ENTRY_SEND_CODE_BUTTON_TEXT, ENTRY_ENTER_EMAIL_BUTTON_TEXT, ENTRY_CANDIDATE_BUTTON_TEXT, "Отмена"],
+                [ENTRY_SEND_CODE_BUTTON_TEXT, ENTRY_ENTER_EMAIL_BUTTON_TEXT, "Отмена"],
             )
 
-    def test_bot_start_does_not_create_candidate_when_card_is_missing(self) -> None:
+    def test_bot_start_creates_candidate_when_card_is_missing(self) -> None:
         with SessionLocal() as db:
             unique_suffix = uuid4().hex[:12]
             chat_id = str(910000000000 + (int(unique_suffix, 16) % 100000000000))
+            messenger = DummyMessenger()
+            scenario = ScenarioTemplate(
+                scenario_key=f"codex_start_candidate_{self.unique_tag}",
+                title=f"codex-start-candidate-{self.unique_tag}",
+                sort_order=10,
+                scenario_kind="scenario",
+                role_scope="all",
+                employee_scope="candidates",
+                trigger_mode="bot_registration",
+            )
+            step = FlowStepTemplate(
+                flow_key=scenario.scenario_key,
+                step_key=f"{scenario.scenario_key}_step_1",
+                step_title="Старт кандидата",
+                sort_order=10,
+                default_text="Добро пожаловать в стартовый сценарий кандидата.",
+                response_type="none",
+                send_mode="immediate",
+                day_offset_workdays=0,
+            )
             before_count = db.query(Employee).count()
+            db.add(scenario)
+            db.add(step)
+            db.commit()
 
-            employee, created = get_or_create_employee_by_chat(db, chat_id, f"new_candidate_{unique_suffix}")
+            asyncio.run(handle_start_command(messenger, db, chat_id, f"new_candidate_{unique_suffix}"))
 
-            self.assertFalse(created)
-            self.assertIsNone(employee)
-            self.assertEqual(db.query(Employee).count(), before_count)
+            created_employee = (
+                db.query(Employee)
+                .filter(Employee.telegram_user_id == chat_id)
+                .order_by(Employee.id.desc())
+                .first()
+            )
+            self.assertIsNotNone(created_employee)
+            self.assertEqual(db.query(Employee).count(), before_count + 1)
+            self.assertEqual(created_employee.employee_stage, "candidate")
+            self.assertEqual(created_employee.candidate_status, "new")
+            self.assertEqual(created_employee.candidate_work_stage, "new")
+            self.assertEqual(created_employee.telegram_link_method, "candidate_start")
+            self.assertTrue(
+                any(
+                    sent_chat_id == chat_id and bool(text.strip())
+                    for sent_chat_id, text in messenger.sent_texts
+                )
+            )
 
     def test_bot_start_links_existing_candidate_by_public_username(self) -> None:
         with SessionLocal() as db:
@@ -1178,6 +1216,7 @@ class EmployeeApiSmokeTests(unittest.TestCase):
         with SessionLocal() as db:
             employee = db.get(Employee, self.employee_id)
             self.assertIsNotNone(employee)
+            employee.telegram_username = f"@staff_{self.unique_tag}"
             employee.employee_stage = "staff"
             employee.candidate_work_stage = None
             employee.work_email = f"{self.unique_tag}@company.test"
@@ -1219,11 +1258,11 @@ class EmployeeApiSmokeTests(unittest.TestCase):
             db.commit()
             messenger = DummyMessenger()
 
-            asyncio.run(handle_start_command(messenger, db, "777888999", None))
+            asyncio.run(handle_start_command(messenger, db, "777888999", f"staff_{self.unique_tag}".upper()))
             self.assertTrue(messenger.sent_menus)
-            self.assertEqual(messenger.sent_menus[-1][2], [ENTRY_EMPLOYEE_BUTTON_TEXT, ENTRY_CANDIDATE_BUTTON_TEXT])
+            self.assertEqual(messenger.sent_menus[-1][2], [ENTRY_SEND_CODE_BUTTON_TEXT, ENTRY_ENTER_EMAIL_BUTTON_TEXT, "Отмена"])
 
-            result = asyncio.run(handle_text_event(messenger, db, "777888999", None, ENTRY_EMPLOYEE_BUTTON_TEXT))
+            result = asyncio.run(handle_text_event(messenger, db, "777888999", None, ENTRY_ENTER_EMAIL_BUTTON_TEXT))
             self.assertEqual(result, "handled")
 
             result = asyncio.run(handle_text_event(messenger, db, "777888999", None, employee.work_email))

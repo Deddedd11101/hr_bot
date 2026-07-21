@@ -17,6 +17,7 @@ from ..scenario_engine import (
     handle_date_response_by_step_id,
     handle_file_response,
     handle_text_response,
+    matches_role_scope,
     start_scenario,
 )
 from ..time_utils import utc_now
@@ -414,6 +415,44 @@ def _username_hint_employee(db: Session, username: Optional[str]) -> Optional[Em
     return find_employee_by_public_chat_handle(db, channel="telegram", external_username=username)
 
 
+def _registration_scenario_for_candidate(db: Session, employee: Employee) -> Optional[ScenarioTemplate]:
+    scenarios = (
+        db.query(ScenarioTemplate)
+        .filter(
+            ScenarioTemplate.scenario_kind == "scenario",
+            ScenarioTemplate.trigger_mode == "bot_registration",
+        )
+        .order_by(ScenarioTemplate.sort_order, ScenarioTemplate.id)
+        .all()
+    )
+    for scenario in scenarios:
+        if matches_role_scope(employee, scenario):
+            return scenario
+    return None
+
+
+def create_candidate_employee_by_chat(db: Session, chat_user_id: str, username: Optional[str]) -> Employee:
+    employee = Employee(
+        full_name=None,
+        telegram_user_id=None,
+        telegram_username=None,
+        created_at=utc_now(),
+        is_flow_scheduled=False,
+        is_bot_blocked=False,
+        candidate_status="new",
+        candidate_work_stage="new",
+        employee_stage="candidate",
+    )
+    db.add(employee)
+    db.flush()
+    set_public_chat_handle(employee, username, db=db)
+    set_primary_chat_id(employee, chat_user_id, db=db)
+    mark_employee_telegram_verified(employee, "candidate_start")
+    db.commit()
+    db.refresh(employee)
+    return employee
+
+
 async def _send_entry_menu(messenger: MessengerClient, chat_user_id: str) -> None:
     await messenger.send_menu(
         chat_id=chat_user_id,
@@ -469,7 +508,7 @@ async def _send_hint_based_staff_link_menu(messenger: MessengerClient, chat_user
                 "Мы нашли вашу карточку сотрудника по Telegram username, но рабочая почта в системе не заполнена. "
                 "Обратитесь в HR, чтобы завершить привязку."
             ),
-            buttons=[ENTRY_EMPLOYEE_BUTTON_TEXT, ENTRY_CANDIDATE_BUTTON_TEXT],
+            buttons=[ENTRY_ENTER_EMAIL_BUTTON_TEXT, ENTRY_CANCEL_BUTTON_TEXT],
         )
         return
     await messenger.send_menu(
@@ -478,7 +517,7 @@ async def _send_hint_based_staff_link_menu(messenger: MessengerClient, chat_user
             f"Мы нашли вашу карточку сотрудника. "
             f"Можем отправить код подтверждения на {mask_email(work_email)}."
         ),
-        buttons=[ENTRY_SEND_CODE_BUTTON_TEXT, ENTRY_ENTER_EMAIL_BUTTON_TEXT, ENTRY_CANDIDATE_BUTTON_TEXT, ENTRY_CANCEL_BUTTON_TEXT],
+        buttons=[ENTRY_SEND_CODE_BUTTON_TEXT, ENTRY_ENTER_EMAIL_BUTTON_TEXT, ENTRY_CANCEL_BUTTON_TEXT],
     )
 
 
@@ -546,15 +585,10 @@ async def _handle_link_session_text(
             db.commit()
             await _send_staff_email_prompt(messenger, chat_user_id)
             return True
-        if normalized_text == ENTRY_CANDIDATE_BUTTON_TEXT:
-            session.state = LINK_STATE_CANDIDATE_HELP
-            db.commit()
-            await _send_candidate_help(messenger, chat_user_id)
-            return True
         if normalized_text == ENTRY_CANCEL_BUTTON_TEXT:
-            reset_link_session(db, channel="telegram", external_user_id=chat_user_id, external_username=username)
+            clear_link_session(db, channel="telegram", external_user_id=chat_user_id)
             db.commit()
-            await _send_entry_menu(messenger, chat_user_id)
+            await messenger.send_text(chat_id=chat_user_id, text=UNKNOWN_USER_TEXT)
             return True
         db.commit()
         await _send_hint_based_staff_link_menu(messenger, chat_user_id, employee)
@@ -562,14 +596,9 @@ async def _handle_link_session_text(
 
     if session.state == LINK_STATE_AWAITING_EMAIL:
         if normalized_text == ENTRY_CANCEL_BUTTON_TEXT:
-            reset_link_session(db, channel="telegram", external_user_id=chat_user_id, external_username=username)
+            clear_link_session(db, channel="telegram", external_user_id=chat_user_id)
             db.commit()
-            await _send_entry_menu(messenger, chat_user_id)
-            return True
-        if normalized_text == ENTRY_CANDIDATE_BUTTON_TEXT:
-            session.state = LINK_STATE_CANDIDATE_HELP
-            db.commit()
-            await _send_candidate_help(messenger, chat_user_id)
+            await messenger.send_text(chat_id=chat_user_id, text=UNKNOWN_USER_TEXT)
             return True
         employee = find_staff_by_work_email(db, normalized_text)
         if employee is None:
@@ -605,9 +634,9 @@ async def _handle_link_session_text(
             await messenger.send_text(chat_id=chat_user_id, text=BLOCKED_USER_TEXT)
             return True
         if normalized_text == ENTRY_CANCEL_BUTTON_TEXT:
-            reset_link_session(db, channel="telegram", external_user_id=chat_user_id, external_username=username)
+            clear_link_session(db, channel="telegram", external_user_id=chat_user_id)
             db.commit()
-            await _send_entry_menu(messenger, chat_user_id)
+            await messenger.send_text(chat_id=chat_user_id, text=UNKNOWN_USER_TEXT)
             return True
         if normalized_text == ENTRY_CHANGE_EMAIL_BUTTON_TEXT:
             session.state = LINK_STATE_AWAITING_EMAIL
@@ -708,14 +737,19 @@ async def handle_start_command(messenger: MessengerClient, db: Session, chat_use
         await _send_hint_based_staff_link_menu(messenger, chat_user_id, hinted_employee)
         return
 
-    reset_link_session(
+    clear_link_session(
         db,
         channel="telegram",
         external_user_id=chat_user_id,
-        external_username=username,
     )
-    db.commit()
-    await _send_entry_menu(messenger, chat_user_id)
+    employee = create_candidate_employee_by_chat(db, chat_user_id, username)
+    scenario = _registration_scenario_for_candidate(db, employee)
+    if scenario and await start_scenario(messenger, db, employee, scenario.scenario_key):
+        return
+    await messenger.send_text(
+        chat_id=chat_user_id,
+        text="Привет! Я HR-бот. Ваша карточка кандидата создана.",
+    )
 
 
 async def save_incoming_file(
