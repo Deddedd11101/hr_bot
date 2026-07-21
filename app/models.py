@@ -66,6 +66,16 @@ class Employee(Base):
         nullable=True,
         doc="Рабочие часы сотрудника.",
     )
+    telegram_verified_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime,
+        nullable=True,
+        doc="Когда Telegram-привязка сотрудника была подтверждена.",
+    )
+    telegram_link_method: Mapped[Optional[str]] = mapped_column(
+        String(64),
+        nullable=True,
+        doc="Способ привязки Telegram: email_otp | username_match | admin_manual | legacy.",
+    )
     profile_photo_path: Mapped[Optional[str]] = mapped_column(
         String(1024),
         nullable=True,
@@ -213,6 +223,35 @@ class EmployeeMessengerAccount(Base):
         default=True,
         doc="Активен ли этот канал связи.",
     )
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+
+
+class EmployeeLinkSession(Base):
+    """Временная сессия привязки сотрудника к боту до завершения OTP-подтверждения."""
+
+    __tablename__ = "employee_link_sessions"
+    __table_args__ = (
+        UniqueConstraint("channel", "external_user_id", name="uq_employee_link_sessions_channel_user"),
+        Index("ix_employee_link_sessions_employee_id", "employee_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    employee_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    channel: Mapped[str] = mapped_column(String(32), nullable=False, default="telegram")
+    external_user_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    external_username: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    state: Mapped[str] = mapped_column(
+        String(64),
+        nullable=False,
+        default="choose_audience",
+        doc="choose_audience | username_match | awaiting_email | awaiting_otp | candidate_help",
+    )
+    pending_email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    otp_code_hash: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    otp_expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    otp_attempts_left: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    last_code_sent_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
 

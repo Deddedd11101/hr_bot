@@ -4,8 +4,9 @@ from functools import lru_cache
 from dotenv import load_dotenv
 
 
-# .env имеет приоритет над переменными окружения shell, чтобы удобно было демить
-load_dotenv(override=True)
+# По умолчанию runtime env (systemd, shell, CI secrets) важнее локального .env.
+# Для локального демо можно явно включить DOTENV_OVERRIDE=true.
+load_dotenv(override=os.getenv("DOTENV_OVERRIDE", "false").lower() in {"1", "true", "yes"})
 
 
 class Settings:
@@ -16,6 +17,10 @@ class Settings:
 
     # Telegram
     TELEGRAM_BOT_TOKEN: str = os.getenv("TELEGRAM_BOT_TOKEN", "")
+    TELEGRAM_PROXY_URL: str = os.getenv("TELEGRAM_PROXY_URL", "")
+    TELEGRAM_LINK_OTP_TTL_MINUTES: int = int(os.getenv("TELEGRAM_LINK_OTP_TTL_MINUTES", "10"))
+    TELEGRAM_LINK_OTP_MAX_ATTEMPTS: int = int(os.getenv("TELEGRAM_LINK_OTP_MAX_ATTEMPTS", "5"))
+    TELEGRAM_LINK_OTP_RESEND_COOLDOWN_SECONDS: int = int(os.getenv("TELEGRAM_LINK_OTP_RESEND_COOLDOWN_SECONDS", "60"))
 
     # Таймзона для расписания (для простоты — системная)
     TIMEZONE: str = os.getenv("TIMEZONE", "Europe/Moscow")
@@ -39,8 +44,21 @@ class Settings:
     # Локальное хранение файлов кандидатов/сотрудников
     FILE_STORAGE_DIR: str = os.getenv("FILE_STORAGE_DIR", "./storage/employee_files")
 
+    # SMTP для OTP-писем сотрудникам
+    SMTP_HOST: str = os.getenv("SMTP_HOST", "")
+    SMTP_PORT: int = int(os.getenv("SMTP_PORT", "465"))
+    SMTP_USERNAME: str = os.getenv("SMTP_USERNAME", "")
+    SMTP_PASSWORD: str = os.getenv("SMTP_PASSWORD", "")
+    SMTP_FROM_EMAIL: str = os.getenv("SMTP_FROM_EMAIL", "")
+    SMTP_FROM_NAME: str = os.getenv("SMTP_FROM_NAME", "HR Bot")
+    SMTP_USE_SSL: bool = os.getenv("SMTP_USE_SSL", "true").lower() in {"1", "true", "yes"}
+    SMTP_USE_STARTTLS: bool = os.getenv("SMTP_USE_STARTTLS", "false").lower() in {"1", "true", "yes"}
+    SMTP_TIMEOUT_SECONDS: int = int(os.getenv("SMTP_TIMEOUT_SECONDS", "15"))
+
     # Сессии админки
     ADMIN_SESSION_SECRET: str = os.getenv("ADMIN_SESSION_SECRET", "change-me-admin-session-secret")
+    ADMIN_SESSION_MAX_AGE_SECONDS: int = int(os.getenv("ADMIN_SESSION_MAX_AGE_SECONDS", str(60 * 60 * 12)))
+    ADMIN_SESSION_COOKIE_SECURE: bool = os.getenv("ADMIN_SESSION_COOKIE_SECURE", "false").lower() in {"1", "true", "yes"}
 
     # Базовые аккаунты админки
     DEFAULT_ADMIN_LOGIN: str = os.getenv("DEFAULT_ADMIN_LOGIN", "admin")

@@ -19,6 +19,7 @@ from ..messaging.identity import (
     set_public_chat_handle,
     sync_legacy_telegram_account,
 )
+from ..messaging.verification import mark_employee_telegram_verified, normalize_email
 from ..models import Employee, EmployeeDocumentLink, EmployeeFile, FlowLaunchRequest, ScenarioTemplate
 from ..scenario_engine import add_workdays, get_first_step, get_scenario_steps, matches_role_scope, start_scenario
 from ..time_utils import utc_now
@@ -405,6 +406,8 @@ def _apply_employee_update(
 
     employee.full_name = full_name.strip() or None
     _apply_employee_telegram_identity(employee, chat_id=chat_id, chat_handle=chat_handle, db=db)
+    if _looks_like_numeric_chat_id(chat_id):
+        mark_employee_telegram_verified(employee, "admin_manual")
     employee.first_workday = first_day
     normalized_position = desired_position.strip()
     employee.desired_position = normalized_position or None
@@ -444,7 +447,7 @@ def _apply_employee_update(
             field_title="Наставник ИПР",
         )
         employee.birth_date = parsed_birth_date
-        employee.work_email = work_email.strip() or None
+        employee.work_email = normalize_email(work_email) or None
         employee.work_hours = work_hours.strip() or None
         employee.manager_employee_id = manager_employee.id if manager_employee else None
         employee.mentor_adaptation_employee_id = mentor_adaptation_employee.id if mentor_adaptation_employee else None

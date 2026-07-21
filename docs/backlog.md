@@ -72,7 +72,7 @@ source_of_truth: true
 
 | Token | Статус | Название | Описание |
 | --- | --- | --- | --- |
-| `HRB-DISC-01` | `todo` | Способ идентификации текущих сотрудников в боте | Выбрать продуктовый механизм привязки сотрудника, который не проходил подбор через бота. |
+| `HRB-DISC-01` | `done` | Способ идентификации текущих сотрудников в боте | Принята модель staff-linking через OTP на `work_email`: username допустим только как hint, unknown candidate self-registration не возвращается. См. [[decisions/2026-07-21-staff-telegram-email-otp-linking]] и [[features/bot-identity]]. |
 | `HRB-DISC-02` | `todo` | Перевод кандидата в сотрудника | Спроектировать явный переход состояния и смену интерфейса бота после найма. |
 | `HRB-DISC-03` | `todo` | Scope и auth для Telegram Mini Apps | Определить первый mini app, Telegram identity/auth модель, API boundaries и rollout после отпусков. |
 | `HRB-DISC-04` | `todo` | Разделение данных для двух ИП | Подтвердить legal/data requirement и выбрать модель изоляции: две БД, два deployment-контура или другая схема с жестким разделением данных. |

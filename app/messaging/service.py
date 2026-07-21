@@ -4,6 +4,7 @@ from typing import Literal, NamedTuple, Optional
 
 from sqlalchemy.orm import Session
 
+from ..config import settings
 from ..flow_templates import EMPLOYEE_SCOPE_CANDIDATES, EMPLOYEE_SCOPE_EMPLOYEES
 from ..mass_targeting import ROLE_SCOPE_TO_POSITION
 from ..models import BotMenuButton, BotMenuSet, DocumentLibraryItem, Employee, EmployeeFile, HrSettings, ScenarioTemplate
@@ -19,8 +20,27 @@ from ..scenario_engine import (
     start_scenario,
 )
 from ..time_utils import utc_now
+from .verification import (
+    LINK_STATE_AWAITING_EMAIL,
+    LINK_STATE_AWAITING_OTP,
+    LINK_STATE_CANDIDATE_HELP,
+    LINK_STATE_CHOOSE_AUDIENCE,
+    LINK_STATE_USERNAME_MATCH,
+    can_resend_otp,
+    clear_link_session,
+    ensure_link_session,
+    find_staff_by_work_email,
+    get_link_session,
+    issue_email_otp,
+    mask_email,
+    mark_employee_telegram_verified,
+    reset_link_session,
+    staff_requires_email_verification,
+    verify_otp_code,
+)
 from .base import MessengerClient
 from .identity import (
+    EmployeeIdentityConflictError,
     find_employee_by_public_chat_handle,
     find_employee_by_channel_user_id,
     get_primary_chat_id,
@@ -34,6 +54,13 @@ UNKNOWN_USER_TEXT = "Ваш аккаунт пока не привязан к HR-
 BLOCKED_USER_TEXT = "Доступ к HR-боту отключен. Обратитесь в HR."
 MENU_BACK_BUTTON_TEXT = "Назад"
 MENU_HOME_BUTTON_TEXT = "Главное меню"
+ENTRY_EMPLOYEE_BUTTON_TEXT = "Я сотрудник"
+ENTRY_CANDIDATE_BUTTON_TEXT = "Я кандидат"
+ENTRY_CANCEL_BUTTON_TEXT = "Отмена"
+ENTRY_SEND_CODE_BUTTON_TEXT = "Отправить код на рабочую почту"
+ENTRY_ENTER_EMAIL_BUTTON_TEXT = "Ввести рабочую почту"
+ENTRY_CHANGE_EMAIL_BUTTON_TEXT = "Изменить почту"
+ENTRY_RESEND_CODE_BUTTON_TEXT = "Отправить код еще раз"
 
 
 class InboundAccess(NamedTuple):
@@ -63,6 +90,8 @@ def _sync_employee_after_inbound(db: Session, employee: Employee, chat_user_id: 
         changed = True
     if get_primary_chat_id(employee, db=db) != chat_user_id:
         set_primary_chat_id(employee, chat_user_id, db=db)
+        if (employee.employee_stage or "").strip() == "candidate":
+            mark_employee_telegram_verified(employee, "username_match")
         changed = True
     if employee.is_flow_scheduled:
         employee.is_flow_scheduled = False
@@ -173,9 +202,6 @@ def resolve_menu_set(db: Session, employee: Employee) -> Optional[BotMenuSet]:
 
 def resolve_root_menu_set(db: Session, employee: Employee) -> Optional[BotMenuSet]:
     candidate = _audience_default_menu_set(db, employee)
-    if candidate and menu_set_matches_employee(employee, candidate):
-        return candidate
-    candidate = default_menu_set(db)
     if candidate and menu_set_matches_employee(employee, candidate):
         return candidate
     return resolve_menu_set(db, employee)
@@ -373,7 +399,7 @@ def resolve_inbound_access(db: Session, chat_user_id: str, username: Optional[st
         return InboundAccess(employee, "blocked" if employee.is_bot_blocked else "ok")
 
     employee = find_employee_by_public_chat_handle(db, channel="telegram", external_username=username)
-    if employee:
+    if employee and not staff_requires_email_verification(employee):
         _sync_employee_after_inbound(db, employee, chat_user_id, username)
         return InboundAccess(employee, "blocked" if employee.is_bot_blocked else "ok")
     return InboundAccess(None, "unknown")
@@ -382,6 +408,261 @@ def resolve_inbound_access(db: Session, chat_user_id: str, username: Optional[st
 def get_or_create_employee_by_chat(db: Session, chat_user_id: str, username: Optional[str]) -> tuple[Optional[Employee], bool]:
     access = resolve_inbound_access(db, chat_user_id, username)
     return access.employee, False
+
+
+def _username_hint_employee(db: Session, username: Optional[str]) -> Optional[Employee]:
+    return find_employee_by_public_chat_handle(db, channel="telegram", external_username=username)
+
+
+async def _send_entry_menu(messenger: MessengerClient, chat_user_id: str) -> None:
+    await messenger.send_menu(
+        chat_id=chat_user_id,
+        text="Здравствуйте! Чтобы продолжить, выберите кто вы.",
+        buttons=[ENTRY_EMPLOYEE_BUTTON_TEXT, ENTRY_CANDIDATE_BUTTON_TEXT],
+    )
+
+
+async def _send_candidate_help(messenger: MessengerClient, chat_user_id: str) -> None:
+    await messenger.send_menu(
+        chat_id=chat_user_id,
+        text=(
+            "Если вы кандидат, HR должен заранее добавить вашу карточку или прислать персональную ссылку. "
+            "Самостоятельная регистрация кандидатов сейчас отключена."
+        ),
+        buttons=[ENTRY_EMPLOYEE_BUTTON_TEXT],
+    )
+
+
+async def _send_staff_email_prompt(messenger: MessengerClient, chat_user_id: str) -> None:
+    await messenger.send_menu(
+        chat_id=chat_user_id,
+        text="Введите вашу корпоративную почту Яндекса, чтобы получить код подтверждения.",
+        buttons=[ENTRY_CANCEL_BUTTON_TEXT],
+    )
+
+
+async def _send_staff_otp_prompt(messenger: MessengerClient, chat_user_id: str, email: str) -> None:
+    await messenger.send_menu(
+        chat_id=chat_user_id,
+        text=(
+            f"Код отправлен на {mask_email(email)}. "
+            f"Введите 6 цифр из письма. Код действует {settings.TELEGRAM_LINK_OTP_TTL_MINUTES} минут."
+        ),
+        buttons=[ENTRY_RESEND_CODE_BUTTON_TEXT, ENTRY_CHANGE_EMAIL_BUTTON_TEXT, ENTRY_CANCEL_BUTTON_TEXT],
+    )
+
+
+def _clear_otp_payload(session) -> None:
+    session.pending_email = None
+    session.otp_code_hash = None
+    session.otp_expires_at = None
+    session.otp_attempts_left = 0
+    session.last_code_sent_at = None
+
+
+async def _send_hint_based_staff_link_menu(messenger: MessengerClient, chat_user_id: str, employee: Employee) -> None:
+    work_email = (employee.work_email or "").strip()
+    if not work_email:
+        await messenger.send_menu(
+            chat_id=chat_user_id,
+            text=(
+                "Мы нашли вашу карточку сотрудника по Telegram username, но рабочая почта в системе не заполнена. "
+                "Обратитесь в HR, чтобы завершить привязку."
+            ),
+            buttons=[ENTRY_EMPLOYEE_BUTTON_TEXT, ENTRY_CANDIDATE_BUTTON_TEXT],
+        )
+        return
+    await messenger.send_menu(
+        chat_id=chat_user_id,
+        text=(
+            f"Мы нашли вашу карточку сотрудника. "
+            f"Можем отправить код подтверждения на {mask_email(work_email)}."
+        ),
+        buttons=[ENTRY_SEND_CODE_BUTTON_TEXT, ENTRY_ENTER_EMAIL_BUTTON_TEXT, ENTRY_CANDIDATE_BUTTON_TEXT, ENTRY_CANCEL_BUTTON_TEXT],
+    )
+
+
+async def _handle_link_session_text(
+    messenger: MessengerClient,
+    db: Session,
+    *,
+    chat_user_id: str,
+    username: Optional[str],
+    text: str,
+) -> bool:
+    session = get_link_session(db, channel="telegram", external_user_id=chat_user_id)
+    if session is None:
+        return False
+
+    normalized_text = (text or "").strip()
+    session.external_username = username
+    session.updated_at = utc_now()
+
+    if session.state in {LINK_STATE_CHOOSE_AUDIENCE, LINK_STATE_CANDIDATE_HELP}:
+        if normalized_text == ENTRY_EMPLOYEE_BUTTON_TEXT:
+            session.state = LINK_STATE_AWAITING_EMAIL
+            db.commit()
+            await _send_staff_email_prompt(messenger, chat_user_id)
+            return True
+        if normalized_text == ENTRY_CANDIDATE_BUTTON_TEXT:
+            session.state = LINK_STATE_CANDIDATE_HELP
+            db.commit()
+            await _send_candidate_help(messenger, chat_user_id)
+            return True
+        db.commit()
+        await _send_entry_menu(messenger, chat_user_id)
+        return True
+
+    if session.state == LINK_STATE_USERNAME_MATCH:
+        employee = db.get(Employee, session.employee_id) if session.employee_id else None
+        if employee is None:
+            reset_link_session(db, channel="telegram", external_user_id=chat_user_id, external_username=username)
+            db.commit()
+            await _send_entry_menu(messenger, chat_user_id)
+            return True
+        if employee.is_bot_blocked:
+            clear_link_session(db, channel="telegram", external_user_id=chat_user_id)
+            db.commit()
+            await messenger.send_text(chat_id=chat_user_id, text=BLOCKED_USER_TEXT)
+            return True
+        if normalized_text == ENTRY_SEND_CODE_BUTTON_TEXT:
+            work_email = (employee.work_email or "").strip()
+            if not work_email:
+                db.commit()
+                await messenger.send_text(chat_id=chat_user_id, text="Рабочая почта сотрудника не заполнена. Обратитесь в HR.")
+                return True
+            try:
+                await issue_email_otp(db, session=session, employee=employee, email=work_email)
+                db.commit()
+            except Exception as exc:
+                db.rollback()
+                await messenger.send_text(chat_id=chat_user_id, text=str(exc))
+                return True
+            await _send_staff_otp_prompt(messenger, chat_user_id, work_email)
+            return True
+        if normalized_text == ENTRY_ENTER_EMAIL_BUTTON_TEXT:
+            session.state = LINK_STATE_AWAITING_EMAIL
+            _clear_otp_payload(session)
+            db.commit()
+            await _send_staff_email_prompt(messenger, chat_user_id)
+            return True
+        if normalized_text == ENTRY_CANDIDATE_BUTTON_TEXT:
+            session.state = LINK_STATE_CANDIDATE_HELP
+            db.commit()
+            await _send_candidate_help(messenger, chat_user_id)
+            return True
+        if normalized_text == ENTRY_CANCEL_BUTTON_TEXT:
+            reset_link_session(db, channel="telegram", external_user_id=chat_user_id, external_username=username)
+            db.commit()
+            await _send_entry_menu(messenger, chat_user_id)
+            return True
+        db.commit()
+        await _send_hint_based_staff_link_menu(messenger, chat_user_id, employee)
+        return True
+
+    if session.state == LINK_STATE_AWAITING_EMAIL:
+        if normalized_text == ENTRY_CANCEL_BUTTON_TEXT:
+            reset_link_session(db, channel="telegram", external_user_id=chat_user_id, external_username=username)
+            db.commit()
+            await _send_entry_menu(messenger, chat_user_id)
+            return True
+        if normalized_text == ENTRY_CANDIDATE_BUTTON_TEXT:
+            session.state = LINK_STATE_CANDIDATE_HELP
+            db.commit()
+            await _send_candidate_help(messenger, chat_user_id)
+            return True
+        employee = find_staff_by_work_email(db, normalized_text)
+        if employee is None:
+            db.commit()
+            await messenger.send_text(chat_id=chat_user_id, text="Сотрудник с такой рабочей почтой не найден. Проверьте адрес или обратитесь в HR.")
+            return True
+        if employee.is_bot_blocked:
+            clear_link_session(db, channel="telegram", external_user_id=chat_user_id)
+            db.commit()
+            await messenger.send_text(chat_id=chat_user_id, text=BLOCKED_USER_TEXT)
+            return True
+        session.employee_id = employee.id
+        try:
+            await issue_email_otp(db, session=session, employee=employee, email=normalized_text)
+            db.commit()
+        except Exception as exc:
+            db.rollback()
+            await messenger.send_text(chat_id=chat_user_id, text=str(exc))
+            return True
+        await _send_staff_otp_prompt(messenger, chat_user_id, normalized_text)
+        return True
+
+    if session.state == LINK_STATE_AWAITING_OTP:
+        employee = db.get(Employee, session.employee_id) if session.employee_id else None
+        if employee is None:
+            reset_link_session(db, channel="telegram", external_user_id=chat_user_id, external_username=username)
+            db.commit()
+            await _send_entry_menu(messenger, chat_user_id)
+            return True
+        if employee.is_bot_blocked:
+            clear_link_session(db, channel="telegram", external_user_id=chat_user_id)
+            db.commit()
+            await messenger.send_text(chat_id=chat_user_id, text=BLOCKED_USER_TEXT)
+            return True
+        if normalized_text == ENTRY_CANCEL_BUTTON_TEXT:
+            reset_link_session(db, channel="telegram", external_user_id=chat_user_id, external_username=username)
+            db.commit()
+            await _send_entry_menu(messenger, chat_user_id)
+            return True
+        if normalized_text == ENTRY_CHANGE_EMAIL_BUTTON_TEXT:
+            session.state = LINK_STATE_AWAITING_EMAIL
+            _clear_otp_payload(session)
+            db.commit()
+            await _send_staff_email_prompt(messenger, chat_user_id)
+            return True
+        if normalized_text == ENTRY_RESEND_CODE_BUTTON_TEXT:
+            if not can_resend_otp(session):
+                db.commit()
+                await messenger.send_text(chat_id=chat_user_id, text="Подождите немного перед повторной отправкой кода.")
+                return True
+            try:
+                await issue_email_otp(db, session=session, employee=employee, email=session.pending_email or employee.work_email or "")
+                db.commit()
+            except Exception as exc:
+                db.rollback()
+                await messenger.send_text(chat_id=chat_user_id, text=str(exc))
+                return True
+            await _send_staff_otp_prompt(messenger, chat_user_id, session.pending_email or employee.work_email or "")
+            return True
+
+        if verify_otp_code(session, normalized_text):
+            try:
+                set_public_chat_handle(employee, username, db=db)
+                set_primary_chat_id(employee, chat_user_id, db=db)
+                mark_employee_telegram_verified(employee, "email_otp")
+                employee.is_flow_scheduled = False
+                clear_link_session(db, channel="telegram", external_user_id=chat_user_id)
+                db.commit()
+            except EmployeeIdentityConflictError:
+                db.rollback()
+                await messenger.send_text(
+                    chat_id=chat_user_id,
+                    text="Этот Telegram уже привязан к другой карточке. Обратитесь в HR.",
+                )
+                return True
+            await messenger.send_text(chat_id=chat_user_id, text="Telegram успешно подтвержден и привязан к вашей карточке.")
+            if not await show_main_menu(messenger, db, employee, "Меню обновлено. Выберите действие."):
+                await messenger.send_text(chat_id=chat_user_id, text="Привязка сохранена, но меню для вас пока не настроено.")
+            return True
+
+        session.otp_attempts_left = max((session.otp_attempts_left or 0) - 1, 0)
+        if session.otp_attempts_left <= 0:
+            session.state = LINK_STATE_AWAITING_EMAIL
+            _clear_otp_payload(session)
+            db.commit()
+            await messenger.send_text(chat_id=chat_user_id, text="Лимит попыток исчерпан. Введите рабочую почту снова, чтобы получить новый код.")
+            await _send_staff_email_prompt(messenger, chat_user_id)
+            return True
+        db.commit()
+        await messenger.send_text(chat_id=chat_user_id, text=f"Неверный код. Осталось попыток: {session.otp_attempts_left}.")
+        return True
+
+    return False
 
 
 async def send_access_state_message(messenger: MessengerClient, chat_user_id: str, state: Literal["unknown", "blocked"]) -> None:
@@ -393,16 +674,48 @@ async def send_access_state_message(messenger: MessengerClient, chat_user_id: st
 
 async def handle_start_command(messenger: MessengerClient, db: Session, chat_user_id: str, username: Optional[str]) -> None:
     access = resolve_inbound_access(db, chat_user_id, username)
-    if access.state != "ok" or access.employee is None:
+    if access.state == "blocked":
         await send_access_state_message(messenger, chat_user_id, access.state)
         return
+    if access.state == "ok" and access.employee is not None:
+        clear_link_session(db, channel="telegram", external_user_id=chat_user_id)
+        db.commit()
+        employee = access.employee
+        await messenger.send_text(
+            chat_id=chat_user_id,
+            text="Привет! Я HR-бот.",
+        )
+        await show_main_menu(messenger, db, employee, "Меню обновлено. Выберите действие.")
+        return
 
-    employee = access.employee
-    await messenger.send_text(
-        chat_id=chat_user_id,
-        text="Привет! Я HR-бот.",
+    hinted_employee = _username_hint_employee(db, username)
+    if hinted_employee and staff_requires_email_verification(hinted_employee):
+        if hinted_employee.is_bot_blocked:
+            clear_link_session(db, channel="telegram", external_user_id=chat_user_id)
+            db.commit()
+            await messenger.send_text(chat_id=chat_user_id, text=BLOCKED_USER_TEXT)
+            return
+        session = ensure_link_session(
+            db,
+            channel="telegram",
+            external_user_id=chat_user_id,
+            external_username=username,
+        )
+        session.employee_id = hinted_employee.id
+        session.state = LINK_STATE_USERNAME_MATCH
+        _clear_otp_payload(session)
+        db.commit()
+        await _send_hint_based_staff_link_menu(messenger, chat_user_id, hinted_employee)
+        return
+
+    reset_link_session(
+        db,
+        channel="telegram",
+        external_user_id=chat_user_id,
+        external_username=username,
     )
-    await show_main_menu(messenger, db, employee, "Меню обновлено. Выберите действие.")
+    db.commit()
+    await _send_entry_menu(messenger, chat_user_id)
 
 
 async def save_incoming_file(
@@ -462,6 +775,15 @@ async def handle_text_event(
     username: Optional[str],
     text: str,
 ) -> Literal["handled", "ignored", "unknown", "blocked"]:
+    if await _handle_link_session_text(
+        messenger,
+        db,
+        chat_user_id=chat_user_id,
+        username=username,
+        text=text,
+    ):
+        return "handled"
+
     access = resolve_inbound_access(db, chat_user_id, username)
     if access.state != "ok" or access.employee is None:
         return access.state

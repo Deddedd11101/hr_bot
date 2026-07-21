@@ -14,6 +14,11 @@ from app.database import SessionLocal, init_db
 from app.main import AUTH_COOKIE_NAME, app
 from app.messaging.identity import get_primary_chat_id, set_primary_chat_id
 from app.messaging.service import (
+    ENTRY_CANDIDATE_BUTTON_TEXT,
+    ENTRY_ENTER_EMAIL_BUTTON_TEXT,
+    ENTRY_EMPLOYEE_BUTTON_TEXT,
+    ENTRY_RESEND_CODE_BUTTON_TEXT,
+    ENTRY_SEND_CODE_BUTTON_TEXT,
     MENU_BACK_BUTTON_TEXT,
     MENU_HOME_BUTTON_TEXT,
     current_menu_set,
@@ -23,6 +28,7 @@ from app.messaging.service import (
     handle_text_event,
 )
 from app.scenario_engine import handle_button_response, send_step
+from app.time_utils import utc_now
 from app.models import (
     AdminAccount,
     BotMenuButton,
@@ -31,6 +37,7 @@ from app.models import (
     Employee,
     EmployeeDocumentLink,
     EmployeeMessengerAccount,
+    EmployeeLinkSession,
     EmployeeFile,
     FlowLaunchRequest,
     FlowStepTemplate,
@@ -118,6 +125,7 @@ class EmployeeApiSmokeTests(unittest.TestCase):
 
     def tearDown(self) -> None:
         with SessionLocal() as db:
+            db.query(EmployeeLinkSession).filter(EmployeeLinkSession.employee_id == self.employee_id).delete(synchronize_session=False)
             db.query(BotMenuButton).filter(BotMenuButton.label.like(f"codex-%-{self.unique_tag}%")).delete(synchronize_session=False)
             created_menu_sets = db.query(BotMenuSet).filter(BotMenuSet.title.like(f"codex-%-{self.unique_tag}%")).all()
             created_menu_set_ids = [menu_set.id for menu_set in created_menu_sets]
@@ -1105,23 +1113,33 @@ class EmployeeApiSmokeTests(unittest.TestCase):
             self.assertEqual(employee.telegram_user_id, "777000111")
             self.assertEqual(employee.telegram_username, "hr_team")
 
-    def test_bot_start_links_existing_employee_by_public_username(self) -> None:
+    def test_bot_start_requires_staff_email_verification_for_public_username(self) -> None:
         with SessionLocal() as db:
             employee = db.get(Employee, self.employee_id)
             self.assertIsNotNone(employee)
             unique_suffix = uuid4().hex[:12]
             username = f"codex_link_{unique_suffix}"
             chat_id = str(900000000000 + (int(unique_suffix, 16) % 100000000000))
+            employee.employee_stage = "staff"
+            employee.candidate_work_stage = None
+            employee.work_email = f"{unique_suffix}@company.test"
             employee.telegram_username = f"@{username}"
             db.commit()
+            messenger = DummyMessenger()
 
-            employee, created = get_or_create_employee_by_chat(db, chat_id, username.upper())
+            asyncio.run(handle_start_command(messenger, db, chat_id, username.upper()))
 
-            self.assertFalse(created)
-            self.assertEqual(employee.id, self.employee_id)
-            self.assertEqual(get_primary_chat_id(employee, db=db), chat_id)
-            self.assertEqual(employee.telegram_username, username.upper())
-            self.assertEqual(db.query(Employee).filter(Employee.id == self.employee_id).count(), 1)
+            db.refresh(employee)
+            session = db.query(EmployeeLinkSession).filter(EmployeeLinkSession.external_user_id == chat_id).first()
+            self.assertIsNotNone(session)
+            self.assertEqual(session.employee_id, self.employee_id)
+            self.assertEqual(session.state, "username_match")
+            self.assertIsNone(get_primary_chat_id(employee, db=db))
+            self.assertTrue(messenger.sent_menus)
+            self.assertEqual(
+                messenger.sent_menus[-1][2],
+                [ENTRY_SEND_CODE_BUTTON_TEXT, ENTRY_ENTER_EMAIL_BUTTON_TEXT, ENTRY_CANDIDATE_BUTTON_TEXT, "Отмена"],
+            )
 
     def test_bot_start_does_not_create_candidate_when_card_is_missing(self) -> None:
         with SessionLocal() as db:
@@ -1134,6 +1152,93 @@ class EmployeeApiSmokeTests(unittest.TestCase):
             self.assertFalse(created)
             self.assertIsNone(employee)
             self.assertEqual(db.query(Employee).count(), before_count)
+
+    def test_bot_start_links_existing_candidate_by_public_username(self) -> None:
+        with SessionLocal() as db:
+            employee = db.get(Employee, self.employee_id)
+            self.assertIsNotNone(employee)
+            unique_suffix = uuid4().hex[:12]
+            username = f"codex_candidate_{unique_suffix}"
+            chat_id = str(905000000000 + (int(unique_suffix, 16) % 100000000000))
+            employee.employee_stage = "candidate"
+            employee.candidate_work_stage = "testing"
+            employee.telegram_username = f"@{username}"
+            db.commit()
+
+            linked_employee, created = get_or_create_employee_by_chat(db, chat_id, username.upper())
+
+            self.assertFalse(created)
+            self.assertIsNotNone(linked_employee)
+            self.assertEqual(linked_employee.id, self.employee_id)
+            self.assertEqual(get_primary_chat_id(linked_employee, db=db), chat_id)
+
+    @patch("app.messaging.verification.send_email")
+    @patch("app.messaging.verification.build_otp_code", return_value="123456")
+    def test_staff_email_otp_linking_flow(self, _build_code, _send_email) -> None:
+        with SessionLocal() as db:
+            employee = db.get(Employee, self.employee_id)
+            self.assertIsNotNone(employee)
+            employee.employee_stage = "staff"
+            employee.candidate_work_stage = None
+            employee.work_email = f"{self.unique_tag}@company.test"
+            root_menu = BotMenuSet(
+                title=f"codex-staff-root-{self.unique_tag}",
+                description="staff root",
+                sort_order=10,
+                employee_scope="employees",
+            )
+            db.add(root_menu)
+            db.commit()
+            db.refresh(root_menu)
+            root_button = BotMenuButton(
+                menu_set_id=root_menu.id,
+                label=f"codex-staff-root-btn-{self.unique_tag}",
+                sort_order=10,
+                action_type="inactive",
+            )
+            hr_settings = db.query(HrSettings).first()
+            if hr_settings is None:
+                hr_settings = HrSettings(
+                    id=1,
+                    hr_name=None,
+                    telegram_user_id=None,
+                    notification_recipient_ids=None,
+                    notify_scenario_completed=True,
+                    notify_test_task_received=True,
+                    notify_user_actions=True,
+                    default_menu_set_id=None,
+                    default_employee_menu_set_id=None,
+                    default_candidate_menu_set_id=None,
+                    created_at=utc_now(),
+                    updated_at=utc_now(),
+                )
+                db.add(hr_settings)
+                db.flush()
+            hr_settings.default_employee_menu_set_id = root_menu.id
+            db.add(root_button)
+            db.commit()
+            messenger = DummyMessenger()
+
+            asyncio.run(handle_start_command(messenger, db, "777888999", None))
+            self.assertTrue(messenger.sent_menus)
+            self.assertEqual(messenger.sent_menus[-1][2], [ENTRY_EMPLOYEE_BUTTON_TEXT, ENTRY_CANDIDATE_BUTTON_TEXT])
+
+            result = asyncio.run(handle_text_event(messenger, db, "777888999", None, ENTRY_EMPLOYEE_BUTTON_TEXT))
+            self.assertEqual(result, "handled")
+
+            result = asyncio.run(handle_text_event(messenger, db, "777888999", None, employee.work_email))
+            self.assertEqual(result, "handled")
+            self.assertTrue(messenger.sent_menus[-1][2][0] == ENTRY_RESEND_CODE_BUTTON_TEXT)
+
+            result = asyncio.run(handle_text_event(messenger, db, "777888999", "staff_user", "123456"))
+            self.assertEqual(result, "handled")
+
+            db.refresh(employee)
+            self.assertEqual(get_primary_chat_id(employee, db=db), "777888999")
+            self.assertEqual(employee.telegram_username, "staff_user")
+            self.assertEqual(employee.telegram_link_method, "email_otp")
+            self.assertIsNotNone(employee.telegram_verified_at)
+            self.assertTrue(any(text == "Telegram успешно подтвержден и привязан к вашей карточке." for _, text in messenger.sent_texts))
 
     def test_bot_start_reclaims_chat_id_from_orphaned_messenger_account(self) -> None:
         with SessionLocal() as db:
@@ -2659,7 +2764,23 @@ class EmployeeApiSmokeTests(unittest.TestCase):
             employee.current_menu_set_id = None
             employee.current_menu_path = None
             hr_settings = db.query(HrSettings).first()
-            self.assertIsNotNone(hr_settings)
+            if hr_settings is None:
+                hr_settings = HrSettings(
+                    id=1,
+                    hr_name=None,
+                    telegram_user_id=None,
+                    notification_recipient_ids=None,
+                    notify_scenario_completed=True,
+                    notify_test_task_received=True,
+                    notify_user_actions=True,
+                    default_menu_set_id=None,
+                    default_employee_menu_set_id=None,
+                    default_candidate_menu_set_id=None,
+                    created_at=utc_now(),
+                    updated_at=utc_now(),
+                )
+                db.add(hr_settings)
+                db.flush()
             hr_settings.default_menu_set_id = None
             hr_settings.default_employee_menu_set_id = None
             hr_settings.default_candidate_menu_set_id = None

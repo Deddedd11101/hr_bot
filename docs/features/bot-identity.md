@@ -14,33 +14,64 @@ task_tokens:
 
 ## Текущее поведение
 
-Бот связывает Telegram user с employee record через messaging identity helpers в `app.messaging.identity` и `app.messaging.service`.
+Бот связывает Telegram user с employee record через `app.messaging.identity`, `app.messaging.service` и `app.messaging.verification`.
 
-Текущий flow:
+Базовый inbound flow теперь такой:
 
 1. Найти existing employee по Telegram channel user ID.
-2. Если не найден, попробовать public Telegram username.
-3. Если все еще не найден, не создавать record и вернуть короткую инструкцию обратиться в HR.
-4. Если employee record есть, но `is_bot_blocked = true`, запретить все bot interaction с коротким отказом.
+2. Если user ID не найден, попробовать public Telegram username.
+3. Если username совпал с кандидатом, разрешить безопасную legacy-привязку по username.
+4. Если username совпал со штатным сотрудником, не привязывать автоматически: сначала потребовать подтверждение через рабочую почту и OTP.
+5. Если match не найден, не создавать новую карточку и показать entry menu с разделением `Я сотрудник` / `Я кандидат`.
+6. Если employee record есть, но `is_bot_blocked = true`, запретить все bot interaction с коротким отказом.
 
-## Что изменилось в P0
+## Новый product baseline
 
-- `/start`, text, file, photo и callback entrypoints теперь используют один inbound access resolution path.
-- Unknown users больше не создают `employees` rows или `employee_files`.
-- Known users все еще могут быть linked по сохраненному public username, если пишут с нового Telegram ID.
-- Blocked users не могут открывать menu flows, отвечать на scenario steps, upload files или получать new launches через scheduler/manual start.
-- Known stray text вне expected scenario response игнорируется без service noise.
+### 1. Сотрудник
 
-## Текущее практическое использование
+- Сотрудник может быть привязан к Telegram только после проверки рабочей почты `work_email`.
+- OTP отправляется на `Employee.work_email` через SMTP-настройки приложения.
+- Если HR заранее заполнил `telegram_username`, это работает только как hint: бот может предложить отправить код на уже известную рабочую почту, но не связывает аккаунт автоматически.
+- После успешной OTP-проверки бот сохраняет `telegram_user_id`, `telegram_username`, `telegram_verified_at` и `telegram_link_method=email_otp`.
 
-- Safe by default для текущего production-like использования.
-- Это все еще не финальная identity product model для existing employees, которые раньше не были linked.
+### 2. Кандидат
 
-## Нужное будущее направление
+- Кандидат по-прежнему может быть найден по заранее сохраненному `telegram_username`, если карточка уже была создана HR.
+- Автоматическое создание новой candidate-card по `/start` отключено и не должно возвращаться.
+- Для неизвестного кандидата бот не открывает self-registration; он отвечает, что карточку должен подготовить HR или нужен отдельный invite flow.
 
-- Оставить unknown-user behavior non-destructive.
-- Выбрать intentional linking flow для existing employees.
-- Решить, будет linking code-based, HR-approved или через другой verification path.
+### 3. Уже привязанный пользователь
+
+- Если Telegram `chat_id` уже связан с карточкой, бот доверяет этому каналу как primary identity.
+- `/start` для такого пользователя не должен повторно запускать pre-auth flow и не должен требовать OTP.
+
+## Runtime детали
+
+- Для pre-auth состояния используется таблица `employee_link_sessions`.
+- Entry menu и OTP flow обрабатываются в `handle_start_command()` и `handle_text_event()` до обычного scenario/menu runtime.
+- Candidate username match и staff email OTP intentionally различаются: это осознанное разделение, а не недоделка.
+- При ручной привязке Telegram из админки карточка отмечается как `telegram_link_method=admin_manual`.
+- Runtime по-прежнему умеет reclaim orphan messenger account, но не должен молча перепривязывать identity между живыми карточками.
+
+## Настройки и зависимости
+
+- Для staff OTP нужны SMTP-переменные окружения: host, port, credentials, sender и transport mode.
+- TTL и retry policy OTP управляются отдельными env-настройками:
+  - `TELEGRAM_LINK_OTP_TTL_MINUTES`
+  - `TELEGRAM_LINK_OTP_MAX_ATTEMPTS`
+  - `TELEGRAM_LINK_OTP_RESEND_COOLDOWN_SECONDS`
+
+## Почему это лучше прежней модели
+
+- Username в Telegram не является достаточной идентификацией для действующего сотрудника.
+- Возврат к self-registration кандидатов снова откроет мусорные карточки и ложные связи.
+- Один `/start` больше не пытается решать две разные задачи сразу: регистрацию кандидата и подтверждение сотрудника.
+
+## Оставшиеся ограничения
+
+- Это не заменяет будущий invite flow для новых кандидатов.
+- Это не решает product-модель перехода `candidate -> staff`; после оффера нужен отдельный lifecycle contract.
+- SQLite-схема все еще не закрывает orphan messenger accounts на уровне foreign key/cascade.
 
 ## Связанная работа
 
