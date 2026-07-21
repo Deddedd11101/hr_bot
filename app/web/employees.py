@@ -187,6 +187,7 @@ def _staff_employee_options_by_flag(
     *,
     current_employee_id: int | None = None,
     role_flag: str | None = None,
+    selected_employee_ids: list[int] | None = None,
 ) -> list[dict]:
     employees = (
         db.query(Employee)
@@ -195,12 +196,15 @@ def _staff_employee_options_by_flag(
         .all()
     )
     result: list[dict] = []
+    included_ids: set[int] = set()
+    selected_ids = {value for value in (selected_employee_ids or []) if value}
     for employee in employees:
         if current_employee_id is not None and employee.id == current_employee_id:
             continue
-        if role_flag == "is_manager" and not bool(employee.is_manager):
+        is_selected = employee.id in selected_ids
+        if role_flag == "is_manager" and not bool(employee.is_manager) and not is_selected:
             continue
-        if role_flag == "is_mentor" and not bool(employee.is_mentor):
+        if role_flag == "is_mentor" and not bool(employee.is_mentor) and not is_selected:
             continue
         result.append(
             {
@@ -208,6 +212,18 @@ def _staff_employee_options_by_flag(
                 "label": _employee_display_name(employee),
             }
         )
+        included_ids.add(employee.id)
+    for selected_employee_id in selected_ids:
+        if selected_employee_id in included_ids:
+            continue
+        selected_employee = db.get(Employee, selected_employee_id)
+        if selected_employee is not None and (current_employee_id is None or selected_employee.id != current_employee_id):
+            result.append(
+                {
+                    "value": str(selected_employee.id),
+                    "label": _employee_display_name(selected_employee),
+                }
+            )
     return result
 
 
@@ -1035,11 +1051,17 @@ def _build_employee_detail_payload(db: Session, employee: Employee) -> dict:
                 db,
                 current_employee_id=employee.id,
                 role_flag="is_manager",
+                selected_employee_ids=[employee.manager_employee_id] if employee.manager_employee_id else [],
             ),
             "mentor_employee_values": _staff_employee_options_by_flag(
                 db,
                 current_employee_id=employee.id,
                 role_flag="is_mentor",
+                selected_employee_ids=[
+                    value
+                    for value in [employee.mentor_adaptation_employee_id, employee.mentor_ipr_employee_id]
+                    if value
+                ],
             ),
             "scenarios": [{"value": scenario.scenario_key, "label": scenario.title} for scenario in scenarios],
         },
