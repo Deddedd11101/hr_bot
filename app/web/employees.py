@@ -26,6 +26,7 @@ from ..time_utils import utc_now
 
 OFFER_DOCUMENT_TITLE = "Оффер"
 OFFER_DOCUMENT_SLOT = "offer"
+MANAGER_ASSIGNMENT_TRIGGER_MODE = "manager_assigned_adaptation"
 
 EMPLOYEE_STAGE_VALUES = {
     "candidate": "Кандидат",
@@ -181,6 +182,35 @@ def _staff_employee_options(db: Session, current_employee_id: int | None = None)
     ]
 
 
+def _staff_employee_options_by_flag(
+    db: Session,
+    *,
+    current_employee_id: int | None = None,
+    role_flag: str | None = None,
+) -> list[dict]:
+    employees = (
+        db.query(Employee)
+        .filter(Employee.employee_stage == "staff")
+        .order_by(Employee.full_name.asc(), Employee.id.asc())
+        .all()
+    )
+    result: list[dict] = []
+    for employee in employees:
+        if current_employee_id is not None and employee.id == current_employee_id:
+            continue
+        if role_flag == "is_manager" and not bool(employee.is_manager):
+            continue
+        if role_flag == "is_mentor" and not bool(employee.is_mentor):
+            continue
+        result.append(
+            {
+                "value": str(employee.id),
+                "label": _employee_display_name(employee),
+            }
+        )
+    return result
+
+
 def _parse_optional_date(value: str) -> date | None:
     normalized = (value or "").strip()
     return datetime.strptime(normalized, "%Y-%m-%d").date() if normalized else None
@@ -203,6 +233,7 @@ def _resolve_staff_employee_reference(
     employee: Employee,
     related_employee_id: int | None,
     field_title: str,
+    required_flag: str | None = None,
 ) -> Employee | None:
     if related_employee_id is None:
         return None
@@ -213,7 +244,77 @@ def _resolve_staff_employee_reference(
         raise ValueError(f"{field_title} не найден в базе сотрудников.")
     if (related_employee.employee_stage or "").strip() != "staff":
         raise ValueError(f"{field_title} должен быть выбран из сотрудников в штате.")
+    if required_flag == "is_manager" and not bool(related_employee.is_manager):
+        raise ValueError(f"{field_title} должен быть отмечен как руководитель.")
+    if required_flag == "is_mentor" and not bool(related_employee.is_mentor):
+        raise ValueError(f"{field_title} должен быть отмечен как наставник.")
     return related_employee
+
+
+def _manager_assignment_trigger_scenario(db: Session, employee: Employee) -> ScenarioTemplate | None:
+    scenarios = (
+        db.query(ScenarioTemplate)
+        .filter(
+            ScenarioTemplate.scenario_kind == "scenario",
+            ScenarioTemplate.trigger_mode == MANAGER_ASSIGNMENT_TRIGGER_MODE,
+        )
+        .order_by(ScenarioTemplate.sort_order, ScenarioTemplate.id)
+        .all()
+    )
+    for scenario in scenarios:
+        if matches_role_scope(employee, scenario):
+            return scenario
+    return None
+
+
+def _enqueue_manager_assignment_trigger(
+    db: Session,
+    *,
+    subject_employee: Employee,
+    previous_stage: str,
+    previous_manager_employee_id: int | None,
+) -> None:
+    current_stage = (subject_employee.employee_stage or "").strip()
+    current_manager_employee_id = subject_employee.manager_employee_id
+    entered_adaptation = previous_stage != "adaptation" and current_stage == "adaptation"
+    manager_changed = previous_manager_employee_id != current_manager_employee_id
+    if current_stage != "adaptation":
+        return
+    if not current_manager_employee_id:
+        return
+    if not entered_adaptation and not manager_changed:
+        return
+
+    manager_employee = db.get(Employee, current_manager_employee_id)
+    if not manager_employee:
+        return
+    scenario = _manager_assignment_trigger_scenario(db, manager_employee)
+    if not scenario:
+        return
+
+    duplicate_request = (
+        db.query(FlowLaunchRequest)
+        .filter(
+            FlowLaunchRequest.employee_id == manager_employee.id,
+            FlowLaunchRequest.flow_key == scenario.scenario_key,
+            FlowLaunchRequest.processed_at.is_(None),
+            FlowLaunchRequest.launch_type == "trigger",
+        )
+        .first()
+    )
+    if duplicate_request:
+        return
+
+    db.add(
+        FlowLaunchRequest(
+            employee_id=manager_employee.id,
+            flow_key=scenario.scenario_key,
+            requested_at=datetime.now(),
+            processed_at=None,
+            launch_type="trigger",
+            skip_step_key=None,
+        )
+    )
 
 
 def _available_scenarios_for_employee(db: Session, employee: Employee) -> list[ScenarioTemplate]:
@@ -384,6 +485,8 @@ def _apply_employee_update(
     birth_date: str,
     work_email: str,
     work_hours: str,
+    is_manager: bool,
+    is_mentor: bool,
     manager_employee_id: str,
     mentor_adaptation_employee_id: str,
     mentor_ipr_employee_id: str,
@@ -403,6 +506,8 @@ def _apply_employee_update(
     is_candidate = _employee_list_kind(employee) == "candidates"
     first_day = _parse_optional_date(first_workday)
     parsed_birth_date = _parse_optional_date(birth_date)
+    previous_stage = (employee.employee_stage or "").strip()
+    previous_manager_employee_id = employee.manager_employee_id
 
     employee.full_name = full_name.strip() or None
     _apply_employee_telegram_identity(employee, chat_id=chat_id, chat_handle=chat_handle, db=db)
@@ -433,22 +538,27 @@ def _apply_employee_update(
             employee=employee,
             related_employee_id=_parse_optional_int(manager_employee_id),
             field_title="Руководитель сотрудника",
+            required_flag="is_manager",
         )
         mentor_adaptation_employee = _resolve_staff_employee_reference(
             db,
             employee=employee,
             related_employee_id=_parse_optional_int(mentor_adaptation_employee_id),
             field_title="Наставник адаптации",
+            required_flag="is_mentor",
         )
         mentor_ipr_employee = _resolve_staff_employee_reference(
             db,
             employee=employee,
             related_employee_id=_parse_optional_int(mentor_ipr_employee_id),
             field_title="Наставник ИПР",
+            required_flag="is_mentor",
         )
         employee.birth_date = parsed_birth_date
         employee.work_email = normalize_email(work_email) or None
         employee.work_hours = work_hours.strip() or None
+        employee.is_manager = is_manager
+        employee.is_mentor = is_mentor
         employee.manager_employee_id = manager_employee.id if manager_employee else None
         employee.mentor_adaptation_employee_id = mentor_adaptation_employee.id if mentor_adaptation_employee else None
         employee.mentor_ipr_employee_id = mentor_ipr_employee.id if mentor_ipr_employee else None
@@ -468,6 +578,12 @@ def _apply_employee_update(
     employee.notes = notes.strip() or None
     db.commit()
     sync_legacy_telegram_account(db, employee)
+    _enqueue_manager_assignment_trigger(
+        db,
+        subject_employee=employee,
+        previous_stage=previous_stage,
+        previous_manager_employee_id=previous_manager_employee_id,
+    )
     db.commit()
     db.refresh(employee)
     return employee
@@ -887,6 +1003,8 @@ def _build_employee_detail_payload(db: Session, employee: Employee) -> dict:
             "manager_employee_id": str(employee.manager_employee_id or ""),
             "mentor_adaptation_employee_id": str(employee.mentor_adaptation_employee_id or ""),
             "mentor_ipr_employee_id": str(employee.mentor_ipr_employee_id or ""),
+            "is_manager": bool(employee.is_manager),
+            "is_mentor": bool(employee.is_mentor),
             "adaptation_tasks_url": employee.adaptation_tasks_url or "",
             "adaptation_feedback_url": employee.adaptation_feedback_url or "",
             "adaptation_midpoint": employee.adaptation_midpoint.isoformat() if employee.adaptation_midpoint else "",
@@ -913,6 +1031,16 @@ def _build_employee_detail_payload(db: Session, employee: Employee) -> dict:
                 for value, label in CANDIDATE_WORK_STAGE_VALUES.items()
             ],
             "staff_employee_values": _staff_employee_options(db, employee.id),
+            "manager_employee_values": _staff_employee_options_by_flag(
+                db,
+                current_employee_id=employee.id,
+                role_flag="is_manager",
+            ),
+            "mentor_employee_values": _staff_employee_options_by_flag(
+                db,
+                current_employee_id=employee.id,
+                role_flag="is_mentor",
+            ),
             "scenarios": [{"value": scenario.scenario_key, "label": scenario.title} for scenario in scenarios],
         },
         "files": [_serialize_employee_file(file_row, employee.id, bool(primary_chat_id)) for file_row in employee_files],

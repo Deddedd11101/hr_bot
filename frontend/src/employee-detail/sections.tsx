@@ -516,6 +516,20 @@ export function EmployeeProfileSection(props: any) {
                                     />
                                 </Field>
                             </FieldGroup>
+                            <div className="employee-checkbox-grid">
+                                <CheckboxField
+                                    name="is_manager"
+                                    checked={!!form.is_manager}
+                                    onChange={handleChange}
+                                    title="Может быть руководителем"
+                                />
+                                <CheckboxField
+                                    name="is_mentor"
+                                    checked={!!form.is_mentor}
+                                    onChange={handleChange}
+                                    title="Может быть наставником"
+                                />
+                            </div>
                         </CardContent>
                     </DetailCard>
 
@@ -532,7 +546,7 @@ export function EmployeeProfileSection(props: any) {
                                         value={form.manager_employee_id}
                                         onChange={handleChange}
                                         placeholder="Не выбран"
-                                        options={options.staff_employee_values}
+                                        options={options.manager_employee_values}
                                     />
                                 </Field>
                                 <Field>
@@ -542,7 +556,7 @@ export function EmployeeProfileSection(props: any) {
                                         value={form.mentor_adaptation_employee_id}
                                         onChange={handleChange}
                                         placeholder="Не выбран"
-                                        options={options.staff_employee_values}
+                                        options={options.mentor_employee_values}
                                     />
                                 </Field>
                                 <Field>
@@ -552,7 +566,7 @@ export function EmployeeProfileSection(props: any) {
                                         value={form.mentor_ipr_employee_id}
                                         onChange={handleChange}
                                         placeholder="Не выбран"
-                                        options={options.staff_employee_values}
+                                        options={options.mentor_employee_values}
                                     />
                                 </Field>
                                 <Field>

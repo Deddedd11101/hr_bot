@@ -247,6 +247,12 @@ class SchedulerSmokeTests(unittest.IsolatedAsyncioTestCase):
         messenger = _FakeMessenger()
 
         with SessionLocal() as db:
+            existing_event_ids = {
+                row.id
+                for row in db.query(OnboardingEvent.id).filter(OnboardingEvent.employee_id == employee.id).all()
+            }
+
+        with SessionLocal() as db:
             db_employee = db.get(Employee, employee.id)
             assert db_employee is not None
             db_employee.employee_stage = "candidate"
@@ -261,11 +267,10 @@ class SchedulerSmokeTests(unittest.IsolatedAsyncioTestCase):
         )
 
         with SessionLocal() as db:
-            sent_events = (
-                db.query(OnboardingEvent)
-                .filter(OnboardingEvent.employee_id == employee.id)
-                .all()
-            )
+            sent_event_ids = {
+                row.id
+                for row in db.query(OnboardingEvent.id).filter(OnboardingEvent.employee_id == employee.id).all()
+            }
 
         self.assertEqual(messenger.sent_texts, [])
-        self.assertEqual(sent_events, [])
+        self.assertEqual(sent_event_ids, existing_event_ids)

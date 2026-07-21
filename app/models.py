@@ -66,6 +66,18 @@ class Employee(Base):
         nullable=True,
         doc="Рабочие часы сотрудника.",
     )
+    is_manager: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        doc="Может ли сотрудник выступать руководителем для других сотрудников.",
+    )
+    is_mentor: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        doc="Может ли сотрудник выступать наставником для других сотрудников.",
+    )
     telegram_verified_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime,
         nullable=True,

@@ -38,6 +38,7 @@ TRIGGER_MODE_LABELS = {
     "manual_only": "Только вручную",
     "bot_registration": "Сразу после регистрации в боте",
     "scenario_transition": "При переходе из другого сценария",
+    "manager_assigned_adaptation": "При назначении руководителя сотруднику в адаптации",
     "first_workday": "В первый рабочий день",
     "first_week_friday": "В пятницу первой рабочей недели",
     "mid_probation": "В середине испытательного срока",
