@@ -34,6 +34,47 @@ source_of_truth: true
 
 ## Записи
 
+### 2026-07-21 17:14 MSK - app deploy - manager assignment scenario trigger
+
+- Deploy ref: `stage`.
+- Deployed commit: `6bc59cc`.
+- GitHub Actions run: `29838067973` -> success.
+- В stage включены:
+  - role flags `is_manager` и `is_mentor` у сотрудников;
+  - employee detail API и React employee detail form для этих flags;
+  - селект руководителя фильтруется по `is_manager=true`;
+  - селекты наставников адаптации/ИПР фильтруются по `is_mentor=true`;
+  - новый trigger mode `manager_assigned_adaptation`;
+  - при назначении/смене руководителя сотруднику в `adaptation` создается `FlowLaunchRequest` с `launch_type=trigger`, который обрабатывается штатным worker pipeline.
+- Интеграционная правка:
+  - исходная feature-ветка была построена поверх незадеплоенных OTP/candidate commits;
+  - в stage перенесен только manager-trigger slice без `email OTP`, `SMTP`, `employee_link_sessions` и candidate autocreate.
+- Локальные проверки перед deploy:
+  - `npm run build` в `frontend`;
+  - `.\.venv\Scripts\python.exe -m compileall app tests tools`;
+  - `.\.venv\Scripts\python.exe -m ruff check --select F821 app tests`;
+  - `.\.venv\Scripts\python.exe -m unittest tests.test_employee_api_smoke tests.test_messaging_identity tests.test_scenario_engine_smoke tests.test_scheduler_smoke -v` -> 103 tests OK;
+  - `git diff --check`.
+- GitHub Actions preflight:
+  - backend dependencies install;
+  - `compileall`;
+  - `ruff F821`;
+  - backend smoke tests;
+  - frontend build;
+  - smoke imports.
+- Stage safety checks:
+  - verified SQLite backup created before checkout/restart: `backups/hr_bot.before-deploy.20260721-141424.db`;
+  - scenario configuration fingerprint unchanged.
+- Stage smoke checks:
+  - `/app/employees` -> `303`;
+  - `/app/flows/workspace-v2` -> `303`;
+  - Telegram API -> `HTTP/2 302`;
+  - `hr-bot-web`, `hr-bot-worker` и `wg-quick@redshield` passed `systemctl is-active`;
+  - worker log guard did not find fresh `TelegramNetworkError`, `Request timeout`, `Traceback`, `Unclosed client session`;
+  - deploy job завершился успешно и вывел `6bc59cc`.
+- Открытый риск:
+  - если в базе пока нет сотрудников с `is_manager=true` / `is_mentor=true`, новые селекты руководителей/наставников будут пустыми до ручной разметки этих flags.
+
 ### 2026-07-21 01:52 MSK - app deploy - bot menu drill-down editor
 
 - Deploy ref: `stage`.
