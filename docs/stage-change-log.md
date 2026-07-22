@@ -34,6 +34,38 @@ source_of_truth: true
 
 ## Записи
 
+### 2026-07-22 14:47 MSK - db import + ops - staff employees and positions catalog seed
+
+- Import source: `employees.xlsx` from HR handoff, converted to JSON payload for GitHub Actions.
+- Tooling commits:
+  - `stage`: `ec173e2` added `Import Stage Employees` workflow and import tool;
+  - `stage`: `9ebfb8b` fixed post-import HTTP smoke to wait for web readiness;
+  - `main`: `18c9c69` and `500f7ab` expose the workflow on the default branch.
+- Import runs:
+  - dry-run `29916696490` -> success, planned 38 employees;
+  - import `29916759218` -> database write succeeded, but the job failed on an immediate `/app/settings` curl before web was ready;
+  - deploy/smoke `29916866407` -> success after the import;
+  - verification dry-run `29916979311` -> success, `positions_created: []`, `employees_created: 0`, `employees_updated: 38`.
+- В stage DB внесено:
+  - все должности из файла добавлены/активированы в `positions`;
+  - 38 строк сотрудников обработаны как штатные сотрудники (`employee_stage=staff`);
+  - по фактическому import summary: `employees_created: 35`, `employees_updated: 3`;
+  - флаги `is_manager` и `is_mentor` не выставлялись автоматически.
+- Нормализация:
+  - Telegram username сохранялся без `@`;
+  - строка `Лагутина Алина Андреевна` имела значение `7 951 717-61-69` в колонке `telegram_username`; это значение не импортировано как username, чтобы не создавать битую Telegram-ссылку.
+- Safety/rollback:
+  - перед записью создан и проверен SQLite backup: `backups/hr_bot.before-employee-import.20260722-114334.db` in Actions log;
+  - после импорта стандартный deploy создал дополнительный verified backup `backups/hr_bot.before-deploy.20260722-114543.db` in Actions log;
+  - scenario configuration fingerprint unchanged.
+- Stage smoke checks after import:
+  - `/app/employees` -> `303`;
+  - `/app/flows/workspace-v2` -> `303`;
+  - Telegram API reachability -> `HTTP/2 302`;
+  - deploy job завершился успешно и вывел `9ebfb8b`.
+- Открытый риск:
+  - у одной сотрудницы Telegram username отсутствует до ручной правки в карточке или исходной таблице. Остальные флаги руководителей/наставников нужно выставить вручную, как и планировалось.
+
 ### 2026-07-22 14:33 MSK - app deploy - positions DnD visual polish
 
 - Deploy ref: `stage`.
