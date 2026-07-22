@@ -1,5 +1,5 @@
 import React from "react";
-import { BriefcaseBusiness, Save, Shield, Trash2 } from "lucide-react";
+import { BriefcaseBusiness, GripVertical, Save, Shield, Trash2 } from "lucide-react";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -118,6 +118,37 @@ const activeOptions = [
   { value: "true", label: "Активен" },
   { value: "false", label: "Отключен" },
 ];
+
+function sortedPositions(positions: Position[]): Position[] {
+  return [...positions].sort((left, right) => {
+    if (left.sort_order !== right.sort_order) {
+      return left.sort_order - right.sort_order;
+    }
+    return left.id - right.id;
+  });
+}
+
+function movePosition(positions: Position[], draggedId: number, targetId: number): Position[] {
+  if (draggedId === targetId) {
+    return positions;
+  }
+  const currentPositions = sortedPositions(positions);
+  const draggedPosition = currentPositions.find((position) => position.id === draggedId);
+  if (!draggedPosition) {
+    return positions;
+  }
+  const withoutDragged = currentPositions.filter((position) => position.id !== draggedId);
+  const targetIndex = withoutDragged.findIndex((position) => position.id === targetId);
+  if (targetIndex < 0) {
+    return positions;
+  }
+  const nextPositions = [...withoutDragged];
+  nextPositions.splice(targetIndex, 0, draggedPosition);
+  return nextPositions.map((position, index) => ({
+    ...position,
+    sort_order: (index + 1) * 10,
+  }));
+}
 
 async function requestJson(path: string, options: RequestInit = {}) {
   const response = await fetch(path, {
@@ -316,6 +347,9 @@ export function SettingsPage({ apiUrl }: SettingsPageProps) {
   const [newAccount, setNewAccount] = React.useState({ login: "", password: "", role: "hr", is_active: true });
   const [accountPasswords, setAccountPasswords] = React.useState<Record<number, string>>({});
   const [newPositionTitle, setNewPositionTitle] = React.useState("");
+  const [draggedPositionId, setDraggedPositionId] = React.useState<number | null>(null);
+  const [dragOverPositionId, setDragOverPositionId] = React.useState<number | null>(null);
+  const [positionsReordering, setPositionsReordering] = React.useState(false);
 
   React.useEffect(() => {
     requestJson(apiUrl)
@@ -371,6 +405,98 @@ export function SettingsPage({ apiUrl }: SettingsPageProps) {
     is_active: position.is_active,
   });
 
+  const reloadWorkspace = async () => {
+    const nextWorkspace = await requestJson(apiUrl);
+    setWorkspace(normalizeWorkspace(nextWorkspace));
+    return nextWorkspace;
+  };
+
+  const savePositionOrder = async (nextPositions: Position[]) => {
+    if (!workspace || positionsReordering) return;
+
+    const orderedPositions = sortedPositions(nextPositions);
+    const originalOrders = new Map(workspace.positions.map((position) => [position.id, position.sort_order]));
+    const changedPositions = orderedPositions.filter(
+      (position) => originalOrders.get(position.id) !== position.sort_order,
+    );
+    if (!changedPositions.length) return;
+
+    setPositionsReordering(true);
+    setError("");
+    setMessage("");
+    setWorkspace((current) => (current ? { ...cloneWorkspace(current), positions: orderedPositions } : current));
+
+    try {
+      let latestWorkspace: Workspace | null = null;
+      for (const position of changedPositions) {
+        latestWorkspace = await requestJson(`/api/settings/positions/${position.id}`, {
+          method: "PATCH",
+          body: JSON.stringify({ sort_order: position.sort_order }),
+        });
+      }
+      if (latestWorkspace) {
+        setWorkspace(normalizeWorkspace(latestWorkspace));
+      }
+      setMessage("Порядок должностей сохранен");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Не удалось сохранить порядок должностей");
+      try {
+        await reloadWorkspace();
+      } catch (reloadErr) {
+        setError(
+          reloadErr instanceof Error
+            ? `Не удалось сохранить порядок должностей. ${reloadErr.message}`
+            : "Не удалось сохранить порядок должностей и обновить данные",
+        );
+      }
+    } finally {
+      setPositionsReordering(false);
+      setDraggedPositionId(null);
+      setDragOverPositionId(null);
+    }
+  };
+
+  const handlePositionDrop = (targetId: number, sourceId = draggedPositionId) => {
+    if (!workspace || sourceId === null || positionsReordering) return;
+    const nextPositions = movePosition(workspace.positions, sourceId, targetId);
+    void savePositionOrder(nextPositions);
+  };
+
+  React.useEffect(() => {
+    if (draggedPositionId === null || positionsReordering) return;
+
+    const findPositionIdAtPoint = (clientX: number, clientY: number) => {
+      const element = document.elementFromPoint(clientX, clientY);
+      const row = element?.closest("[data-position-id]");
+      const rowId = row?.getAttribute("data-position-id") || "";
+      return rowId ? Number(rowId) : null;
+    };
+
+    const handleMouseMove = (event: MouseEvent) => {
+      event.preventDefault();
+      const targetId = findPositionIdAtPoint(event.clientX, event.clientY);
+      setDragOverPositionId(targetId && targetId !== draggedPositionId ? targetId : null);
+    };
+
+    const handleMouseUp = (event: MouseEvent) => {
+      event.preventDefault();
+      const targetId = findPositionIdAtPoint(event.clientX, event.clientY);
+      if (targetId && targetId !== draggedPositionId) {
+        handlePositionDrop(targetId, draggedPositionId);
+      } else {
+        setDraggedPositionId(null);
+        setDragOverPositionId(null);
+      }
+    };
+
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp, { once: true });
+    return () => {
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [draggedPositionId, positionsReordering, workspace]);
+
   if (loading) {
     return (
       <Card className="admin-page-shell border border-border/80 bg-card shadow-none ring-0">
@@ -389,6 +515,7 @@ export function SettingsPage({ apiUrl }: SettingsPageProps) {
 
   const isAdmin = workspace.current_user.role === "admin";
   const roles = roleOptions(workspace.role_labels);
+  const orderedPositions = sortedPositions(workspace.positions);
 
   return (
     <div className="admin-page-stack gap-5">
@@ -428,10 +555,11 @@ export function SettingsPage({ apiUrl }: SettingsPageProps) {
                 onChange={(event) => setNewPositionTitle(event.target.value)}
                 placeholder="Например, QA engineer"
                 autoComplete="off"
+                disabled={positionsReordering}
               />
             </Field>
             <Button
-              disabled={!newPositionTitle.trim()}
+              disabled={!newPositionTitle.trim() || positionsReordering}
               onClick={() =>
                 setWorkspaceFromApi(
                   requestJson("/api/settings/positions", {
@@ -448,38 +576,77 @@ export function SettingsPage({ apiUrl }: SettingsPageProps) {
           </div>
 
           <div className="grid gap-2">
-            {workspace.positions.map((position) => (
+            {orderedPositions.map((position) => (
               <div
                 key={position.id}
-                className="grid gap-2 rounded-lg border border-border bg-background p-3 xl:grid-cols-[minmax(220px,1fr)_120px_160px_auto] xl:items-center"
+                data-position-id={position.id}
+                onDragOver={(event) => {
+                  if (draggedPositionId !== null && draggedPositionId !== position.id && !positionsReordering) {
+                    event.preventDefault();
+                    event.dataTransfer.dropEffect = "move";
+                    setDragOverPositionId(position.id);
+                  }
+                }}
+                onDragLeave={() => setDragOverPositionId((current) => (current === position.id ? null : current))}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  handlePositionDrop(position.id);
+                }}
+                className={cn(
+                  "grid gap-2 rounded-lg border border-border bg-background p-3 transition-colors xl:grid-cols-[auto_minmax(220px,1fr)_160px_auto] xl:items-center",
+                  dragOverPositionId === position.id && draggedPositionId !== position.id
+                    ? "border-primary/60 bg-primary/5"
+                    : null,
+                  positionsReordering ? "opacity-70" : null,
+                )}
               >
+                <button
+                  type="button"
+                  disabled={positionsReordering}
+                  aria-label="Перетащить должность"
+                  title="Перетащить"
+                  onMouseDown={(event) => {
+                    if (positionsReordering) return;
+                    event.preventDefault();
+                    setDraggedPositionId(position.id);
+                    setDragOverPositionId(null);
+                  }}
+                  onDragStart={(event) => {
+                    setDraggedPositionId(position.id);
+                    event.dataTransfer.effectAllowed = "move";
+                    event.dataTransfer.setData("text/plain", String(position.id));
+                  }}
+                  onDragEnd={() => {
+                    setDraggedPositionId(null);
+                    setDragOverPositionId(null);
+                  }}
+                  className="inline-flex size-9 cursor-grab items-center justify-center rounded-md border border-border bg-muted/45 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50 active:cursor-grabbing"
+                >
+                  <GripVertical className="size-4" />
+                </button>
                 <Input
                   value={position.title}
                   onChange={(event) => updatePositionLocal(position.id, { title: event.target.value })}
                   aria-label="Название должности"
                   autoComplete="off"
+                  disabled={positionsReordering}
                 />
-                <Input
-                  type="number"
-                  inputMode="numeric"
-                  value={position.sort_order}
-                  onChange={(event) =>
-                    updatePositionLocal(position.id, { sort_order: Number(event.target.value || 0) })
-                  }
-                  aria-label="Порядок сортировки"
-                />
-                <AppSelect
-                  value={position.is_active ? "true" : "false"}
-                  onChange={(value) => updatePositionLocal(position.id, { is_active: value === "true" })}
-                  options={activeOptions}
-                  allowEmpty={false}
-                />
+                <div className="grid gap-1">
+                  <AppSelect
+                    value={position.is_active ? "true" : "false"}
+                    onChange={(value) => updatePositionLocal(position.id, { is_active: value === "true" })}
+                    options={activeOptions}
+                    allowEmpty={false}
+                    disabled={positionsReordering}
+                  />
+                  <span className="px-1 text-xs text-muted-foreground">sort_order {position.sort_order}</span>
+                </div>
                 <div className="flex gap-2 xl:justify-end">
                   <Button
                     variant="secondary"
                     size="icon"
                     aria-label="Сохранить должность"
-                    disabled={!position.title.trim()}
+                    disabled={!position.title.trim() || positionsReordering}
                     onClick={() =>
                       setWorkspaceFromApi(
                         requestJson(`/api/settings/positions/${position.id}`, {
@@ -503,7 +670,7 @@ export function SettingsPage({ apiUrl }: SettingsPageProps) {
                       )
                     }
                   >
-                    <Button variant="outline" size="icon" aria-label="Удалить должность">
+                    <Button variant="outline" size="icon" aria-label="Удалить должность" disabled={positionsReordering}>
                       <Trash2 />
                     </Button>
                   </ConfirmAction>
