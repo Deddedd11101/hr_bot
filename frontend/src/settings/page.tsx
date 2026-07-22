@@ -593,13 +593,17 @@ export function SettingsPage({ apiUrl }: SettingsPageProps) {
                   handlePositionDrop(position.id);
                 }}
                 className={cn(
-                  "grid gap-2 rounded-lg border border-border bg-background p-3 transition-colors xl:grid-cols-[auto_minmax(220px,1fr)_160px_auto] xl:items-center",
-                  dragOverPositionId === position.id && draggedPositionId !== position.id
-                    ? "border-primary/60 bg-primary/5"
-                    : null,
+                  "relative grid gap-2 rounded-lg border border-border bg-background p-3 transition-colors xl:grid-cols-[auto_minmax(220px,1fr)_160px_auto] xl:items-center",
+                  draggedPositionId === position.id ? "border-primary/40 bg-primary/5 opacity-80" : null,
                   positionsReordering ? "opacity-70" : null,
                 )}
               >
+                {dragOverPositionId === position.id && draggedPositionId !== position.id ? (
+                  <div className="pointer-events-none absolute -top-2 left-3 right-3 z-10 flex items-center gap-2">
+                    <span className="size-2 rounded-full bg-primary shadow-[0_0_0_3px_var(--card)]" />
+                    <span className="h-0.5 flex-1 rounded-full bg-primary shadow-[0_0_0_3px_var(--card)]" />
+                  </div>
+                ) : null}
                 <button
                   type="button"
                   disabled={positionsReordering}
@@ -639,7 +643,6 @@ export function SettingsPage({ apiUrl }: SettingsPageProps) {
                     allowEmpty={false}
                     disabled={positionsReordering}
                   />
-                  <span className="px-1 text-xs text-muted-foreground">sort_order {position.sort_order}</span>
                 </div>
                 <div className="flex gap-2 xl:justify-end">
                   <Button
