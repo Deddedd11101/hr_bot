@@ -15,11 +15,11 @@ from ..flow_templates import (
     EMPLOYEE_SCOPE_LABELS,
     NOTIFICATION_RECIPIENT_SCOPE_LABELS,
     RESPONSE_TYPE_LABELS,
-    ROLE_SCOPE_LABELS,
     SEND_MODE_LABELS,
     TARGET_FIELD_LABELS,
     TRIGGER_MODE_LABELS,
 )
+from ..positions import build_role_scope_labels
 from ..models import (
     FlowLaunchRequest,
     FlowStepTemplate,
@@ -667,6 +667,7 @@ def _build_scenario_workspace_payload(
         selected_scenario = scenarios[0]
 
     scenario_timestamps = _load_scenario_timestamps(db, [scenario.id for scenario in scenarios])
+    role_scope_labels = build_role_scope_labels(db, include_inactive=True)
     scenario_items = []
     for scenario in scenarios:
         steps_count = (
@@ -686,7 +687,7 @@ def _build_scenario_workspace_payload(
                 "created_at": scenario_timestamps.get(scenario.id, {}).get("created_at"),
                 "updated_at": scenario_timestamps.get(scenario.id, {}).get("updated_at"),
                 "candidate_work_stage_trigger": getattr(scenario, "candidate_work_stage_trigger", None) or "",
-                "role_scope_label": ROLE_SCOPE_LABELS.get(scenario.role_scope, scenario.role_scope),
+                "role_scope_label": role_scope_labels.get(scenario.role_scope, scenario.role_scope),
                 "employee_scope_label": EMPLOYEE_SCOPE_LABELS.get(
                     getattr(scenario, "employee_scope", "all"),
                     getattr(scenario, "employee_scope", "all"),
@@ -719,7 +720,7 @@ def _build_scenario_workspace_payload(
                 "title": selected_scenario.title,
                 "description": selected_scenario.description or "",
                 "role_scope": selected_scenario.role_scope,
-                "role_scope_label": ROLE_SCOPE_LABELS.get(selected_scenario.role_scope, selected_scenario.role_scope),
+                "role_scope_label": role_scope_labels.get(selected_scenario.role_scope, selected_scenario.role_scope),
                 "employee_scope": getattr(selected_scenario, "employee_scope", "all"),
                 "employee_scope_label": EMPLOYEE_SCOPE_LABELS.get(
                     getattr(selected_scenario, "employee_scope", "all"),
@@ -738,7 +739,7 @@ def _build_scenario_workspace_payload(
                 "steps_count": len(root_steps),
             },
             "response_type_labels": _workspace_response_type_labels(),
-            "role_scope_labels": ROLE_SCOPE_LABELS,
+            "role_scope_labels": role_scope_labels,
             "employee_scope_labels": EMPLOYEE_SCOPE_LABELS,
             "trigger_mode_labels": TRIGGER_MODE_LABELS,
             "candidate_work_stage_labels": CANDIDATE_WORK_STAGE_LABELS,

@@ -37,6 +37,7 @@ from app.models import (
     HrSettings,
     MassMessageAction,
     MassScenarioAction,
+    Position,
     ScenarioProgress,
     ScenarioTemplate,
     StepButtonNotification,
@@ -1380,6 +1381,115 @@ class EmployeeApiSmokeTests(unittest.TestCase):
             self.assertEqual(employee.salary_expectation, "350000")
             self.assertEqual(employee.notes, "employee-notes")
             self.assertTrue(employee.is_bot_blocked)
+
+    def test_settings_positions_api_supports_crud(self) -> None:
+        position_slug = f"qa_engineer_{self.unique_tag}"
+        position_title = f"QA engineer {self.unique_tag}"
+        create_response = self.client.post(
+            "/api/settings/positions",
+            json={
+                "title": position_title,
+                "slug": position_slug,
+            },
+        )
+
+        self.assertEqual(create_response.status_code, 200)
+        workspace = create_response.json()
+        created_position = next((item for item in workspace["positions"] if item["slug"] == position_slug), None)
+        self.assertIsNotNone(created_position)
+        self.assertEqual(created_position["title"], position_title)
+
+        list_response = self.client.get("/api/settings/positions")
+        self.assertEqual(list_response.status_code, 200)
+        self.assertTrue(any(item["slug"] == position_slug for item in list_response.json()["positions"]))
+
+        update_response = self.client.patch(
+            f"/api/settings/positions/{created_position['id']}",
+            json={"title": "Senior QA engineer", "sort_order": 90},
+        )
+        self.assertEqual(update_response.status_code, 200)
+        updated_position = next(
+            (item for item in update_response.json()["positions"] if item["id"] == created_position["id"]),
+            None,
+        )
+        self.assertIsNotNone(updated_position)
+        self.assertEqual(updated_position["title"], "Senior QA engineer")
+        self.assertEqual(updated_position["sort_order"], 90)
+
+        delete_response = self.client.delete(f"/api/settings/positions/{created_position['id']}")
+        self.assertEqual(delete_response.status_code, 200)
+        deleted_position = next(
+            (item for item in delete_response.json()["positions"] if item["id"] == created_position["id"]),
+            None,
+        )
+        self.assertIsNotNone(deleted_position)
+        self.assertFalse(deleted_position["is_active"])
+
+    def test_employee_detail_payload_uses_catalog_positions_and_preserves_legacy_value(self) -> None:
+        position_slug = f"qa_engineer_{self.unique_tag}"
+        position_title = f"QA engineer {self.unique_tag}"
+        with SessionLocal() as db:
+            ensure_position = Position(
+                title=position_title,
+                slug=position_slug,
+                is_active=True,
+                sort_order=90,
+                created_at=datetime.now(UTC).replace(tzinfo=None),
+            )
+            db.add(ensure_position)
+            employee = db.get(Employee, self.employee_id)
+            self.assertIsNotNone(employee)
+            employee.desired_position = "Редактор"
+            db.commit()
+
+        response = self.client.get(f"/api/employees/{self.employee_id}")
+        self.assertEqual(response.status_code, 200)
+        options = response.json()["options"]["employee_role_values"]
+        self.assertIn(position_title, options)
+        self.assertIn("Редактор", options)
+
+    def test_update_employee_api_persists_position_from_catalog(self) -> None:
+        position_slug = f"qa_engineer_{self.unique_tag}"
+        position_title = f"QA engineer {self.unique_tag}"
+        self.client.post(
+            "/api/settings/positions",
+            json={
+                "title": position_title,
+                "slug": position_slug,
+            },
+        )
+
+        response = self.client.post(
+            f"/api/employees/{self.employee_id}",
+            json={
+                "full_name": "Кандидат QA",
+                "chat_id": "",
+                "chat_handle": "",
+                "first_workday": "",
+                "desired_position": position_slug,
+                "birth_date": "",
+                "work_email": "",
+                "work_hours": "",
+                "manager_chat_id": "",
+                "mentor_adaptation_chat_id": "",
+                "mentor_ipr_chat_id": "",
+                "employee_stage": "candidate",
+                "candidate_work_stage": "testing",
+                "salary_expectation": "",
+                "personal_data_consent": False,
+                "employee_data_consent": False,
+                "is_bot_blocked": False,
+                "test_task_due_at": "",
+                "notes": "",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["employee"]["desired_position"], position_title)
+        with SessionLocal() as db:
+            employee = db.get(Employee, self.employee_id)
+            self.assertIsNotNone(employee)
+            self.assertEqual(employee.desired_position, position_title)
 
     def test_workspace_scenario_settings_api_updates_scope_and_description(self) -> None:
         scenario_key = f"codex_settings_{uuid4().hex[:12]}"

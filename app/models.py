@@ -187,6 +187,19 @@ class Employee(Base):
     )
 
 
+class Position(Base):
+    """Управляемый справочник должностей."""
+
+    __tablename__ = "positions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    slug: Mapped[str] = mapped_column(String(128), nullable=False, unique=True, index=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+
+
 class EmployeeMessengerAccount(Base):
     """Канал связи сотрудника в конкретном мессенджере."""
 

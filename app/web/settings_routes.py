@@ -10,7 +10,8 @@ from ..database import get_session
 from ..messaging import create_telegram_messenger
 from ..messaging.identity import get_primary_chat_id
 from ..messaging.service import show_main_menu
-from ..models import AdminAccount, BotMenuButton, BotMenuSet, Employee
+from ..models import AdminAccount, BotMenuButton, BotMenuSet, Employee, Position
+from ..positions import ensure_position_exists, normalize_position_slug
 from ..config import settings
 from ..time_utils import utc_now
 from .settings import (
@@ -31,6 +32,17 @@ templates = Jinja2Templates(directory="app/templates")
 def get_db():
     with get_session() as db:
         yield db
+
+
+def _serialize_position(position: Position) -> dict:
+    return {
+        "id": position.id,
+        "title": position.title,
+        "slug": position.slug,
+        "is_active": bool(position.is_active),
+        "sort_order": position.sort_order,
+        "created_at": position.created_at.isoformat() if position.created_at else "",
+    }
 
 
 @router.post("/settings")
@@ -484,6 +496,84 @@ def react_design_system_page(request: Request):
 @router.get("/api/settings/workspace")
 def settings_workspace_api(request: Request, db: Session = Depends(get_db)):
     current_user = require_api_auth(request)
+    return _settings_workspace_payload(db, current_user)
+
+
+@router.get("/api/settings/positions")
+def positions_list_api(request: Request, db: Session = Depends(get_db)):
+    require_api_auth(request)
+    positions = db.query(Position).order_by(Position.sort_order.asc(), Position.id.asc()).all()
+    return {"positions": [_serialize_position(position) for position in positions]}
+
+
+@router.post("/api/settings/positions")
+def create_position_api(
+    request: Request,
+    payload: dict = Body(...),
+    db: Session = Depends(get_db),
+):
+    current_user = require_api_auth(request)
+    title = str(payload.get("title") or "").strip()
+    if not title:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Укажите название должности")
+    slug = normalize_position_slug(str(payload.get("slug") or "").strip() or title)
+    if not slug:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Не удалось определить slug должности")
+    if db.query(Position).filter(Position.slug == slug).first() is not None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Должность с таким slug уже существует")
+    last_position = db.query(Position).order_by(Position.sort_order.desc(), Position.id.desc()).first()
+    position = ensure_position_exists(
+        db,
+        title=title,
+        slug=slug,
+        is_active=bool(payload.get("is_active", True)),
+        sort_order=int(payload.get("sort_order")) if str(payload.get("sort_order") or "").isdigit() else ((last_position.sort_order + 10) if last_position else 10),
+    )
+    db.commit()
+    return _settings_workspace_payload(db, current_user)
+
+
+@router.post("/api/settings/positions/{position_id}")
+@router.patch("/api/settings/positions/{position_id}")
+def update_position_api(
+    request: Request,
+    position_id: int,
+    payload: dict = Body(...),
+    db: Session = Depends(get_db),
+):
+    current_user = require_api_auth(request)
+    position = db.get(Position, position_id)
+    if position is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Должность не найдена")
+    next_title = str(payload.get("title") or position.title).strip() or position.title
+    next_slug = normalize_position_slug(str(payload.get("slug") or "").strip() or position.slug or next_title)
+    if not next_slug:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Не удалось определить slug должности")
+    duplicate = db.query(Position).filter(Position.slug == next_slug, Position.id != position_id).first()
+    if duplicate is not None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Должность с таким slug уже существует")
+    position.title = next_title
+    position.slug = next_slug
+    if "is_active" in payload:
+        position.is_active = bool(payload.get("is_active"))
+    if str(payload.get("sort_order") or "").isdigit():
+        position.sort_order = int(payload["sort_order"])
+    db.commit()
+    return _settings_workspace_payload(db, current_user)
+
+
+@router.delete("/api/settings/positions/{position_id}")
+def delete_position_api(
+    request: Request,
+    position_id: int,
+    db: Session = Depends(get_db),
+):
+    current_user = require_api_auth(request)
+    position = db.get(Position, position_id)
+    if position is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Должность не найдена")
+    position.is_active = False
+    db.commit()
     return _settings_workspace_payload(db, current_user)
 
 

@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from ..config import settings
 from ..file_storage import build_employee_file_path
-from ..flow_templates import CANDIDATE_WORK_STAGE_LABELS, EMPLOYEE_ROLE_VALUES
+from ..flow_templates import CANDIDATE_WORK_STAGE_LABELS
 from ..messaging import create_telegram_messenger
 from ..messaging.identity import (
     EmployeeIdentityConflictError,
@@ -28,6 +28,7 @@ from ..models import (
     ScenarioProgress,
     ScenarioTemplate,
 )
+from ..positions import employee_position_values, resolve_employee_position_value
 from ..scenario_engine import SINGLE_STEP_REQUEST_PREFIX, add_workdays, get_first_step, matches_role_scope, start_scenario
 from ..time_utils import utc_now
 
@@ -601,8 +602,7 @@ def _apply_employee_update(
     employee.full_name = full_name.strip() or None
     _apply_employee_telegram_identity(employee, chat_id=chat_id, chat_handle=chat_handle, db=db)
     employee.first_workday = first_day
-    normalized_position = desired_position.strip()
-    employee.desired_position = normalized_position or None
+    employee.desired_position = resolve_employee_position_value(db, desired_position)
     employee.salary_expectation = salary_expectation.strip() or None
     employee.is_bot_blocked = is_bot_blocked
 
@@ -1070,10 +1070,7 @@ def _build_employee_detail_payload(db: Session, employee: Employee) -> dict:
         .order_by(FlowLaunchRequest.processed_at.desc(), FlowLaunchRequest.id.desc())
         .all()
     )
-    employee_role_values = list(EMPLOYEE_ROLE_VALUES)
-    current_position = (employee.desired_position or "").strip()
-    if current_position and current_position not in employee_role_values:
-        employee_role_values.append(current_position)
+    employee_role_values = employee_position_values(db, current_value=employee.desired_position or "")
 
     today = datetime.now().date()
     list_kind = _employee_list_kind(employee)

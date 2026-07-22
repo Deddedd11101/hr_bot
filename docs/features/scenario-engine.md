@@ -25,6 +25,7 @@ Scenario engine превращает scenario templates плюс employee state 
 - `flow_launch_requests` — delayed или manual launches.
 - `employee_document_links` / `employee_files` — персональные document slots для тегов вида `{doc:...}`.
 - `candidate_work_stage` changes в employee detail — отдельный trigger source для HR-driven candidate lifecycle.
+- `positions` и string `employees.desired_position` — общий слой для role matching; `scenario_templates.role_scope` теперь трактуется как `positions.slug`, а не как закрытый hardcoded enum.
 
 ## Текущие типы шагов
 

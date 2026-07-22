@@ -26,9 +26,11 @@ def init_db() -> None:
     _ensure_sqlite_schema()
     from .auth import seed_admin_accounts
     from .flow_templates import seed_flow_templates
+    from .positions import seed_positions_catalog
 
     seed_admin_accounts()
     seed_flow_templates()
+    seed_positions_catalog()
 
 
 @contextmanager
@@ -88,6 +90,24 @@ def _ensure_sqlite_schema() -> None:
         for col, ddl in required.items():
             if col not in columns:
                 conn.execute(text(f"ALTER TABLE employees ADD COLUMN {col} {ddl}"))
+
+        conn.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS positions (
+                    id INTEGER NOT NULL,
+                    title VARCHAR(255) NOT NULL,
+                    slug VARCHAR(128) NOT NULL,
+                    is_active BOOLEAN NOT NULL DEFAULT 1,
+                    sort_order INTEGER NOT NULL DEFAULT 0,
+                    created_at DATETIME NOT NULL,
+                    PRIMARY KEY (id)
+                )
+                """
+            )
+        )
+        conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_positions_slug ON positions (slug)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_positions_id ON positions (id)"))
 
         employee_columns = {row[1] for row in conn.execute(text("PRAGMA table_info(employees)")).fetchall()}
         if "desired_position" in employee_columns:

@@ -5,7 +5,6 @@ from fastapi import HTTPException, Request, status
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
-from ..flow_templates import ROLE_SCOPE_LABELS
 from ..mass_targeting import (
     MASS_TARGET_NONE,
     build_legacy_target_statuses,
@@ -16,6 +15,7 @@ from ..mass_targeting import (
     serialize_target_values,
 )
 from ..models import Employee, MassMessageAction, MassScenarioAction, ScenarioTemplate
+from ..positions import ROLE_SCOPE_ALL, build_role_scope_labels, resolve_scope_slug
 from ..scenario_engine import format_message
 from .employees import (
     OFFER_DOCUMENT_TITLE,
@@ -77,8 +77,9 @@ def _recipient_scope_label(
     parts: list[str] = []
     if role_scope == "all" and target_all:
         return "Все"
-    if role_scope and role_scope in ROLE_SCOPE_LABELS and role_scope != "all":
-        parts.append(ROLE_SCOPE_LABELS[role_scope])
+    role_scope_labels = build_role_scope_labels(db, include_inactive=True)
+    if role_scope and role_scope in role_scope_labels and role_scope != ROLE_SCOPE_ALL:
+        parts.append(role_scope_labels[role_scope])
     employee_stages, candidate_stages, include_all_candidates = resolve_target_groups(
         legacy_target_statuses=target_statuses,
         target_employee_stages=target_employee_stages,
@@ -250,11 +251,12 @@ def _bulk_workspace_payload(db: Session) -> dict:
         .limit(20)
         .all()
     )
+    role_scope_labels = build_role_scope_labels(db)
     return {
         "scenarios": [_serialize_bulk_scenario(scenario) for scenario in scenarios],
         "surveys": [_serialize_bulk_scenario(survey) for survey in surveys],
         "employee_options": _all_employee_options(db),
-        "role_scope_options": [{"value": value, "label": label} for value, label in ROLE_SCOPE_LABELS.items()],
+        "role_scope_options": [{"value": value, "label": label} for value, label in role_scope_labels.items()],
         "employee_stage_options": [{"value": value, "label": label} for value, label in MASS_TARGET_EMPLOYEE_STAGE_OPTIONS],
         "candidate_stage_options": [{"value": value, "label": label} for value, label in MASS_TARGET_CANDIDATE_STAGE_OPTIONS],
         "document_tag_titles": [OFFER_DOCUMENT_TITLE],
@@ -272,10 +274,8 @@ def _parse_mass_target_payload(payload: dict) -> tuple[bool, list[str], list[str
     target_candidate_stages = normalize_mass_target_candidate_stages([str(value) for value in payload.get("target_candidate_stages") or []])
     target_employee_id_value = str(payload.get("target_employee_id") or "").strip()
     target_employee_id = int(target_employee_id_value) if target_employee_id_value.isdigit() else None
-    target_role_scope = str(payload.get("target_role_scope") or "").strip()
-    if target_role_scope not in ROLE_SCOPE_LABELS:
-        target_role_scope = ""
-    normalized_role_scope = target_role_scope if target_role_scope != "all" else None
+    target_role_scope = resolve_scope_slug(str(payload.get("target_role_scope") or "").strip())
+    normalized_role_scope = target_role_scope if target_role_scope != ROLE_SCOPE_ALL else None
     target_all = not any([target_employee_stages, target_candidate_stages, target_employee_id, normalized_role_scope])
     return target_all, target_employee_stages, target_candidate_stages, target_employee_id, normalized_role_scope
 
@@ -336,9 +336,7 @@ async def _parse_mass_action_targets(request: Request) -> tuple[bool, list[str],
     target_candidate_stages = normalize_mass_target_candidate_stages(form.getlist("target_candidate_stages"))
     target_employee_id_value = str(form.get("target_employee_id", "") or "").strip()
     target_employee_id = int(target_employee_id_value) if target_employee_id_value.isdigit() else None
-    target_role_scope = str(form.get("target_role_scope", "") or "").strip()
-    if target_role_scope not in ROLE_SCOPE_LABELS:
-        target_role_scope = ""
-    normalized_role_scope = target_role_scope if target_role_scope != "all" else None
+    target_role_scope = resolve_scope_slug(str(form.get("target_role_scope", "") or "").strip())
+    normalized_role_scope = target_role_scope if target_role_scope != ROLE_SCOPE_ALL else None
     target_all = not any([target_employee_stages, target_candidate_stages, target_employee_id, normalized_role_scope])
     return target_all, target_employee_stages, target_candidate_stages, target_employee_id, normalized_role_scope

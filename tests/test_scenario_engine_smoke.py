@@ -385,6 +385,12 @@ class ScenarioEngineSmokeTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(matches_role_scope(employee, employee_scenario))
         self.assertFalse(matches_role_scope(candidate, employee_scenario))
 
+    def test_matches_role_scope_supports_new_catalog_slug(self) -> None:
+        employee = SimpleNamespace(id=2, employee_stage="staff", desired_position="QA engineer")
+        scenario = SimpleNamespace(employee_scope="employees", target_employee_id=None, role_scope="qa_engineer")
+
+        self.assertTrue(matches_role_scope(employee, scenario))
+
     async def test_handle_button_response_persists_target_field_value(self) -> None:
         init_db()
         now = datetime.now(UTC).replace(tzinfo=None)

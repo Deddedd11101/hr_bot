@@ -17,12 +17,12 @@ from ..flow_templates import (
     EMPLOYEE_SCOPE_LABELS,
     NOTIFICATION_RECIPIENT_SCOPE_LABELS,
     RESPONSE_TYPE_LABELS,
-    ROLE_SCOPE_LABELS,
     SEND_MODE_LABELS,
     TARGET_FIELD_LABELS,
     TRIGGER_MODE_LABELS,
 )
 from ..models import Employee, FlowStepTemplate, ScenarioTemplate, StepButtonNotification, SurveyAnswer
+from ..positions import ROLE_SCOPE_ALL, build_role_scope_labels, resolve_scope_slug
 from ..time_utils import utc_now
 from .scenarios import (
     _apply_workspace_step_update,
@@ -203,7 +203,7 @@ def update_workspace_scenario_api(
 
     scenario.title = title[:120] or scenario.title or "Без названия"
     scenario.description = description[:50] or None
-    scenario.role_scope = role_scope if role_scope in ROLE_SCOPE_LABELS else "all"
+    scenario.role_scope = resolve_scope_slug(role_scope or "") or ROLE_SCOPE_ALL
     scenario.employee_scope = employee_scope if employee_scope in EMPLOYEE_SCOPE_LABELS else "all"
     scenario.trigger_mode = trigger_mode if trigger_mode in TRIGGER_MODE_LABELS else "manual_only"
     scenario.candidate_work_stage_trigger = (
@@ -822,7 +822,7 @@ def _create_template_entity(
         scenario_kind=kind,
         title=title.strip() or meta["new_title"],
         sort_order=(last_scenario.sort_order + 10) if last_scenario else 10,
-        role_scope=role_scope if role_scope in ROLE_SCOPE_LABELS else "all",
+        role_scope=resolve_scope_slug(role_scope or "") or ROLE_SCOPE_ALL,
         employee_scope=employee_scope if employee_scope in EMPLOYEE_SCOPE_LABELS else "all",
         target_employee_id=int(target_employee_id) if (target_employee_id or "").strip().isdigit() else None,
         trigger_mode=trigger_mode if trigger_mode in TRIGGER_MODE_LABELS else "manual_only",
@@ -860,7 +860,7 @@ def _edit_template_page(
             "active_tab": meta["active_tab"],
             "scenario": scenario,
             "steps": editor_data["steps"],
-            "role_scope_labels": ROLE_SCOPE_LABELS,
+            "role_scope_labels": build_role_scope_labels(db, include_inactive=True),
             "employee_scope_labels": EMPLOYEE_SCOPE_LABELS,
             "trigger_mode_labels": TRIGGER_MODE_LABELS,
             "response_type_labels": RESPONSE_TYPE_LABELS,
@@ -1056,7 +1056,7 @@ async def update_scenario(
 
         target_step_id_int = int(target_step_id) if (target_step_id or "").strip().isdigit() else None
         scenario.title = title.strip() or scenario.title
-        scenario.role_scope = role_scope if role_scope in ROLE_SCOPE_LABELS else "all"
+        scenario.role_scope = resolve_scope_slug(role_scope or "") or ROLE_SCOPE_ALL
         scenario.employee_scope = employee_scope if employee_scope in EMPLOYEE_SCOPE_LABELS else "all"
         scenario.target_employee_id = int(target_employee_id) if (target_employee_id or "").strip().isdigit() else None
         scenario.trigger_mode = "manual_only" if scenario.scenario_kind == "survey" else (trigger_mode if trigger_mode in TRIGGER_MODE_LABELS else "manual_only")

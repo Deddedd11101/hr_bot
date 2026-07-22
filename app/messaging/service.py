@@ -5,9 +5,9 @@ from typing import Literal, NamedTuple, Optional
 from sqlalchemy.orm import Session
 
 from ..flow_templates import EMPLOYEE_SCOPE_CANDIDATES, EMPLOYEE_SCOPE_EMPLOYEES
-from ..mass_targeting import ROLE_SCOPE_TO_POSITION
 from ..models import BotMenuButton, BotMenuSet, DocumentLibraryItem, Employee, EmployeeFile, HrSettings, ScenarioTemplate
 from ..notifications import notify_hr_test_task_received
+from ..positions import position_matches_scope
 from ..scenario_engine import (
     SCENARIO_BACK_BUTTON_TEXT,
     DATE_CALLBACK_PREFIX,
@@ -162,8 +162,7 @@ def menu_set_matches_employee(employee: Employee, menu_set: BotMenuSet) -> bool:
 
     normalized_role_scope = (menu_set.role_scope or "all").strip()
     if normalized_role_scope and normalized_role_scope != "all":
-        target_position = ROLE_SCOPE_TO_POSITION.get(normalized_role_scope)
-        if not target_position or (employee.desired_position or "").strip() != target_position:
+        if not position_matches_scope(employee.desired_position, normalized_role_scope):
             return False
 
     return True

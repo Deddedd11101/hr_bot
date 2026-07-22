@@ -38,6 +38,7 @@ source_of_truth: true
 1. `Base.metadata.create_all(bind=engine)`
 2. `_ensure_sqlite_schema()` для SQLite compatibility patching
 3. seed routines для admin accounts и встроенных flow templates
+4. seed/compatibility routine для каталога должностей `positions`
 
 Значит, schema evolution не является чисто декларативной. Runtime может менять форму базы при запуске.
 
@@ -59,6 +60,7 @@ source_of_truth: true
 | Таблица | Назначение | Ключевые поля | Связи и примечания |
 | --- | --- | --- | --- |
 | `employees` | Единая запись для candidates и employees | `full_name`, `first_workday`, `employee_stage`, `candidate_work_stage`, legacy Telegram fields, HR profile fields, consent flags, `is_bot_blocked` | Центральная запись, на нее ссылается большинство runtime tables |
+| `positions` | Управляемый справочник должностей | `title`, `slug`, `is_active`, `sort_order`, `created_at` | Catalog для employee detail options, scenario `role_scope`, mass targeting и bot-menu audience targeting |
 | `employee_messenger_accounts` | Channel-specific communication identities | `employee_id`, `channel`, `external_user_id`, `external_username`, `is_primary`, `is_active` | Один employee может иметь несколько channel identities; текущий runtime использует `telegram` |
 | `admin_accounts` | Пользователи админки | `login`, `password_hash`, `role`, `is_active` | Используется browser session auth |
 
@@ -100,6 +102,12 @@ source_of_truth: true
   - candidates обычно имеют `employee_stage = "candidate"`;
   - non-candidates используют stages вроде `adaptation`, `ipr`, `staff`.
 - Это просто, но продуктово грязно. Один row type растянут на recruiting, onboarding и staff communication.
+- `desired_position` пока остается строкой, а не foreign key на `positions`.
+- Это осознанный compatibility seam:
+  - старые SQLite-файлы не требуют destructive rewrite;
+  - employee detail и settings уже показывают catalog-backed options;
+  - runtime role matching переводит и title, и slug в общий scope key;
+  - неизвестные legacy строки автоматически подхватываются в `positions` seed-слой.
 
 ### `employee_messenger_accounts`
 
@@ -112,6 +120,7 @@ source_of_truth: true
 ### `scenario_templates` и `flow_step_templates`
 
 - Scenario authoring table-driven.
+- `role_scope` теперь трактуется как `positions.slug`, а не как закрытый enum из трех ролей.
 - Steps могут представлять:
   - обычные send-only nodes;
   - text/file/button response nodes;
@@ -127,6 +136,7 @@ SQLite schema guard делает больше, чем “создать табл
 
 - добавляет missing columns в `employees`, `scenario_templates`, `flow_step_templates`, `hr_settings`, mass action tables и launch tables;
 - создает целые таблицы, если они отсутствуют:
+  - `positions`;
   - `step_button_notifications`;
   - `scenario_progress`;
   - `survey_answers`;
@@ -139,6 +149,7 @@ SQLite schema guard делает больше, чем “создать табл
 - нормализует legacy values на месте:
   - `desired_position`;
   - `employee_stage`;
+- не переводит `employees.desired_position` в foreign key автоматически, но отдельный seed-layer досоздает missing catalog rows по distinct строковым значениям сотрудников.
 - пересоздает `employees` в SQLite, если старые файлы еще держат obsolete `NOT NULL` constraints;
 - backfill `employee_messenger_accounts` из legacy employee Telegram fields.
 
