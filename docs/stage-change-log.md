@@ -34,6 +34,39 @@ source_of_truth: true
 
 ## Записи
 
+### 2026-07-22 14:10 MSK - app deploy - positions drag-and-drop ordering
+
+- Deploy ref: `stage`.
+- Deployed commit: `e463b08`.
+- GitHub Actions run: `29914627720` -> success.
+- В stage включено:
+  - в `/app/settings` -> `Должности` убран ручной ввод `sort_order`;
+  - добавлен drag handle для перетаскивания должностей;
+  - после reorder UI пересчитывает порядок как `10/20/30...` и сохраняет его через `PATCH /api/settings/positions/{id}`;
+  - при ошибке сохранения reorder показывается `alert`, затем список должностей перезагружается с сервера.
+- Локальные проверки перед deploy:
+  - `npm run build` в `frontend`;
+  - `.\.venv\Scripts\python.exe -m compileall app tests tools`;
+  - `.\.venv\Scripts\python.exe -m ruff check --select F821 app tests`;
+  - focused settings API tests for positions/settings;
+  - `git diff --check HEAD~1..HEAD`.
+- GitHub Actions preflight:
+  - backend dependencies install;
+  - `compileall`;
+  - `ruff F821`;
+  - backend smoke tests;
+  - frontend build;
+  - smoke imports.
+- Stage safety checks:
+  - verified SQLite backup created before checkout/restart: `backups/hr_bot.before-deploy.20260722-111027.db` in Actions log;
+  - scenario configuration fingerprint unchanged.
+- Stage smoke checks:
+  - `/app/employees` -> `303`;
+  - `/app/flows/workspace-v2` -> `303`;
+  - deploy job завершился успешно и вывел `e463b08`.
+- Открытый риск:
+  - reorder сейчас сохраняется несколькими `PATCH`-запросами. Для текущего небольшого каталога это нормально; если должностей станет много или появится параллельное редактирование несколькими админами, стоит добавить backend bulk-reorder endpoint.
+
 ### 2026-07-22 13:38 MSK - app deploy - managed positions catalog
 
 - Deploy ref: `stage`.
