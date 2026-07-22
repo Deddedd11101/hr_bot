@@ -34,6 +34,43 @@ source_of_truth: true
 
 ## Записи
 
+### 2026-07-22 13:38 MSK - app deploy - managed positions catalog
+
+- Deploy ref: `stage`.
+- Deployed commit: `839ecb0`.
+- GitHub Actions run: `29912576765` -> success.
+- В stage включены:
+  - управляемый каталог должностей `positions` с seed/backfill из текущих `employees.desired_position`;
+  - settings API для должностей: list/create/update/deactivate;
+  - `/app/settings` получил CRUD-блок `Должности`;
+  - employee detail, сценарии, массовые действия и bot menu targeting используют position resolver вместо фиксированного списка `Дизайнер` / `Project manager` / `Аналитик`;
+  - backward compatibility сохранена: `employees.desired_position` пока остается строкой, legacy values не теряются и могут быть добавлены в option lists.
+- Локальные проверки перед deploy:
+  - `.\.venv\Scripts\python.exe -m compileall app tests tools`;
+  - `.\.venv\Scripts\python.exe -m ruff check --select F821 app tests`;
+  - `.\.venv\Scripts\python.exe -m unittest tests.test_scenario_engine_smoke tests.test_employee_api_smoke tests.test_openapi_schema -v` -> 104 tests OK;
+  - `npm run build` в `frontend`;
+  - `git diff --check HEAD~2..HEAD`.
+- GitHub Actions preflight:
+  - backend dependencies install;
+  - `compileall`;
+  - `ruff F821`;
+  - backend smoke tests;
+  - frontend build;
+  - smoke imports.
+- Stage safety checks:
+  - verified SQLite backup created before checkout/restart: `backups/hr_bot.before-deploy.20260722-103757.db` in Actions log;
+  - scenario configuration fingerprint unchanged.
+- Stage smoke checks:
+  - `/app/employees` -> `303`;
+  - `/app/flows/workspace-v2` -> `303`;
+  - Telegram API -> `HTTP/2 302`;
+  - `hr-bot-web`, `hr-bot-worker` и `wg-quick@redshield` passed `systemctl is-active`;
+  - worker log guard did not find fresh `TelegramNetworkError`, `Request timeout`, `Traceback`, `Unclosed client session`;
+  - deploy job завершился успешно и вывел `839ecb0`.
+- Открытый риск:
+  - это переходная модель: для безопасного stage rollout должность сотрудника все еще хранится в `employees.desired_position` как canonical title. Если дальше понадобятся richer rules по должностям, нужен отдельный FK migration step.
+
 ### 2026-07-21 17:23 MSK - app deploy - keep assigned staff visible in employee selects
 
 - Deploy ref: `stage`.
