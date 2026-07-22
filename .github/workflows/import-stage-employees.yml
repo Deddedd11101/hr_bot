@@ -1,0 +1,127 @@
+name: Import Stage Employees
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Git ref containing import tooling"
+        required: true
+        default: "stage"
+      mode:
+        description: "dry_run only reports planned changes; import writes to stage DB"
+        required: true
+        type: choice
+        options:
+          - dry_run
+          - import
+        default: "dry_run"
+      payload_b64:
+        description: "Base64-encoded UTF-8 JSON payload with employees list"
+        required: true
+
+concurrency:
+  group: stage-data-import
+  cancel-in-progress: false
+
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    env:
+      IMPORT_REF: ${{ inputs.ref }}
+      IMPORT_MODE: ${{ inputs.mode }}
+      PAYLOAD_B64: ${{ inputs.payload_b64 }}
+      STAGE_DB_PATH: ${{ secrets.STAGE_DB_PATH }}
+      REMOTE_DIR: /tmp/hr-bot-stage-import-${{ github.run_id }}
+
+    steps:
+      - name: Checkout import tooling
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.IMPORT_REF }}
+
+      - name: Validate import tooling
+        run: python -m py_compile tools/import_stage_employees.py
+
+      - name: Decode payload
+        run: |
+          python - <<'PY'
+          import base64
+          import json
+          import os
+          from pathlib import Path
+
+          raw = base64.b64decode(os.environ["PAYLOAD_B64"])
+          payload = json.loads(raw.decode("utf-8"))
+          Path("stage-employees.json").write_text(
+              json.dumps(payload, ensure_ascii=False, indent=2),
+              encoding="utf-8",
+          )
+          employees = payload.get("employees", payload if isinstance(payload, list) else [])
+          print(f"Decoded employees: {len(employees)}")
+          PY
+
+      - name: Upload import files
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.STAGE_HOST }}
+          username: ${{ secrets.STAGE_USERNAME }}
+          password: ${{ secrets.STAGE_PASSWORD }}
+          port: ${{ secrets.STAGE_PORT }}
+          source: "tools/import_stage_employees.py,stage-employees.json"
+          target: ${{ env.REMOTE_DIR }}
+
+      - name: Run import over SSH
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          IMPORT_MODE: ${{ env.IMPORT_MODE }}
+          STAGE_DB_PATH: ${{ env.STAGE_DB_PATH }}
+          REMOTE_DIR: ${{ env.REMOTE_DIR }}
+        with:
+          host: ${{ secrets.STAGE_HOST }}
+          username: ${{ secrets.STAGE_USERNAME }}
+          password: ${{ secrets.STAGE_PASSWORD }}
+          port: ${{ secrets.STAGE_PORT }}
+          envs: IMPORT_MODE,STAGE_DB_PATH,REMOTE_DIR
+          script: |
+            set -euo pipefail
+            cd "${{ secrets.STAGE_APP_DIR }}"
+            if [ -n "$(git status --porcelain)" ]; then
+              echo "Stage worktree is dirty; refusing data import."
+              git status --short
+              exit 1
+            fi
+            db_path="${STAGE_DB_PATH:-hr_bot.db}"
+            if [ ! -f "${db_path}" ]; then
+              echo "Stage SQLite database not found: ${db_path}"
+              exit 1
+            fi
+            mkdir -p backups
+            if [ "${IMPORT_MODE}" = "import" ]; then
+              backup_path="backups/hr_bot.before-employee-import.$(date +%Y%m%d-%H%M%S).db"
+              .venv/bin/python - "${db_path}" "${backup_path}" <<'PY'
+            import sqlite3
+            import sys
+
+            source_path, backup_path = sys.argv[1:3]
+            with sqlite3.connect(source_path) as source, sqlite3.connect(backup_path) as backup:
+                source.backup(backup)
+                result = backup.execute("PRAGMA quick_check").fetchone()
+                if not result or result[0] != "ok":
+                    raise SystemExit(f"SQLite backup integrity check failed: {result}")
+            print(f"SQLite backup created and verified: {backup_path}")
+            PY
+            else
+              echo "Dry-run mode: no SQLite backup needed because database will not be changed."
+            fi
+            .venv/bin/python "${REMOTE_DIR}/tools/import_stage_employees.py" \
+              --db "${db_path}" \
+              --input "${REMOTE_DIR}/stage-employees.json" \
+              --mode "${IMPORT_MODE}"
+            if [ "${IMPORT_MODE}" = "import" ]; then
+              systemctl restart hr-bot-web
+              systemctl restart hr-bot-worker
+              systemctl is-active --quiet hr-bot-web
+              systemctl is-active --quiet hr-bot-worker
+              curl -s -o /dev/null -w "/app/settings status: %{http_code}\n" --connect-timeout 2 --max-time 5 http://127.0.0.1:8000/app/settings
+              curl -s -o /dev/null -w "/app/employees status: %{http_code}\n" --connect-timeout 2 --max-time 5 http://127.0.0.1:8000/app/employees
+            fi
