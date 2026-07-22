@@ -34,6 +34,39 @@ source_of_truth: true
 
 ## Записи
 
+### 2026-07-22 14:33 MSK - app deploy - positions DnD visual polish
+
+- Deploy ref: `stage`.
+- Deployed commit: `f3b4fa5`.
+- GitHub Actions run: `29916085457` -> success.
+- В stage включено:
+  - в `/app/settings` -> `Должности` убран технический текст про `sort_order`;
+  - добавлен явный drop indicator в виде primary-линии между строками;
+  - перетаскиваемая строка теперь визуально подсвечивается.
+- Локальные проверки перед deploy:
+  - `npm run build` в `frontend`;
+  - `.\.venv\Scripts\python.exe -m compileall app tests tools`;
+  - `.\.venv\Scripts\python.exe -m ruff check --select F821 app tests`;
+  - focused settings API tests for positions/settings;
+  - `git diff --check HEAD~1..HEAD`.
+- GitHub Actions preflight:
+  - backend dependencies install;
+  - `compileall`;
+  - `ruff F821`;
+  - backend smoke tests;
+  - frontend build;
+  - smoke imports.
+- Stage safety checks:
+  - verified SQLite backup created before checkout/restart: `backups/hr_bot.before-deploy.20260722-113332.db` in Actions log;
+  - scenario configuration fingerprint unchanged.
+- Stage smoke checks:
+  - `/app/employees` -> `303`;
+  - `/app/flows/workspace-v2` -> `303`;
+  - Telegram API reachability -> `HTTP/2 302`;
+  - deploy job завершился успешно и вывел `f3b4fa5`.
+- Открытый риск:
+  - это UI-polish поверх существующего reorder-контракта; backend bulk reorder endpoint по-прежнему можно добавить позже, если каталог должностей станет большим.
+
 ### 2026-07-22 14:10 MSK - app deploy - positions drag-and-drop ordering
 
 - Deploy ref: `stage`.
