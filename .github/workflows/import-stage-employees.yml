@@ -122,6 +122,20 @@ jobs:
               systemctl restart hr-bot-worker
               systemctl is-active --quiet hr-bot-web
               systemctl is-active --quiet hr-bot-worker
-              curl -s -o /dev/null -w "/app/settings status: %{http_code}\n" --connect-timeout 2 --max-time 5 http://127.0.0.1:8000/app/settings
-              curl -s -o /dev/null -w "/app/employees status: %{http_code}\n" --connect-timeout 2 --max-time 5 http://127.0.0.1:8000/app/employees
+              wait_http_status() {
+                path="$1"
+                expected="$2"
+                for attempt in $(seq 1 30); do
+                  code="$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 2 --max-time 5 "http://127.0.0.1:8000${path}" || true)"
+                  case " ${expected} " in
+                    *" ${code} "*) echo "${path} status: ${code}"; return 0 ;;
+                  esac
+                  echo "Waiting for ${path}; attempt ${attempt}/30, status: ${code}"
+                  sleep 2
+                done
+                echo "Unexpected ${path} status after waiting: ${code}"
+                return 1
+              }
+              wait_http_status "/app/settings" "200 303"
+              wait_http_status "/app/employees" "200 303"
             fi
