@@ -77,6 +77,28 @@ task_tokens:
    - worker log check на свежие Telegram/network tracebacks.
 8. после restart сверяет fingerprint `scenario_templates` и `flow_step_templates`; неожиданное изменение конфигурации сценариев делает deploy failed и требует анализа созданного backup.
 
+### Workflow Import Stage Employees
+
+Источник: `.github/workflows/import-stage-employees.yml`
+
+Назначение: управляемая загрузка штатных сотрудников и справочника должностей из подготовленного JSON payload без ручного root SSH.
+
+Текущее поведение:
+
+1. запускается вручную через `workflow_dispatch`;
+2. принимает:
+   - `ref` — git ref с tooling, default `stage`;
+   - `mode` — `dry_run` или `import`;
+   - `payload_b64` — base64-encoded UTF-8 JSON с массивом сотрудников;
+3. на runner декодирует payload и проверяет `tools/import_stage_employees.py`;
+4. загружает payload и import tool на stage через GitHub Actions SSH/SCP secrets;
+5. отказывается работать, если stage worktree грязный;
+6. в режиме `dry_run` только печатает план изменений и не меняет SQLite;
+7. в режиме `import` перед записью создает проверенный SQLite backup `backups/hr_bot.before-employee-import.<timestamp>.db`;
+8. сначала создает/активирует должности из payload, потом создает или обновляет сотрудников;
+9. сотрудники из импорта получают `employee_stage=staff`, а `is_manager` / `is_mentor` не выставляются автоматически;
+10. после успешного import перезапускает `hr-bot-web` и `hr-bot-worker` и выполняет HTTP smoke checks `/app/settings` и `/app/employees`.
+
 Нужные GitHub secrets:
 
 - `STAGE_HOST`
