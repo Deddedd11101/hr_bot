@@ -1,11 +1,12 @@
 import React from "react";
-import { Save, Shield, Trash2 } from "lucide-react";
+import { BriefcaseBusiness, Save, Shield, Trash2 } from "lucide-react";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ConfirmAction } from "@/components/ui/confirm-action";
-import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Field, FieldContent, FieldGroup, FieldLabel, FieldTitle } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -65,11 +66,21 @@ type AdminAccount = {
   is_active: boolean;
 };
 
+type Position = {
+  id: number;
+  title: string;
+  slug: string;
+  is_active: boolean;
+  sort_order: number;
+  created_at?: string;
+};
+
 type Workspace = {
   current_user: AdminAccount;
   role_labels: Record<string, string>;
   menu_role_scope_labels: Record<string, string>;
   menu_employee_scope_labels: Record<string, string>;
+  positions: Position[];
   hr_settings: HrSettings;
   menu_sets: MenuSet[];
   available_scenarios: ScenarioOption[];
@@ -138,6 +149,7 @@ function normalizeWorkspace(workspace: Workspace): Workspace {
     employee_options: workspace.employee_options || [],
     employee_stage_options: workspace.employee_stage_options || [],
     candidate_stage_options: workspace.candidate_stage_options || [],
+    positions: workspace.positions || [],
     menu_sets: (workspace.menu_sets || []).map((menuSet) => ({
       ...menuSet,
       role_scope: menuSet.role_scope || "all",
@@ -155,6 +167,7 @@ function cloneWorkspace(workspace: Workspace): Workspace {
   return {
     ...workspace,
     hr_settings: { ...workspace.hr_settings },
+    positions: workspace.positions.map((position) => ({ ...position })),
     menu_sets: workspace.menu_sets.map((menuSet) => ({
       ...menuSet,
       target_employee_stages: [...menuSet.target_employee_stages],
@@ -302,6 +315,7 @@ export function SettingsPage({ apiUrl }: SettingsPageProps) {
   const [error, setError] = React.useState("");
   const [newAccount, setNewAccount] = React.useState({ login: "", password: "", role: "hr", is_active: true });
   const [accountPasswords, setAccountPasswords] = React.useState<Record<number, string>>({});
+  const [newPositionTitle, setNewPositionTitle] = React.useState("");
 
   React.useEffect(() => {
     requestJson(apiUrl)
@@ -339,6 +353,23 @@ export function SettingsPage({ apiUrl }: SettingsPageProps) {
       return next;
     });
   };
+
+  const updatePositionLocal = (positionId: number, patch: Partial<Position>) => {
+    setWorkspace((current) => {
+      if (!current) return current;
+      const next = cloneWorkspace(current);
+      next.positions = next.positions.map((position) =>
+        position.id === positionId ? { ...position, ...patch } : position,
+      );
+      return next;
+    });
+  };
+
+  const positionPayload = (position: Position) => ({
+    title: position.title,
+    sort_order: position.sort_order,
+    is_active: position.is_active,
+  });
 
   if (loading) {
     return (
@@ -386,6 +417,102 @@ export function SettingsPage({ apiUrl }: SettingsPageProps) {
           </Button>
         </div>
       </SettingsCard>
+
+      {isAdmin ? (
+        <SettingsCard title="Должности">
+          <div className="grid gap-3 rounded-lg border border-border bg-muted/35 p-3 lg:grid-cols-[1fr_auto] lg:items-end">
+            <Field>
+              <FieldLabel>Новая должность</FieldLabel>
+              <Input
+                value={newPositionTitle}
+                onChange={(event) => setNewPositionTitle(event.target.value)}
+                placeholder="Например, QA engineer"
+                autoComplete="off"
+              />
+            </Field>
+            <Button
+              disabled={!newPositionTitle.trim()}
+              onClick={() =>
+                setWorkspaceFromApi(
+                  requestJson("/api/settings/positions", {
+                    method: "POST",
+                    body: JSON.stringify({ title: newPositionTitle.trim() }),
+                  }),
+                  "Должность создана",
+                ).then(() => setNewPositionTitle(""))
+              }
+            >
+              <BriefcaseBusiness data-icon="inline-start" />
+              Создать
+            </Button>
+          </div>
+
+          <div className="grid gap-2">
+            {workspace.positions.map((position) => (
+              <div
+                key={position.id}
+                className="grid gap-2 rounded-lg border border-border bg-background p-3 xl:grid-cols-[minmax(220px,1fr)_120px_160px_auto] xl:items-center"
+              >
+                <Input
+                  value={position.title}
+                  onChange={(event) => updatePositionLocal(position.id, { title: event.target.value })}
+                  aria-label="Название должности"
+                  autoComplete="off"
+                />
+                <Input
+                  type="number"
+                  inputMode="numeric"
+                  value={position.sort_order}
+                  onChange={(event) =>
+                    updatePositionLocal(position.id, { sort_order: Number(event.target.value || 0) })
+                  }
+                  aria-label="Порядок сортировки"
+                />
+                <AppSelect
+                  value={position.is_active ? "true" : "false"}
+                  onChange={(value) => updatePositionLocal(position.id, { is_active: value === "true" })}
+                  options={activeOptions}
+                  allowEmpty={false}
+                />
+                <div className="flex gap-2 xl:justify-end">
+                  <Button
+                    variant="secondary"
+                    size="icon"
+                    aria-label="Сохранить должность"
+                    disabled={!position.title.trim()}
+                    onClick={() =>
+                      setWorkspaceFromApi(
+                        requestJson(`/api/settings/positions/${position.id}`, {
+                          method: "PATCH",
+                          body: JSON.stringify(positionPayload(position)),
+                        }),
+                        "Должность сохранена",
+                      )
+                    }
+                  >
+                    <Save />
+                  </Button>
+                  <ConfirmAction
+                    title="Удалить должность?"
+                    description="Должность будет отключена в справочнике. Уже выбранные legacy-значения в карточках сохранятся."
+                    actionLabel="Отключить"
+                    onConfirm={() =>
+                      setWorkspaceFromApi(
+                        requestJson(`/api/settings/positions/${position.id}`, { method: "DELETE" }),
+                        "Должность отключена",
+                      )
+                    }
+                  >
+                    <Button variant="outline" size="icon" aria-label="Удалить должность">
+                      <Trash2 />
+                    </Button>
+                  </ConfirmAction>
+                </div>
+              </div>
+            ))}
+          </div>
+        </SettingsCard>
+      ) : null}
 
       {isAdmin ? (
         <SettingsCard title="Доступ в админку">
