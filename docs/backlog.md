@@ -27,7 +27,7 @@ source_of_truth: true
 
 Stage candidate: персональный slot `offer` поддерживает ссылку или файл без добавления нового one-off поля в карточку.
 
-Deploy safety: `Deploy Stage` создаёт проверенный SQLite backup и обнаруживает неожиданные изменения scenario templates/steps во время restart.
+Deploy safety: `Deploy Stage` создаёт проверенный SQLite backup, сохраняет JSON snapshot scenario config tables и при неожиданном изменении сценариев во время restart восстанавливает pre-deploy scenario config перед намеренным failure.
 
 Словарь статусов:
 

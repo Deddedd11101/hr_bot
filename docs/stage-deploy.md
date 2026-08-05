@@ -68,7 +68,7 @@ source_of_truth: true
    - smoke imports;
 4. подключается по SSH через GitHub secrets;
 5. отказывается деплоить, если stage worktree грязный;
-6. до checkout/restart создаёт консистентный SQLite backup через Python `sqlite3.Connection.backup`, проверяет его через `PRAGMA quick_check` и снимает fingerprint таблиц сценариев;
+6. до checkout/restart создаёт консистентный SQLite backup через Python `sqlite3.Connection.backup`, проверяет его через `PRAGMA quick_check` и сохраняет долговечный JSON snapshot конфигурации сценариев в `backups/scenarios.before-deploy.<timestamp>.json`;
 7. выполняет:
    - `cd "${{ secrets.STAGE_APP_DIR }}"`;
    - `git fetch --prune origin`;
@@ -82,7 +82,12 @@ source_of_truth: true
    - HTTP smoke checks;
    - Telegram API reachability check;
    - worker log check на свежие Telegram/network tracebacks.
-8. после restart сверяет fingerprint `scenario_templates` и `flow_step_templates`; неожиданное изменение конфигурации сценариев делает deploy failed и требует анализа созданного backup.
+8. после restart сверяет snapshot scenario config tables:
+   - `scenario_templates`;
+   - `flow_step_templates`;
+   - `step_button_notifications`;
+   - `step_send_notifications`;
+9. если scenario config неожиданно изменился во время deploy, workflow восстанавливает эти таблицы из pre-deploy JSON snapshot, затем намеренно завершает deploy failed, чтобы причина была разобрана без потери работы аналитика.
 
 ### Workflow Import Stage Employees
 
@@ -234,6 +239,16 @@ git push origin stage
 Субагентам нельзя считать интерактивный SSH обязательным или нормальным deploy path. Если workflow `Deploy Stage` доступен, отсутствие root SSH у субагента не является блокером: он должен подготовить pushable ref, влить его в `stage`/integration branch и запустить/запросить запуск workflow.
 
 Если workflow падает на `Stage worktree is dirty`, не делать `git reset --hard` вслепую. Сначала проверить, какие ручные изменения есть на сервере, и решить, что из них надо сохранить.
+
+Если workflow падает с сообщением `Scenario configuration changed during deploy and was restored from the pre-deploy snapshot`, это означает:
+
+- deploy path или startup изменили scenario config tables во время restart;
+- workflow уже вернул `scenario_templates`, `flow_step_templates`, `step_button_notifications` и `step_send_notifications` к pre-deploy состоянию;
+- в `backups/` остались два артефакта для разбора:
+  - `hr_bot.before-deploy.<timestamp>.db`;
+  - `scenarios.before-deploy.<timestamp>.json`.
+
+В этом случае не перезапускать deploy вслепую. Сначала выяснить, почему сценарии менялись во время restart: seed logic, ручной DB replace, неверный `DATABASE_URL`/`STAGE_DB_PATH`, импорт сценариев с тем же `scenario_key` или другой write path.
 
 ### Настройка GitHub для deploy
 
