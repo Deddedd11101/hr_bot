@@ -44,7 +44,7 @@ source_of_truth: true
 - Local run model: рабочая команда запуска админки зафиксирована в [[local-runbook]]; запуск без `--reload` является основной командой.
 - UI migration model: принят LLD-подход для перевода classic admin UI на React default с сохранением classic direct routes как временного rollback.
 - Delivery model: параллельная работа субагентов теперь разделена на feature-фазу, review gate и integration-фазу. Субагенты работают в отдельных clean worktree/feature-ветках от `origin/stage`, передают PR-ready handoff или draft PR, а интегратор собирает reviewed changes только в общий `stage` ref. GitHub Actions `Deploy Stage` запускается вручную с `ref=stage`.
-- Stage deploy теперь обязан создавать проверенный SQLite backup до checkout/restart и сверять fingerprint конфигурации сценариев до/после запуска сервисов.
+- Stage deploy теперь обязан создавать проверенный SQLite backup до checkout/restart, сохранять JSON snapshot конфигурации сценариев и при неожиданном изменении scenario config во время restart восстанавливать pre-deploy scenario tables перед intentional failure.
 - `D:\HRBot\hr_bot_stage_pipeline` закреплен как canonical локальный integration worktree для `stage`; исторический dirty `D:\HRBot\hr_bot` не должен использоваться для новых задач без отдельного rescue/cleanup решения.
 
 ## Что работает
