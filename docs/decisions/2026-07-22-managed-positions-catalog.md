@@ -2,7 +2,7 @@
 title: Управляемый каталог должностей без жесткой миграции employee.desired_position
 date: 2026-07-22
 status: accepted
-doc_type: decision
+doc_type: adr
 area: data
 related:
   - "[[backlog]]"

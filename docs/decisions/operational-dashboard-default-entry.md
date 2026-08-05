@@ -2,12 +2,13 @@
 title: Operational dashboard as default admin entry
 date: 2026-06-08
 status: accepted
-doc_type: decision
+doc_type: adr
 area: frontend
 related:
   - "[[architecture]]"
   - "[[api]]"
   - "[[web-surface]]"
+source_of_truth: true
 ---
 
 # Operational dashboard as default admin entry

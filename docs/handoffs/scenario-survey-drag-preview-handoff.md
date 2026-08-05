@@ -7,7 +7,7 @@ area: frontend
 related:
   - "[[project_state]]"
   - "[[backlog]]"
-source_of_truth: true
+source_of_truth: false
 ---
 
 # Scenario And Survey Drag Preview Handoff

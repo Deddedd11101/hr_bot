@@ -10,7 +10,7 @@ related:
   - "[[decisions/frontend-page-composition-rules]]"
   - "[[lld/classic-to-react-admin-migration]]"
   - "[[features/ui-design-guidelines]]"
-source_of_truth: true
+source_of_truth: false
 ---
 
 # Контекст
@@ -1195,164 +1195,59 @@ source_of_truth: true
 
 - `npm run build`
 
-## Employee Scheduled Delete Confirm - 2026-06-16
+## Documents, Bot Menu And Workspace DnD UX - 2026-06-11
 
 ### Changed
 
-- Scheduled scenario deletion on `/app/employees/{employee_id}` now uses shared `ConfirmAction` and shadcn/Base `AlertDialog` instead of browser `window.confirm`.
-- `ScenarioList` accepts optional confirm metadata for dense icon actions; actions without confirm metadata keep direct execution.
+- Documents file picker now uses a real hidden file input, shows the selected filename, and clears it only after a successful upload.
+- Documents menu scaffold controls moved out of the page header into a compact two-action toolbar.
+- Bot menu set creation moved into a modal.
+- Bot menu now exposes one save action per menu set; it saves the set and its existing buttons through the current JSON endpoints.
+- Bot menu button editor only shows the target field relevant to the selected action type and clears conflicting frontend values when the action changes.
+- Scenario and survey workspace lists now show distinct captured-item and drop-target states during drag-and-drop.
 
 ### Screens
 
-- `/app/employees/{employee_id}`
+- `/app/documents`
+- `/app/bot-menu`
+- `/app/flows/workspace-v2`
+- `/app/surveys/workspace`
 
 ### Shared UI API
 
-- `ConfirmAction` API unchanged.
-- `ScenarioList` item shape gained optional `extraActionConfirmTitle`, `extraActionConfirmDescription`, and `extraActionConfirmLabel`.
+- No shared component API changed.
 
-### Known issues
+### Backend Contract Gaps
 
-- Other employee-detail destructive actions still contain legacy `window.confirm` and should be migrated separately if they enter current UX scope.
+- Bot menu has no atomic JSON bulk-save endpoint. The per-set save action is sequential and can partially save if a later request fails.
+- Backend validation must still reject conflicting bot-menu action targets; frontend guards are not a data-integrity boundary.
+- Employee detail autosave versus explicit save remains unresolved and was not changed.
 
 ### Checks
 
 - `npm run build`
-- `D:\HRBot\hr_bot\.venv\Scripts\python.exe -m compileall app tests`
-- `D:\HRBot\hr_bot\.venv\Scripts\python.exe -m unittest tests.test_scenario_engine_smoke tests.test_messaging_identity tests.test_employee_api_smoke -v`
-- Browser smoke on `http://127.0.0.1:8001/app/employees/1`: scheduled scenario delete opens shared `AlertDialog`; no console errors.
+- `npx tsc --noEmit` remains blocked by existing project-wide errors in calendar/date-picker/design-system/employee/workspace typings
+- Browser smoke pass completed on documents, bot menu, scenarios, and surveys in light/dark themes; no console errors or horizontal overflow
+- Documents `Выбрать файл` button opens the system file picker; the hidden native input is excluded from keyboard and accessibility navigation
 
-## React Admin Confirm Sweep - 2026-06-16
+## Scenario And Survey Drag Preview - 2026-06-16
 
 ### Changed
 
-- Remaining React admin `window.confirm` calls were replaced with shared `ConfirmAction`.
-- Scenario/survey workspace now uses shadcn/Base `AlertDialog` for step/question deletion, attachment deletion, and bulk scenario/survey deletion.
-- Bulk actions scheduled-action deletion now uses `ConfirmAction`.
-- Employee detail file/link deletion, candidate promotion, and employee deletion now use `ConfirmAction`.
-- Shared `AlertDialogAction` now closes the dialog through Base UI `Close`, so confirming deletion cannot leave the same destructive dialog over the next selected item.
+- Scenario and survey list drag now uses a compact custom drag preview instead of the browser-rendered full card/list silhouette.
+- Reorder mechanics were not changed; this is a frontend-only visual layer over the existing HTML drag-and-drop flow.
+- Root step/question drag in the central workspace uses the same compact preview.
 
 ### Screens
 
 - `/app/flows/workspace-v2`
 - `/app/surveys/workspace`
-- `/app/bulk-actions`
-- `/app/employees/{employee_id}`
-
-### Known issues
-
-- Legacy fallback `scenario_edit.html` still has native browser confirm prompts. That surface is behind the explicit legacy seam and needs a separate non-React modal cleanup if it remains supported.
-
-### Checks
-
-- `npm run build`
-- `D:\HRBot\hr_bot\.venv\Scripts\python.exe -m compileall app tests`
-- `D:\HRBot\hr_bot\.venv\Scripts\python.exe -m unittest tests.test_scenario_engine_smoke tests.test_messaging_identity tests.test_employee_api_smoke -v`
-- Browser smoke on `http://127.0.0.1:8002/app/flows/workspace-v2`: step delete opens shared `AlertDialog`; no console errors.
-- Browser smoke on a disposable local scenario: after confirming step deletion, `role="alertdialog"` count is `0`, deleted step is gone, and no console errors are emitted.
-- `rg "window\.confirm|confirm\(" frontend\src app\static\workspace_v2`: no runtime React matches outside design-system documentation text.
-## Admin Favicon Logo - 2026-06-16
-
-### Changed
-
-- Added the operator-provided logo as stable static asset `app/static/favicon.png`.
-- Wired the favicon into React shell, legacy shell, and standalone login template so browser tabs use the same admin identity across `/app/*`, `/login`, and remaining fallback pages.
-
-### Screens
-
-- `/login`
-- `/app/dashboard`
-- Remaining legacy pages that still extend `base.html`
-
-### Checks
-
-- `.\.venv\Scripts\python.exe -m compileall app tests`
-- `npm run build`
-
-## Select Scroll Policy - 2026-06-16
-
-### Changed
-
-- Shared `SelectContent` now uses a global popup height policy instead of page-local overflow behavior.
-- Short select lists stay compact; long lists cap at `--select-content-max-height` and use the same tokenized scrollbar across pages.
-- `TimeSelect` inherits the same behavior through shared `SelectContent`, so time pickers no longer define a separate scroll pattern.
-- `/app/design-system#primitives` now includes a long select example next to the regular select and time select.
 
 ### Shared UI API
 
-- `SelectContent` public props are unchanged.
-- New design token: `--select-content-max-height`.
-
-### Screens
-
-- `/app/design-system`
-- Any page using shared `SelectContent`, including employee detail, employees filters, scenario/survey workspace, settings, bulk actions, bot menu, and date-time time selects.
+- No shared component API changed.
 
 ### Checks
 
 - `npm run build`
-- `.\.venv\Scripts\python.exe -m compileall app tests`
-
-## Admin UI Polish Pass - 2026-06-16
-
-### Changed
-
-- Employee/candidate create form on `/app/employees` is now a compact inline row instead of a full-width stretched grid.
-- Removed decorative `Sparkles` from employee list status/output/scenario badges; counts use `ListFilter`, staff status uses `BadgeCheck`, scenario metadata uses `Workflow`.
-- Sidebar and dashboard module icon for bulk actions changed from `Sparkles` to `ClipboardList`.
-- Documents file picker now uses a plain hidden file input triggered by the button, matching the working scenario attachment pattern.
-- Scenario workspace detail pane now has left inset and more right padding so focus rings are not clipped and the scrollbar is less tight to fields.
-- Scenario workspace sidebar controls are compressed into a single header/control block: create action in the header, search with icon, audience filter, select-all, copy, and delete actions grouped together.
-
-### Shared UI / Kit Notes
-
-- Operational icons should describe the object/action. Avoid decorative sparkles for counts, statuses, completed scenario metadata, and bulk actions.
-- Compact create rows should use fixed-width controls inside a wrapping inline row when the form only has a few fields.
-- Dense sidebar control panels should keep create/search/filter/selection actions grouped before the scrollable list instead of stacking each action as a full-width row.
-
-### Screens
-
-- `/app/employees`
-- `/app/documents`
-- `/app/flows/workspace-v2`
-- Shell sidebar on all `/app/*` pages
-
-### Checks
-
-- `npm run build`
-- `.\.venv\Scripts\python.exe -m compileall app tests`
-- `.\.venv\Scripts\python.exe -m unittest tests.test_scenario_engine_smoke tests.test_messaging_identity tests.test_employee_api_smoke -v`
-- Local HTTP smoke on `http://127.0.0.1:8012`: `/app/employees`, `/app/documents`, `/app/flows/workspace-v2` return auth redirect `303`.
-- Follow-up compact sidebar pass: `npm run build`, `.\.venv\Scripts\python.exe -m compileall app tests`.
-
-## Scenario Workspace Graph View - 2026-06-17
-
-### Changed
-
-- Merged `codex/scenario-runtime-and-ui-fixes` into `codex/admin-ui-polish-pass` so the frontend consumes the backend-owned `payload.workspace.graph` contract.
-- Added `Список | Схема` view switch in the scenario workspace central container. `Список` remains default and keeps existing editor/drag workflow.
-- Added read-only graph mode using `@xyflow/react` and ELK layout. Coordinates are calculated on the frontend; no backend coordinates are expected.
-- Graph rendering uses only `workspace.graph.nodes` / `workspace.graph.edges`; it does not reconstruct flow semantics from `root_steps`.
-- Graph view is lazy-loaded so the default list bundle does not pay the React Flow + ELK cost.
-- Node click syncs editable `step_id` nodes back into the existing right-side detail pane. Placeholder branch slots and launch target nodes remain read-only visual nodes.
-
-### Shared UI / Kit Notes
-
-- Graph/canvas views should stay read-only unless an explicit editor contract exists. Do not add drag-editing or inline forms to the graph.
-- Canvas colors should use existing semantic tokens via CSS variables. Edge variants: normal flow neutral, `branch_option` primary, `return_to_root` warning dashed, `launch_scenario` info animated.
-
-### Screens
-
-- `/app/flows/workspace-v2`
-
-### Checks
-
-- `npm run build`
-- `.\.venv\Scripts\python.exe -m compileall app tests tools`
-- `.\.venv\Scripts\python.exe -m unittest tests.test_employee_api_smoke tests.test_messaging_identity tests.test_scenario_engine_smoke tests.test_scenario_engine_branching -v`
-- Browser smoke on `http://127.0.0.1:8012/app/flows/workspace-v2`: graph switch visible, branch graph renders 5 nodes / 5 edges, branch labels visible, placeholder branch visible, return edge class present, node click syncs right detail pane.
-
-### Known Issues
-
-- Vite still warns about the lazy `graph-view` chunk size because ELK is large. The default list entry remains small after lazy loading.
-- Browser smoke did not fully verify `launch_scenario` visual edge because switching to the launch fixture from graph mode was unreliable in the in-app browser; backend contract test covers launch edge presence.
+- Browser smoke on scenarios and surveys: page identity, non-empty render, console health, screenshot, and same-item drag gesture

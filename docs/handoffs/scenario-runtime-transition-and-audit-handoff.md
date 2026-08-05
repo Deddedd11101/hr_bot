@@ -8,7 +8,7 @@ related:
   - "[[features/scenario-engine]]"
   - "[[project_state]]"
   - "[[backlog]]"
-source_of_truth: true
+source_of_truth: false
 ---
 
 # Что сделано

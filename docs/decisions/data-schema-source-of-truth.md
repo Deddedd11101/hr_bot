@@ -2,8 +2,14 @@
 title: Источник правды для схемы данных
 date: 2026-05-11
 status: accepted
+doc_type: adr
+area: data
 task_tokens:
   - HRB-DOC-02
+related:
+  - "[[data-model]]"
+  - "[[architecture]]"
+source_of_truth: true
 ---
 
 # Источник для схемы данных

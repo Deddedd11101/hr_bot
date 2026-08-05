@@ -133,7 +133,7 @@ HR Bot — приложение в одном репозитории с неск
 ### Auth и роли админки
 
 - Модель входа: `/login` проверяет `admin_accounts.login/password_hash` и ставит подписанную cookie `hr_admin_auth`.
-- Cookie содержит stateless session token `account_id.issued_at.signature`; middleware принимает только валидную HMAC-подпись через `ADMIN_SESSION_SECRET`, проверяет TTL и заново читает active account из БД.
+- Cookie содержит signed session token `account_id.issued_at.signature`; middleware принимает только валидную HMAC-подпись через `ADMIN_SESSION_SECRET`, проверяет TTL и заново читает active account из БД.
 - Текущие роли: `admin` и `hr`.
 - Seed defaults: `DEFAULT_ADMIN_LOGIN/DEFAULT_ADMIN_PASSWORD` и `DEFAULT_HR_LOGIN/DEFAULT_HR_PASSWORD` создают или нормализуют две базовые записи.
 - Реальная граница прав сейчас узкая:

@@ -31,6 +31,7 @@ source_of_truth: true
 - Схема намеренно ограничена JSON API routes с prefix `/api/*`.
 - Browser surfaces, React bootstrap pages, redirects, classic form handlers, download/export routes и `/login` не включаются в Swagger; их source of truth остается [[web-surface]].
 - API routes группируются по доменным тегам: `Dashboard`, `Employees`, `Flows and surveys`, `Bulk actions`, `Settings`, `Admin accounts`.
+- Shared document library routes живут под `/api/documents/*`; если OpenAPI tags отстают от этого списка, считать route list ниже более точной картой.
 - Swagger UI настроен на collapsed sections, включает client-side filter и сохраняет authorization state в браузере.
 
 Это осознанная граница: Swagger должен быть контрактом для React/admin API и интеграционных проверок, а не полной картой всех HTTP URL приложения.
@@ -135,7 +136,6 @@ source_of_truth: true
 - `workspace`
   - `scenario`
   - `root_steps`
-  - `graph`
   - `stats`
   - label dictionaries для UI rendering
   - `employee_options`
@@ -153,6 +153,21 @@ source_of_truth: true
 - `available_scenarios`
 - `accounts`
   - заполняется только для admin user
+
+### Payload documents workspace
+
+Возвращается `/api/documents/workspace` и большинством `/api/documents/*` mutations.
+
+- `items`
+  - shared document library entries;
+  - `item_kind=file|link`;
+  - metadata: `title`, `description`, `category`, `is_active`, `sort_order`;
+  - для links: `external_url`;
+  - для files: `original_filename`, `download_url`, `mime_type`, `file_size`.
+- `categories`
+  - active category list для scaffold/navigation UX.
+- `menu_scaffold`
+  - состояние generated document menu branch, если она есть.
 
 ### Payload bulk actions workspace
 
@@ -185,9 +200,8 @@ source_of_truth: true
 | `GET` | `/api/employees` | Вернуть React-list сотрудников или кандидатов. | Query: `list_kind=employees|candidates` | Employee list response с `items[]` | Нет | `401` |
 | `POST` | `/api/employees` | Создать карточку сотрудника или кандидата. | JSON: `full_name`, `chat_id`, `chat_handle`, `first_workday`, `employee_stage`, `candidate_work_stage`, `list_kind` | Employee list response с созданным `item` | Создает `employees`, sync messenger identity, создает pending `flow_launch_requests` для `recruitment_hiring` | `401`, `409` при messenger identity conflict, не нормализованный `500` при malformed date |
 | `GET` | `/api/employees/{employee_id}` | Вернуть полный employee detail payload. | Path: `employee_id` | Employee detail payload | Нет | `401`, `404` если employee не найден |
-| `POST` | `/api/employees/{employee_id}` | Обновить карточку сотрудника или кандидата из React. | JSON fields: `full_name`, `chat_id`, `chat_handle`, `first_workday`, `desired_position`, `birth_date`, `work_email`, `work_hours`, `manager_employee_id`, `mentor_adaptation_employee_id`, `mentor_ipr_employee_id`, `adaptation_tasks_url`, `adaptation_feedback_url`, `adaptation_midpoint`, `adaptation_end`, `employee_stage`, `candidate_work_stage`, `salary_expectation`, `personal_data_consent`, `employee_data_consent`, `is_bot_blocked`, `test_task_due_at`, `notes` | Employee detail payload | Обновляет `employees`, sync messenger identity и legacy manager/mentor chat ids из выбранных staff relations; при реальной смене `candidate_work_stage` ставит `flow_launch_requests.launch_type=status_transition` для matching scenario triggers `candidate_hr_stage` | `401`, `404`, `409` при messenger identity conflict, `400` при invalid staff relation/date |
+| `POST` | `/api/employees/{employee_id}` | Обновить карточку сотрудника или кандидата из React. | JSON fields: `full_name`, `chat_id`, `chat_handle`, `first_workday`, `desired_position`, `birth_date`, `work_email`, `work_hours`, `manager_employee_id`, `mentor_adaptation_employee_id`, `mentor_ipr_employee_id`, `adaptation_tasks_url`, `adaptation_feedback_url`, `adaptation_midpoint`, `adaptation_end`, `employee_stage`, `candidate_work_stage`, `salary_expectation`, `personal_data_consent`, `employee_data_consent`, `is_bot_blocked`, `test_task_due_at`, `notes` | Employee detail payload | Обновляет `employees`, sync messenger identity и legacy manager/mentor chat ids из выбранных staff relations | `401`, `404`, `409` при messenger identity conflict, `400` при invalid staff relation/date |
 | `POST` | `/api/employees/{employee_id}/promote-to-adaptation` | Явно перевести кандидата в адаптацию через HR-действие. | Path: `employee_id` | Employee detail payload | Меняет `employee_stage` c `candidate` на `adaptation`, очищает `candidate_work_stage`, seed-ит `adaptation_midpoint` / `adaptation_end` от `first_workday`, сбрасывает `current_menu_set_id` | `401`, `404`, `400` если employee не candidate или не указан `first_workday` |
-| `POST` | `/api/employees/{employee_id}/bot-link/reset` | Очистить Telegram-привязку и runtime-состояние бота без удаления карточки. | Path: `employee_id` | Employee detail payload | Удаляет `employee_messenger_accounts`, active `scenario_progress`, pending `flow_launch_requests`; очищает `telegram_user_id`, `telegram_username`, `current_menu_set_id`, `is_flow_scheduled` | `401`, `404` |
 | `POST` | `/api/employees/{employee_id}/document-links` | Создать или обновить offer link сотрудника. | JSON: `url` | `{ item, payload }`, где `payload` — employee detail payload | Создает или обновляет `employee_document_links` с title `Оффер` | `401`, `404`, `400` если URL пустой |
 | `DELETE` | `/api/employees/{employee_id}/document-links/{link_id}` | Удалить offer link entry. | Path: `employee_id`, `link_id` | Employee detail payload | Удаляет одну строку `employee_document_links` | `401`, `404` |
 | `POST` | `/api/employees/{employee_id}/schedule` | Поставить будущий запуск сценария в очередь. | JSON: `flow_key`, `requested_at` в формате `%Y-%m-%dT%H:%M` | Employee detail payload | Создает `flow_launch_requests` с `launch_type="scheduled"` | `401`, `404`, `400` если bot blocked, scenario missing, role mismatch, missing/invalid datetime |
@@ -196,6 +210,8 @@ source_of_truth: true
 | `POST` | `/api/employees/{employee_id}/files` | Загрузить outbound HR-файл для сотрудника. | Multipart: `upload`, optional `category`, optional `send_to_channel=true|false` | Employee detail payload | Пишет файл в storage, создает `employee_files`, может сразу отправить файл в Telegram | `401`, `404` |
 | `POST` | `/api/employees/{employee_id}/files/{file_id}/send` | Отправить существующий stored file в канал сотрудника. | Path: `employee_id`, `file_id` | Employee detail payload | Отправляет файл в Telegram, если file path существует | `401`, `404`, `400` если нет configured channel или bot token |
 | `DELETE` | `/api/employees/{employee_id}` | Удалить карточку сотрудника или кандидата. | Path: `employee_id` | `{ "redirect_url": "/employees" | "/candidates" }` | Удаляет employee row, files, offer links и employee storage directory | `401`, `404` |
+| `POST` | `/api/employees/{employee_id}/bot-link/reset` | Сбросить Telegram/runtime-привязку карточки для повторного тестового linking. | Path: `employee_id` | Employee detail payload | Очищает Telegram identity/menu/progress и pending launch requests для карточки | `401`, `404` |
+| `POST` | `/api/employees/{employee_id}/document-slots/offer/file` | Загрузить file-backed offer slot. | Multipart: `upload`, optional title/category | Employee detail payload | Создает `employee_files` и `employee_document_links` со `slot_key=offer`, `item_kind=file` | `401`, `404`, `400` |
 
 ## API scenario/survey workspace
 
@@ -205,11 +221,11 @@ source_of_truth: true
 | --- | --- | --- | --- | --- | --- | --- |
 | `GET` | `/api/flows/workspace` | Вернуть sidebar сценариев/опросов и payload выбранного item. | Optional query: `scenario_id`, `kind=scenario\|survey` | Workspace payload with `kind`, `item_label`, `scenarios[]`, optional `workspace` | Нет | `401` |
 | `POST` | `/api/flows/workspace/scenarios` | Создать новый scenario/survey shell. | JSON: optional `title`, optional `description`, optional `kind=scenario\|survey` | `{ message, scenario_id, payload }` | Inserts `scenario_templates` через direct SQL и current schema introspection | `401`, `409`, `500` если DB содержит required unsupported columns |
-| `POST` | `/api/flows/workspace/scenarios/{scenario_id}/settings` | Обновить item-level metadata. | JSON: `title`, `description`, `role_scope`, `employee_scope`, `trigger_mode`, `candidate_work_stage_trigger`, `target_employee_id` | `{ message, payload }` | Обновляет одну строку `scenario_templates`; для `trigger_mode=candidate_hr_stage` дополнительно сохраняет explicit HR status trigger; для survey сохраняется `trigger_mode=manual_only` | `401`, `404` |
+| `POST` | `/api/flows/workspace/scenarios/{scenario_id}/settings` | Обновить item-level metadata. | JSON: `description`, `role_scope`, `employee_scope`, `trigger_mode`, `target_employee_id` | `{ message, payload }` | Обновляет одну строку `scenario_templates`; для survey сохраняется `trigger_mode=manual_only` | `401`, `404` |
 | `POST` | `/api/flows/workspace/scenarios/reorder` | Сохранить sidebar order сценариев/опросов. | JSON: `scenario_ids[]`, optional `kind=scenario\|survey` | `{ message, payload }` | Перезаписывает `sort_order` выбранных items внутри kind | `401`, `400` если список пустой |
 | `POST` | `/api/flows/workspace/scenarios/bulk-copy` | Скопировать один или несколько scenarios/surveys. | JSON: `scenario_ids[]`, optional `kind=scenario\|survey` | `{ message, payload }` | Дублирует items и step trees внутри kind | `401`, `400`, `404` |
 | `POST` | `/api/flows/workspace/scenarios/bulk-delete` | Удалить один или несколько scenarios/surveys. | JSON: `scenario_ids[]`, optional `kind=scenario\|survey` | `{ message, payload }` | Удаляет items и dependent step trees внутри kind | `401`, `400`, `404` |
-| `POST` | `/api/flows/workspace/steps/{step_id}` | Обновить один workspace node. | JSON fields: `title`, `text`, `response_type`, `button_options`, `send_mode`, `send_time`, `target_field`, `launch_scenario_key`, `return_to_step_key`, `send_employee_card`, `notify_on_send_text`, `notify_on_send_recipient_ids`, `notify_on_send_recipient_scope` | `{ message, payload, step_id }` | Обновляет одну `flow_step_templates` строку и related notification fields; для branch-step может сохранить возврат в root-step того же сценария | `401`, `404` |
+| `POST` | `/api/flows/workspace/steps/{step_id}` | Обновить один workspace node. | JSON fields: `title`, `text`, `response_type`, `button_options`, `send_mode`, `send_time`, `target_field`, `launch_scenario_key`, `send_employee_card`, `notify_on_send_text`, `notify_on_send_recipient_ids`, `notify_on_send_recipient_scope` | `{ message, payload, step_id }` | Обновляет одну `flow_step_templates` строку и related notification fields | `401`, `404` |
 | `POST` | `/api/flows/workspace/scenarios/{scenario_id}/steps` | Создать новый root step. | JSON: optional `title` | `{ message, payload, step_id }` | Inserts root `flow_step_templates` row | `401`, `404` |
 | `POST` | `/api/flows/workspace/scenarios/{scenario_id}/steps/reorder` | Сохранить root-step order. | JSON: `step_ids[]` | `{ message, payload }` | Перезаписывает `sort_order` root steps | `401`, `404`, `400` |
 | `POST` | `/api/flows/workspace/steps/{step_id}/branches` | Создать branch step для branching node. | JSON: `option_index` | `{ message, payload, step_id }` | Inserts branch child step, если его еще нет | `401`, `404`, `400` если parent не branching или option invalid |
@@ -218,38 +234,6 @@ source_of_truth: true
 | `POST` | `/api/flows/workspace/steps/{step_id}/attachment` | Загрузить file attachment для step. | Multipart: `upload` | `{ message, payload, step_id }` | Сохраняет attachment на диск и обновляет `attachment_path` / `attachment_filename` | `401`, `404` |
 | `POST` | `/api/flows/workspace/steps/{step_id}/attachment/delete` | Удалить step attachment. | Path: `step_id` | `{ message, payload, step_id }` | Удаляет attachment file и очищает attachment fields | `401`, `404` |
 
-Дополнение к `workspace.graph`:
-
-- `nodes[]`
-  - `id`
-  - `step_id`
-  - `step_key`
-  - `kind = root_step | branch_step | chain_step | branch_slot | launch_target`
-  - `title`
-  - `text_preview`
-  - `response_type`
-  - `response_label`
-  - `has_attachment`
-  - `has_notifications`
-  - `waits_for_response`
-  - `send_mode`
-  - `launch_scenario_key`
-  - `is_placeholder`
-  - `is_terminal`
-- `edges[]`
-  - `id`
-  - `source`
-  - `target`
-  - `kind = next | branch_option | chain | return_to_root | launch_scenario`
-  - `label`
-- `meta`
-  - `node_count`
-  - `edge_count`
-  - `has_branching`
-  - `has_return_edges`
-  - `has_launch_edges`
-  - `has_placeholders`
-
 ## API settings workspace
 
 Этот API добавлен для React settings page и пока живет рядом с classic `/settings` form routes.
@@ -257,7 +241,7 @@ source_of_truth: true
 | Method | Path | Назначение | Основные inputs | Response | Side effects | Частые errors |
 | --- | --- | --- | --- | --- | --- | --- |
 | `GET` | `/api/settings/workspace` | Вернуть HR settings, menu sets/buttons, scenarios и admin accounts для React settings. | Нет | Settings workspace payload | Создает default `hr_settings` row, если его нет | `401` |
-| `POST` | `/api/settings/hr` | Обновить HR notification settings и root-menu defaults. | JSON: `hr_name`, `telegram_user_id`, `notification_recipient_ids`, `default_menu_set_id`, `default_employee_menu_set_id`, `default_candidate_menu_set_id`, notification booleans | Settings workspace payload | Обновляет `hr_settings` | `401` |
+| `POST` | `/api/settings/hr` | Обновить HR notification settings. | JSON: `hr_name`, `telegram_user_id`, `notification_recipient_ids`, `default_menu_set_id`, notification booleans | Settings workspace payload | Обновляет `hr_settings` | `401` |
 | `POST` | `/api/settings/menu-sets` | Создать menu set. | JSON: `title`, optional `description` | Settings workspace payload | Создает `bot_menu_sets` | `401` |
 | `POST` | `/api/settings/menu-sets/{menu_set_id}` | Обновить menu set. | JSON: `title`, `description` | Settings workspace payload | Обновляет `bot_menu_sets` | `401`, `404` |
 | `DELETE` | `/api/settings/menu-sets/{menu_set_id}` | Удалить menu set. | Path: `menu_set_id` | Settings workspace payload | Удаляет buttons внутри set, отвязывает переходы на set, очищает `employees.current_menu_set_id` и default menu setting | `401`, `404` |
@@ -265,6 +249,25 @@ source_of_truth: true
 | `POST` | `/api/settings/menu-buttons/{button_id}` | Обновить menu button. | JSON: `label`, `action_type`, optional `scenario_key`, optional `target_menu_set_id` | Settings workspace payload | Обновляет `bot_menu_buttons` | `401`, `404` |
 | `POST` | `/api/settings/menu-buttons/bulk` | Bulk update menu buttons. | JSON: `buttons[]` с `id`, `label`, `action_type`, `scenario_key`, `target_menu_set_id` | Settings workspace payload | Обновляет несколько `bot_menu_buttons` | `401` |
 | `DELETE` | `/api/settings/menu-buttons/{button_id}` | Удалить menu button. | Path: `button_id` | Settings workspace payload | Удаляет одну `bot_menu_buttons` строку | `401`, `404` |
+| `POST` | `/api/settings/bot-menu/broadcast` | Переотправить главное меню всем связанным незаблокированным пользователям. | Нет | `{ workspace, refreshed_count }` | Отправляет Telegram menu через bot messenger | `401`, `400` если bot token не настроен |
+| `GET` | `/api/settings/positions` | Вернуть каталог должностей. | Нет | `{ positions[] }` | Нет | `401` |
+| `POST` | `/api/settings/positions` | Создать должность. | JSON: `title`, optional `slug`, `is_active`, `sort_order` | `{ positions[] }` | Создает или активирует position row | `401`, `400`, `409` |
+| `POST` | `/api/settings/positions/{position_id}` | Обновить должность. | Path: `position_id`; JSON: `title`, `is_active`, `sort_order` | `{ positions[] }` | Обновляет position row | `401`, `404`, `409` |
+| `PATCH` | `/api/settings/positions/{position_id}` | Частично обновить должность. | Path: `position_id`; JSON subset fields | `{ positions[] }` | Обновляет position row | `401`, `404`, `409` |
+| `DELETE` | `/api/settings/positions/{position_id}` | Деактивировать должность. | Path: `position_id` | `{ positions[] }` | Ставит `is_active=false`, физически не удаляет row | `401`, `404` |
+
+## API shared documents workspace
+
+Этот API обслуживает `/app/documents`: общую библиотеку документов и ссылок, которые можно отправлять через bot menu action `send_document`.
+
+| Method | Path | Назначение | Основные inputs | Response | Side effects | Частые errors |
+| --- | --- | --- | --- | --- | --- | --- |
+| `GET` | `/api/documents/workspace` | Вернуть shared document library payload. | Нет | Documents workspace payload | Нет | `401` |
+| `POST` | `/api/documents/links` | Создать shared link document. | JSON: `title`, `external_url`, optional `description`, `category`, `is_active` | Documents workspace payload | Создает `document_library_items` с `item_kind=link` | `401`, `400` |
+| `POST` | `/api/documents/files` | Загрузить shared file document. | Multipart: `upload`, optional `title`, `description`, `category`, `is_active` | Documents workspace payload | Пишет файл в `storage/document_library`, создает `document_library_items` с `item_kind=file` | `401`, `400` |
+| `POST` | `/api/documents/{item_id}` | Обновить metadata shared document. | JSON: `title`, `item_kind`, `external_url`, `description`, `category`, `is_active` | Documents workspace payload | Обновляет `document_library_items`; при переводе file -> link удаляет stored file | `401`, `404`, `400` |
+| `DELETE` | `/api/documents/{item_id}` | Удалить shared document. | Path: `item_id` | Documents workspace payload | Удаляет row и stored file, если item был file-backed | `401`, `404` |
+| `POST` | `/api/documents/menu-scaffold` | Создать или пересобрать document menu branch из категорий. | JSON: optional `root_title`, `mode=create|rebuild` | `{ workspace, created_root_menu_set_id, created_root_menu_title, bot_menu_url }` | Создает/пересобирает generated `bot_menu_sets` с `system_tag` и `send_document` buttons | `401`, `400` |
 
 ## API admin accounts
 
@@ -293,6 +296,7 @@ Immediate endpoints требуют `confirmed=true`; без него возвр�
 | `POST` | `/api/bulk-actions/messages/schedule` | Запланировать массовое сообщение. | JSON: `message_text`, `requested_at`, target fields | `{ message, payload }` | Создает `mass_message_actions` scheduled row | `401`, `400` |
 | `POST` | `/api/bulk-actions/messages/send` | Немедленно отправить массовое сообщение. | JSON: `message_text`, target fields, `confirmed=true` | `{ message, payload }` | Отправляет Telegram messages, пишет manual `mass_message_actions` row | `401`, `400` |
 | `DELETE` | `/api/bulk-actions/scenarios/{action_id}` | Удалить scheduled scenario/survey action. | Path: `action_id` | `{ message, payload }` | Удаляет pending `mass_scenario_actions` row | `401`, `404` |
+| `DELETE` | `/api/bulk-actions/surveys/{action_id}` | Удалить scheduled survey action. | Path: `action_id` | `{ message, payload }` | Удаляет pending `mass_scenario_actions` row с `scenario_kind="survey"` | `401`, `404` |
 | `DELETE` | `/api/bulk-actions/messages/{action_id}` | Удалить scheduled message action. | Path: `action_id` | `{ message, payload }` | Удаляет pending `mass_message_actions` row | `401`, `404` |
 
 ## Важные поведенческие заметки

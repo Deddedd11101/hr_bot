@@ -2,10 +2,18 @@
 title: Жизненный цикл сотрудника
 date: 2026-05-06
 status: active
+doc_type: feature
+area: product
 task_tokens:
   - HRB-DISC-02
   - HRB-P0-02
   - HRB-P1-01
+related:
+  - "[[project_state]]"
+  - "[[backlog]]"
+  - "[[decisions/2026-06-09-candidate-to-adaptation-cutover]]"
+  - "[[decisions/2026-07-21-manager-assignment-trigger]]"
+source_of_truth: true
 ---
 
 # Жизненный цикл сотрудника
@@ -28,25 +36,18 @@ task_tokens:
 - Onboarding scenarios уже есть для реальных employees.
 - Recruitment flow уже есть для candidates.
 - Employee records теперь включают `is_bot_blocked` как enforced runtime control для bot access.
-- HR-статус кандидата в карточке теперь нормализован под явный shortlist:
-  - `company_decline` — Наш отказ
-  - `hr_interview` — Собеседование с HR
-  - `manager_interview` — Собеседование с руководителем
-  - `testing` — Тестирование
-  - `offer` — Оффер
-  - `preonboarding` — Преонбординг
-  - `candidate_decline` — Отказ кандидата
-- Сценарии теперь могут подписываться на смену HR-статуса кандидата через `trigger_mode=candidate_hr_stage` и `candidate_work_stage_trigger=<status>`.
+- React employee detail уже имеет явный HR cutover `candidate -> adaptation`: оператор должен задать `first_workday`, после чего система очищает candidate-only stage и seed-ит adaptation dates.
+- При назначении руководителя сотруднику в `adaptation` backend может создать trigger launch request для сценария `manager_assigned_adaptation`.
 
 ## Чего не хватает
 
-- Нет явного controlled transition “candidate becomes employee”.
 - Нет устойчивой модели переключения bot UI из candidate behavior в employee menu behavior.
-- Полной trigger matrix из HR status changes в scenario launches все еще нет: сейчас есть только direct launch по change event без richer event policy, cooldown и dedupe за пределами одного фактического изменения статуса.
+- Нет полной trigger matrix из HR status changes и assignment events в scenario launches.
+- Нет product-решения, должен ли bot-driven `offer accepted` создавать отдельный статус/событие до HR cutover.
 
 ## Важное следствие
 
-Shared table упрощает implementation, а `is_bot_blocked` дает минимальный lifecycle safety brake. Но transition semantics все еще underspecified: blocked employee не равен properly modeled terminated employee, а candidate пока не promoted через explicit controlled transition.
+Shared table упрощает implementation, а `is_bot_blocked` дает минимальный lifecycle safety brake. Но transition semantics все еще underspecified: blocked employee не равен properly modeled terminated employee, а explicit HR cutover в `adaptation` не заменяет полную lifecycle/event модель.
 
 ## Связанная работа
 

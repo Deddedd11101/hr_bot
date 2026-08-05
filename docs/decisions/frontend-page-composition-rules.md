@@ -2,7 +2,7 @@
 title: Frontend page composition rules
 date: 2026-05-18
 status: accepted
-doc_type: decision
+doc_type: adr
 area: frontend
 task_tokens:
   - HRB-P1-07

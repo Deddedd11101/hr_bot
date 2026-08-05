@@ -2,7 +2,13 @@
 title: Передача контекста по Telegram linking и scope
 date: 2026-04-10
 status: archived
+doc_type: handoff
+area: bot
 task_tokens: []
+related:
+  - "[[features/bot-identity]]"
+  - "[[stage-deploy]]"
+source_of_truth: false
 ---
 
 # Передача контекста по Telegram linking и scope

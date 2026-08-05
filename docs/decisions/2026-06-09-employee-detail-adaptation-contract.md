@@ -2,7 +2,7 @@
 title: Employee Detail Adaptation Contract
 date: 2026-06-09
 status: accepted
-doc_type: decision
+doc_type: adr
 area: employee-detail
 source_of_truth: true
 ---

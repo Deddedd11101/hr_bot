@@ -2,8 +2,14 @@
 title: Принятие Obsidian vault
 date: 2026-05-06
 status: accepted
+doc_type: adr
+area: docs
 task_tokens:
   - HRB-DOC-01
+related:
+  - "[[README]]"
+  - "[[documentation-standard]]"
+source_of_truth: true
 ---
 
 # Принятие Obsidian vault

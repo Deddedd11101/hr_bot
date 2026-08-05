@@ -5,8 +5,9 @@ status: active
 doc_type: handoff
 area: employee-lifecycle
 related:
-  - "../decisions/2026-07-21-manager-assignment-trigger.md"
-  - "../project_state.md"
+  - "[[decisions/2026-07-21-manager-assignment-trigger]]"
+  - "[[project_state]]"
+source_of_truth: false
 ---
 
 # Manager trigger scenarios handoff

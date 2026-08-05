@@ -11,6 +11,8 @@ source_of_truth: false
 
 # TODO
 
+Создавать только если продолжение работы требует устойчивого контекста beyond live docs and git diff; см. [[documentation-workflow]].
+
 ## Что изменилось
 
 - TODO

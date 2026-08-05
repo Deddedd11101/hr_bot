@@ -2,34 +2,41 @@
 title: Stage admin HTTPS baseline
 date: 2026-07-01
 status: accepted
-doc_type: decision
-area: infra
+doc_type: adr
+area: deploy
 related:
-  - "../stage-deploy.md"
-  - "../configuration.md"
-  - "../web-surface.md"
+  - "[[stage-deploy]]"
+  - "[[backlog]]"
+  - "[[configuration]]"
+source_of_truth: true
 ---
 
 # Stage admin HTTPS baseline
 
-## Решение
+## Context
 
-Для тестового admin-доступа выбран простой baseline: домен, HTTPS reverse proxy и закрытый публичный доступ к приложению на `:8000`.
+Stage admin currently has been observed as reachable directly on `http://92.51.38.32:8000/...`.
+That is acceptable for early internal debugging, but it is not a good baseline for real HR/admin use because login credentials and session cookies should not travel over plain HTTP.
 
-Целевой контур:
+## Decision
 
-- DNS `A` для admin-домена указывает на `92.51.38.32`;
-- reverse proxy слушает `80/443` и проксирует в `127.0.0.1:8000`;
-- FastAPI остается доступен локально для systemd и deploy smoke checks;
-- внешний `:8000` закрывается firewall;
-- после включения HTTPS на stage выставляются `ADMIN_SESSION_SECRET=<long random secret>` и `ADMIN_SESSION_COOKIE_SECURE=true`.
+Use a simple domain + HTTPS reverse proxy baseline for stage admin:
 
-## Почему не VPN-only сейчас
+- buy or assign a normal domain/subdomain, for example `admin.<domain>`;
+- point DNS `A` record to `92.51.38.32`;
+- run Caddy on the stage server as reverse proxy on ports `80/443`;
+- proxy traffic to FastAPI on `127.0.0.1:8000`;
+- close public access to port `8000`;
+- set `ADMIN_SESSION_COOKIE_SECURE=true` after HTTPS is live;
+- rotate `ADMIN_SESSION_SECRET` during the same operational change.
 
-VPN-only доступ усложняет тестирование, поддержку и передачу стенда пользователям. Для текущего stage разумнее сначала убрать plain HTTP и прямой app-port из публичного доступа, а затем при необходимости добавить IP allowlist или Basic Auth на proxy.
+Do not start with VPN-only as the default. VPN-only can be added later if the access group is tiny and operationally ready for it. The first pragmatic security step is HTTPS + no direct public app port.
 
-## Последствия
+## Deferred Hardening
 
-- GitHub Actions deploy path не должен меняться: workflow может продолжать проверять `http://127.0.0.1:8000/...` на сервере.
-- После включения `ADMIN_SESSION_COOKIE_SECURE=true` вход по plain HTTP перестанет быть валидным, поэтому эту переменную нельзя включать до рабочего HTTPS.
-- Смена `ADMIN_SESSION_SECRET` принудительно инвалидирует старые signed-cookie сессии.
+Possible follow-up layers:
+
+- IP allowlist in Caddy or firewall;
+- Basic Auth at the proxy as a temporary second factor;
+- formal audit/session management in the app;
+- broader security/compliance pass for files, personal data, roles, and CSRF.

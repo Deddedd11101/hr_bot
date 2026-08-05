@@ -2,8 +2,15 @@
 title: UI/UX-гайдлайны
 date: 2026-05-14
 status: active
+doc_type: feature
+area: frontend
 task_tokens:
   - HRB-P1-07
+related:
+  - "[[features/shadcn-component-contract]]"
+  - "[[lld/classic-to-react-admin-migration]]"
+  - "[[decisions/frontend-page-composition-rules]]"
+source_of_truth: true
 ---
 
 # UI/UX-гайдлайны
@@ -130,10 +137,10 @@ task_tokens:
 
 ## Явные проблемы, которые надо чинить
 
-- Shared `Button` и реальные page usages уже расходятся по API (`danger` vs `destructive`).
+- Shared `Button` и реальные page usages уже частично выровнены на `destructive`, но старые handoff/diff notes все еще могут упоминать прежний drift `danger` vs `destructive`.
 - Primitive layer смешан между Base UI и legacy Radix wrappers.
 - `employee detail` уже переведен в Vite/shared runtime и разрезан на `main.tsx + page.tsx + sections.tsx + helpers.ts`, но все еще тянет legacy visual patterns через собственный CSS и createElement-heavy sections.
-- Новые React-экраны все еще частично пробиваются legacy-глобалями из `app/static/styles.css`.
+- Новые React templates уже отделены от legacy `base.html`, но при page-level правках все еще надо проверять, что old styles/selectors не возвращаются через classic partials или one-off CSS.
 
 ## Legacy cleanup scope
 

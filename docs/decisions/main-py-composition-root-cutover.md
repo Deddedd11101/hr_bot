@@ -2,7 +2,7 @@
 title: main.py composition root cutover
 date: 2026-05-26
 status: accepted
-doc_type: decision
+doc_type: adr
 area: backend
 task_tokens:
   - HRB-P1-07

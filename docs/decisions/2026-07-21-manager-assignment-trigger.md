@@ -2,11 +2,13 @@
 title: Manager assignment trigger for adaptation scenarios
 date: 2026-07-21
 status: accepted
-doc_type: decision
-area: employee-lifecycle
+doc_type: adr
+area: product
 related:
-  - "../backlog.md"
-  - "../project_state.md"
+  - "[[backlog]]"
+  - "[[project_state]]"
+  - "[[features/employee-lifecycle]]"
+source_of_truth: true
 ---
 
 # Manager assignment trigger for adaptation scenarios

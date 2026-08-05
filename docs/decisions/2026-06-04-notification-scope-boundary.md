@@ -2,11 +2,13 @@
 title: Граница глобальных и сценарных уведомлений
 date: 2026-06-04
 status: proposed
-doc_type: decision
-area: notifications
+doc_type: adr
+area: bot
 related:
-  - "[[../backlog]]"
-  - "[[../project_state]]"
+  - "[[backlog]]"
+  - "[[project_state]]"
+  - "[[features/notifications]]"
+source_of_truth: false
 ---
 
 # Граница глобальных и сценарных уведомлений

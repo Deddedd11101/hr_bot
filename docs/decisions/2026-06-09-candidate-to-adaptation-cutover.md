@@ -2,7 +2,7 @@
 title: Явный HR-cutover кандидата в адаптацию
 date: 2026-06-09
 status: accepted
-doc_type: decision
+doc_type: adr
 area: employee-lifecycle
 related:
   - "[[project_state]]"

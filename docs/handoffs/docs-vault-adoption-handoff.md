@@ -2,8 +2,14 @@
 title: Передача контекста по принятию docs vault
 date: 2026-05-06
 status: active
+doc_type: handoff
+area: docs
 task_tokens:
   - HRB-DOC-01
+related:
+  - "[[README]]"
+  - "[[decisions/obsidian-vault-adoption]]"
+source_of_truth: false
 ---
 
 # Передача контекста по принятию docs vault

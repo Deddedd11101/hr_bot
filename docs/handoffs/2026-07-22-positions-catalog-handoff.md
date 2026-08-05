@@ -9,7 +9,7 @@ related:
   - "[[project_state]]"
   - "[[data-model]]"
   - "[[decisions/2026-07-22-managed-positions-catalog]]"
-source_of_truth: true
+source_of_truth: false
 ---
 
 # Что сделано

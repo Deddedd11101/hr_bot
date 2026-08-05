@@ -2,6 +2,8 @@
 title: P0-ужесточение доступа к боту
 date: 2026-05-08
 status: accepted
+doc_type: adr
+area: bot
 task_tokens:
   - HRB-P0-01
   - HRB-P0-02
@@ -9,6 +11,10 @@ task_tokens:
   - HRB-P0-04
   - HRB-P0-05
   - HRB-P0-06
+related:
+  - "[[features/bot-identity]]"
+  - "[[backlog]]"
+source_of_truth: true
 ---
 
 # P0-ужесточение доступа к боту

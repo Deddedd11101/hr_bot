@@ -61,6 +61,17 @@ npm run build
 
 После сборки вернуться в корень проекта перед запуском админки.
 
+## Проверка документации
+
+Если менялись docs, API routes, config vars или SQLAlchemy models:
+
+```powershell
+cd D:\HRBot\hr_bot
+.\.venv\Scripts\python.exe tools\check_docs_contracts.py
+```
+
+Эта проверка не заменяет backend/frontend тесты. Она ловит рассинхрон между docs и базовыми code contracts.
+
 ## Про `--reload`
 
 `--reload` не является основной командой для этого проекта.

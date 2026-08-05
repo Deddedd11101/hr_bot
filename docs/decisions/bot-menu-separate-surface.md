@@ -2,7 +2,7 @@
 title: Bot menu separate surface
 date: 2026-06-09
 status: accepted
-doc_type: decision
+doc_type: adr
 area: frontend
 task_tokens:
   - HRB-P1-07

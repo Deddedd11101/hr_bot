@@ -2,8 +2,15 @@
 title: Уведомления
 date: 2026-05-06
 status: active
+doc_type: feature
+area: bot
 task_tokens:
   - HRB-P1-03
+related:
+  - "[[project_state]]"
+  - "[[backlog]]"
+  - "[[decisions/2026-06-04-notification-scope-boundary]]"
+source_of_truth: true
 ---
 
 # Уведомления
@@ -18,9 +25,10 @@ task_tokens:
 
 ### Уведомления на уровне шага
 
-- Хранятся прямо в `flow_step_templates`.
-- Могут отправлять текстовое уведомление, когда шаг показан пользователю.
-- Targeting получателей может использовать прямые recipient IDs и роли, связанные с карточкой сотрудника.
+- Новая множественная модель хранится в `step_send_notifications`.
+- Legacy `notify_on_send_*` поля в `flow_step_templates` остаются compatibility seam, но не должны считаться целевой product-моделью.
+- Уведомление может отправлять текст, когда шаг показан пользователю.
+- Targeting получателей может использовать explicit employee tokens, системного HR и роли, связанные с карточкой сотрудника.
 
 ### Уведомления на уровне кнопки
 
@@ -30,7 +38,7 @@ task_tokens:
 ## Текущие проблемы
 
 - Модель разделена между несколькими storage и execution paths.
-- Новый admin UX и classic admin UX еще не дают один чистый notification experience.
+- Новый React workspace уже закрыл часть classic-only gaps для button и step-level notifications, но legacy compatibility поля еще остаются в модели.
 - Текущие уведомления в основном text-oriented и пока не выражают “отправить присланный файл или ссылку” как first-class behavior.
 - Tagging и template capabilities неполны с бизнес-точки зрения.
 

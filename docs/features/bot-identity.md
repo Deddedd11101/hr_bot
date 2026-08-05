@@ -2,12 +2,18 @@
 title: Идентификация в боте
 date: 2026-05-06
 status: active
+doc_type: feature
+area: bot
 task_tokens:
   - HRB-P0-01
   - HRB-P0-02
   - HRB-P0-03
   - HRB-P0-04
   - HRB-DISC-01
+related:
+  - "[[project_state]]"
+  - "[[backlog]]"
+source_of_truth: true
 ---
 
 # Идентификация в боте

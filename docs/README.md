@@ -44,13 +44,14 @@ source_of_truth: true
 | --- | --- |
 | [project_state.md](/D:/HRBot/hr_bot/docs/project_state.md) | Текущее состояние системы, риски, ограничения и ближайшие приоритеты. |
 | [backlog.md](/D:/HRBot/hr_bot/docs/backlog.md) | Канонический список задач, task tokens и статусов. |
+| [inventory.md](/D:/HRBot/hr_bot/docs/inventory.md) | Инвентаризация docs по категориям, source-of-truth статусу и рискам устаревания. |
+| [documentation-workflow.md](/D:/HRBot/hr_bot/docs/documentation-workflow.md) | Практический gate: когда docs нужны, когда нет, и куда писать изменения. |
 | [architecture.md](/D:/HRBot/hr_bot/docs/architecture.md) | Runtime topology, boundaries, подсистемы и high-level data flows. |
 | [api.md](/D:/HRBot/hr_bot/docs/api.md) | Реализованный JSON API для React-экранов и scenario workspace. |
 | [web-surface.md](/D:/HRBot/hr_bot/docs/web-surface.md) | Classic HTML pages, form actions, downloads, exports и redirects. |
 | [data-model.md](/D:/HRBot/hr_bot/docs/data-model.md) | Текущая модель данных по коду, startup schema guard и observed SQLite drift. |
 | [local-runbook.md](/D:/HRBot/hr_bot/docs/local-runbook.md) | Локальный запуск админки, bot worker и пересборка frontend assets. |
 | [stage-deploy.md](/D:/HRBot/hr_bot/docs/stage-deploy.md) | Stage deploy path, runbook, smoke checks и границы repo-vs-server truth. |
-| [subagent-delivery.md](/D:/HRBot/hr_bot/docs/subagent-delivery.md) | Правила feature-веток, интеграции в `stage` и handoff для параллельных субагентов. |
 | [stage-change-log.md](/D:/HRBot/hr_bot/docs/stage-change-log.md) | Журнал того, что реально выведено и проверено на test/stage. |
 | [configuration.md](/D:/HRBot/hr_bot/docs/configuration.md) | Environment variables, precedence rules, secrets и stage placement. |
 
@@ -134,6 +135,8 @@ Snapshot-документы удобны для демо, handoff и обсуж�
 
 - Используй task tokens вроде `HRB-P0-01` прямо в документах и decisions.
 - Wiki-links можно использовать внутри vault, но текст должен оставаться читаемым вне Obsidian.
+- Для аудита актуальности начинай с [inventory.md](/D:/HRBot/hr_bot/docs/inventory.md), но не считай его заменой live docs.
+- Перед созданием новых docs проверь [documentation-workflow.md](/D:/HRBot/hr_bot/docs/documentation-workflow.md): мелкие правки без contract change обычно не документируются.
 - Если решение изменилось, обнови live document и добавь новую note в `decisions/`.
 - Если задача началась или завершилась, обнови [backlog.md](/D:/HRBot/hr_bot/docs/backlog.md).
 - Если изменился operational context, обнови [project_state.md](/D:/HRBot/hr_bot/docs/project_state.md).

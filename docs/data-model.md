@@ -38,7 +38,6 @@ source_of_truth: true
 1. `Base.metadata.create_all(bind=engine)`
 2. `_ensure_sqlite_schema()` для SQLite compatibility patching
 3. seed routines для admin accounts и встроенных flow templates
-4. seed/compatibility routine для каталога должностей `positions`
 
 Значит, schema evolution не является чисто декларативной. Runtime может менять форму базы при запуске.
 
@@ -60,7 +59,7 @@ source_of_truth: true
 | Таблица | Назначение | Ключевые поля | Связи и примечания |
 | --- | --- | --- | --- |
 | `employees` | Единая запись для candidates и employees | `full_name`, `first_workday`, `employee_stage`, `candidate_work_stage`, legacy Telegram fields, HR profile fields, consent flags, `is_bot_blocked` | Центральная запись, на нее ссылается большинство runtime tables |
-| `positions` | Управляемый справочник должностей | `title`, `slug`, `is_active`, `sort_order`, `created_at` | Catalog для employee detail options, scenario `role_scope`, mass targeting и bot-menu audience targeting |
+| `positions` | Управляемый справочник должностей | `title`, `slug`, `is_active`, `sort_order`, timestamps | Используется settings UI, employee forms, scenario role scope и targeting; `employees.desired_position` пока остается строкой для backward compatibility |
 | `employee_messenger_accounts` | Channel-specific communication identities | `employee_id`, `channel`, `external_user_id`, `external_username`, `is_primary`, `is_active` | Один employee может иметь несколько channel identities; текущий runtime использует `telegram` |
 | `admin_accounts` | Пользователи админки | `login`, `password_hash`, `role`, `is_active` | Используется browser session auth |
 
@@ -68,10 +67,11 @@ source_of_truth: true
 
 | Таблица | Назначение | Ключевые поля | Связи и примечания |
 | --- | --- | --- | --- |
-| `scenario_templates` | Metadata сценариев и опросов | `scenario_key`, `title`, `scenario_kind`, `role_scope`, `employee_scope`, `trigger_mode`, `candidate_work_stage_trigger`, `target_employee_id`, `description`, `sort_order` | Parent entity для steps и runtime launches; `candidate_work_stage_trigger` используется только для HR-driven candidate status launches |
-| `flow_step_templates` | Step definitions | `flow_key`, `step_key`, `parent_step_id`, `branch_option_index`, `response_type`, `button_options`, `return_to_step_key`, scheduling fields, target field, attachment fields, notification fields | Root steps имеют `parent_step_id = NULL`; branches и chains вложены через `parent_step_id`; `return_to_step_key` разрешает branch-step вернуться в root-step того же сценария |
+| `scenario_templates` | Metadata сценариев и опросов | `scenario_key`, `title`, `scenario_kind`, `role_scope`, `employee_scope`, `trigger_mode`, `target_employee_id`, `description`, `sort_order` | Parent entity для steps и runtime launches |
+| `flow_step_templates` | Step definitions | `flow_key`, `step_key`, `parent_step_id`, `branch_option_index`, `response_type`, `button_options`, scheduling fields, target field, attachment fields, notification fields | Root steps имеют `parent_step_id = NULL`; branches и chains вложены через `parent_step_id` |
 | `step_button_notifications` | Notification overrides для button options | `flow_key`, `step_id`, `option_index`, `message_text`, recipient fields | Дополнительная notification model для конкретной button option |
-| `scenario_progress` | Runtime position сценария по employee | `employee_id`, `scenario_key`, `current_step_key`, `step_history`, `response_undo_history`, `waiting_for_response`, `is_completed`, timestamps | Tracks active/completed scenario state; `step_history` хранит навигацию назад, `response_undo_history` — JSON-стек rollback snapshots для последнего подтвержденного ответа |
+| `step_send_notifications` | Notification rules при показе шага | `flow_key`, `step_id`, `rule_index`, `message_text`, recipient fields | Новая множественная модель step-level notifications; legacy `notify_on_send_*` остается compatibility seam |
+| `scenario_progress` | Runtime position сценария по employee | `employee_id`, `scenario_key`, `current_step_key`, `waiting_for_response`, `is_completed`, timestamps | Tracks active/completed scenario state |
 | `flow_launch_requests` | Launch queue для manual и scheduled work | `employee_id`, `flow_key`, `requested_at`, `processed_at`, `launch_type`, `skip_step_key` | Используется для будущих запусков и follow-up continuation steps |
 | `survey_answers` | Сохраненные ответы на survey-like steps | `employee_id`, `scenario_key`, `step_key`, `answer_value`, `file_name`, `answered_at` | Отдельно от `scenario_progress`, потому что answers can accumulate |
 | `onboarding_events` | Исторический лог onboarding sends | `employee_id`, `scheduled_at`, `sent_at`, `event_key`, `message` | Используется scheduled onboarding logic |
@@ -80,9 +80,9 @@ source_of_truth: true
 
 | Таблица | Назначение | Ключевые поля | Связи и примечания |
 | --- | --- | --- | --- |
-| `hr_settings` | Глобальные HR notification settings и root menu defaults | recipient ids, notification flags, `default_menu_set_id`, `default_employee_menu_set_id`, `default_candidate_menu_set_id` | По сути singleton-style configuration |
-| `bot_menu_sets` | Employee-facing bot menu groups | `title`, `description`, `sort_order` | Parent table для menu buttons |
-| `bot_menu_buttons` | Кнопки меню | `menu_set_id`, `label`, `action_type`, `scenario_key`, `target_menu_set_id` | Используется inbound text menu handling |
+| `hr_settings` | Глобальные HR notification settings и default menu | recipient ids, notification flags, `default_menu_set_id`, `default_employee_menu_set_id`, `default_candidate_menu_set_id` | По сути singleton-style configuration |
+| `bot_menu_sets` | Employee-facing bot menu groups | `title`, `description`, `sort_order`, `employee_scope`, `role_scope`, explicit target fields, `system_tag` | Parent table для menu buttons; `system_tag` маркирует generated document menu branches |
+| `bot_menu_buttons` | Кнопки меню | `menu_set_id`, `label`, `action_type`, `scenario_key`, `target_menu_set_id`, `document_item_id` | Используется inbound text menu handling; `action_type=send_document` ссылается на `document_library_items` |
 | `mass_scenario_actions` | Очередь bulk scenario launches | flow key, scenario kind, targeting fields, `launch_type`, `recipient_count` | Разрешается и обрабатывается scheduler |
 | `mass_message_actions` | Очередь bulk free-text sends | message text, targeting fields, `launch_type`, `recipient_count` | Разрешается и обрабатывается scheduler |
 
@@ -91,7 +91,8 @@ source_of_truth: true
 | Таблица | Назначение | Ключевые поля | Связи и примечания |
 | --- | --- | --- | --- |
 | `employee_files` | Inbound и outbound employee files | `employee_id`, `direction`, `category`, Telegram file ids, `stored_path`, `mime_type`, `file_size` | Backed by local filesystem storage |
-| `employee_document_links` | Per-employee document links | `employee_id`, `title`, `url` | Текущие React/classic UI используют в основном для offer link |
+| `employee_document_links` | Per-employee document slots/links | `employee_id`, `slot_key`, `title`, `url`, `item_kind`, `employee_file_id` | Offer slot может быть link-backed или file-backed через `employee_files` |
+| `document_library_items` | Shared library documents for bot menu | `title`, `description`, `category`, `item_kind`, `external_url`, stored file metadata, `is_active`, `sort_order` | Общие материалы для `/app/documents` и `send_document` menu buttons |
 
 ## Важные runtime rules
 
@@ -102,12 +103,6 @@ source_of_truth: true
   - candidates обычно имеют `employee_stage = "candidate"`;
   - non-candidates используют stages вроде `adaptation`, `ipr`, `staff`.
 - Это просто, но продуктово грязно. Один row type растянут на recruiting, onboarding и staff communication.
-- `desired_position` пока остается строкой, а не foreign key на `positions`.
-- Это осознанный compatibility seam:
-  - старые SQLite-файлы не требуют destructive rewrite;
-  - employee detail и settings уже показывают catalog-backed options;
-  - runtime role matching переводит и title, и slug в общий scope key;
-  - неизвестные legacy строки автоматически подхватываются в `positions` seed-слой.
 
 ### `employee_messenger_accounts`
 
@@ -120,7 +115,6 @@ source_of_truth: true
 ### `scenario_templates` и `flow_step_templates`
 
 - Scenario authoring table-driven.
-- `role_scope` теперь трактуется как `positions.slug`, а не как закрытый enum из трех ролей.
 - Steps могут представлять:
   - обычные send-only nodes;
   - text/file/button response nodes;
@@ -136,20 +130,20 @@ SQLite schema guard делает больше, чем “создать табл
 
 - добавляет missing columns в `employees`, `scenario_templates`, `flow_step_templates`, `hr_settings`, mass action tables и launch tables;
 - создает целые таблицы, если они отсутствуют:
-  - `positions`;
   - `step_button_notifications`;
+  - `step_send_notifications`;
   - `scenario_progress`;
   - `survey_answers`;
   - `admin_accounts`;
   - `bot_menu_sets`;
   - `bot_menu_buttons`;
+  - `document_library_items`;
   - `mass_scenario_actions`;
   - `mass_message_actions`;
   - `employee_messenger_accounts`;
 - нормализует legacy values на месте:
   - `desired_position`;
   - `employee_stage`;
-- не переводит `employees.desired_position` в foreign key автоматически, но отдельный seed-layer досоздает missing catalog rows по distinct строковым значениям сотрудников.
 - пересоздает `employees` в SQLite, если старые файлы еще держат obsolete `NOT NULL` constraints;
 - backfill `employee_messenger_accounts` из legacy employee Telegram fields.
 
