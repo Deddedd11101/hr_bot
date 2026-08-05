@@ -103,6 +103,8 @@ TODO: repo-backed reality на 2026-06-29 пока другая: `.github/workfl
 - перед deploy следующей доработки нужно merge/rebase актуальный `stage` в feature или merge feature в `stage`;
 - если frontend и backend меняют общий API/static contract, деплоить только integration branch, где обе стороны уже вместе.
 
+Commit messages должны следовать формату из `docs\subagent-delivery.md`: `<type>(<scope>): <сообщение>`, где `type` один из `feat`, `fix`, `refactor`, `docs`, `style`, `test`, `chore`, `perf`, `ci`, `revert`; сообщение на русском, в повелительном наклонении, без точки в конце. Не смешивать unrelated изменения в одном коммите.
+
 Если рабочее дерево грязное и содержит чужие изменения, нельзя катить весь diff на stage без ревью. Нужно изолировать свои изменения в отдельную ветку/commit, влить их в `stage`/integration ref либо явно остановиться с `Не задеплоено:`.
 
 Отсутствие интерактивного SSH-доступа у субагента не является блокером, если GitHub Actions deploy доступен. Блокером считается только невозможность подготовить/push ref или недоступность workflow/secrets.

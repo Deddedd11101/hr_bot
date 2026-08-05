@@ -97,6 +97,82 @@ Reviewer может быть интегратором или отдельным 
 
 `main` не является обычной deploy target для stage. В `main` должны попадать workflow/process/baseline изменения только после отдельной проверки. Красный `main` CI чинится маленьким отдельным change set, а не в составе feature cleanup.
 
+## Commit Messages
+
+Все новые commit messages должны следовать формату:
+
+```text
+<type>(<scope>): <сообщение>
+```
+
+Разрешенные `type`:
+
+- `feat`
+- `fix`
+- `refactor`
+- `docs`
+- `style`
+- `test`
+- `chore`
+- `perf`
+- `ci`
+- `revert`
+
+Scope выбирать по основному смыслу изменения. Разрешенные и рекомендуемые scopes:
+
+- `admin`
+- `api`
+- `auth`
+- `bot`
+- `config`
+- `db`
+- `deploy`
+- `docs`
+- `employees`
+- `frontend`
+- `hr`
+- `logs`
+- `notify`
+- `positions`
+- `scheduler`
+- `scenarios`
+- `settings`
+- `storage`
+- `tests`
+- `ui`
+- `workflow`
+
+Если затронуто несколько областей, писать scope через запятую без пробелов:
+
+```text
+fix(bot,scenarios): исправить порядок отправки вложений
+```
+
+Сообщение:
+
+- на русском;
+- в повелительном наклонении;
+- до 72 символов;
+- без точки в конце.
+
+Примеры:
+
+```text
+docs(readme): обновить входную документацию проекта
+fix(bot): убрать лишний текст при старте без меню
+feat(positions): добавить drag-and-drop сортировку должностей
+ci(deploy): добавить проверенный backup перед stage deploy
+chore(workflow): игнорировать локальные артефакты агентов
+```
+
+Если изменение только документационное, использовать `docs(...)`.
+Если изменение только GitHub Actions/workflow, использовать `ci(...)`.
+Если изменение только cleanup/ignore/dependencies без поведения, использовать `chore(...)`.
+
+Не смешивать unrelated изменения в одном коммите. Не коммитить runtime data, `.env`, локальные базы, `storage`, `backups`, screenshots/cache или другие локальные артефакты.
+
+Субагент не обязан деплоить свою ветку: нормальная конечная точка его фазы — commit, push feature branch и handoff. Коммит в `stage`/`main` делает интегратор после review/checks.
+
 ## Откуда создавать ветку
 
 Если задача не зависит от текущих незадеплоенных stage-изменений:
