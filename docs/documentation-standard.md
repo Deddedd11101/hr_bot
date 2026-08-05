@@ -10,6 +10,7 @@ related:
   - "[[README]]"
   - "[[backlog]]"
   - "[[project_state]]"
+  - "[[documentation-workflow]]"
   - "[[decisions/documentation-format-standard]]"
 source_of_truth: true
 ---
@@ -84,12 +85,13 @@ source_of_truth: true
 
 - [[project_state]] — состояние проекта и риски.
 - [[backlog]] — задачи, статусы и task tokens.
+- [[inventory]] — рабочая инвентаризация docs по категориям, статусу и рискам устаревания.
+- [[documentation-workflow]] — практический gate, когда изменение требует docs и куда писать.
 - [[architecture]] — runtime architecture и границы подсистем.
 - [[api]] — реализованный JSON API.
 - [[web-surface]] — non-JSON operator web surface.
 - [[data-model]] — текущая схема данных и drift.
 - [[stage-deploy]] — stage deploy/runbook.
-- [[subagent-delivery]] — правила параллельных feature-веток, stage integration и handoff.
 - [[stage-change-log]] — короткий operational ledger фактических выкаток на test/stage.
 - [[configuration]] — env/config contract.
 
@@ -98,6 +100,8 @@ Historical docs:
 - `decisions/` фиксируют, почему решение было принято.
 - `handoffs/` фиксируют состояние на момент передачи.
 - `daily/` помогает восстановить ход работ, но не заменяет live docs.
+
+Важно: inventory не заменяет live docs. Он помогает аудитору понять ownership и риск устаревания, но факты о runtime, API, data, deploy и product behavior должны проверяться в соответствующих source-of-truth документах.
 
 ## Когда создавать LLD
 
@@ -180,3 +184,5 @@ ADR не обязан быть большим. Важнее явно запис�
 5. Добавить handoff, если после работы нужен устойчивый контекст для продолжения.
 
 Не надо дублировать один и тот же факт в пяти местах. Live doc хранит факт, maps и handoffs только ссылаются на него.
+
+Практический порог описан в [[documentation-workflow]]. Мелкие правки без изменения contract не требуют отдельной записи в docs.

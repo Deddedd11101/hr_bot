@@ -56,6 +56,7 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
     const [fileForm, setFileForm] = React.useState({
         upload: null as File | null,
     });
+    const [offerFile, setOfferFile] = React.useState<File | null>(null);
 
     React.useEffect(function () {
         let isMounted = true;
@@ -81,6 +82,8 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
                             employee_stage_values: [],
                             candidate_work_stage_values: [],
                             staff_employee_values: [],
+                            manager_employee_values: [],
+                            mentor_employee_values: [],
                             scenarios: [],
                         },
                         payload.options || {},
@@ -216,9 +219,6 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
     }
 
     function handleOfferDelete(linkId: number) {
-        if (!window.confirm("Удалить ссылку на оффер?")) {
-            return;
-        }
         setOpsState({ message: "", error: false, working: true });
         fetch(apiUrl + "/document-links/" + linkId, {
             method: "DELETE",
@@ -236,10 +236,47 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
             .then(function (payload) {
                 updatePayloadState(setState, setForm, payload);
                 setOfferUrl("");
-                setOperationMessage("Ссылка на оффер удалена", false);
+                setOfferFile(null);
+                setOperationMessage("Оффер удален из карточки", false);
             })
             .catch(function (error) {
                 setOperationMessage(error.message || "Не удалось удалить ссылку", true);
+            });
+    }
+
+    function handleOfferFileSubmit(event: React.FormEvent<HTMLFormElement>) {
+        event.preventDefault();
+        if (!offerFile) {
+            setOperationMessage("Выбери файл оффера", true);
+            return;
+        }
+        setOpsState({ message: "", error: false, working: true });
+        const formData = new FormData();
+        formData.append("upload", offerFile);
+        fetch(apiUrl + "/document-slots/offer/file", {
+            method: "POST",
+            credentials: "same-origin",
+            body: formData,
+        })
+            .then(function (response) {
+                if (!response.ok) {
+                    return response.json().catch(function () { return {}; }).then(function (payload) {
+                        throw new Error(payload.detail || "Не удалось загрузить оффер");
+                    });
+                }
+                return response.json();
+            })
+            .then(function (payload) {
+                updatePayloadState(setState, setForm, payload.payload);
+                setOfferFile(null);
+                const fileInput = document.getElementById("react-offer-file-input") as HTMLInputElement | null;
+                if (fileInput) {
+                    fileInput.value = "";
+                }
+                setOperationMessage("Оффер загружен", false);
+            })
+            .catch(function (error) {
+                setOperationMessage(error.message || "Не удалось загрузить оффер", true);
             });
     }
 
@@ -302,9 +339,6 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
     }
 
     function handleScheduledDelete(launchRequestId: number) {
-        if (!window.confirm("Удалить запланированную отправку?")) {
-            return;
-        }
         setOpsState({ message: "", error: false, working: true });
         fetch(apiUrl + "/schedule/" + launchRequestId, {
             method: "DELETE",
@@ -391,9 +425,6 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
     }
 
     function handleDeleteFile(fileId: number) {
-        if (!window.confirm("Удалить этот файл?")) {
-            return;
-        }
         setOpsState({ message: "", error: false, working: true });
         fetch(apiUrl + "/files/" + fileId, {
             method: "DELETE",
@@ -418,9 +449,6 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
     }
 
     function handleDeleteEmployee() {
-        if (!window.confirm("Удалить этого сотрудника?")) {
-            return;
-        }
         setOpsState({ message: "", error: false, working: true });
         fetch(apiUrl, {
             method: "DELETE",
@@ -443,10 +471,39 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
             });
     }
 
-    function handlePromoteToAdaptation() {
-        if (!window.confirm("Перевести кандидата в адаптацию?")) {
+    function handleResetBotLinkage() {
+        if (!window.confirm("Сбросить привязку к боту и очистить активные сценарии и ожидающие отправки?")) {
             return;
         }
+        setOpsState({ message: "", error: false, working: true });
+        fetch(apiUrl + "/bot-link/reset", {
+            method: "POST",
+            credentials: "same-origin",
+            headers: { Accept: "application/json" },
+        })
+            .then(function (response) {
+                if (!response.ok) {
+                    return response.json().catch(function () { return {}; }).then(function (payload) {
+                        throw new Error(payload.detail || "Не удалось сбросить привязку к боту");
+                    });
+                }
+                return response.json();
+            })
+            .then(function (payload) {
+                updatePayloadState(setState, setForm, payload);
+                setLaunchFlowKey(
+                    payload.options && payload.options.scenarios && payload.options.scenarios.length
+                        ? payload.options.scenarios[0].value
+                        : "",
+                );
+                setOperationMessage("Привязка к боту сброшена", false);
+            })
+            .catch(function (error) {
+                setOperationMessage(error.message || "Не удалось сбросить привязку к боту", true);
+            });
+    }
+
+    function handlePromoteToAdaptation() {
         setOpsState({ message: "", error: false, working: true });
         fetch(apiUrl + "/promote-to-adaptation", {
             method: "POST",
@@ -495,6 +552,9 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
             extraActionLabel: file.can_send_to_channel ? "Отправить в мессенджер" : null,
             deleteAction: function () { handleDeleteFile(file.id); },
             deleteActionLabel: "Удалить файл",
+            deleteConfirmTitle: "Удалить файл?",
+            deleteConfirmDescription: "Файл будет удален из карточки сотрудника.",
+            deleteConfirmLabel: "Удалить",
         };
     });
     const employeeFileItems = fileItems.filter(function (file: any) {
@@ -504,17 +564,22 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
         return file.direction !== "inbound";
     });
 
-    const documentItems = payload.document_links.map(function (item: any) {
-        return {
-            id: item.id,
-            title: item.title,
-            subtitle: item.scenario_tag,
-            link: item.url,
-            linkLabel: "Открыть",
-            deleteAction: function () { handleOfferDelete(item.id); },
-            deleteActionLabel: "Удалить ссылку",
-        };
-    });
+    const offerDocumentItem = payload.offer_document
+        ? {
+            id: payload.offer_document.id,
+            title: payload.offer_document.title,
+            subtitle: payload.offer_document.item_kind === "file"
+                ? "Файл оффера"
+                : payload.offer_document.scenario_tag,
+            link: payload.offer_document.url,
+            linkLabel: payload.offer_document.item_kind === "file" ? "Скачать" : "Открыть",
+            deleteAction: function () { handleOfferDelete(payload.offer_document.id); },
+            deleteActionLabel: "Удалить",
+            deleteConfirmTitle: "Удалить оффер?",
+            deleteConfirmDescription: "Оффер будет удален из карточки сотрудника.",
+            deleteConfirmLabel: "Удалить",
+        }
+        : null;
 
     const launchItems = payload.scheduled_launches.map(function (item: any) {
         return {
@@ -525,6 +590,9 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
             linkLabel: "Сценарий",
             extraAction: function () { handleScheduledDelete(item.id); },
             extraActionLabel: "Удалить",
+            extraActionConfirmTitle: "Удалить запланированную отправку?",
+            extraActionConfirmDescription: "Сценарий будет удален из расписания этого сотрудника.",
+            extraActionConfirmLabel: "Удалить",
         };
     });
     const manualLaunchItems = payload.manual_launch_history.map(function (item: any) {
@@ -574,6 +642,9 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
                     opsState={opsState}
                     offerUrl={offerUrl}
                     setOfferUrl={setOfferUrl}
+                    offerFile={offerFile}
+                    setOfferFile={setOfferFile}
+                    offerDocumentItem={offerDocumentItem}
                     payload={payload}
                     form={form}
                     scheduleForm={scheduleForm}
@@ -583,15 +654,16 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
                     fileForm={fileForm}
                     setFileForm={setFileForm}
                     handleOfferSubmit={handleOfferSubmit}
+                    handleOfferFileSubmit={handleOfferFileSubmit}
                     handleOfferDelete={handleOfferDelete}
                     handleScheduleSubmit={handleScheduleSubmit}
                     handleLaunchSubmit={handleLaunchSubmit}
                     handleFileSubmit={handleFileSubmit}
                     handlePromoteToAdaptation={handlePromoteToAdaptation}
+                    handleResetBotLinkage={handleResetBotLinkage}
                     handleDeleteEmployee={handleDeleteEmployee}
                     employeeFileItems={employeeFileItems}
                     hrFileItems={hrFileItems}
-                    documentItems={documentItems}
                     launchItems={launchItems}
                     manualLaunchItems={manualLaunchItems}
                     isCandidate={isCandidate}

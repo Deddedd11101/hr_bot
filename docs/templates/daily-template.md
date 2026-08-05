@@ -11,6 +11,8 @@ source_of_truth: false
 
 # Daily YYYY-MM-DD
 
+Использовать только для насыщенного operational day. Для обычных задач daily не нужен; см. [[documentation-workflow]].
+
 ## Сделано
 
 - TODO

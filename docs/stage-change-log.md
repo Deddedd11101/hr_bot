@@ -34,6 +34,549 @@ source_of_truth: true
 
 ## Записи
 
+### 2026-07-22 14:47 MSK - db import + ops - staff employees and positions catalog seed
+
+- Import source: `employees.xlsx` from HR handoff, converted to JSON payload for GitHub Actions.
+- Tooling commits:
+  - `stage`: `ec173e2` added `Import Stage Employees` workflow and import tool;
+  - `stage`: `9ebfb8b` fixed post-import HTTP smoke to wait for web readiness;
+  - `main`: `18c9c69` and `500f7ab` expose the workflow on the default branch.
+- Import runs:
+  - dry-run `29916696490` -> success, planned 38 employees;
+  - import `29916759218` -> database write succeeded, but the job failed on an immediate `/app/settings` curl before web was ready;
+  - deploy/smoke `29916866407` -> success after the import;
+  - verification dry-run `29916979311` -> success, `positions_created: []`, `employees_created: 0`, `employees_updated: 38`.
+- В stage DB внесено:
+  - все должности из файла добавлены/активированы в `positions`;
+  - 38 строк сотрудников обработаны как штатные сотрудники (`employee_stage=staff`);
+  - по фактическому import summary: `employees_created: 35`, `employees_updated: 3`;
+  - флаги `is_manager` и `is_mentor` не выставлялись автоматически.
+- Нормализация:
+  - Telegram username сохранялся без `@`;
+  - строка `Лагутина Алина Андреевна` имела значение `7 951 717-61-69` в колонке `telegram_username`; это значение не импортировано как username, чтобы не создавать битую Telegram-ссылку.
+- Safety/rollback:
+  - перед записью создан и проверен SQLite backup: `backups/hr_bot.before-employee-import.20260722-114334.db` in Actions log;
+  - после импорта стандартный deploy создал дополнительный verified backup `backups/hr_bot.before-deploy.20260722-114543.db` in Actions log;
+  - scenario configuration fingerprint unchanged.
+- Stage smoke checks after import:
+  - `/app/employees` -> `303`;
+  - `/app/flows/workspace-v2` -> `303`;
+  - Telegram API reachability -> `HTTP/2 302`;
+  - deploy job завершился успешно и вывел `9ebfb8b`.
+- Открытый риск:
+  - у одной сотрудницы Telegram username отсутствует до ручной правки в карточке или исходной таблице. Остальные флаги руководителей/наставников нужно выставить вручную, как и планировалось.
+
+### 2026-07-22 14:33 MSK - app deploy - positions DnD visual polish
+
+- Deploy ref: `stage`.
+- Deployed commit: `f3b4fa5`.
+- GitHub Actions run: `29916085457` -> success.
+- В stage включено:
+  - в `/app/settings` -> `Должности` убран технический текст про `sort_order`;
+  - добавлен явный drop indicator в виде primary-линии между строками;
+  - перетаскиваемая строка теперь визуально подсвечивается.
+- Локальные проверки перед deploy:
+  - `npm run build` в `frontend`;
+  - `.\.venv\Scripts\python.exe -m compileall app tests tools`;
+  - `.\.venv\Scripts\python.exe -m ruff check --select F821 app tests`;
+  - focused settings API tests for positions/settings;
+  - `git diff --check HEAD~1..HEAD`.
+- GitHub Actions preflight:
+  - backend dependencies install;
+  - `compileall`;
+  - `ruff F821`;
+  - backend smoke tests;
+  - frontend build;
+  - smoke imports.
+- Stage safety checks:
+  - verified SQLite backup created before checkout/restart: `backups/hr_bot.before-deploy.20260722-113332.db` in Actions log;
+  - scenario configuration fingerprint unchanged.
+- Stage smoke checks:
+  - `/app/employees` -> `303`;
+  - `/app/flows/workspace-v2` -> `303`;
+  - Telegram API reachability -> `HTTP/2 302`;
+  - deploy job завершился успешно и вывел `f3b4fa5`.
+- Открытый риск:
+  - это UI-polish поверх существующего reorder-контракта; backend bulk reorder endpoint по-прежнему можно добавить позже, если каталог должностей станет большим.
+
+### 2026-07-22 14:10 MSK - app deploy - positions drag-and-drop ordering
+
+- Deploy ref: `stage`.
+- Deployed commit: `e463b08`.
+- GitHub Actions run: `29914627720` -> success.
+- В stage включено:
+  - в `/app/settings` -> `Должности` убран ручной ввод `sort_order`;
+  - добавлен drag handle для перетаскивания должностей;
+  - после reorder UI пересчитывает порядок как `10/20/30...` и сохраняет его через `PATCH /api/settings/positions/{id}`;
+  - при ошибке сохранения reorder показывается `alert`, затем список должностей перезагружается с сервера.
+- Локальные проверки перед deploy:
+  - `npm run build` в `frontend`;
+  - `.\.venv\Scripts\python.exe -m compileall app tests tools`;
+  - `.\.venv\Scripts\python.exe -m ruff check --select F821 app tests`;
+  - focused settings API tests for positions/settings;
+  - `git diff --check HEAD~1..HEAD`.
+- GitHub Actions preflight:
+  - backend dependencies install;
+  - `compileall`;
+  - `ruff F821`;
+  - backend smoke tests;
+  - frontend build;
+  - smoke imports.
+- Stage safety checks:
+  - verified SQLite backup created before checkout/restart: `backups/hr_bot.before-deploy.20260722-111027.db` in Actions log;
+  - scenario configuration fingerprint unchanged.
+- Stage smoke checks:
+  - `/app/employees` -> `303`;
+  - `/app/flows/workspace-v2` -> `303`;
+  - deploy job завершился успешно и вывел `e463b08`.
+- Открытый риск:
+  - reorder сейчас сохраняется несколькими `PATCH`-запросами. Для текущего небольшого каталога это нормально; если должностей станет много или появится параллельное редактирование несколькими админами, стоит добавить backend bulk-reorder endpoint.
+
+### 2026-07-22 13:38 MSK - app deploy - managed positions catalog
+
+- Deploy ref: `stage`.
+- Deployed commit: `839ecb0`.
+- GitHub Actions run: `29912576765` -> success.
+- В stage включены:
+  - управляемый каталог должностей `positions` с seed/backfill из текущих `employees.desired_position`;
+  - settings API для должностей: list/create/update/deactivate;
+  - `/app/settings` получил CRUD-блок `Должности`;
+  - employee detail, сценарии, массовые действия и bot menu targeting используют position resolver вместо фиксированного списка `Дизайнер` / `Project manager` / `Аналитик`;
+  - backward compatibility сохранена: `employees.desired_position` пока остается строкой, legacy values не теряются и могут быть добавлены в option lists.
+- Локальные проверки перед deploy:
+  - `.\.venv\Scripts\python.exe -m compileall app tests tools`;
+  - `.\.venv\Scripts\python.exe -m ruff check --select F821 app tests`;
+  - `.\.venv\Scripts\python.exe -m unittest tests.test_scenario_engine_smoke tests.test_employee_api_smoke tests.test_openapi_schema -v` -> 104 tests OK;
+  - `npm run build` в `frontend`;
+  - `git diff --check HEAD~2..HEAD`.
+- GitHub Actions preflight:
+  - backend dependencies install;
+  - `compileall`;
+  - `ruff F821`;
+  - backend smoke tests;
+  - frontend build;
+  - smoke imports.
+- Stage safety checks:
+  - verified SQLite backup created before checkout/restart: `backups/hr_bot.before-deploy.20260722-103757.db` in Actions log;
+  - scenario configuration fingerprint unchanged.
+- Stage smoke checks:
+  - `/app/employees` -> `303`;
+  - `/app/flows/workspace-v2` -> `303`;
+  - Telegram API -> `HTTP/2 302`;
+  - `hr-bot-web`, `hr-bot-worker` и `wg-quick@redshield` passed `systemctl is-active`;
+  - worker log guard did not find fresh `TelegramNetworkError`, `Request timeout`, `Traceback`, `Unclosed client session`;
+  - deploy job завершился успешно и вывел `839ecb0`.
+- Открытый риск:
+  - это переходная модель: для безопасного stage rollout должность сотрудника все еще хранится в `employees.desired_position` как canonical title. Если дальше понадобятся richer rules по должностям, нужен отдельный FK migration step.
+
+### 2026-07-21 17:23 MSK - app deploy - keep assigned staff visible in employee selects
+
+- Deploy ref: `stage`.
+- Deployed commit: `9ccda70`.
+- GitHub Actions run: `29838783742` -> success.
+- В stage включено:
+  - employee detail payload теперь всегда добавляет уже выбранных `manager_employee_id`, `mentor_adaptation_employee_id` и `mentor_ipr_employee_id` в соответствующие option lists;
+  - это предотвращает отображение сырого numeric id в селектах руководителя/наставников, если текущий выбранный человек еще не размечен `is_manager=true` или `is_mentor=true`.
+- Локальные проверки перед deploy:
+  - `.\.venv\Scripts\python.exe -m compileall app tests tools`;
+  - focused employee detail tests -> 2 tests OK;
+  - `.\.venv\Scripts\python.exe -m ruff check --select F821 app tests`;
+  - `.\.venv\Scripts\python.exe -m unittest tests.test_employee_api_smoke tests.test_messaging_identity tests.test_scenario_engine_smoke tests.test_scheduler_smoke -v` -> 104 tests OK;
+  - `git diff --check HEAD~1..HEAD`.
+- GitHub Actions preflight:
+  - backend dependencies install;
+  - `compileall`;
+  - `ruff F821`;
+  - backend smoke tests;
+  - frontend build;
+  - smoke imports.
+- Stage safety checks:
+  - verified SQLite backup created before checkout/restart: `backups/hr_bot.before-deploy.20260721-142327.db`;
+  - scenario configuration fingerprint unchanged.
+- Stage smoke checks:
+  - `/app/employees` -> `303`;
+  - `/app/flows/workspace-v2` -> `303`;
+  - Telegram API -> `HTTP/2 302`;
+  - `hr-bot-web`, `hr-bot-worker` и `wg-quick@redshield` passed `systemctl is-active`;
+  - worker log guard did not find fresh `TelegramNetworkError`, `Request timeout`, `Traceback`, `Unclosed client session`;
+  - deploy job завершился успешно и вывел `9ccda70`.
+- Открытый риск:
+  - это compatibility guard для старых данных; для нового назначения руководителей/наставников все равно нужно корректно размечать сотрудников role flags.
+
+### 2026-07-21 17:14 MSK - app deploy - manager assignment scenario trigger
+
+- Deploy ref: `stage`.
+- Deployed commit: `6bc59cc`.
+- GitHub Actions run: `29838067973` -> success.
+- В stage включены:
+  - role flags `is_manager` и `is_mentor` у сотрудников;
+  - employee detail API и React employee detail form для этих flags;
+  - селект руководителя фильтруется по `is_manager=true`;
+  - селекты наставников адаптации/ИПР фильтруются по `is_mentor=true`;
+  - новый trigger mode `manager_assigned_adaptation`;
+  - при назначении/смене руководителя сотруднику в `adaptation` создается `FlowLaunchRequest` с `launch_type=trigger`, который обрабатывается штатным worker pipeline.
+- Интеграционная правка:
+  - исходная feature-ветка была построена поверх незадеплоенных OTP/candidate commits;
+  - в stage перенесен только manager-trigger slice без `email OTP`, `SMTP`, `employee_link_sessions` и candidate autocreate.
+- Локальные проверки перед deploy:
+  - `npm run build` в `frontend`;
+  - `.\.venv\Scripts\python.exe -m compileall app tests tools`;
+  - `.\.venv\Scripts\python.exe -m ruff check --select F821 app tests`;
+  - `.\.venv\Scripts\python.exe -m unittest tests.test_employee_api_smoke tests.test_messaging_identity tests.test_scenario_engine_smoke tests.test_scheduler_smoke -v` -> 103 tests OK;
+  - `git diff --check`.
+- GitHub Actions preflight:
+  - backend dependencies install;
+  - `compileall`;
+  - `ruff F821`;
+  - backend smoke tests;
+  - frontend build;
+  - smoke imports.
+- Stage safety checks:
+  - verified SQLite backup created before checkout/restart: `backups/hr_bot.before-deploy.20260721-141424.db`;
+  - scenario configuration fingerprint unchanged.
+- Stage smoke checks:
+  - `/app/employees` -> `303`;
+  - `/app/flows/workspace-v2` -> `303`;
+  - Telegram API -> `HTTP/2 302`;
+  - `hr-bot-web`, `hr-bot-worker` и `wg-quick@redshield` passed `systemctl is-active`;
+  - worker log guard did not find fresh `TelegramNetworkError`, `Request timeout`, `Traceback`, `Unclosed client session`;
+  - deploy job завершился успешно и вывел `6bc59cc`.
+- Открытый риск:
+  - если в базе пока нет сотрудников с `is_manager=true` / `is_mentor=true`, новые селекты руководителей/наставников будут пустыми до ручной разметки этих flags.
+
+### 2026-07-21 01:52 MSK - app deploy - bot menu drill-down editor
+
+- Deploy ref: `stage`.
+- Deployed commit: `1b93597`.
+- GitHub Actions run: `29785297424` -> success.
+- В stage включены:
+  - `/app/bot-menu` теперь открывается как drill-down редактор: обзор наборов как папок и вход в конкретный набор через `?set_id=`;
+  - в карточке набора добавлена навигация по родительским и дочерним menu sets;
+  - для кнопок `open_set` добавлен быстрый переход к целевому набору;
+  - root-блок сотрудников, кандидатов и fallback оставлен в верхней части страницы.
+- Локальные проверки перед deploy:
+  - `npm run build` в `D:\HRBot\hr_bot_stage_pipeline\frontend`;
+  - `.\.venv\Scripts\python.exe -m compileall app tests tools`;
+  - `.\.venv\Scripts\python.exe -m unittest tests.test_employee_api_smoke -v` -> 75 tests OK;
+  - `git diff --check`.
+- GitHub Actions preflight:
+  - backend dependencies install;
+  - `compileall`;
+  - `ruff F821`;
+  - backend smoke tests;
+  - frontend build;
+  - smoke imports.
+- Stage safety checks:
+  - verified SQLite backup created before checkout/restart: `backups/hr_bot.before-deploy.20260720-***5206.db` in Actions log;
+  - scenario configuration fingerprint unchanged.
+- Stage smoke checks:
+  - `/app/employees` -> `303` after short restart wait;
+  - `/app/flows/workspace-v2` -> `303`;
+  - Telegram API -> `HTTP/2 302`;
+  - `hr-bot-web`, `hr-bot-worker` и `wg-quick@redshield` passed `systemctl is-active`;
+  - worker log guard did not find fresh `TelegramNetworkError`, `Request timeout`, `Traceback`, `Unclosed client session`.
+- Открытый риск:
+  - ручной visual smoke через Playwright не выполнялся, потому что задача была изолирована как frontend bundle deploy; проверить страницу оператором в браузере после login.
+
+### 2026-07-09 15:20 MSK - docs/process - verified SQLite backup and scenario deploy guard
+
+- Workflow commit in `main`: `b972d79`.
+- Deploy ref/commit: `stage` / `4bda586`.
+- GitHub Actions run: `29016881593` -> success.
+- Перед checkout/restart workflow создал SQLite backup через Backup API и выполнил `PRAGMA quick_check`:
+  - `backups/hr_bot.before-deploy.20260709-121959.db`.
+- Fingerprint `scenario_templates` и `flow_step_templates` до/после restart совпал.
+- Stage smoke:
+  - `/app/employees` -> `303`;
+  - `/app/flows/workspace-v2` -> `303`;
+  - Telegram API -> `HTTP/2 302`;
+  - web, worker и WireGuard active; worker log guard прошёл.
+- Открытый риск: backup позволяет восстановление, но для выяснения исторических откатов сценариев всё ещё нужны конкретные timestamp/scenario key и сравнение сохранения через API с последующим deploy.
+
+### 2026-07-09 14:29 MSK - app deploy - offer document slot
+
+- Deploy ref: `stage`.
+- Deployed commit: `4dbf711`.
+- GitHub Actions run: `29014650258` -> success.
+- В stage включены:
+  - персональный document slot `offer` для ссылки или загруженного файла;
+  - отдельный блок `Оффер` в React-карточке сотрудника/кандидата;
+  - `{doc:Оффер}` подставляет ссылку либо отправляет file-backed оффер в Telegram;
+  - замена и удаление оффера очищают связанный файл без orphan-записей.
+- Локальные проверки на объединенном `stage`:
+  - `python -m compileall app tests`;
+  - `python -m ruff check --select F821 app tests`;
+  - backend smoke -> 98 tests OK;
+  - `npm ci && npm run build`;
+  - `git diff --check`.
+- Stage smoke checks из workflow:
+  - server HEAD -> `4dbf711`;
+  - preflight compile/F821/backend smoke/frontend build/import smoke -> success;
+  - `/app/employees` -> `303`;
+  - `/app/flows/workspace-v2` -> `303`;
+  - Telegram API -> `HTTP/2 302`;
+  - `hr-bot-web`, `hr-bot-worker` и `wg-quick@redshield` active;
+  - worker log grep без свежих `TelegramNetworkError`, `Request timeout`, `Traceback`, `Unclosed client session`.
+- Rollback/backup: deploy добавляет nullable/defaulted колонки в SQLite; workflow не зафиксировал pre-deploy DB backup в логе.
+- Открытый риск: добавить обязательный timestamped SQLite backup в `Deploy Stage` до запуска приложения с новой schema.
+
+### 2026-07-08 10:48 MSK - app deploy - hide empty menu fallback on `/start`
+
+- Deploy ref: `stage`.
+- Deployed commit: `a23e9d2`.
+- GitHub Actions run: `28926426686` -> success.
+- В stage включены:
+  - `/start` для привязанного пользователя по-прежнему отправляет приветствие;
+  - если доступное root-меню найдено, бот как раньше открывает меню;
+  - если меню не настроено, бот больше не отправляет системный fallback-текст `Для вас пока не настроено доступное меню.`;
+  - добавлен regression smoke `test_bot_start_without_menu_does_not_send_empty_menu_warning`.
+- Локальные проверки на объединенном `stage`:
+  - `.venv\Scripts\python.exe -m compileall app tests`;
+  - `.venv\Scripts\python.exe -m unittest tests.test_employee_api_smoke.EmployeeApiSmokeTests.test_bot_start_resets_user_to_root_menu tests.test_employee_api_smoke.EmployeeApiSmokeTests.test_bot_menu_back_returns_to_previous_menu tests.test_employee_api_smoke.EmployeeApiSmokeTests.test_bot_start_without_menu_does_not_send_empty_menu_warning -v`;
+  - `.venv\Scripts\python.exe -m unittest tests.test_employee_api_smoke tests.test_messaging_identity tests.test_scenario_engine_smoke tests.test_scenario_engine_branching -v` -> 96 tests OK;
+  - `.venv\Scripts\ruff.exe check --select F821 app tests`;
+  - `git diff --check`.
+- Stage smoke checks из workflow:
+  - server HEAD -> `a23e9d2`;
+  - preflight compile/F821/backend smoke/frontend build/import smoke -> success;
+  - `curl http://127.0.0.1:8000/app/employees` -> `303`;
+  - `curl http://127.0.0.1:8000/app/flows/workspace-v2` -> `303`;
+  - `curl -4 -I --connect-timeout 10 https://api.telegram.org/` -> `HTTP/2 302`;
+  - `hr-bot-web`, `hr-bot-worker` и `wg-quick@redshield` прошли `systemctl is-active`;
+  - worker log grep без свежих `TelegramNetworkError`, `Request timeout`, `Traceback`, `Unclosed client session`.
+- Rollback/backup: DB schema/data не менялись; отдельный DB backup для этого app deploy не требовался.
+- Открытые риски:
+  - поведение намеренно тихое: если тестировщик ожидает меню, отсутствие меню теперь нужно проверять в `/app/bot-menu`, а не по фразе в Telegram.
+
+### 2026-07-08 10:36 MSK - app deploy - HR recipient token for scenario notifications
+
+- Deploy ref: `stage`.
+- Deployed commit: `832bf06`.
+- GitHub Actions run: `28925737249` -> success.
+- В stage включены:
+  - сценарные notification recipients теперь поддерживают системный token `hr`;
+  - runtime резолвит `hr` в `HrSettings.telegram_user_id`, не требуя заводить HR как сотрудника/кандидата;
+  - workspace API отдает отдельный `notification_recipient_options` список: HR из настроек, если задан Telegram ID, плюс обычные `employee:<id>` получатели;
+  - React scenario workspace использует этот список в picker получателей и корректно показывает выбранный HR в summary правил;
+  - добавлены regression tests на workspace payload и runtime resolver.
+- Локальные проверки на объединенном `stage`:
+  - `.venv\Scripts\python.exe -m compileall app tests tools`;
+  - `.venv\Scripts\ruff.exe check --select F821 app tests`;
+  - `.venv\Scripts\python.exe -m unittest tests.test_scenario_engine_smoke.ScenarioEngineSmokeTests.test_resolve_notification_recipients_supports_hr_token tests.test_employee_api_smoke.EmployeeApiSmokeTests.test_workspace_payload_exposes_hr_notification_recipient -v`;
+  - CI-equivalent backend smoke с `TELEGRAM_BOT_TOKEN=ci-dummy-token`, `DATABASE_URL=sqlite:///./ci.db`, `ADMIN_SESSION_SECRET=ci-admin-session-secret`: `.venv\Scripts\python.exe -m unittest tests.test_scenario_engine_smoke tests.test_messaging_identity tests.test_employee_api_smoke -v` -> 92 tests OK;
+  - `.venv\Scripts\python.exe -m unittest tests.test_employee_api_smoke tests.test_messaging_identity tests.test_scenario_engine_smoke tests.test_scenario_engine_branching -v` -> 95 tests OK;
+  - `npm run build` в `frontend`;
+  - `git diff --check`.
+- Stage smoke checks из workflow:
+  - server HEAD -> `832bf06`;
+  - preflight compile/F821/backend smoke/frontend build/import smoke -> success;
+  - `curl http://127.0.0.1:8000/app/employees` -> `303`;
+  - `curl http://127.0.0.1:8000/app/flows/workspace-v2` -> `303`;
+  - `curl -4 -I --connect-timeout 10 https://api.telegram.org/` -> `HTTP/2 302`;
+  - `hr-bot-web`, `hr-bot-worker` и `wg-quick@redshield` прошли `systemctl is-active`;
+  - worker log grep без свежих `TelegramNetworkError`, `Request timeout`, `Traceback`, `Unclosed client session`.
+- Rollback/backup: DB schema/data не менялись; отдельный DB backup для этого app deploy не требовался.
+- Открытые риски:
+  - старый глобальный слой `app/notifications.py` все еще требует отдельного product cleanup, чтобы системные уведомления не конфликтовали со сценарными per-step rules.
+
+### 2026-07-03 12:50 MSK - app deploy - branching target field preservation
+
+- Deploy ref: `stage`.
+- Deployed commit: `f73b2e1`.
+- GitHub Actions run: `28652589152` -> success.
+- В stage включены:
+  - scenario workspace frontend больше не скрывает `target_field` для `response_type=branching`;
+  - backend workspace update больше не сбрасывает `target_field` у branching-step при сохранении;
+  - `buttons` и `branching` теперь оба могут сохранять выбранный вариант в поля карточки, включая `salary_expectation`;
+  - добавлен regression smoke `test_workspace_step_api_preserves_branching_target_field`.
+- Локальные проверки на объединенном `stage`:
+  - `.venv\Scripts\python.exe -m compileall app tests tools`;
+  - `.venv\Scripts\ruff.exe check --select F821 app tests`;
+  - `.venv\Scripts\python.exe -m unittest tests.test_employee_api_smoke.EmployeeApiSmokeTests.test_workspace_step_api_preserves_buttons_target_field tests.test_employee_api_smoke.EmployeeApiSmokeTests.test_workspace_step_api_preserves_branching_target_field -v`;
+  - `.venv\Scripts\python.exe -m unittest tests.test_employee_api_smoke tests.test_messaging_identity tests.test_scenario_engine_smoke tests.test_scenario_engine_branching -v` -> 93 tests OK;
+  - `npm run build` в `frontend`;
+  - `git diff --check`.
+- Stage smoke checks из workflow:
+  - server HEAD -> `f73b2e1`;
+  - preflight compile/F821/backend smoke/frontend build/import smoke -> success;
+  - `curl http://127.0.0.1:8000/app/employees` -> `303`;
+  - `curl http://127.0.0.1:8000/app/flows/workspace-v2` -> `303`;
+  - `curl -4 -I --connect-timeout 10 https://api.telegram.org/` прошел в deploy script;
+  - `hr-bot-web`, `hr-bot-worker` и `wg-quick@redshield` прошли `systemctl is-active`;
+  - worker log grep без свежих `TelegramNetworkError`, `Request timeout`, `Traceback`, `Unclosed client session`.
+- Rollback/backup: DB не менялась; отдельный DB backup для этого app deploy не требовался.
+- Открытые риски:
+  - `branching` с `target_field` теперь технически допустим, но оператору все еще нужно продуктово понимать разницу между `buttons` как простой выбор и `branching` как выбор с ветками.
+
+### 2026-07-01 17:50 MSK - app deploy - audience-specific bot root menus
+
+- Deploy ref: `stage`.
+- Deployed commit: `862d6f2`.
+- GitHub Actions run: `28526111235` -> success.
+- В stage включены:
+  - в `HrSettings` добавлены отдельные root defaults: `default_employee_menu_set_id` и `default_candidate_menu_set_id`;
+  - SQLite schema compatibility добавляет эти колонки в существующую `hr_settings`;
+  - runtime выбора root-menu теперь сначала смотрит профильный root по аудитории пользователя, потом общий `default_menu_set_id`, потом обычный matching/scoring по menu set rules;
+  - `/app/bot-menu` показывает три явных селекта: общий fallback-набор, главный набор для сотрудников, главный набор для кандидатов;
+  - root-селекты сотрудников/кандидатов фильтруют варианты по `employee_scope`, чтобы не подставлять явно несовместимый root;
+  - broadcast главного меню продолжает вызывать `show_main_menu`, теперь фактически отправляя каждому пользователю его audience-specific root.
+- Локальные проверки на объединенном `stage`:
+  - `.venv\Scripts\python.exe -m compileall app tests tools`;
+  - `.venv\Scripts\ruff.exe check --select F821 app tests`;
+  - `.venv\Scripts\python.exe -m unittest tests.test_employee_api_smoke.EmployeeApiSmokeTests.test_settings_hr_update_api_persists_workspace_fields tests.test_employee_api_smoke.EmployeeApiSmokeTests.test_bot_root_menu_uses_explicit_audience_defaults -v`;
+  - `.venv\Scripts\python.exe -m unittest tests.test_employee_api_smoke tests.test_messaging_identity tests.test_scenario_engine_smoke tests.test_scenario_engine_branching -v` -> 92 tests OK;
+  - `npm run build` в `frontend`;
+  - `git diff --check`.
+- Stage smoke checks из workflow:
+  - server HEAD -> `862d6f2`;
+  - preflight compile/F821/backend smoke/frontend build/import smoke -> success;
+  - `curl http://127.0.0.1:8000/app/employees` -> `303`;
+  - `curl http://127.0.0.1:8000/app/flows/workspace-v2` -> `303`;
+  - `curl -4 -I --connect-timeout 10 https://api.telegram.org/` прошел в deploy script;
+  - `hr-bot-web`, `hr-bot-worker` и `wg-quick@redshield` прошли `systemctl is-active`;
+  - worker log grep без свежих `TelegramNetworkError`, `Request timeout`, `Traceback`, `Unclosed client session`.
+- Rollback/backup: DB backup отдельно не делался; изменение схемы additive nullable columns через compatibility path. Rollback к старому коду оставит лишние nullable columns в SQLite, что не должно ломать старый runtime.
+- Открытые риски:
+  - backend API пока не запрещает прямым JSON-запросом назначить несовместимый root; UI фильтрует варианты, а runtime дополнительно проверяет `menu_set_matches_employee` и в таком случае уходит в fallback/scoring.
+
+### 2026-07-01 17:30 MSK - app deploy - blank scenario steps и bot-menu target UX
+
+- Deploy ref: `stage`.
+- Deployed commit: `48fe67e`.
+- GitHub Actions run: `28524810023` -> success.
+- В stage включены:
+  - новые scenario root steps, branch steps и chain steps больше не получают сохраняемый текст `Новое сообщение сценария.`;
+  - React scenario workspace показывает `Введите текст сообщения` как placeholder, а не как отправляемый default text;
+  - legacy `scenario_edit.html` больше не подставляет `Новое сообщение сценария.` при добавлении chain step;
+  - `/app/bot-menu` теперь показывает цели кнопки как взаимоисключающие поля: сценарий, набор для перехода или документ;
+  - неактуальные target-селекты в bot-menu disabled, а при смене `action_type` несовместимые значения очищаются.
+- Локальные проверки на объединенном `stage`:
+  - `.venv\Scripts\python.exe -m compileall app tests tools`;
+  - `.venv\Scripts\ruff.exe check --select F821 app tests`;
+  - `.venv\Scripts\python.exe -m unittest tests.test_employee_api_smoke.EmployeeApiSmokeTests.test_workspace_api_creates_blank_message_text_for_new_scenario_steps -v`;
+  - `.venv\Scripts\python.exe -m unittest tests.test_employee_api_smoke tests.test_messaging_identity tests.test_scenario_engine_smoke tests.test_scenario_engine_branching -v` -> 91 tests OK;
+  - `npm run build` в `frontend`;
+  - `git diff --check`.
+- Stage smoke checks из workflow:
+  - server HEAD -> `48fe67e`;
+  - preflight compile/F821/backend smoke/frontend build/import smoke -> success;
+  - `curl http://127.0.0.1:8000/app/employees` -> `303`;
+  - `curl http://127.0.0.1:8000/app/flows/workspace-v2` -> `303`;
+  - `curl -4 -I --connect-timeout 10 https://api.telegram.org/` прошел в deploy script;
+  - `hr-bot-web`, `hr-bot-worker` и `wg-quick@redshield` прошли `systemctl is-active`;
+  - worker log grep без свежих `TelegramNetworkError`, `Request timeout`, `Traceback`, `Unclosed client session`.
+- Rollback/backup: DB не менялась; отдельный DB backup для этого app deploy не требовался.
+- Открытые риски:
+  - пустой текст шага теперь не маскируется заглушкой, но модель все еще допускает полностью пустой сценарный шаг; отдельная UI/runtime-валидация пустого sendable content остается следующим cleanup.
+
+### 2026-07-01 16:55 MSK - app deploy - admin auth hardening
+
+- Deploy ref: `stage`.
+- Deployed commit: `7b5183f`.
+- GitHub Actions run: `28522721044` -> success.
+- В stage включены:
+  - `hr_admin_auth` больше не принимает raw `account.id`; admin session cookie теперь stateless HMAC token `account_id.issued_at.signature`;
+  - session TTL управляется `ADMIN_SESSION_MAX_AGE_SECONDS`, cookie `Secure` флагом управляет `ADMIN_SESSION_COOKIE_SECURE`;
+  - middleware заново проверяет active account из БД на каждом request;
+  - `/login` получил простой in-memory rate limit на неудачные попытки;
+  - classic/API account management отклоняет пустые, короткие и дефолтные новые пароли;
+  - задокументирован deferred stage HTTPS baseline: домен + reverse proxy + закрытый внешний `:8000`, без VPN-only на первом шаге.
+- Локальные проверки на объединенном `stage`:
+  - `.venv\Scripts\python.exe -m compileall app tests tools`;
+  - `.venv\Scripts\ruff.exe check --select F821 app tests`;
+  - focused auth tests: raw cookie rejected, login signed-cookie, weak password rejected, strong password accepted;
+  - `.venv\Scripts\python.exe -m unittest tests.test_employee_api_smoke tests.test_messaging_identity tests.test_scenario_engine_smoke tests.test_scenario_engine_branching -v` -> 90 tests OK.
+- Stage smoke checks из workflow:
+  - server HEAD -> `7b5183f`;
+  - preflight compile/F821/backend smoke/frontend build/import smoke -> success;
+  - `curl http://127.0.0.1:8000/app/employees` -> `303`;
+  - `curl http://127.0.0.1:8000/app/flows/workspace-v2` -> `303`;
+  - `curl -4 -I https://api.telegram.org/` -> `HTTP/2 302`;
+  - worker log grep без свежих `TelegramNetworkError`, `Request timeout`, `Traceback`, `Unclosed client session`.
+- Rollback/backup: DB не менялась; отдельный DB backup для этого app deploy не требовался.
+- Открытый риск: пока не сменен `ADMIN_SESSION_SECRET`, старые signed-cookie будут валидны до TTL; после смены секрета и перезапуска web все текущие сессии будут принудительно разлогинены. `ADMIN_SESSION_COOKIE_SECURE=true` включать только после рабочего HTTPS.
+
+### 2026-07-01 16:24 MSK - app deploy - buttons target field и скрытие design-system из навигации
+
+- Deploy ref: `stage`.
+- Deployed commit: `e7b4cab`.
+- GitHub Actions run: `28520715899` -> success.
+- В stage включены:
+  - `codex/scenario-workspace-ui-foundation` commit `22e9caa`: React scenario workspace снова показывает `response_type=buttons` как самостоятельный тип ответа и сохраняет `target_field`, включая кейс `salary_expectation`;
+  - React `/app/settings` больше не показывает старый блок HR-уведомлений, который дублировал сценарные notification rules;
+  - `/app/design-system` убран из React sidebar и legacy sidebar, чтобы не торчать у админа на тестовом стенде; прямой route оставлен как внутренний dev baseline.
+- Локальные проверки на объединенном `stage`:
+  - `.venv\Scripts\python.exe -m compileall app tests tools`;
+  - `.venv\Scripts\ruff.exe check --select F821 app tests`;
+  - `.venv\Scripts\python.exe -m unittest tests.test_employee_api_smoke tests.test_messaging_identity tests.test_scenario_engine_smoke tests.test_scenario_engine_branching -v` -> 86 tests OK;
+  - `npm run build` в `frontend`.
+- Stage smoke checks из workflow:
+  - server HEAD -> `e7b4cab`;
+  - preflight compile/F821/backend smoke/frontend build/import smoke -> success;
+  - `curl http://127.0.0.1:8000/app/employees` -> `303`;
+  - `curl http://127.0.0.1:8000/app/flows/workspace-v2` -> `303`;
+  - `curl -4 -I https://api.telegram.org/` -> `HTTP/2 302`;
+  - worker log grep без свежих `TelegramNetworkError`, `Request timeout`, `Traceback`, `Unclosed client session`.
+- Rollback/backup: DB не менялась; отдельный DB backup для этого app deploy не требовался.
+- Открытый риск: `/app/design-system` остается доступен по прямой ссылке для разработки; если нужен полный запрет на stage, требуется отдельный env-gated route policy.
+
+### 2026-06-16 18:26 MSK - app deploy - confirm dialogs, favicon и scenario runtime fixes
+
+- Deploy ref: `stage`.
+- Deployed commit: `bd186a9`.
+- GitHub Actions run: `27628589073` -> success.
+- В stage включены:
+  - `codex/admin-confirm-dialog-sweep` до `f62a9e2`: React admin runtime переведен с native `window.confirm` на shared `ConfirmAction` / `AlertDialog`; dialog закрывается после подтверждения;
+  - `codex/employee-confirm-dialog` через confirm sweep: удаление запланированного сценария в карточке сотрудника через shared confirm;
+  - `codex/admin-favicon-logo` до `dd6feda`: добавлен `app/static/favicon.png` и подключение favicon в templates;
+  - `codex/scenario-runtime-and-ui-fixes` до `d22fd93`: `launch_scenario` runtime transition, меньше сервисного шума при вложениях с кнопками, фильтрация internal follow-up jobs из launch audit, workspace scenario title/filter/disabled transition selector;
+  - merge-fix `bd186a9`: regenerated `scenario-workspace.js` после merge generated bundle conflict.
+- Локальные проверки на объединенном `stage`:
+  - `npm run build` в `frontend`;
+  - `.venv\Scripts\python.exe -m compileall app tests tools`;
+  - `.venv\Scripts\ruff.exe check --select F821 app tests`;
+  - `.venv\Scripts\python.exe -m unittest tests.test_employee_api_smoke tests.test_messaging_identity tests.test_scenario_engine_smoke tests.test_scenario_engine_branching -v` -> 70 tests OK.
+- Stage smoke checks:
+  - server HEAD -> `bd186a9`;
+  - stage worktree clean;
+  - `systemctl is-active wg-quick@redshield hr-bot-web hr-bot-worker` -> all `active`;
+  - `curl http://127.0.0.1:8000/app/employees` -> `303`;
+  - `curl http://127.0.0.1:8000/app/flows/workspace-v2` -> `303`;
+  - `curl -4 -I https://api.telegram.org/` -> `HTTP/2 302`;
+  - worker logs за последние 5 минут без `TelegramNetworkError`, `Request timeout`, `Traceback`, `Unclosed client session`.
+- Открытый риск: legacy fallback `scenario_edit.html?legacy=1` все еще может содержать browser confirm; это отдельный non-React cleanup.
+
+### 2026-06-16 13:38 MSK - app deploy - scenario workspace latest выведен на stage
+
+- Deploy ref: `stage`.
+- Deployed commit: `28d4bf2`.
+- В stage включены:
+  - `86c1c48` frontend drag-preview для scenario/survey/root step drag;
+  - `b92617e` scenario workspace blocking-step guardrails;
+  - `01fb93d` fixes для `ruff F821` и rebuilt Vite assets;
+  - `28d4bf2` фиксация runtime env hotfix в git: `DOTENV_OVERRIDE`, `TELEGRAM_PROXY_URL`, SQLite `timeout=30`.
+- Перед deploy stage worktree был dirty из-за ручного hotfix в `app/config.py` и `app/database.py`.
+- Backup перед cleanup:
+  - `backups/hr_bot.before-stage-deploy.20260616-103707.db`;
+  - `backups/config.before-stage-deploy.20260616-103707.py`;
+  - `backups/database.before-stage-deploy.20260616-103707.py`;
+  - `backups/code-diff.before-stage-deploy.20260616-103707.patch`.
+- БД не заменялась и не откатывалась; cleanup затронул только tracked code-файлы `app/config.py` и `app/database.py`, после чего тот же hotfix был получен обратно из git commit `28d4bf2`.
+- Локальные проверки на объединенном `stage`:
+  - `.venv\Scripts\python.exe -m compileall app`;
+  - `.venv\Scripts\ruff.exe check --select F821 app tests`;
+  - `.venv\Scripts\python.exe -m unittest tests.test_scenario_engine_smoke tests.test_messaging_identity tests.test_employee_api_smoke -v` -> 64 tests OK;
+  - `npm run build` в `frontend`.
+- Stage smoke checks:
+  - `systemctl is-active wg-quick@redshield hr-bot-web hr-bot-worker` -> all `active`;
+  - `curl http://127.0.0.1:8000/app/employees` -> `303`;
+  - `curl http://127.0.0.1:8000/app/flows/workspace-v2` -> `303`;
+  - `curl http://127.0.0.1:8000/app/employees/1` -> `303`;
+  - `curl -4 -I https://api.telegram.org/` -> `HTTP/2 302`;
+  - `wg show redshield` -> active peer with `AllowedIPs 149.154.166.110/32`;
+  - worker logs за последние 5 минут без `TelegramNetworkError`, `Request timeout`, `Traceback`, `Unclosed client session`.
+- Открытый риск: deploy был выполнен вручную тем же SSH flow, потому что GitHub Actions сначала остановился на dirty worktree; после cleanup повторный workflow должен пройти обычным путем.
+
 ### 2026-06-15 17:10 MSK - infra - восстановлен Telegram delivery через RedShield
 
 - Stage server: `92.51.38.32`, app dir: `/opt/hr_bot`.
@@ -124,3 +667,436 @@ source_of_truth: true
   - rollback path: вернуть старые `app/config.py`, `app/database.py` и убрать `DEMO_MODE=false` / `DOTENV_OVERRIDE=false` из systemd drop-ins.
 - Открытые риски:
   - SQLite все еще остается источником write-lock риска; `timeout=30` смягчает симптом, но не заменяет более надежную delivery/outbox стратегию.
+
+### 2026-06-17 00:13 MSK - app deploy - выведены UI polish, select scroll policy и scenario runtime triggers
+
+- Deploy ref: `stage`.
+- Deployed commit: `230779c`.
+- GitHub Actions run: `27648456932`.
+- Влитые feature-ветки:
+  - `codex/select-scroll-policy` -> `2bd5851`;
+  - `codex/admin-ui-polish-pass` -> `a26c529`;
+  - `codex/scenario-runtime-and-ui-fixes` -> `1f52589` вместе с `129fb33`.
+- Что изменено:
+  - унифицирован scroll policy для select-компонентов;
+  - выровнены мелкие admin UI-паттерны;
+  - добавлена сортировка sidebar сценариев;
+  - добавлены scenario triggers для HR-статусов кандидатов;
+  - пересобраны `app/static/workspace_v2` после объединения фронтовых веток.
+- Локальные проверки перед deploy:
+  - `npm run build`;
+  - `.\.venv\Scripts\python.exe -m compileall app tests tools`;
+  - `.\.venv\Scripts\ruff.exe check --select F821 app tests`;
+  - `.\.venv\Scripts\python.exe -m unittest tests.test_employee_api_smoke tests.test_messaging_identity tests.test_scenario_engine_smoke tests.test_scenario_engine_branching -v` -> 71 tests OK.
+- GitHub Actions preflight:
+  - backend dependencies install;
+  - `compileall`;
+  - `ruff F821`;
+  - backend smoke tests;
+  - frontend build;
+  - smoke imports.
+- Stage smoke checks:
+  - `hr-bot-web`, `hr-bot-worker` и `wg-quick@redshield` active;
+  - `/app/employees` -> `303`;
+  - `/app/flows/workspace-v2` -> `303`;
+  - `curl -4 -I --connect-timeout 10 https://api.telegram.org/` -> `HTTP/2 302`;
+  - свежих `TelegramNetworkError`, `Request timeout`, `Traceback`, `Unclosed client session` в worker logs не найдено.
+- Backup БД не делался: deploy шел через git/systemd restart и не требовал ручной замены `hr_bot.db`.
+
+### 2026-06-17 12:09 MSK - app deploy - branch return flow и read-only схема сценария
+
+- Deploy ref: `stage`.
+- Deployed commit: `8e0ddb4`.
+- GitHub Actions run: `27678177804`.
+- Влитые feature-ветки:
+  - `codex/scenario-runtime-and-ui-fixes` -> `9f8e8fd` вместе с `7a1a52f` и `1c4dfef`;
+  - `codex/admin-ui-polish-pass` -> `dc2159a`.
+- Что изменено:
+  - branch step получил узкий возврат в root-step того же сценария через `return_to_step_key`;
+  - добавлены rollback snapshots для сценарного Back action;
+  - workspace API начал отдавать read-only graph payload для режима `Схема`;
+  - scenario workspace получил read-only граф на React Flow + ELK с синхронизацией выбранной node и правой панели;
+  - пересобраны `app/static/workspace_v2` после объединения runtime/UI веток.
+- Локальные проверки перед deploy:
+  - `npm install` для новых frontend-зависимостей;
+  - `npm run build`;
+  - `.\.venv\Scripts\python.exe -m compileall app tests tools`;
+  - `.\.venv\Scripts\ruff.exe check --select F821 app tests`;
+  - `.\.venv\Scripts\python.exe -m unittest tests.test_employee_api_smoke tests.test_messaging_identity tests.test_scenario_engine_smoke tests.test_scenario_engine_branching -v` -> 77 tests OK.
+- GitHub Actions preflight:
+  - backend dependencies install;
+  - `compileall`;
+  - `ruff F821`;
+  - backend smoke tests;
+  - frontend build;
+  - smoke imports.
+- Stage smoke checks:
+  - `/app/employees` -> `303`;
+  - `/app/flows/workspace-v2` -> `303`;
+  - `curl -4 -I --connect-timeout 10 https://api.telegram.org/` -> `HTTP/2 302`;
+  - deploy job завершился успешно и вывел `8e0ddb4`.
+- Backup БД не делался: deploy шел через git/systemd restart и не требовал ручной замены `hr_bot.db`.
+- Открытые риски:
+  - `graph-view` bundle после React Flow + ELK около `1.6 MB`; режим `Схема` стоит вынести в lazy chunk.
+  - GitHub Actions выдал warning про Node.js 20 deprecation для `actions/checkout@v4` и `actions/setup-python@v5`; deploy успешен, но workflow нужно обновить планово.
+
+### 2026-06-17 16:22 MSK - app deploy - сброс привязки карточки к Telegram-боту
+
+- Deploy ref: `stage`.
+- Deployed commit: `8ff5ce4`.
+- GitHub Actions run: `27692014859`.
+- Влитая feature-ветка:
+  - `codex/scenario-runtime-and-ui-fixes` -> `8c848e7`.
+- Что изменено:
+  - добавлен endpoint `POST /api/employees/{employee_id}/bot-link/reset`;
+  - в карточке сотрудника/кандидата добавлено отдельное действие `Сбросить привязку к боту`;
+  - reset очищает `telegram_user_id`, `telegram_username`, `current_menu_set_id`, `is_flow_scheduled`;
+  - reset удаляет `employee_messenger_accounts`, активный `scenario_progress` и только pending `flow_launch_requests`;
+  - удаление карточки осталось отдельным destructive action с confirm dialog.
+- Локальные проверки перед deploy:
+  - `npm run build`;
+  - `.\.venv\Scripts\python.exe -m compileall app tests tools`;
+  - `.\.venv\Scripts\ruff.exe check --select F821 app tests`;
+  - `.\.venv\Scripts\python.exe -m unittest tests.test_employee_api_smoke tests.test_messaging_identity tests.test_scenario_engine_smoke tests.test_scenario_engine_branching -v` -> 78 tests OK.
+- GitHub Actions preflight:
+  - backend dependencies install;
+  - `compileall`;
+  - `ruff F821`;
+  - backend smoke tests;
+  - frontend build;
+  - smoke imports.
+- Stage smoke checks:
+  - `/app/employees` -> `303`;
+  - `/app/flows/workspace-v2` -> `303`;
+  - `curl -4 -I --connect-timeout 10 https://api.telegram.org/` -> `HTTP/2 302`;
+  - deploy job завершился успешно и вывел `8ff5ce4`.
+- Backup БД не делался: deploy шел через git/systemd restart и не требовал ручной замены `hr_bot.db`.
+- Открытые риски:
+  - `graph-view` bundle warning остается из предыдущего deploy;
+  - GitHub Actions warning про Node.js 20 deprecation остается плановым workflow-долгом.
+
+### 2026-06-17 16:39 MSK - app deploy - порядок сообщений шага с вложением и кнопками
+
+- Deploy ref: `stage`.
+- Deployed commit: `d9c842f`.
+- GitHub Actions run: `27693049551`.
+- Влитая feature-ветка:
+  - `codex/step-attachment-button-order` -> `e926d26`.
+- Что изменено:
+  - runtime отправки шага сценария теперь отправляет `текст -> карточка/вложение -> отдельное сообщение с inline-кнопками`;
+  - кнопки больше не цепляются к первому текстовому сообщению перед вложением;
+  - добавлен smoke-тест `test_send_step_sends_buttons_after_attachment_when_text_exists`.
+- Локальные проверки перед deploy:
+  - `.\.venv\Scripts\python.exe -m compileall app tests`;
+  - `.\.venv\Scripts\ruff.exe check --select F821 app tests`;
+  - `.\.venv\Scripts\python.exe -m unittest tests.test_scenario_engine_smoke tests.test_scenario_engine_branching -v` -> 17 tests OK;
+  - `.\.venv\Scripts\python.exe -m unittest tests.test_employee_api_smoke tests.test_messaging_identity tests.test_scenario_engine_smoke tests.test_scenario_engine_branching -v` -> 78 tests OK.
+- GitHub Actions preflight:
+  - backend dependencies install;
+  - `compileall`;
+  - `ruff F821`;
+  - backend smoke tests;
+  - frontend build;
+  - smoke imports.
+- Stage smoke checks:
+  - `/app/employees` -> `303`;
+  - `/app/flows/workspace-v2` -> `303`;
+  - `curl -4 -I --connect-timeout 10 https://api.telegram.org/` -> `HTTP/2 302`;
+  - deploy job завершился успешно и вывел `d9c842f`.
+- Backup БД не делался: deploy шел через git/systemd restart и не требовал ручной замены `hr_bot.db`.
+- Открытые риски:
+  - UX-компромисс: inline-кнопки приходят отдельным сообщением после вложения, потому что Telegram не позволяет одновременно иметь отдельный текст, вложение и кнопки без дополнительного button-message.
+
+### 2026-06-17 17:11 MSK - app deploy - кнопки media-шагов без технического текста
+
+- Deploy ref: `stage`.
+- Deployed commit: `9443d61`.
+- GitHub Actions run: `27695175484`.
+- Влитая feature-ветка:
+  - `codex/remove-technical-button-prompts` -> `96401a2`.
+- Что изменено:
+  - убран технический текст `Выберите вариант ответа:` для media-шагов с inline-кнопками;
+  - если у шага есть картинка/документ и inline-кнопки, кнопки крепятся прямо к media-сообщению;
+  - для кейса `текст + картинка + кнопка` порядок стал `текст -> картинка с кнопкой`;
+  - для кейса `картинка + кнопка` отдельное сервисное сообщение больше не отправляется;
+  - messaging contract расширен под `reply_markup` и `caption` для photo/document send.
+- Локальные проверки перед deploy:
+  - `.\.venv\Scripts\python.exe -m compileall app tests`;
+  - `.\.venv\Scripts\ruff.exe check --select F821 app tests`;
+  - `.\.venv\Scripts\python.exe -m unittest tests.test_scenario_engine_smoke tests.test_scenario_engine_branching tests.test_employee_api_smoke -v` -> 76 tests OK;
+  - `.\.venv\Scripts\python.exe -m unittest tests.test_employee_api_smoke tests.test_messaging_identity tests.test_scenario_engine_smoke tests.test_scenario_engine_branching -v` -> 79 tests OK.
+- GitHub Actions preflight:
+  - backend dependencies install;
+  - `compileall`;
+  - `ruff F821`;
+  - backend smoke tests;
+  - frontend build;
+  - smoke imports.
+- Stage smoke checks:
+  - `/app/employees` -> `303`;
+  - `/app/flows/workspace-v2` -> `303`;
+  - `curl -4 -I --connect-timeout 10 https://api.telegram.org/` -> `HTTP/2 302`;
+  - deploy job завершился успешно и вывел `9443d61`.
+- Backup БД не делался: deploy шел через git/systemd restart и не требовал ручной замены `hr_bot.db`.
+- Открытые риски:
+  - Telegram media-сообщение теперь несет inline-кнопки; если Telegram API отклонит конкретный тип media/caption/markup, смотреть worker logs и fallback path.
+
+### 2026-06-29 17:03 MSK - app deploy - фиксы scenario workspace select/target fields
+
+- Deploy ref: `stage`.
+- Deployed commit: `0b166ca`.
+- GitHub Actions run: `28377727578`.
+- Влитые feature-ветки:
+  - `codex/fix-step-target-field-persistence` -> `4267ce0`;
+  - `codex/fix-branch-return-select` -> `10b9610`.
+- Что изменено:
+  - `buttons`-шаги в scenario workspace снова сохраняют target field;
+  - `SingleSelectPicker` больше не держит несуществующее текущее значение и дедуплицирует options;
+  - список `Вернуться в основной сценарий` исключает текущий root-шаг ветвления, который backend все равно очистил бы при сохранении;
+  - пересобран `app/static/workspace_v2/scenario-workspace.js`.
+- Локальные проверки перед deploy:
+  - `npm run build`;
+  - `.\.venv\Scripts\python.exe -m compileall app tests tools`;
+  - `.\.venv\Scripts\ruff.exe check --select F821 app tests`;
+  - `.\.venv\Scripts\python.exe -m unittest tests.test_employee_api_smoke tests.test_messaging_identity tests.test_scenario_engine_smoke tests.test_scenario_engine_branching -v` -> 81 tests OK.
+- GitHub Actions preflight:
+  - backend dependencies install;
+  - `compileall`;
+  - `ruff F821`;
+  - backend smoke tests;
+  - frontend build;
+  - smoke imports.
+- Stage smoke checks:
+  - `/app/employees` -> `303`;
+  - `/app/flows/workspace-v2` -> `303`;
+  - `curl -4 -I --connect-timeout 10 https://api.telegram.org/` -> `HTTP/2 302`;
+  - deploy job завершился успешно и вывел `0b166ca`.
+- Backup БД не делался: deploy шел через git/systemd restart и не требовал ручной замены `hr_bot.db`.
+- Открытые риски:
+  - browser может держать cached `scenario-workspace.js?v=1`; при ручной проверке нужен hard refresh.
+
+### 2026-07-01 12:03 MSK - app deploy - navigation contract для меню бота
+
+- Deploy ref: `stage`.
+- Deployed commit: `c5c201c`.
+- GitHub Actions run: `28506038067`.
+- Что изменено:
+  - добавлен явный root menu contract для Telegram-меню: `/start` возвращает пользователя в главный набор;
+  - добавлен стек подменю `Employee.current_menu_path`, runtime-кнопки `Назад` и `Главное меню`;
+  - пользовательские кнопки с названиями `Назад` и `Главное меню` теперь запрещены, чтобы не конфликтовать с навигацией;
+  - на `/app/bot-menu` добавлен выбор главного набора и действие `Разослать главное меню`;
+  - добавлен API `POST /api/settings/bot-menu/broadcast` для отправки root menu уже привязанным пользователям;
+  - SQLite schema compatibility добавляет `employees.current_menu_path`.
+- Локальные проверки перед deploy:
+  - `.\.venv\Scripts\python.exe -m compileall app tests tools`;
+  - `.\.venv\Scripts\ruff.exe check --select F821 app tests`;
+  - `.\.venv\Scripts\python.exe -m unittest tests.test_employee_api_smoke tests.test_messaging_identity tests.test_scenario_engine_smoke tests.test_scenario_engine_branching -v` -> 85 tests OK;
+  - `npm run build`.
+- GitHub Actions preflight:
+  - backend dependencies install;
+  - `compileall`;
+  - `ruff F821`;
+  - backend smoke tests;
+  - frontend build;
+  - smoke imports.
+- Stage smoke checks:
+  - `/app/employees` -> `303`;
+  - `/app/flows/workspace-v2` -> `303`;
+  - `curl -4 -I --connect-timeout 10 https://api.telegram.org/` -> `HTTP/2 302`;
+  - `hr-bot-web`, `hr-bot-worker` и `wg-quick@redshield` прошли `systemctl is-active`;
+  - worker log grep не нашел свежие `TelegramNetworkError`, `Request timeout`, `Traceback`, `Unclosed client session`;
+  - deploy job завершился успешно и вывел `c5c201c`.
+- Backup БД не делался: deploy шел через git/systemd restart и schema compatibility добавляет колонку без ручной замены `hr_bot.db`.
+- Открытые риски:
+  - операторам нужно явно выбрать главный набор на `/app/bot-menu`, если текущий первый/targeted fallback не соответствует ожидаемому root UX.
+
+### 2026-07-01 12:08 MSK - manual stage maintenance - очистка сотрудников и кандидатов
+
+- Тип изменения: ручная maintenance-операция на stage SQLite DB без deploy кода.
+- Stage app dir: `/opt/hr_bot`.
+- App commit на сервере во время операции: `c5c201c`.
+- Backup перед очисткой:
+  - DB: `/opt/hr_bot/backups/hr_bot.before-clean-employees.20260701-090739.db`;
+  - employee files: `/opt/hr_bot/backups/employee_files.before-clean-employees.20260701-090739.tgz`.
+- Что очищено:
+  - `employees`;
+  - `employee_messenger_accounts`;
+  - `employee_files`;
+  - `employee_document_links`;
+  - `scenario_progress`;
+  - `survey_answers`;
+  - `flow_launch_requests`;
+  - `mass_scenario_actions`;
+  - `mass_message_actions`;
+  - filesystem: `storage/employee_files`.
+- Что сохранено:
+  - scenario templates и scenario step files;
+  - bot menu sets;
+  - HR/system settings;
+  - document/scenario storage outside `storage/employee_files`.
+- Дополнительно очищены stale references:
+  - `bot_menu_sets.target_employee_id`;
+  - `bot_menu_sets.target_employee_ids`;
+  - `scenario_templates.target_employee_id`.
+- Проверка после очистки:
+  - `employees` -> `0`;
+  - `employee_messenger_accounts` -> `0`;
+  - `employee_files` -> `0`;
+  - `employee_document_links` -> `0`;
+  - `scenario_progress` -> `0`;
+  - `survey_answers` -> `0`;
+  - `flow_launch_requests` -> `0`;
+  - `mass_scenario_actions` -> `0`;
+  - `mass_message_actions` -> `0`;
+  - `storage/employee_files` -> `0 files`;
+  - `storage/scenario_step_files` сохранен: `6 files`;
+  - `hr-bot-web`, `hr-bot-worker`, `wg-quick@redshield` active;
+  - `/app/employees` -> `303`;
+  - `/app/flows/workspace-v2` -> `303`;
+  - worker log grep не нашел свежие `TelegramNetworkError`, `Request timeout`, `Traceback`, `Unclosed client session`.
+- Открытые риски:
+  - если на тестовом стенде нужны demo employees/candidates, их нужно создать заново через UI или seed/script; старые карточки восстановимы из backup DB.
+
+### 2026-07-08 11:11 MSK - app deploy - date response для сценариев
+
+- Deploy ref: `stage`.
+- Deployed commit: `ce1b7f6`.
+- GitHub Actions run: `28927670013`.
+- Что изменено:
+  - добавлен новый тип ответа сценария `date`;
+  - scenario workspace позволяет выбрать `Выбор даты` и привязать результат к `first_workday`;
+  - Telegram runtime показывает inline-календарь на callback-кнопках;
+  - выбранная дата сохраняется в карточку сотрудника в `first_workday`;
+  - добавлены regression-тесты на workspace persistence и runtime сохранение даты.
+- Локальные проверки перед deploy:
+  - `.\.venv\Scripts\python.exe -m compileall app tests`;
+  - `.\.venv\Scripts\ruff.exe check --select F821 app tests`;
+  - `.\.venv\Scripts\python.exe -m unittest tests.test_employee_api_smoke tests.test_messaging_identity tests.test_scenario_engine_smoke tests.test_scenario_engine_branching -v` -> 98 tests OK;
+  - `npm run build`;
+  - `git diff --check`.
+- GitHub Actions preflight:
+  - backend dependencies install;
+  - `compileall`;
+  - `ruff F821`;
+  - backend smoke tests;
+  - frontend build;
+  - smoke imports.
+- Stage smoke checks:
+  - `/app/employees` -> `303`;
+  - `/app/flows/workspace-v2` -> `303`;
+  - `curl -4 -I --connect-timeout 10 https://api.telegram.org/` -> `HTTP/2 302`;
+  - `hr-bot-web`, `hr-bot-worker` и `wg-quick@redshield` прошли `systemctl is-active`;
+  - worker log grep не нашел свежие `TelegramNetworkError`, `Request timeout`, `Traceback`, `Unclosed client session`;
+  - deploy job завершился успешно и вывел `ce1b7f6`.
+- Backup БД не делался: deploy шел через git/systemd restart и не менял схему/данные SQLite вручную.
+- Открытые риски:
+  - это inline-календарь внутри Telegram-бота, а не native date picker: у обычных Telegram-ботов нативного date picker нет;
+  - поддержка сейчас сфокусирована на сохранении даты в `first_workday`; для других date-полей нужен отдельный contract.
+
+### 2026-07-08 11:35 MSK - app deploy - catch-up первого timed step
+
+- Deploy ref: `stage`.
+- Deployed commit: `1211af4`.
+- GitHub Actions run: `28929072248`.
+- Что изменено:
+  - scheduler для time-based сценариев теперь ставит первый непройденный шаг на немедленную отправку, если сценарий активирован сегодня и время первого шага уже прошло;
+  - `send_step` больше не создает internal `FlowLaunchRequest` для следующего `specific_time` шага, когда текущий timed step был вызван scheduler;
+  - добавлен `tests/test_scheduler_smoke.py` с проверками same-day catch-up, отсутствия catch-up после уже начатого сценария и отсутствия лишнего follow-up после scheduler step;
+  - обновлены runtime docs по scenario engine, `project_state` и backlog.
+- Локальные проверки перед deploy:
+  - `.\.venv\Scripts\python.exe -m compileall app tests`;
+  - `.\.venv\Scripts\ruff.exe check --select F821 app tests`;
+  - `.\.venv\Scripts\python.exe -m unittest tests.test_scheduler_smoke tests.test_scenario_engine_smoke.ScenarioEngineSmokeTests.test_resolve_notification_recipients_supports_hr_token tests.test_employee_api_smoke.EmployeeApiSmokeTests.test_bot_current_menu_set_prefers_matching_candidate_audience_set -v` -> 5 tests OK;
+  - `.\.venv\Scripts\python.exe -m unittest tests.test_employee_api_smoke tests.test_messaging_identity tests.test_scenario_engine_smoke tests.test_scenario_engine_branching tests.test_scheduler_smoke -v` -> 101 tests OK;
+  - `git diff --cached --check`.
+- GitHub Actions preflight:
+  - backend dependencies install;
+  - `compileall`;
+  - `ruff F821`;
+  - backend smoke tests;
+  - frontend build;
+  - smoke imports.
+- Stage smoke checks:
+  - `/app/employees` -> `303`;
+  - `/app/flows/workspace-v2` -> `303`;
+  - `curl -4 -I --connect-timeout 10 https://api.telegram.org/` -> `HTTP/2 302`;
+  - `hr-bot-web`, `hr-bot-worker` и `wg-quick@redshield` прошли `systemctl is-active`;
+  - worker log grep не нашел свежие `TelegramNetworkError`, `Request timeout`, `Traceback`, `Unclosed client session`;
+  - deploy job завершился успешно и вывел `1211af4`.
+- Backup БД не делался: deploy шел через git/systemd restart и не менял схему/данные SQLite вручную.
+- Открытые риски:
+  - catch-up намеренно узкий: только первый непройденный шаг в день активации, если сценарий еще не начинался;
+  - late-start сценарии за прошлые даты по-прежнему не догоняются автоматически, чтобы не слать устаревшие сообщения пачкой.
+
+### 2026-07-08 14:37 MSK - app deploy - guard stale scheduled deliveries
+
+- Deploy ref: `stage`.
+- Deployed commit: `a8ce9a6`.
+- GitHub Actions run: `28939538436`.
+- Что изменено:
+  - `run_scheduled_step` перед отправкой заново проверяет, что сценарий все еще подходит текущей карточке по scope/stage;
+  - scheduled delivery для time-based сценариев больше не отправляется, если у карточки уже нет валидного anchor date;
+  - pending `FlowLaunchRequest` помечается processed без отправки, если сценарий уже несовместим с текущим состоянием сотрудника/кандидата;
+  - добавлен regression-тест на кейс stale scheduled step после смены `employee_stage`;
+  - обновлены docs по scenario engine, project state и backlog.
+- Локальные проверки перед deploy:
+  - `.\.venv\Scripts\python.exe -m compileall app tests`;
+  - `.\.venv\Scripts\ruff.exe check --select F821 app\scheduler.py tests\test_scheduler_smoke.py`;
+  - `.\.venv\Scripts\python.exe -m unittest tests.test_scheduler_smoke -v` -> 4 tests OK;
+  - `.\.venv\Scripts\ruff.exe check --select F821 app tests`;
+  - `.\.venv\Scripts\python.exe -m unittest tests.test_employee_api_smoke tests.test_messaging_identity tests.test_scenario_engine_smoke tests.test_scenario_engine_branching tests.test_scheduler_smoke -v` -> 102 tests OK;
+  - `git diff --cached --check`.
+- GitHub Actions preflight:
+  - backend dependencies install;
+  - `compileall`;
+  - `ruff F821`;
+  - backend smoke tests;
+  - frontend build;
+  - smoke imports.
+- Stage smoke checks:
+  - `/app/employees` -> `303`;
+  - `/app/flows/workspace-v2` -> `303`;
+  - `curl -4 -I --connect-timeout 10 https://api.telegram.org/` -> `HTTP/2 302`;
+  - `hr-bot-web`, `hr-bot-worker` и `wg-quick@redshield` прошли `systemctl is-active`;
+  - worker log grep не нашел свежие `TelegramNetworkError`, `Request timeout`, `Traceback`, `Unclosed client session`;
+  - deploy job завершился успешно и вывел `a8ce9a6`.
+- Backup БД не делался: deploy шел через git/systemd restart и не менял схему/данные SQLite вручную.
+- Открытые риски:
+  - stale jobs отбрасываются silently; если оператору понадобится audit “почему не отправилось”, потребуется отдельный журнал delivery skip reasons.
+
+### 2026-07-08 15:08 MSK - app deploy - immediate bot registration scenario
+
+- Deploy ref: `stage`.
+- Deployed commit: `59ca3c6`.
+- GitHub Actions run: `28941290233`.
+- Что изменено:
+  - `/start` теперь запускает первый подходящий сценарий с `trigger_mode=bot_registration` сразу при новой Telegram-привязке карточки;
+  - повторный `/start` не перезапускает registration-сценарий и остается навигационным возвратом в root menu;
+  - сценарий стартует только после появления первичного numeric Telegram chat id у карточки;
+  - обновлены docs по bot identity/runtime и project state;
+  - добавлен regression-тест на немедленный запуск registration-сценария при первой Telegram-привязке.
+- Локальные проверки перед deploy:
+  - `.\.venv\Scripts\python.exe -m compileall app tests`;
+  - `.\.venv\Scripts\ruff.exe check --select F821 app\messaging\service.py tests\test_employee_api_smoke.py`;
+  - focused `/start` tests -> 3 tests OK;
+  - `.\.venv\Scripts\python.exe -m unittest tests.test_employee_api_smoke tests.test_messaging_identity tests.test_scenario_engine_smoke tests.test_scenario_engine_branching tests.test_scheduler_smoke -v` -> 103 tests OK;
+  - `.\.venv\Scripts\ruff.exe check --select F821 app tests`;
+  - `git diff --check`.
+- GitHub Actions preflight:
+  - backend dependencies install;
+  - `compileall`;
+  - `ruff F821`;
+  - backend smoke tests;
+  - frontend build;
+  - smoke imports.
+- Stage smoke checks:
+  - `/app/employees` -> `303`;
+  - `/app/flows/workspace-v2` -> `303`;
+  - `curl -4 -I --connect-timeout 10 https://api.telegram.org/` -> `HTTP/2 302`;
+  - `hr-bot-web`, `hr-bot-worker` и `wg-quick@redshield` прошли `systemctl is-active`;
+  - worker log grep не нашел свежие `TelegramNetworkError`, `Request timeout`, `Traceback`, `Unclosed client session`;
+  - deploy job завершился успешно и вывел `59ca3c6`.
+- Backup БД не делался: deploy шел через git/systemd restart и не менял схему/данные SQLite вручную.
+- Открытые риски:
+  - если настроено несколько `bot_registration` сценариев, выбирается первый подходящий по `sort_order`/`id`;
+  - если пользователь пишет в бот без совпадающей карточки, unknown-user поведение не менялось.

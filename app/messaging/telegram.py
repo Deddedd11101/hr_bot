@@ -26,24 +26,51 @@ class TelegramMessenger:
         )
         await self.bot.send_message(chat_id=chat_id, text=text, reply_markup=keyboard)
 
-    async def send_photo_path(self, chat_id: str, path: str | Path, filename: str | None = None) -> None:
+    async def send_photo_path(
+        self,
+        chat_id: str,
+        path: str | Path,
+        filename: str | None = None,
+        reply_markup: Any | None = None,
+        caption: str | None = None,
+    ) -> None:
         file_path = Path(path)
         await self.bot.send_photo(
             chat_id=chat_id,
             photo=FSInputFile(str(file_path), filename=filename or file_path.name),
+            caption=caption,
+            reply_markup=reply_markup,
         )
 
-    async def send_photo_bytes(self, chat_id: str, data: bytes, filename: str) -> None:
+    async def send_photo_bytes(
+        self,
+        chat_id: str,
+        data: bytes,
+        filename: str,
+        reply_markup: Any | None = None,
+        caption: str | None = None,
+    ) -> None:
         await self.bot.send_photo(
             chat_id=chat_id,
             photo=BufferedInputFile(data, filename=filename),
+            caption=caption,
+            reply_markup=reply_markup,
         )
 
-    async def send_document_path(self, chat_id: str, path: str | Path, filename: str | None = None) -> None:
+    async def send_document_path(
+        self,
+        chat_id: str,
+        path: str | Path,
+        filename: str | None = None,
+        reply_markup: Any | None = None,
+        caption: str | None = None,
+    ) -> None:
         file_path = Path(path)
         await self.bot.send_document(
             chat_id=chat_id,
             document=FSInputFile(str(file_path), filename=filename or file_path.name),
+            caption=caption,
+            reply_markup=reply_markup,
         )
 
     async def close(self) -> None:

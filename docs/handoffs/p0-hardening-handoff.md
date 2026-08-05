@@ -2,6 +2,8 @@
 title: Передача контекста по P0 hardening
 date: 2026-05-08
 status: active
+doc_type: handoff
+area: bot
 task_tokens:
   - HRB-P0-01
   - HRB-P0-02
@@ -9,6 +11,10 @@ task_tokens:
   - HRB-P0-04
   - HRB-P0-05
   - HRB-P0-06
+related:
+  - "[[decisions/p0-bot-access-hardening]]"
+  - "[[features/bot-identity]]"
+source_of_truth: false
 ---
 
 # Передача контекста по P0 hardening

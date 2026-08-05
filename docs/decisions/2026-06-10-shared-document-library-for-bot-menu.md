@@ -2,14 +2,14 @@
 title: Shared document library for bot menu
 date: 2026-06-10
 status: accepted
-doc_type: decision
+doc_type: adr
 area: bot-menu
 task_tokens:
   - HRB-P1-07
 related:
-  - "[[../architecture]]"
-  - "[[../project_state]]"
-  - "[[../handoffs/frontend-structure-reset-handoff]]"
+  - "[[architecture]]"
+  - "[[project_state]]"
+  - "[[handoffs/frontend-structure-reset-handoff]]"
 source_of_truth: true
 ---
 

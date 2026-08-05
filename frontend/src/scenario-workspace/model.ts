@@ -5,11 +5,15 @@ import type { Container, WorkspaceData, WorkspaceItem } from "./types";
 export const FALLBACK_RESPONSE_TYPE_LABELS: Record<string, string> = {
   none: "Без ответа",
   text: "Текстовый ответ",
+  date: "Выбор даты",
   file: "Загрузка файла",
+  buttons: "Выбор кнопками",
   branching: "Ветвление",
   launch_scenario: "Переход к сценарию",
   chain: "Цепочка шагов",
 };
+
+const INTERACTIVE_RESPONSE_TYPES = new Set(["text", "date", "file", "buttons", "branching"]);
 
 export function payloadLabel(kind: "scenario" | "survey") {
   return kind === "survey" ? "опрос" : "сценарий";
@@ -92,6 +96,32 @@ export function buildChildContainer(item: WorkspaceItem | null): Container | nul
   return null;
 }
 
+export function findWorkspacePathToStep(workspace: WorkspaceData, stepId: number): { stack: Container[]; selectedItemKey: string } | null {
+  const root = makeRootContainer(workspace);
+
+  function visit(container: Container): { stack: Container[]; selectedItemKey: string } | null {
+    for (const item of container.items) {
+      if (item.kind !== "branch_slot" && item.id === stepId) {
+        return { stack: [container], selectedItemKey: itemKey(item) };
+      }
+
+      if (item.kind === "branch_slot" && item.step?.id === stepId) {
+        return { stack: [container], selectedItemKey: itemKey(item) };
+      }
+
+      const child = buildChildContainer(item);
+      if (!child) continue;
+      const nested = visit(child);
+      if (nested) {
+        return { stack: [container, ...nested.stack], selectedItemKey: nested.selectedItemKey };
+      }
+    }
+    return null;
+  }
+
+  return visit(root);
+}
+
 export function workspaceItemTitle(item: WorkspaceItem, index: number) {
   if (item.kind === "branch_slot") return item.label || `Ветка ${index + 1}`;
   return item.title || `Шаг ${index + 1}`;
@@ -113,11 +143,36 @@ export function detailTargetFromItem(item: WorkspaceItem | null) {
 }
 
 export function supportsButtonOptions(responseType: string) {
-  return responseType === "branching";
+  return responseType === "buttons" || responseType === "branching";
 }
 
 export function supportsTargetField(responseType: string) {
-  return responseType === "text" || responseType === "file";
+  return (
+    responseType === "text" ||
+    responseType === "date" ||
+    responseType === "file" ||
+    responseType === "buttons" ||
+    responseType === "branching"
+  );
+}
+
+export function responseTypeWaitState(responseType: string) {
+  if (INTERACTIVE_RESPONSE_TYPES.has(responseType)) {
+    return {
+      tone: "waiting" as const,
+      badge: "Ждёт ответ",
+      title: "Сценарий остановится на этом шаге",
+      description:
+        "После отправки бот будет ждать ответ пользователя и не пойдёт дальше, пока не получит его.",
+    };
+  }
+  return {
+    tone: "passive" as const,
+    badge: "Автопереход",
+    title: "Шаг не блокирует сценарий",
+    description:
+      "После отправки бот сам перейдёт дальше по сценарию, если не сработают отдельные условия запуска или времени.",
+  };
 }
 
 export function parseRecipientIds(value: string) {

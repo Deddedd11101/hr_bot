@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import { ConfirmAction } from "@/components/ui/confirm-action";
 import { DateTimePicker } from "@/components/ui/date-picker";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { Field, FieldContent, FieldGroup, FieldLabel, FieldTitle } from "@/components/ui/field";
@@ -276,9 +277,16 @@ function ActionTable({
                 {action.recipient_count} получ.
               </Badge>
               {onDelete ? (
-                <Button variant="outline" size="icon-sm" aria-label="Удалить запланированное действие" onClick={() => window.confirm("Удалить запланированное действие?") && onDelete(action.id)}>
-                  <Trash2 />
-                </Button>
+                <ConfirmAction
+                  title="Удалить запланированное действие?"
+                  description="Действие будет удалено из расписания. Уже выполненные запуски не затрагиваются."
+                  actionLabel="Удалить"
+                  onConfirm={() => onDelete(action.id)}
+                >
+                  <Button variant="outline" size="icon-sm" aria-label="Удалить запланированное действие">
+                    <Trash2 />
+                  </Button>
+                </ConfirmAction>
               ) : null}
             </div>
           ))

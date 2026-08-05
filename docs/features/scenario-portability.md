@@ -2,7 +2,13 @@
 title: Переносимость сценариев
 date: 2026-04-10
 status: active
+doc_type: feature
+area: data
 task_tokens: []
+related:
+  - "[[stage-deploy]]"
+  - "[[data-model]]"
+source_of_truth: true
 ---
 
 # Переносимость сценариев

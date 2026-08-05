@@ -28,10 +28,23 @@ EMPLOYEE_SCOPE_LABELS = {
     EMPLOYEE_SCOPE_CANDIDATES: "Для всех кандидатов",
 }
 
+CANDIDATE_WORK_STAGE_LABELS = {
+    "company_decline": "Наш отказ",
+    "hr_interview": "Собеседование с HR",
+    "manager_interview": "Собеседование с руководителем",
+    "testing": "Тестирование",
+    "offer": "Оффер",
+    "preonboarding": "Преонбординг",
+    "candidate_decline": "Отказ кандидата",
+    "contract": "Заключение договора",
+}
+
 TRIGGER_MODE_LABELS = {
     "manual_only": "Только вручную",
     "bot_registration": "Сразу после регистрации в боте",
     "scenario_transition": "При переходе из другого сценария",
+    "candidate_hr_stage": "При смене HR-статуса кандидата",
+    "manager_assigned_adaptation": "При назначении руководителя сотруднику в адаптации",
     "first_workday": "В первый рабочий день",
     "first_week_friday": "В пятницу первой рабочей недели",
     "mid_probation": "В середине испытательного срока",
@@ -41,6 +54,7 @@ TRIGGER_MODE_LABELS = {
 RESPONSE_TYPE_LABELS = {
     "none": "Без ответа",
     "text": "Текстовый ответ",
+    "date": "Выбор даты",
     "file": "Загрузка файла",
     "buttons": "Выбор кнопками",
     "branching": "Ветвление",
@@ -54,6 +68,7 @@ SEND_MODE_LABELS = {
 TARGET_FIELD_LABELS = {
     "": "Не сохранять в поле сотрудника",
     "full_name": "ФИО",
+    "first_workday": "Первый день выхода",
     "desired_position": "Желаемая должность",
     "salary_expectation": "Ожидания по доходу",
     "personal_data_consent": "Согласие на ПДн кандидата",

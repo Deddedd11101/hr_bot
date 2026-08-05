@@ -2,12 +2,13 @@
 title: Stage-first delivery pipeline
 date: 2026-08-05
 status: accepted
-doc_type: decision
+doc_type: adr
 area: deploy
 related:
   - "../subagent-delivery.md"
   - "../stage-deploy.md"
   - "../stage-change-log.md"
+source_of_truth: true
 ---
 
 # Stage-first delivery pipeline

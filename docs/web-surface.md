@@ -29,7 +29,8 @@ source_of_truth: true
 
 ## Сессия и модель доступа
 
-- Browser auth использует cookie `hr_admin_auth`.
+- Browser auth использует signed cookie `hr_admin_auth`.
+- Cookie подписывается через `ADMIN_SESSION_SECRET`, имеет TTL и не принимается как raw account id.
 - Без auth classic routes обычно делают `303` redirect на `/login`.
 - Без auth JSON routes возвращают `401`; это описано в [[api]].
 - Admin-only boundary есть для settings-related pages через `_require_admin()`. Большинство операторских страниц требует только authenticated account.
@@ -115,6 +116,14 @@ source_of_truth: true
 | `GET` | `/app/flows/workspace-v2` | React bootstrap page | Текущий scenario workspace |
 | `GET` | `/app/surveys/workspace` | React bootstrap page | React survey workspace; sidebar default для опросов, использует `/api/flows/workspace?kind=survey` |
 
+## Общая библиотека документов
+
+| Method | Path | Surface | Примечания |
+| --- | --- | --- | --- |
+| `GET` | `/documents` | Redirect route | Shortcut surface; ведет на `/app/documents` |
+| `GET` | `/app/documents` | React bootstrap page | Shared document library для ссылок/файлов, которые можно отправлять через bot menu |
+| `GET` | `/documents/{item_id}/download` | Download route | Скачать file-backed `DocumentLibraryItem`; требует auth |
+
 ## Настройки и админские аккаунты
 
 | Method | Path | Surface | Примечания |
@@ -135,6 +144,8 @@ source_of_truth: true
 | `POST` | `/accounts/{account_id}/delete` | Form action | Удалить admin account |
 | `GET` | `/app/settings` | React bootstrap page | React settings/accounts. Menu sets и audience targeting больше не редактируются здесь, чтобы системные настройки не смешивались с bot UX rules. |
 | `GET` | `/app/bot-menu` | React bootstrap page | React surface для menu sets, audience targeting и переходов между наборами. |
+| `GET` | `/design-system` | Redirect route | Shortcut surface; ведет на `/app/design-system` |
+| `GET` | `/app/design-system` | React bootstrap page | Live frontend baseline для shared primitives, page patterns и review rules |
 
 ## Статические ассеты
 

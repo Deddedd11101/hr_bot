@@ -19,7 +19,7 @@ source_of_truth: true
 
 ## Canonical worktrees
 
-- `D:\HRBot\hr_bot_stage_pipeline` на ветке `stage` — единственный поддерживаемый локальный integration worktree для сборки `stage` и запуска deploy.
+- `D:\HRBot\hr_bot_stage_pipeline` на ветке `stage` — единственный поддерживаемый локальный integration worktree для сборки `stage` и запуска deploy. Не использовать его как обычную рабочую папку субагента для feature-разработки.
 - `D:\HRBot\hr_bot` — исторический dirty/rescue worktree. Не использовать его для новых задач, пока он явно не разобран и не очищен.
 - Новая задача = новый clean worktree от `origin/stage` или от явно указанной dependency branch.
 - После интеграции feature worktree удаляется или архивируется rescue-снимком. Dirty worktree не должен жить дольше одного integration cycle.
@@ -49,6 +49,7 @@ source_of_truth: true
 - добавлять запись в `docs/stage-change-log.md` до фактического stage deploy;
 - считать отсутствие интерактивного root SSH blocker-ом, если можно подготовить pushable ref.
 - работать в `D:\HRBot\hr_bot` для новых задач без отдельного разрешения интегратора;
+- работать в `D:\HRBot\hr_bot_stage_pipeline` как в feature-worktree без отдельного разрешения интегратора;
 - оставлять задачу в состоянии "локально поправлено, но не закоммичено" без rescue/handoff.
 
 ### Reviewer

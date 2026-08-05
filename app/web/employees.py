@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from ..config import settings
 from ..file_storage import build_employee_file_path
-from ..flow_templates import EMPLOYEE_ROLE_VALUES
+from ..flow_templates import CANDIDATE_WORK_STAGE_LABELS
 from ..messaging import create_telegram_messenger
 from ..messaging.identity import (
     EmployeeIdentityConflictError,
@@ -19,11 +19,22 @@ from ..messaging.identity import (
     set_public_chat_handle,
     sync_legacy_telegram_account,
 )
-from ..models import Employee, EmployeeDocumentLink, EmployeeFile, FlowLaunchRequest, ScenarioTemplate
-from ..scenario_engine import add_workdays, get_first_step, get_scenario_steps, matches_role_scope, start_scenario
+from ..models import (
+    Employee,
+    EmployeeDocumentLink,
+    EmployeeFile,
+    EmployeeMessengerAccount,
+    FlowLaunchRequest,
+    ScenarioProgress,
+    ScenarioTemplate,
+)
+from ..positions import employee_position_values, resolve_employee_position_value
+from ..scenario_engine import SINGLE_STEP_REQUEST_PREFIX, add_workdays, get_first_step, matches_role_scope, start_scenario
 from ..time_utils import utc_now
 
 OFFER_DOCUMENT_TITLE = "Оффер"
+OFFER_DOCUMENT_SLOT = "offer"
+MANAGER_ASSIGNMENT_TRIGGER_MODE = "manager_assigned_adaptation"
 
 EMPLOYEE_STAGE_VALUES = {
     "candidate": "Кандидат",
@@ -33,12 +44,20 @@ EMPLOYEE_STAGE_VALUES = {
 }
 
 CANDIDATE_WORK_STAGE_VALUES = {
+    "company_decline": "Наш отказ",
+    "hr_interview": "Собеседование с HR",
+    "manager_interview": "Собеседование с руководителем",
     "testing": "Тестирование",
     "offer": "Оффер",
-    "candidate_decline": "Отказ кандидата",
-    "company_decline": "Наш отказ",
     "preonboarding": "Преонбординг",
+    "candidate_decline": "Отказ кандидата",
     "contract": "Заключение договора",
+}
+
+VISIBLE_CANDIDATE_WORK_STAGE_VALUES = {
+    value: label
+    for value, label in CANDIDATE_WORK_STAGE_VALUES.items()
+    if value != "contract"
 }
 
 
@@ -98,6 +117,11 @@ def _employee_list_kind(employee: Optional[Employee]) -> str:
     if (getattr(employee, "employee_stage", None) or "").strip() == "candidate":
         return "candidates"
     return "employees"
+
+
+def _is_internal_followup_request(launch_request: FlowLaunchRequest) -> bool:
+    skip_step_key = (getattr(launch_request, "skip_step_key", None) or "").strip()
+    return bool(skip_step_key) and skip_step_key.startswith(SINGLE_STEP_REQUEST_PREFIX)
 
 
 def _employee_list_meta(list_kind: str) -> dict:
@@ -179,6 +203,51 @@ def _staff_employee_options(db: Session, current_employee_id: int | None = None)
     ]
 
 
+def _staff_employee_options_by_flag(
+    db: Session,
+    *,
+    current_employee_id: int | None = None,
+    role_flag: str | None = None,
+    selected_employee_ids: list[int] | None = None,
+) -> list[dict]:
+    employees = (
+        db.query(Employee)
+        .filter(Employee.employee_stage == "staff")
+        .order_by(Employee.full_name.asc(), Employee.id.asc())
+        .all()
+    )
+    result: list[dict] = []
+    included_ids: set[int] = set()
+    selected_ids = {value for value in (selected_employee_ids or []) if value}
+    for employee in employees:
+        if current_employee_id is not None and employee.id == current_employee_id:
+            continue
+        is_selected = employee.id in selected_ids
+        if role_flag == "is_manager" and not bool(employee.is_manager) and not is_selected:
+            continue
+        if role_flag == "is_mentor" and not bool(employee.is_mentor) and not is_selected:
+            continue
+        result.append(
+            {
+                "value": str(employee.id),
+                "label": _employee_display_name(employee),
+            }
+        )
+        included_ids.add(employee.id)
+    for selected_employee_id in selected_ids:
+        if selected_employee_id in included_ids:
+            continue
+        selected_employee = db.get(Employee, selected_employee_id)
+        if selected_employee is not None and (current_employee_id is None or selected_employee.id != current_employee_id):
+            result.append(
+                {
+                    "value": str(selected_employee.id),
+                    "label": _employee_display_name(selected_employee),
+                }
+            )
+    return result
+
+
 def _parse_optional_date(value: str) -> date | None:
     normalized = (value or "").strip()
     return datetime.strptime(normalized, "%Y-%m-%d").date() if normalized else None
@@ -201,6 +270,7 @@ def _resolve_staff_employee_reference(
     employee: Employee,
     related_employee_id: int | None,
     field_title: str,
+    required_flag: str | None = None,
 ) -> Employee | None:
     if related_employee_id is None:
         return None
@@ -211,7 +281,77 @@ def _resolve_staff_employee_reference(
         raise ValueError(f"{field_title} не найден в базе сотрудников.")
     if (related_employee.employee_stage or "").strip() != "staff":
         raise ValueError(f"{field_title} должен быть выбран из сотрудников в штате.")
+    if required_flag == "is_manager" and not bool(related_employee.is_manager):
+        raise ValueError(f"{field_title} должен быть отмечен как руководитель.")
+    if required_flag == "is_mentor" and not bool(related_employee.is_mentor):
+        raise ValueError(f"{field_title} должен быть отмечен как наставник.")
     return related_employee
+
+
+def _manager_assignment_trigger_scenario(db: Session, employee: Employee) -> ScenarioTemplate | None:
+    scenarios = (
+        db.query(ScenarioTemplate)
+        .filter(
+            ScenarioTemplate.scenario_kind == "scenario",
+            ScenarioTemplate.trigger_mode == MANAGER_ASSIGNMENT_TRIGGER_MODE,
+        )
+        .order_by(ScenarioTemplate.sort_order, ScenarioTemplate.id)
+        .all()
+    )
+    for scenario in scenarios:
+        if matches_role_scope(employee, scenario):
+            return scenario
+    return None
+
+
+def _enqueue_manager_assignment_trigger(
+    db: Session,
+    *,
+    subject_employee: Employee,
+    previous_stage: str,
+    previous_manager_employee_id: int | None,
+) -> None:
+    current_stage = (subject_employee.employee_stage or "").strip()
+    current_manager_employee_id = subject_employee.manager_employee_id
+    entered_adaptation = previous_stage != "adaptation" and current_stage == "adaptation"
+    manager_changed = previous_manager_employee_id != current_manager_employee_id
+    if current_stage != "adaptation":
+        return
+    if not current_manager_employee_id:
+        return
+    if not entered_adaptation and not manager_changed:
+        return
+
+    manager_employee = db.get(Employee, current_manager_employee_id)
+    if not manager_employee:
+        return
+    scenario = _manager_assignment_trigger_scenario(db, manager_employee)
+    if not scenario:
+        return
+
+    duplicate_request = (
+        db.query(FlowLaunchRequest)
+        .filter(
+            FlowLaunchRequest.employee_id == manager_employee.id,
+            FlowLaunchRequest.flow_key == scenario.scenario_key,
+            FlowLaunchRequest.processed_at.is_(None),
+            FlowLaunchRequest.launch_type == "trigger",
+        )
+        .first()
+    )
+    if duplicate_request:
+        return
+
+    db.add(
+        FlowLaunchRequest(
+            employee_id=manager_employee.id,
+            flow_key=scenario.scenario_key,
+            requested_at=datetime.now(),
+            processed_at=None,
+            launch_type="trigger",
+            skip_step_key=None,
+        )
+    )
 
 
 def _available_scenarios_for_employee(db: Session, employee: Employee) -> list[ScenarioTemplate]:
@@ -244,6 +384,8 @@ def _build_employee_views(list_kind: str, db: Session) -> list[dict]:
             .all()
         )
         for launch_request in pending_launch_requests:
+            if _is_internal_followup_request(launch_request):
+                continue
             launch_requests_by_employee.setdefault(launch_request.employee_id, launch_request)
 
     today = datetime.now().date()
@@ -326,6 +468,56 @@ def _apply_employee_telegram_identity(
         set_public_chat_handle(employee, normalized_chat_handle, db=db)
 
 
+def _candidate_stage_transition_scenarios(
+    db: Session,
+    employee: Employee,
+    next_candidate_stage: str,
+) -> list[ScenarioTemplate]:
+    if not next_candidate_stage:
+        return []
+    return [
+        scenario
+        for scenario in db.query(ScenarioTemplate)
+        .filter(
+            ScenarioTemplate.scenario_kind == "scenario",
+            ScenarioTemplate.trigger_mode == "candidate_hr_stage",
+            ScenarioTemplate.candidate_work_stage_trigger == next_candidate_stage,
+        )
+        .order_by(ScenarioTemplate.sort_order.asc(), ScenarioTemplate.id.asc())
+        .all()
+        if _scenario_matches_employee_role(scenario, employee)
+    ]
+
+
+def _queue_candidate_stage_transition_launches(
+    db: Session,
+    employee: Employee,
+    previous_candidate_stage: str | None,
+    next_candidate_stage: str | None,
+) -> None:
+    previous_value = (previous_candidate_stage or "").strip()
+    next_value = (next_candidate_stage or "").strip()
+    if previous_value == next_value or not next_value:
+        return
+    if _employee_list_kind(employee) != "candidates":
+        return
+    scenarios = _candidate_stage_transition_scenarios(db, employee, next_value)
+    if not scenarios:
+        return
+    requested_at = utc_now()
+    for scenario in scenarios:
+        db.add(
+            FlowLaunchRequest(
+                employee_id=employee.id,
+                flow_key=scenario.scenario_key,
+                requested_at=requested_at,
+                processed_at=None,
+                launch_type="status_transition",
+                skip_step_key=None,
+            )
+        )
+
+
 def _create_employee_record(
     db: Session,
     *,
@@ -382,6 +574,8 @@ def _apply_employee_update(
     birth_date: str,
     work_email: str,
     work_hours: str,
+    is_manager: bool,
+    is_mentor: bool,
     manager_employee_id: str,
     mentor_adaptation_employee_id: str,
     mentor_ipr_employee_id: str,
@@ -399,14 +593,16 @@ def _apply_employee_update(
     notes: str,
 ) -> Employee:
     is_candidate = _employee_list_kind(employee) == "candidates"
+    previous_candidate_work_stage = (employee.candidate_work_stage or "").strip() or None
     first_day = _parse_optional_date(first_workday)
     parsed_birth_date = _parse_optional_date(birth_date)
+    previous_stage = (employee.employee_stage or "").strip()
+    previous_manager_employee_id = employee.manager_employee_id
 
     employee.full_name = full_name.strip() or None
     _apply_employee_telegram_identity(employee, chat_id=chat_id, chat_handle=chat_handle, db=db)
     employee.first_workday = first_day
-    normalized_position = desired_position.strip()
-    employee.desired_position = normalized_position or None
+    employee.desired_position = resolve_employee_position_value(db, desired_position)
     employee.salary_expectation = salary_expectation.strip() or None
     employee.is_bot_blocked = is_bot_blocked
 
@@ -429,22 +625,27 @@ def _apply_employee_update(
             employee=employee,
             related_employee_id=_parse_optional_int(manager_employee_id),
             field_title="Руководитель сотрудника",
+            required_flag="is_manager",
         )
         mentor_adaptation_employee = _resolve_staff_employee_reference(
             db,
             employee=employee,
             related_employee_id=_parse_optional_int(mentor_adaptation_employee_id),
             field_title="Наставник адаптации",
+            required_flag="is_mentor",
         )
         mentor_ipr_employee = _resolve_staff_employee_reference(
             db,
             employee=employee,
             related_employee_id=_parse_optional_int(mentor_ipr_employee_id),
             field_title="Наставник ИПР",
+            required_flag="is_mentor",
         )
         employee.birth_date = parsed_birth_date
         employee.work_email = work_email.strip() or None
         employee.work_hours = work_hours.strip() or None
+        employee.is_manager = is_manager
+        employee.is_mentor = is_mentor
         employee.manager_employee_id = manager_employee.id if manager_employee else None
         employee.mentor_adaptation_employee_id = mentor_adaptation_employee.id if mentor_adaptation_employee else None
         employee.mentor_ipr_employee_id = mentor_ipr_employee.id if mentor_ipr_employee else None
@@ -463,7 +664,15 @@ def _apply_employee_update(
 
     employee.notes = notes.strip() or None
     db.commit()
+    _queue_candidate_stage_transition_launches(db, employee, previous_candidate_work_stage, employee.candidate_work_stage)
+    db.commit()
     sync_legacy_telegram_account(db, employee)
+    _enqueue_manager_assignment_trigger(
+        db,
+        subject_employee=employee,
+        previous_stage=previous_stage,
+        previous_manager_employee_id=previous_manager_employee_id,
+    )
     db.commit()
     db.refresh(employee)
     return employee
@@ -483,10 +692,19 @@ def _serialize_employee_file(file_row: EmployeeFile, employee_id: int, can_send_
 
 
 def _serialize_document_link(link_row: EmployeeDocumentLink, employee_id: int) -> dict:
+    file_download_url = (
+        f"/employees/{employee_id}/files/{link_row.employee_file_id}/download"
+        if getattr(link_row, "employee_file_id", None)
+        else None
+    )
+    effective_url = file_download_url or link_row.url
     return {
         "id": link_row.id,
+        "slot_key": getattr(link_row, "slot_key", None) or "",
         "title": link_row.title,
-        "url": link_row.url,
+        "url": effective_url,
+        "item_kind": getattr(link_row, "item_kind", "link") or "link",
+        "employee_file_id": getattr(link_row, "employee_file_id", None),
         "scenario_tag": f"{{doc:{link_row.title}}}",
         "delete_url": f"/employees/{employee_id}/document-links/{link_row.id}/delete",
     }
@@ -509,34 +727,139 @@ def _serialize_launch_request(
     }
 
 
+def _get_employee_document_slot(
+    db: Session,
+    employee_id: int,
+    *,
+    slot_key: str,
+) -> Optional[EmployeeDocumentLink]:
+    query = db.query(EmployeeDocumentLink).filter(EmployeeDocumentLink.employee_id == employee_id)
+    if slot_key == OFFER_DOCUMENT_SLOT:
+        query = query.filter(
+            (EmployeeDocumentLink.slot_key == slot_key)
+            | (EmployeeDocumentLink.title == OFFER_DOCUMENT_TITLE)
+        )
+    else:
+        query = query.filter(EmployeeDocumentLink.slot_key == slot_key)
+    return query.order_by(EmployeeDocumentLink.id.asc()).first()
+
+
 def _save_offer_document_link(db: Session, employee_id: int, url: str) -> tuple[Optional[EmployeeDocumentLink], Optional[str]]:
     url_value = url.strip()
     if not url_value:
         return None, "Укажи ссылку на оффер."
 
-    existing_link = (
-        db.query(EmployeeDocumentLink)
-        .filter(
-            EmployeeDocumentLink.employee_id == employee_id,
-            EmployeeDocumentLink.title == OFFER_DOCUMENT_TITLE,
-        )
-        .order_by(EmployeeDocumentLink.id.asc())
-        .first()
-    )
+    existing_link = _get_employee_document_slot(db, employee_id, slot_key=OFFER_DOCUMENT_SLOT)
     if existing_link:
+        previous_file_id = existing_link.employee_file_id
+        existing_link.slot_key = OFFER_DOCUMENT_SLOT
         existing_link.url = url_value
+        existing_link.item_kind = "link"
+        existing_link.employee_file_id = None
         link_row = existing_link
     else:
         link_row = EmployeeDocumentLink(
             employee_id=employee_id,
+            slot_key=OFFER_DOCUMENT_SLOT,
             title=OFFER_DOCUMENT_TITLE,
             url=url_value,
+            item_kind="link",
+            employee_file_id=None,
             created_at=utc_now(),
         )
         db.add(link_row)
+        previous_file_id = None
+    if previous_file_id:
+        previous_file = db.get(EmployeeFile, previous_file_id)
+        if previous_file:
+            previous_path = Path(previous_file.stored_path)
+            try:
+                if previous_path.exists():
+                    previous_path.unlink()
+            except OSError:
+                pass
+            db.delete(previous_file)
     db.commit()
     db.refresh(link_row)
     return link_row, None
+
+
+def _save_offer_document_file(
+    db: Session,
+    employee: Employee,
+    *,
+    filename: str,
+    content: bytes,
+    mime_type: Optional[str],
+) -> EmployeeDocumentLink:
+    destination = build_employee_file_path(employee.id, filename)
+    destination.write_bytes(content)
+    db_file = EmployeeFile(
+        employee_id=employee.id,
+        direction="outbound",
+        category="offer_document",
+        telegram_file_id=None,
+        telegram_file_unique_id=None,
+        original_filename=filename,
+        stored_path=str(destination),
+        mime_type=mime_type,
+        file_size=len(content),
+        created_at=utc_now(),
+    )
+    db.add(db_file)
+    db.flush()
+
+    existing_link = _get_employee_document_slot(db, employee.id, slot_key=OFFER_DOCUMENT_SLOT)
+    previous_file_id = existing_link.employee_file_id if existing_link else None
+    if existing_link:
+        existing_link.slot_key = OFFER_DOCUMENT_SLOT
+        existing_link.url = ""
+        existing_link.item_kind = "file"
+        existing_link.employee_file_id = db_file.id
+        existing_link.title = OFFER_DOCUMENT_TITLE
+        link_row = existing_link
+    else:
+        link_row = EmployeeDocumentLink(
+            employee_id=employee.id,
+            slot_key=OFFER_DOCUMENT_SLOT,
+            title=OFFER_DOCUMENT_TITLE,
+            url="",
+            item_kind="file",
+            employee_file_id=db_file.id,
+            created_at=utc_now(),
+        )
+        db.add(link_row)
+
+    if previous_file_id and previous_file_id != db_file.id:
+        previous_file = db.get(EmployeeFile, previous_file_id)
+        if previous_file:
+            previous_path = Path(previous_file.stored_path)
+            try:
+                if previous_path.exists():
+                    previous_path.unlink()
+            except OSError:
+                pass
+            db.delete(previous_file)
+
+    db.commit()
+    db.refresh(link_row)
+    return link_row
+
+
+def _delete_employee_document_link(db: Session, link_row: EmployeeDocumentLink) -> None:
+    employee_file_id = getattr(link_row, "employee_file_id", None)
+    db.delete(link_row)
+    if employee_file_id:
+        employee_file = db.get(EmployeeFile, employee_file_id)
+        if employee_file:
+            file_path = Path(employee_file.stored_path)
+            try:
+                if file_path.exists():
+                    file_path.unlink()
+            except OSError:
+                pass
+            db.delete(employee_file)
+    db.commit()
 
 
 def _delete_employee_record(db: Session, employee: Employee) -> str:
@@ -575,10 +898,33 @@ def _promote_candidate_to_adaptation(db: Session, employee: Employee) -> Employe
     employee.employee_stage = "adaptation"
     employee.candidate_work_stage = None
     employee.current_menu_set_id = None
+    employee.current_menu_path = None
     if employee.adaptation_midpoint is None:
         employee.adaptation_midpoint = add_workdays(employee.first_workday, settings.PROBATION_WORKDAYS // 2)
     if employee.adaptation_end is None:
         employee.adaptation_end = add_workdays(employee.first_workday, settings.PROBATION_WORKDAYS)
+    db.commit()
+    db.refresh(employee)
+    return employee
+
+
+def _reset_employee_bot_linkage(db: Session, employee: Employee) -> Employee:
+    db.query(EmployeeMessengerAccount).filter(
+        EmployeeMessengerAccount.employee_id == employee.id,
+    ).delete(synchronize_session=False)
+    db.query(ScenarioProgress).filter(
+        ScenarioProgress.employee_id == employee.id,
+    ).delete(synchronize_session=False)
+    db.query(FlowLaunchRequest).filter(
+        FlowLaunchRequest.employee_id == employee.id,
+        FlowLaunchRequest.processed_at.is_(None),
+    ).delete(synchronize_session=False)
+
+    employee.telegram_user_id = None
+    employee.telegram_username = None
+    employee.current_menu_set_id = None
+    employee.is_flow_scheduled = False
+
     db.commit()
     db.refresh(employee)
     return employee
@@ -660,19 +1006,6 @@ async def _launch_employee_flow_now(
                 skip_step_key=None,
             )
         )
-
-        steps = get_scenario_steps(db, scenario.scenario_key)
-        if first_step.response_type == "none" and len(steps) > 1:
-            db.add(
-                FlowLaunchRequest(
-                    employee_id=employee.id,
-                    flow_key=flow_key,
-                    requested_at=datetime.now(),
-                    processed_at=None,
-                    launch_type="manual",
-                    skip_step_key=first_step.step_key,
-                )
-            )
         db.commit()
         return None
     except TelegramBadRequest as exc:
@@ -705,11 +1038,11 @@ def _build_employee_detail_payload(db: Session, employee: Employee) -> dict:
         db.query(EmployeeDocumentLink)
         .filter(
             EmployeeDocumentLink.employee_id == employee.id,
-            EmployeeDocumentLink.title == OFFER_DOCUMENT_TITLE,
         )
         .order_by(EmployeeDocumentLink.created_at.desc(), EmployeeDocumentLink.id.desc())
         .all()
     )
+    offer_document_link = _get_employee_document_slot(db, employee.id, slot_key=OFFER_DOCUMENT_SLOT)
     scenarios = _available_scenarios_for_employee(db, employee)
     scenario_by_key = {scenario.scenario_key: scenario for scenario in db.query(ScenarioTemplate).all()}
     pending_scheduled_launches = (
@@ -722,6 +1055,11 @@ def _build_employee_detail_payload(db: Session, employee: Employee) -> dict:
         .order_by(FlowLaunchRequest.requested_at.asc(), FlowLaunchRequest.id.asc())
         .all()
     )
+    pending_scheduled_launches = [
+        launch_request
+        for launch_request in pending_scheduled_launches
+        if not _is_internal_followup_request(launch_request)
+    ]
     manual_launch_history = (
         db.query(FlowLaunchRequest)
         .filter(
@@ -732,10 +1070,7 @@ def _build_employee_detail_payload(db: Session, employee: Employee) -> dict:
         .order_by(FlowLaunchRequest.processed_at.desc(), FlowLaunchRequest.id.desc())
         .all()
     )
-    employee_role_values = list(EMPLOYEE_ROLE_VALUES)
-    current_position = (employee.desired_position or "").strip()
-    if current_position and current_position not in employee_role_values:
-        employee_role_values.append(current_position)
+    employee_role_values = employee_position_values(db, current_value=employee.desired_position or "")
 
     today = datetime.now().date()
     list_kind = _employee_list_kind(employee)
@@ -768,6 +1103,8 @@ def _build_employee_detail_payload(db: Session, employee: Employee) -> dict:
             "manager_employee_id": str(employee.manager_employee_id or ""),
             "mentor_adaptation_employee_id": str(employee.mentor_adaptation_employee_id or ""),
             "mentor_ipr_employee_id": str(employee.mentor_ipr_employee_id or ""),
+            "is_manager": bool(employee.is_manager),
+            "is_mentor": bool(employee.is_mentor),
             "adaptation_tasks_url": employee.adaptation_tasks_url or "",
             "adaptation_feedback_url": employee.adaptation_feedback_url or "",
             "adaptation_midpoint": employee.adaptation_midpoint.isoformat() if employee.adaptation_midpoint else "",
@@ -791,13 +1128,30 @@ def _build_employee_detail_payload(db: Session, employee: Employee) -> dict:
             ],
             "candidate_work_stage_values": [
                 {"value": value, "label": label}
-                for value, label in CANDIDATE_WORK_STAGE_VALUES.items()
+                for value, label in VISIBLE_CANDIDATE_WORK_STAGE_VALUES.items()
             ],
             "staff_employee_values": _staff_employee_options(db, employee.id),
+            "manager_employee_values": _staff_employee_options_by_flag(
+                db,
+                current_employee_id=employee.id,
+                role_flag="is_manager",
+                selected_employee_ids=[employee.manager_employee_id] if employee.manager_employee_id else [],
+            ),
+            "mentor_employee_values": _staff_employee_options_by_flag(
+                db,
+                current_employee_id=employee.id,
+                role_flag="is_mentor",
+                selected_employee_ids=[
+                    value
+                    for value in [employee.mentor_adaptation_employee_id, employee.mentor_ipr_employee_id]
+                    if value
+                ],
+            ),
             "scenarios": [{"value": scenario.scenario_key, "label": scenario.title} for scenario in scenarios],
         },
         "files": [_serialize_employee_file(file_row, employee.id, bool(primary_chat_id)) for file_row in employee_files],
         "document_links": [_serialize_document_link(link_row, employee.id) for link_row in employee_document_links],
+        "offer_document": _serialize_document_link(offer_document_link, employee.id) if offer_document_link else None,
         "scheduled_launches": [
             _serialize_launch_request(launch_request, scenario_by_key, employee.id)
             for launch_request in pending_scheduled_launches
@@ -807,5 +1161,3 @@ def _build_employee_detail_payload(db: Session, employee: Employee) -> dict:
             for launch_request in manual_launch_history
         ],
     }
-
-

@@ -2,7 +2,7 @@
 title: Survey flow separation from scenario flow
 date: 2026-06-09
 status: accepted
-doc_type: decision
+doc_type: adr
 area: surveys
 related:
   - "[[project_state]]"

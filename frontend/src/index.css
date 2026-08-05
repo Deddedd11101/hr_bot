@@ -56,6 +56,7 @@
     --radius: 0.875rem;
     --admin-page-max-width: 1820px;
     --admin-page-radius: var(--radius-xl);
+    --select-content-max-height: 18rem;
 
     --background: oklch(0.985 0.001 106.4);
     --foreground: oklch(0.213 0.006 91.6);
@@ -206,6 +207,95 @@
 
   .admin-page-surface {
     border-radius: var(--admin-page-radius);
+  }
+
+  [data-slot="select-content"] {
+    max-height: min(var(--available-height, var(--select-content-max-height)), var(--select-content-max-height));
+    scrollbar-color: color-mix(in oklch, var(--muted-foreground) 42%, transparent) transparent;
+    scrollbar-gutter: stable;
+    scrollbar-width: thin;
+  }
+
+  [data-slot="select-content"]::-webkit-scrollbar {
+    width: 0.625rem;
+  }
+
+  [data-slot="select-content"]::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  [data-slot="select-content"]::-webkit-scrollbar-thumb {
+    background-color: color-mix(in oklch, var(--muted-foreground) 30%, transparent);
+    border: 0.1875rem solid transparent;
+    border-radius: var(--radius-full);
+    background-clip: content-box;
+  }
+
+  [data-slot="select-content"]::-webkit-scrollbar-thumb:hover {
+    background-color: color-mix(in oklch, var(--muted-foreground) 48%, transparent);
+  }
+
+  .scenario-graph-shell {
+    --xy-node-border-default: var(--border);
+    --xy-edge-stroke-default: color-mix(in oklch, var(--muted-foreground) 58%, transparent);
+    --xy-edge-stroke-selected-default: var(--primary);
+    --xy-attribution-background-color-default: transparent;
+    --xy-controls-button-background-color-default: var(--card);
+    --xy-controls-button-background-color-hover-default: var(--muted);
+    --xy-controls-button-color-default: var(--foreground);
+    --xy-controls-button-border-color-default: var(--border);
+    --xy-background-color-default: transparent;
+    --xy-background-pattern-dots-color-default: color-mix(in oklch, var(--muted-foreground) 26%, transparent);
+  }
+
+  .scenario-graph-node {
+    border-color: var(--border);
+  }
+
+  .scenario-graph-node-selected {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px color-mix(in oklch, var(--primary) 24%, transparent);
+  }
+
+  .scenario-graph-node-placeholder {
+    color: var(--muted-foreground);
+  }
+
+  .scenario-graph-handle {
+    width: 0.45rem;
+    height: 0.45rem;
+    border-color: var(--card);
+    background: var(--primary);
+  }
+
+  .scenario-graph-edge path {
+    stroke-width: 1.75;
+  }
+
+  .scenario-graph-edge-branch_option path {
+    stroke: var(--primary);
+  }
+
+  .scenario-graph-edge-return_to_root path {
+    stroke: var(--warning);
+    stroke-dasharray: 6 5;
+  }
+
+  .scenario-graph-edge-launch_scenario path {
+    stroke: var(--info);
+    stroke-width: 2;
+  }
+
+  .scenario-graph-shell .react-flow__edge-textbg {
+    fill: var(--card);
+    stroke: var(--border);
+    stroke-width: 1;
+  }
+
+  .scenario-graph-shell .react-flow__edge-text {
+    fill: var(--foreground);
+    font-size: 11px;
+    font-weight: 600;
   }
 }
 

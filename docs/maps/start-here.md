@@ -24,8 +24,10 @@ source_of_truth: false
 1. [[README]] — карта vault и правила чтения.
 2. [[project_state]] — текущее состояние проекта, риски и ближайшие приоритеты.
 3. [[backlog]] — канонический список задач и статусов.
-4. [[architecture]] — runtime topology и boundaries.
-5. [[documentation-standard]] — формат документов, Properties и Obsidian practices.
+4. [[inventory]] — классификация docs, source-of-truth статус и риски устаревания.
+5. [[documentation-workflow]] — когда docs нужны, когда не нужны, и куда писать.
+6. [[architecture]] — runtime topology и boundaries.
+7. [[documentation-standard]] — формат документов, Properties и Obsidian practices.
 
 ## По задаче
 
@@ -36,6 +38,8 @@ source_of_truth: false
 - Локальный запуск: [[local-runbook]]
 - Deploy/config: [[stage-deploy]], [[configuration]]
 - Данные/API: [[data-model]], [[api]], [[web-surface]]
+- Аудит документации: [[inventory]]
+- Правила обновления docs: [[documentation-workflow]]
 - История решений: `decisions/`
 - Контекст передачи: `handoffs/`
 

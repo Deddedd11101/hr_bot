@@ -4,8 +4,9 @@ from functools import lru_cache
 from dotenv import load_dotenv
 
 
-# .env имеет приоритет над переменными окружения shell, чтобы удобно было демить
-load_dotenv(override=True)
+# По умолчанию runtime env (systemd, shell, CI secrets) важнее локального .env.
+# Для локального демо можно явно включить DOTENV_OVERRIDE=true.
+load_dotenv(override=os.getenv("DOTENV_OVERRIDE", "false").lower() in {"1", "true", "yes"})
 
 
 class Settings:
@@ -16,6 +17,7 @@ class Settings:
 
     # Telegram
     TELEGRAM_BOT_TOKEN: str = os.getenv("TELEGRAM_BOT_TOKEN", "")
+    TELEGRAM_PROXY_URL: str = os.getenv("TELEGRAM_PROXY_URL", "")
 
     # Таймзона для расписания (для простоты — системная)
     TIMEZONE: str = os.getenv("TIMEZONE", "Europe/Moscow")
@@ -41,6 +43,8 @@ class Settings:
 
     # Сессии админки
     ADMIN_SESSION_SECRET: str = os.getenv("ADMIN_SESSION_SECRET", "change-me-admin-session-secret")
+    ADMIN_SESSION_MAX_AGE_SECONDS: int = int(os.getenv("ADMIN_SESSION_MAX_AGE_SECONDS", str(60 * 60 * 12)))
+    ADMIN_SESSION_COOKIE_SECURE: bool = os.getenv("ADMIN_SESSION_COOKIE_SECURE", "false").lower() in {"1", "true", "yes"}
 
     # Базовые аккаунты админки
     DEFAULT_ADMIN_LOGIN: str = os.getenv("DEFAULT_ADMIN_LOGIN", "admin")

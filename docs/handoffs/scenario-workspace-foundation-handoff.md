@@ -2,7 +2,12 @@
 title: Передача контекста по foundation scenario workspace
 date: 2026-04-09
 status: archived
+doc_type: handoff
+area: frontend
 task_tokens: []
+related:
+  - "[[lld/classic-to-react-admin-migration]]"
+source_of_truth: false
 ---
 
 # Передача контекста по foundation scenario workspace

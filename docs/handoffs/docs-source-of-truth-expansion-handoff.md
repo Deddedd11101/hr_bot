@@ -2,8 +2,14 @@
 title: Передача контекста по расширению source of truth документации
 date: 2026-05-11
 status: active
+doc_type: handoff
+area: docs
 task_tokens:
   - HRB-DOC-02
+related:
+  - "[[README]]"
+  - "[[documentation-standard]]"
+source_of_truth: false
 ---
 
 # Передача контекста по расширению source of truth документации

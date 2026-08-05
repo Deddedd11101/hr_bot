@@ -1,14 +1,15 @@
 import * as React from "react";
 import {
   ArrowUpDown,
+  BadgeCheck,
   BriefcaseBusiness,
   FileClock,
   LayoutGrid,
+  ListFilter,
   List,
   MessageCircle,
   Plus,
   Search,
-  Sparkles,
   Users,
   X,
 } from "lucide-react";
@@ -223,7 +224,7 @@ export function EmployeesListPage({
           <div className="flex flex-wrap items-center gap-2">
             <MetaChip icon={<Users className="size-3.5" />} label={`${stats.total} всего`} />
             <MetaChip icon={<MessageCircle className="size-3.5" />} label={`${stats.withChannel} с каналом`} />
-            <MetaChip icon={<Sparkles className="size-3.5" />} label={`${visibleItems.length} в выдаче`} />
+            <MetaChip icon={<ListFilter className="size-3.5" />} label={`${visibleItems.length} в выдаче`} />
             <Button size="sm" onClick={() => setCreating((prev) => !prev)}>
               {creating ? <X data-icon="inline-start" /> : <Plus data-icon="inline-start" />}
               {creating ? "Закрыть" : "Добавить"}
@@ -233,7 +234,7 @@ export function EmployeesListPage({
 
         {creating ? (
           <div
-            className="mb-4 grid items-end gap-3 rounded-lg border border-border bg-muted/50 p-3 [grid-template-columns:repeat(auto-fit,minmax(180px,1fr))]"
+            className="mb-4 flex flex-wrap items-end gap-2 rounded-lg border border-border bg-muted/45 p-3"
           >
             <SinglePicker
               value={form.list_kind}
@@ -247,6 +248,7 @@ export function EmployeesListPage({
                 }))
               }
               icon={<Plus className="size-4 opacity-70" />}
+              className="w-[180px] min-w-[180px]"
             />
             <SinglePicker
               value={form.list_kind === "candidates" ? form.candidate_work_stage : form.employee_stage}
@@ -259,8 +261,10 @@ export function EmployeesListPage({
                 )
               }
               icon={<BriefcaseBusiness className="size-4 opacity-70" />}
+              className="w-[210px] min-w-[210px]"
             />
             <Input
+              className="w-[280px] flex-none"
               placeholder="ФИО"
               value={form.full_name}
               onChange={(event) => setForm((prev) => ({ ...prev, full_name: event.target.value }))}
@@ -291,7 +295,7 @@ export function EmployeesListPage({
             value={statusFilter}
             options={statusOptions(listKind)}
             onChange={setStatusFilter}
-            icon={listKind === "candidates" ? <FileClock className="size-4 opacity-70" /> : <Sparkles className="size-4 opacity-70" />}
+            icon={listKind === "candidates" ? <FileClock className="size-4 opacity-70" /> : <BadgeCheck className="size-4 opacity-70" />}
           />
           <SinglePicker
             value={sortMode}

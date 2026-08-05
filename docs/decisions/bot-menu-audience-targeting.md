@@ -2,7 +2,7 @@
 title: Bot menu audience targeting
 date: 2026-06-08
 status: accepted
-doc_type: decision
+doc_type: adr
 area: bot
 task_tokens:
   - HRB-P1-07

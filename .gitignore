@@ -20,9 +20,13 @@ exports/
 stage_snapshots/
 .codex-artifacts/
 .edge-debug/
+.ruff_cache/
 .tmp_pycache/
 tmp_*.png
 tmp_*.db
+*.db-wal
+*.db-shm
+*.db-journal
 
 # Editor / OS noise
 .idea/

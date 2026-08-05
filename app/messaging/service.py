@@ -5,15 +5,18 @@ from typing import Literal, NamedTuple, Optional
 from sqlalchemy.orm import Session
 
 from ..flow_templates import EMPLOYEE_SCOPE_CANDIDATES, EMPLOYEE_SCOPE_EMPLOYEES
-from ..mass_targeting import ROLE_SCOPE_TO_POSITION
 from ..models import BotMenuButton, BotMenuSet, DocumentLibraryItem, Employee, EmployeeFile, HrSettings, ScenarioTemplate
 from ..notifications import notify_hr_test_task_received
+from ..positions import position_matches_scope
 from ..scenario_engine import (
     SCENARIO_BACK_BUTTON_TEXT,
+    DATE_CALLBACK_PREFIX,
     handle_back_response,
     handle_button_response_by_step_id,
+    handle_date_response_by_step_id,
     handle_file_response,
     handle_text_response,
+    matches_role_scope,
     start_scenario,
 )
 from ..time_utils import utc_now
@@ -30,11 +33,14 @@ from .identity import (
 
 UNKNOWN_USER_TEXT = "Ваш аккаунт пока не привязан к HR-боту. Обратитесь в HR."
 BLOCKED_USER_TEXT = "Доступ к HR-боту отключен. Обратитесь в HR."
+MENU_BACK_BUTTON_TEXT = "Назад"
+MENU_HOME_BUTTON_TEXT = "Главное меню"
 
 
 class InboundAccess(NamedTuple):
     employee: Optional[Employee]
     state: Literal["ok", "unknown", "blocked"]
+    newly_linked: bool = False
 
 
 def detect_category_from_caption(caption: Optional[str]) -> str:
@@ -52,9 +58,11 @@ def detect_category_from_caption(caption: Optional[str]) -> str:
     return "candidate_file"
 
 
-def _sync_employee_after_inbound(db: Session, employee: Employee, chat_user_id: str, username: Optional[str]) -> None:
+def _sync_employee_after_inbound(db: Session, employee: Employee, chat_user_id: str, username: Optional[str]) -> bool:
     changed = False
-    if get_public_chat_handle(employee, db=db) != username:
+    had_primary_chat_id = bool(get_primary_chat_id(employee, db=db))
+    normalized_username = username.strip() if isinstance(username, str) and username.strip() else None
+    if get_public_chat_handle(employee, db=db) != normalized_username:
         set_public_chat_handle(employee, username, db=db)
         changed = True
     if get_primary_chat_id(employee, db=db) != chat_user_id:
@@ -65,6 +73,23 @@ def _sync_employee_after_inbound(db: Session, employee: Employee, chat_user_id: 
         changed = True
     if changed:
         db.commit()
+    return not had_primary_chat_id and bool(get_primary_chat_id(employee, db=db))
+
+
+def _registration_scenario(db: Session, employee: Employee) -> Optional[ScenarioTemplate]:
+    scenarios = (
+        db.query(ScenarioTemplate)
+        .filter(
+            ScenarioTemplate.trigger_mode == "bot_registration",
+            ScenarioTemplate.scenario_kind == "scenario",
+        )
+        .order_by(ScenarioTemplate.sort_order.asc(), ScenarioTemplate.id.asc())
+        .all()
+    )
+    for scenario in scenarios:
+        if scenario and matches_role_scope(employee, scenario):
+            return scenario
+    return None
 
 
 def default_menu_set(db: Session) -> Optional[BotMenuSet]:
@@ -72,6 +97,38 @@ def default_menu_set(db: Session) -> Optional[BotMenuSet]:
     if hr_settings and hr_settings.default_menu_set_id:
         return db.get(BotMenuSet, hr_settings.default_menu_set_id)
     return db.query(BotMenuSet).order_by(BotMenuSet.sort_order, BotMenuSet.id).first()
+
+
+def _audience_default_menu_set(db: Session, employee: Employee) -> Optional[BotMenuSet]:
+    hr_settings = db.get(HrSettings, 1)
+    if not hr_settings:
+        return None
+    normalized_employee_stage = (employee.employee_stage or "").strip()
+    if normalized_employee_stage == "candidate" and hr_settings.default_candidate_menu_set_id:
+        return db.get(BotMenuSet, hr_settings.default_candidate_menu_set_id)
+    if normalized_employee_stage != "candidate" and hr_settings.default_employee_menu_set_id:
+        return db.get(BotMenuSet, hr_settings.default_employee_menu_set_id)
+    return None
+
+
+def _deserialize_menu_path(employee: Employee) -> list[int]:
+    raw_value = (employee.current_menu_path or "").strip()
+    if not raw_value:
+        return []
+    result: list[int] = []
+    for item in raw_value.split(","):
+        item = item.strip()
+        if not item.isdigit():
+            continue
+        value = int(item)
+        if value not in result:
+            result.append(value)
+    return result
+
+
+def _serialize_menu_path(path_ids: list[int]) -> str | None:
+    normalized = [str(value) for value in path_ids if int(value) > 0]
+    return ",".join(normalized) if normalized else None
 
 
 def _deserialize_menu_target_employee_ids(menu_set: BotMenuSet) -> list[int]:
@@ -105,8 +162,7 @@ def menu_set_matches_employee(employee: Employee, menu_set: BotMenuSet) -> bool:
 
     normalized_role_scope = (menu_set.role_scope or "all").strip()
     if normalized_role_scope and normalized_role_scope != "all":
-        target_position = ROLE_SCOPE_TO_POSITION.get(normalized_role_scope)
-        if not target_position or (employee.desired_position or "").strip() != target_position:
+        if not position_matches_scope(employee.desired_position, normalized_role_scope):
             return False
 
     return True
@@ -135,15 +191,49 @@ def resolve_menu_set(db: Session, employee: Employee) -> Optional[BotMenuSet]:
     return max(matching_sets, key=lambda item: _menu_set_score(employee, item, default_menu_set_id))
 
 
+def resolve_root_menu_set(db: Session, employee: Employee) -> Optional[BotMenuSet]:
+    candidate = _audience_default_menu_set(db, employee)
+    if candidate and menu_set_matches_employee(employee, candidate):
+        return candidate
+    hr_settings = db.get(HrSettings, 1)
+    if hr_settings and hr_settings.default_menu_set_id:
+        candidate = db.get(BotMenuSet, hr_settings.default_menu_set_id)
+        if candidate and menu_set_matches_employee(employee, candidate):
+            return candidate
+    return resolve_menu_set(db, employee)
+
+
+def set_current_menu_set(
+    db: Session,
+    employee: Employee,
+    menu_set: Optional[BotMenuSet],
+    *,
+    path_ids: Optional[list[int]] = None,
+) -> Optional[BotMenuSet]:
+    employee.current_menu_set_id = menu_set.id if menu_set else None
+    if menu_set is None:
+        employee.current_menu_path = None
+    else:
+        next_path = path_ids[:] if path_ids else [menu_set.id]
+        if not next_path or next_path[-1] != menu_set.id:
+            next_path.append(menu_set.id)
+        employee.current_menu_path = _serialize_menu_path(next_path)
+    db.commit()
+    return menu_set
+
+
 def current_menu_set(db: Session, employee: Employee) -> Optional[BotMenuSet]:
     if employee.current_menu_set_id:
         current_set = db.get(BotMenuSet, employee.current_menu_set_id)
         if current_set and menu_set_matches_employee(employee, current_set):
+            current_path = _deserialize_menu_path(employee)
+            if not current_path or current_path[-1] != current_set.id:
+                employee.current_menu_path = _serialize_menu_path([current_set.id])
+                db.commit()
             return current_set
-    next_set = resolve_menu_set(db, employee)
+    next_set = resolve_root_menu_set(db, employee)
     if next_set:
-        employee.current_menu_set_id = next_set.id
-        db.commit()
+        set_current_menu_set(db, employee, next_set, path_ids=[next_set.id])
     return next_set
 
 
@@ -157,7 +247,14 @@ def menu_button_labels(db: Session, employee: Employee) -> list[str]:
         .order_by(BotMenuButton.sort_order, BotMenuButton.id)
         .all()
     )
-    return [button.label.strip() for button in buttons if button.label.strip()]
+    labels = [button.label.strip() for button in buttons if button.label.strip()]
+    root_set = resolve_root_menu_set(db, employee)
+    current_path = _deserialize_menu_path(employee)
+    if len(current_path) > 1:
+        labels.append(MENU_BACK_BUTTON_TEXT)
+    if root_set and menu_set.id != root_set.id:
+        labels.append(MENU_HOME_BUTTON_TEXT)
+    return labels
 
 
 async def send_menu(messenger: MessengerClient, db: Session, employee: Employee, text: str) -> None:
@@ -168,6 +265,43 @@ async def send_menu(messenger: MessengerClient, db: Session, employee: Employee,
     if not labels:
         return
     await messenger.send_menu(chat_id=chat_id, text=text, buttons=labels)
+
+
+async def show_main_menu(messenger: MessengerClient, db: Session, employee: Employee, text: str) -> bool:
+    root_set = resolve_root_menu_set(db, employee)
+    if not root_set:
+        return False
+    set_current_menu_set(db, employee, root_set, path_ids=[root_set.id])
+    await send_menu(messenger, db, employee, text)
+    return True
+
+
+async def handle_menu_navigation(messenger: MessengerClient, db: Session, employee: Employee, text: str) -> bool:
+    normalized = text.strip()
+    if normalized == MENU_HOME_BUTTON_TEXT:
+        return await show_main_menu(messenger, db, employee, "Открыто главное меню.")
+    if normalized != MENU_BACK_BUTTON_TEXT:
+        return False
+
+    current_set = current_menu_set(db, employee)
+    if not current_set:
+        return False
+    path_ids = _deserialize_menu_path(employee)
+    if len(path_ids) <= 1:
+        return await show_main_menu(messenger, db, employee, "Вы уже в главном меню.")
+
+    previous_set_id = path_ids[-2]
+    previous_set = db.get(BotMenuSet, previous_set_id)
+    if not previous_set or not menu_set_matches_employee(employee, previous_set):
+        return await show_main_menu(
+            messenger,
+            db,
+            employee,
+            "Предыдущий раздел больше недоступен. Открываю главное меню.",
+        )
+    set_current_menu_set(db, employee, previous_set, path_ids=path_ids[:-1])
+    await send_menu(messenger, db, employee, previous_set.description or f"Открыт раздел «{previous_set.title}».")
+    return True
 
 
 async def handle_menu_button(messenger: MessengerClient, db: Session, employee: Employee, text: str) -> bool:
@@ -206,8 +340,14 @@ async def handle_menu_button(messenger: MessengerClient, db: Session, employee: 
         if not menu_set_matches_employee(employee, target_set):
             await send_menu(messenger, db, employee, "Этот раздел меню вам недоступен.")
             return True
-        employee.current_menu_set_id = target_set.id
-        db.commit()
+        current_path = _deserialize_menu_path(employee)
+        if not current_path or current_path[-1] != menu_set.id:
+            current_path = [menu_set.id]
+        if target_set.id in current_path:
+            next_path = current_path[: current_path.index(target_set.id) + 1]
+        else:
+            next_path = current_path + [target_set.id]
+        set_current_menu_set(db, employee, target_set, path_ids=next_path)
         await send_menu(messenger, db, employee, target_set.description or f"Открыт раздел «{target_set.title}».")
         return True
 
@@ -244,14 +384,14 @@ async def handle_menu_button(messenger: MessengerClient, db: Session, employee: 
 def resolve_inbound_access(db: Session, chat_user_id: str, username: Optional[str]) -> InboundAccess:
     employee = find_employee_by_channel_user_id(db, channel="telegram", external_user_id=chat_user_id)
     if employee:
-        _sync_employee_after_inbound(db, employee, chat_user_id, username)
-        return InboundAccess(employee, "blocked" if employee.is_bot_blocked else "ok")
+        newly_linked = _sync_employee_after_inbound(db, employee, chat_user_id, username)
+        return InboundAccess(employee, "blocked" if employee.is_bot_blocked else "ok", newly_linked)
 
     employee = find_employee_by_public_chat_handle(db, channel="telegram", external_username=username)
     if employee:
-        _sync_employee_after_inbound(db, employee, chat_user_id, username)
-        return InboundAccess(employee, "blocked" if employee.is_bot_blocked else "ok")
-    return InboundAccess(None, "unknown")
+        newly_linked = _sync_employee_after_inbound(db, employee, chat_user_id, username)
+        return InboundAccess(employee, "blocked" if employee.is_bot_blocked else "ok", newly_linked)
+    return InboundAccess(None, "unknown", False)
 
 
 def get_or_create_employee_by_chat(db: Session, chat_user_id: str, username: Optional[str]) -> tuple[Optional[Employee], bool]:
@@ -277,7 +417,11 @@ async def handle_start_command(messenger: MessengerClient, db: Session, chat_use
         chat_id=chat_user_id,
         text="Привет! Я HR-бот.",
     )
-    await send_menu(messenger, db, employee, "Меню обновлено. Выберите действие.")
+    if access.newly_linked:
+        scenario = _registration_scenario(db, employee)
+        if scenario and await start_scenario(messenger, db, employee, scenario.scenario_key):
+            return
+    await show_main_menu(messenger, db, employee, "Меню обновлено. Выберите действие.")
 
 
 async def save_incoming_file(
@@ -347,6 +491,8 @@ async def handle_text_event(
     handled = await handle_text_response(messenger, db, employee, type("MessageStub", (), {"text": text})())
     if handled:
         return "handled"
+    if await handle_menu_navigation(messenger, db, employee, text):
+        return "handled"
     if await handle_menu_button(messenger, db, employee, text):
         return "handled"
     return "ignored"
@@ -371,6 +517,35 @@ async def handle_button_event(
         option_index,
     )
     return "handled" if handled else "ignored"
+
+
+async def handle_date_event(
+    messenger: MessengerClient,
+    db: Session,
+    chat_user_id: str,
+    username: Optional[str],
+    callback_data: str,
+) -> tuple[Literal["handled", "ignored", "unknown", "blocked"], object | None]:
+    access = resolve_inbound_access(db, chat_user_id, username)
+    if access.state != "ok" or access.employee is None:
+        return access.state, None
+    if not callback_data.startswith(DATE_CALLBACK_PREFIX):
+        return "ignored", None
+    parts = callback_data.split(":", 4)
+    if len(parts) != 5:
+        return "ignored", None
+    _, _, step_id_raw, action, value = parts
+    if not step_id_raw.isdigit():
+        return "ignored", None
+    result = await handle_date_response_by_step_id(
+        messenger,
+        db,
+        access.employee,
+        int(step_id_raw),
+        action,
+        value,
+    )
+    return ("handled" if result.handled else "ignored"), result
 
 
 async def handle_back_event(

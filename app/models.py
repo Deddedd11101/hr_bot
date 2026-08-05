@@ -29,6 +29,11 @@ class Employee(Base):
         nullable=True,
         doc="Текущий набор кнопок чат-бота, показанный пользователю.",
     )
+    current_menu_path: Mapped[Optional[str]] = mapped_column(
+        String(1024),
+        nullable=True,
+        doc="Стек открытых наборов меню чат-бота для навигации назад.",
+    )
     first_workday: Mapped[Optional[date]] = mapped_column(
         Date,
         nullable=True,
@@ -60,6 +65,18 @@ class Employee(Base):
         String(255),
         nullable=True,
         doc="Рабочие часы сотрудника.",
+    )
+    is_manager: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        doc="Может ли сотрудник выступать руководителем для других сотрудников.",
+    )
+    is_mentor: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        doc="Может ли сотрудник выступать наставником для других сотрудников.",
     )
     profile_photo_path: Mapped[Optional[str]] = mapped_column(
         String(1024),
@@ -170,6 +187,19 @@ class Employee(Base):
     )
 
 
+class Position(Base):
+    """Управляемый справочник должностей."""
+
+    __tablename__ = "positions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    slug: Mapped[str] = mapped_column(String(128), nullable=False, unique=True, index=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+
+
 class EmployeeMessengerAccount(Base):
     """Канал связи сотрудника в конкретном мессенджере."""
 
@@ -247,7 +277,7 @@ class FlowLaunchRequest(Base):
         String(32),
         nullable=False,
         default="manual",
-        doc="manual | scheduled",
+        doc="manual | scheduled | status_transition",
     )
     skip_step_key: Mapped[Optional[str]] = mapped_column(
         String(128),
@@ -293,8 +323,11 @@ class EmployeeDocumentLink(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     employee_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    slot_key: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     url: Mapped[str] = mapped_column(String(2048), nullable=False)
+    item_kind: Mapped[str] = mapped_column(String(16), nullable=False, default="link")
+    employee_file_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
 
 
@@ -337,6 +370,8 @@ class HrSettings(Base):
     notify_test_task_received: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     notify_user_actions: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     default_menu_set_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    default_employee_menu_set_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    default_candidate_menu_set_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
 
@@ -500,7 +535,12 @@ class ScenarioTemplate(Base):
         String(64),
         nullable=False,
         default="manual_only",
-        doc="manual_only | bot_registration | scenario_transition | first_workday | first_week_friday | mid_probation | end_probation",
+        doc="manual_only | bot_registration | scenario_transition | candidate_hr_stage | first_workday | first_week_friday | mid_probation | end_probation",
+    )
+    candidate_work_stage_trigger: Mapped[Optional[str]] = mapped_column(
+        String(64),
+        nullable=True,
+        doc="Опциональный HR-статус кандидата, который запускает сценарий при trigger_mode=candidate_hr_stage.",
     )
     target_employee_id: Mapped[Optional[int]] = mapped_column(
         Integer,
@@ -561,6 +601,11 @@ class FlowStepTemplate(Base):
         String(64),
         nullable=True,
         doc="Какой сценарий запускать для перехода из ветки.",
+    )
+    return_to_step_key: Mapped[Optional[str]] = mapped_column(
+        String(128),
+        nullable=True,
+        doc="Ключ root-step того же сценария, к которому ветка должна вернуться после завершения.",
     )
     attachment_path: Mapped[Optional[str]] = mapped_column(
         String(1024),
@@ -645,6 +690,11 @@ class ScenarioProgress(Base):
         String(4096),
         nullable=True,
         doc="История интерактивных шагов через перевод строки для отката назад.",
+    )
+    response_undo_history: Mapped[Optional[str]] = mapped_column(
+        String(16384),
+        nullable=True,
+        doc="JSON-стек снимков последнего подтвержденного ответа для rollback по кнопке назад.",
     )
     waiting_for_response: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     is_completed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)

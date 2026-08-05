@@ -4,11 +4,11 @@ import {
   ArrowRight,
   Bot,
   CalendarClock,
+  ClipboardList,
   FileDown,
   Inbox,
   MessageCircle,
   Settings,
-  Sparkles,
   Users,
   Workflow,
 } from "lucide-react";
@@ -62,7 +62,7 @@ const statCards: StatCard[] = [
 
 const moduleIcons: Record<string, React.ComponentType<{ className?: string }>> = {
   employees: Users,
-  bulk_actions: Sparkles,
+  bulk_actions: ClipboardList,
   flows: Workflow,
   surveys: Inbox,
   settings: Settings,

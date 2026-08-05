@@ -31,6 +31,7 @@ source_of_truth: true
 - Схема намеренно ограничена JSON API routes с prefix `/api/*`.
 - Browser surfaces, React bootstrap pages, redirects, classic form handlers, download/export routes и `/login` не включаются в Swagger; их source of truth остается [[web-surface]].
 - API routes группируются по доменным тегам: `Dashboard`, `Employees`, `Flows and surveys`, `Bulk actions`, `Settings`, `Admin accounts`.
+- Shared document library routes живут под `/api/documents/*`; если OpenAPI tags отстают от этого списка, считать route list ниже более точной картой.
 - Swagger UI настроен на collapsed sections, включает client-side filter и сохраняет authorization state в браузере.
 
 Это осознанная граница: Swagger должен быть контрактом для React/admin API и интеграционных проверок, а не полной картой всех HTTP URL приложения.
@@ -153,6 +154,21 @@ source_of_truth: true
 - `accounts`
   - заполняется только для admin user
 
+### Payload documents workspace
+
+Возвращается `/api/documents/workspace` и большинством `/api/documents/*` mutations.
+
+- `items`
+  - shared document library entries;
+  - `item_kind=file|link`;
+  - metadata: `title`, `description`, `category`, `is_active`, `sort_order`;
+  - для links: `external_url`;
+  - для files: `original_filename`, `download_url`, `mime_type`, `file_size`.
+- `categories`
+  - active category list для scaffold/navigation UX.
+- `menu_scaffold`
+  - состояние generated document menu branch, если она есть.
+
 ### Payload bulk actions workspace
 
 Возвращается `/api/bulk-actions/workspace` и bulk mutations.
@@ -194,6 +210,8 @@ source_of_truth: true
 | `POST` | `/api/employees/{employee_id}/files` | Загрузить outbound HR-файл для сотрудника. | Multipart: `upload`, optional `category`, optional `send_to_channel=true|false` | Employee detail payload | Пишет файл в storage, создает `employee_files`, может сразу отправить файл в Telegram | `401`, `404` |
 | `POST` | `/api/employees/{employee_id}/files/{file_id}/send` | Отправить существующий stored file в канал сотрудника. | Path: `employee_id`, `file_id` | Employee detail payload | Отправляет файл в Telegram, если file path существует | `401`, `404`, `400` если нет configured channel или bot token |
 | `DELETE` | `/api/employees/{employee_id}` | Удалить карточку сотрудника или кандидата. | Path: `employee_id` | `{ "redirect_url": "/employees" | "/candidates" }` | Удаляет employee row, files, offer links и employee storage directory | `401`, `404` |
+| `POST` | `/api/employees/{employee_id}/bot-link/reset` | Сбросить Telegram/runtime-привязку карточки для повторного тестового linking. | Path: `employee_id` | Employee detail payload | Очищает Telegram identity/menu/progress и pending launch requests для карточки | `401`, `404` |
+| `POST` | `/api/employees/{employee_id}/document-slots/offer/file` | Загрузить file-backed offer slot. | Multipart: `upload`, optional title/category | Employee detail payload | Создает `employee_files` и `employee_document_links` со `slot_key=offer`, `item_kind=file` | `401`, `404`, `400` |
 
 ## API scenario/survey workspace
 
@@ -231,6 +249,25 @@ source_of_truth: true
 | `POST` | `/api/settings/menu-buttons/{button_id}` | Обновить menu button. | JSON: `label`, `action_type`, optional `scenario_key`, optional `target_menu_set_id` | Settings workspace payload | Обновляет `bot_menu_buttons` | `401`, `404` |
 | `POST` | `/api/settings/menu-buttons/bulk` | Bulk update menu buttons. | JSON: `buttons[]` с `id`, `label`, `action_type`, `scenario_key`, `target_menu_set_id` | Settings workspace payload | Обновляет несколько `bot_menu_buttons` | `401` |
 | `DELETE` | `/api/settings/menu-buttons/{button_id}` | Удалить menu button. | Path: `button_id` | Settings workspace payload | Удаляет одну `bot_menu_buttons` строку | `401`, `404` |
+| `POST` | `/api/settings/bot-menu/broadcast` | Переотправить главное меню всем связанным незаблокированным пользователям. | Нет | `{ workspace, refreshed_count }` | Отправляет Telegram menu через bot messenger | `401`, `400` если bot token не настроен |
+| `GET` | `/api/settings/positions` | Вернуть каталог должностей. | Нет | `{ positions[] }` | Нет | `401` |
+| `POST` | `/api/settings/positions` | Создать должность. | JSON: `title`, optional `slug`, `is_active`, `sort_order` | `{ positions[] }` | Создает или активирует position row | `401`, `400`, `409` |
+| `POST` | `/api/settings/positions/{position_id}` | Обновить должность. | Path: `position_id`; JSON: `title`, `is_active`, `sort_order` | `{ positions[] }` | Обновляет position row | `401`, `404`, `409` |
+| `PATCH` | `/api/settings/positions/{position_id}` | Частично обновить должность. | Path: `position_id`; JSON subset fields | `{ positions[] }` | Обновляет position row | `401`, `404`, `409` |
+| `DELETE` | `/api/settings/positions/{position_id}` | Деактивировать должность. | Path: `position_id` | `{ positions[] }` | Ставит `is_active=false`, физически не удаляет row | `401`, `404` |
+
+## API shared documents workspace
+
+Этот API обслуживает `/app/documents`: общую библиотеку документов и ссылок, которые можно отправлять через bot menu action `send_document`.
+
+| Method | Path | Назначение | Основные inputs | Response | Side effects | Частые errors |
+| --- | --- | --- | --- | --- | --- | --- |
+| `GET` | `/api/documents/workspace` | Вернуть shared document library payload. | Нет | Documents workspace payload | Нет | `401` |
+| `POST` | `/api/documents/links` | Создать shared link document. | JSON: `title`, `external_url`, optional `description`, `category`, `is_active` | Documents workspace payload | Создает `document_library_items` с `item_kind=link` | `401`, `400` |
+| `POST` | `/api/documents/files` | Загрузить shared file document. | Multipart: `upload`, optional `title`, `description`, `category`, `is_active` | Documents workspace payload | Пишет файл в `storage/document_library`, создает `document_library_items` с `item_kind=file` | `401`, `400` |
+| `POST` | `/api/documents/{item_id}` | Обновить metadata shared document. | JSON: `title`, `item_kind`, `external_url`, `description`, `category`, `is_active` | Documents workspace payload | Обновляет `document_library_items`; при переводе file -> link удаляет stored file | `401`, `404`, `400` |
+| `DELETE` | `/api/documents/{item_id}` | Удалить shared document. | Path: `item_id` | Documents workspace payload | Удаляет row и stored file, если item был file-backed | `401`, `404` |
+| `POST` | `/api/documents/menu-scaffold` | Создать или пересобрать document menu branch из категорий. | JSON: optional `root_title`, `mode=create|rebuild` | `{ workspace, created_root_menu_set_id, created_root_menu_title, bot_menu_url }` | Создает/пересобирает generated `bot_menu_sets` с `system_tag` и `send_document` buttons | `401`, `400` |
 
 ## API admin accounts
 
@@ -259,6 +296,7 @@ Immediate endpoints требуют `confirmed=true`; без него возвр�
 | `POST` | `/api/bulk-actions/messages/schedule` | Запланировать массовое сообщение. | JSON: `message_text`, `requested_at`, target fields | `{ message, payload }` | Создает `mass_message_actions` scheduled row | `401`, `400` |
 | `POST` | `/api/bulk-actions/messages/send` | Немедленно отправить массовое сообщение. | JSON: `message_text`, target fields, `confirmed=true` | `{ message, payload }` | Отправляет Telegram messages, пишет manual `mass_message_actions` row | `401`, `400` |
 | `DELETE` | `/api/bulk-actions/scenarios/{action_id}` | Удалить scheduled scenario/survey action. | Path: `action_id` | `{ message, payload }` | Удаляет pending `mass_scenario_actions` row | `401`, `404` |
+| `DELETE` | `/api/bulk-actions/surveys/{action_id}` | Удалить scheduled survey action. | Path: `action_id` | `{ message, payload }` | Удаляет pending `mass_scenario_actions` row с `scenario_kind="survey"` | `401`, `404` |
 | `DELETE` | `/api/bulk-actions/messages/{action_id}` | Удалить scheduled message action. | Path: `action_id` | `{ message, payload }` | Удаляет pending `mass_message_actions` row | `401`, `404` |
 
 ## Важные поведенческие заметки

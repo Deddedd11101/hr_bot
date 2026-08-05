@@ -2,8 +2,15 @@
 title: Runbook деплоя HR Bot на stage
 date: 2026-05-11
 status: active
+doc_type: runbook
+area: deploy
 task_tokens:
   - HRB-DOC-02
+related:
+  - "[[configuration]]"
+  - "[[stage-change-log]]"
+  - "[[local-runbook]]"
+source_of_truth: true
 ---
 
 # Runbook деплоя на stage
@@ -50,8 +57,8 @@ task_tokens:
 
 Текущее поведение deploy:
 
-1. запускается вручную через `workflow_dispatch`;
-2. принимает `ref` — branch, tag или commit SHA; default `ref=stage`;
+1. автоматически ждет successful `CI` на `main` или запускается вручную через `workflow_dispatch`;
+2. для ручного запуска принимает `ref` — branch, tag или commit SHA;
 3. перед SSH выполняет preflight на выбранном ref:
    - `python -m pip install -r requirements.txt`;
    - `python -m compileall app`;
@@ -131,6 +138,16 @@ task_tokens:
     - `http://92.51.38.32:8000/app/employees`;
     - `http://92.51.38.32:8000/app/flows/workspace-v2`.
 
+### Целевой baseline для admin HTTPS
+
+Принятое направление для следующего security/infra шага: купить или назначить домен/поддомен, направить DNS `A` record на `92.51.38.32`, поставить Caddy как HTTPS reverse proxy на `80/443`, проксировать в `127.0.0.1:8000` и закрыть публичный доступ к прямому `:8000`.
+
+После включения HTTPS нужно выставить `ADMIN_SESSION_COOKIE_SECURE=true` и ротировать `ADMIN_SESSION_SECRET`.
+
+VPN-only не выбран как первый шаг: для текущей админки это добавит операционной сложности. При необходимости позже можно добавить IP allowlist или proxy Basic Auth поверх HTTPS.
+
+См. [[decisions/stage-admin-https-baseline]].
+
 ### Где лежит env
 
 - stage bot token и related secrets намеренно не хранятся в git;
@@ -190,18 +207,11 @@ git push origin stage
 
 ### Обычный путь
 
-1. Feature-ветки субагентов влить в `stage`.
-2. Прогнать локальные или CI-проверки на объединенном ref.
-3. Push `stage` в GitHub.
-4. В GitHub Actions запустить `Deploy Stage`:
-   - `Use workflow from`: `main`;
-   - `Git ref to deploy to stage`: `stage`.
-5. Дождаться successful `preflight` и `deploy`.
-6. Подтвердить, что оба systemd services active.
-7. Выполнить smoke checks против stage HTTP surface.
-8. Добавить запись в [[stage-change-log]].
-
-`main` больше не auto-deploy ref. Это осознанно: автоматический deploy `main` может перетереть накопительную `stage`-ветку при параллельной работе.
+1. Merge нужный код в `main`.
+2. Дождаться successful GitHub `CI`.
+3. Дать `Deploy Stage` выполниться автоматически.
+4. Подтвердить, что оба systemd services active.
+5. Выполнить smoke checks против stage HTTP surface.
 
 ### Ручной GitHub Actions deploy
 
@@ -221,7 +231,7 @@ git push origin stage
 8. дождаться successful preflight и deploy jobs;
 9. добавить запись в [[stage-change-log]].
 
-Субагентам нельзя считать интерактивный SSH обязательным или нормальным deploy path. Если workflow `Deploy Stage` доступен, отсутствие root SSH у субагента не является блокером: он должен подготовить pushable ref и передать его интегратору. Детальный протокол описан в [[subagent-delivery]].
+Субагентам нельзя считать интерактивный SSH обязательным или нормальным deploy path. Если workflow `Deploy Stage` доступен, отсутствие root SSH у субагента не является блокером: он должен подготовить pushable ref, влить его в `stage`/integration branch и запустить/запросить запуск workflow.
 
 Если workflow падает на `Stage worktree is dirty`, не делать `git reset --hard` вслепую. Сначала проверить, какие ручные изменения есть на сервере, и решить, что из них надо сохранить.
 
@@ -248,7 +258,7 @@ git push origin stage
 2. выбрать `Deploy Stage`;
 3. нажать `Run workflow`;
 4. выбрать branch, где лежит workflow file, обычно `main`;
-5. в input `ref` указать `stage` или нужный integration ref; для обычной работы не указывать отдельную feature-ветку;
+5. в input `ref` указать `stage` или нужный integration ref;
 6. нажать `Run workflow`;
 7. открыть run и дождаться двух jobs:
    - `preflight`;

@@ -3,6 +3,7 @@ import {
   AlertTriangle,
   CalendarClock,
   ChevronRight,
+  ClipboardList,
   Columns2,
   CircleHelp,
   Download,
@@ -24,6 +25,7 @@ import {
   Shield,
   Sun,
   Trash2,
+  Workflow,
 } from "lucide-react";
 import { Toaster as SonnerToaster, toast } from "sonner";
 
@@ -656,7 +658,10 @@ function BulkActionsPatternExample() {
     <div className="grid gap-4">
       <Card className="border border-border/80 bg-card shadow-none ring-0">
         <CardHeader className="border-b border-border/70 pb-4">
-          <CardTitle className="text-base font-semibold">Audience filters</CardTitle>
+          <CardTitle className="flex items-center gap-2 text-base font-semibold">
+            <ClipboardList data-icon="inline-start" />
+            Audience filters
+          </CardTitle>
           <CardDescription>Select, checkbox groups and preview alert.</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4 pt-5">
@@ -993,6 +998,7 @@ function FoundationsSection() {
 
 function PrimitivesSection() {
   const [selectValue, setSelectValue] = React.useState("review");
+  const [longSelectValue, setLongSelectValue] = React.useState("item-01");
   const [notes, setNotes] = React.useState(
     "Новые страницы должны собираться из shared primitives, а не из локально нарисованных контролов.",
   );
@@ -1003,6 +1009,14 @@ function PrimitivesSection() {
   const [dateValue, setDateValue] = React.useState("");
   const [dateTimeValue, setDateTimeValue] = React.useState("");
   const [timeValue, setTimeValue] = React.useState("");
+  const longSelectItems = React.useMemo(
+    () =>
+      Array.from({ length: 24 }, (_, index) => {
+        const number = String(index + 1).padStart(2, "0");
+        return { value: `item-${number}`, label: `Длинный список ${number}` };
+      }),
+    [],
+  );
 
   return (
     <TooltipProvider>
@@ -1078,12 +1092,32 @@ function PrimitivesSection() {
                     <SelectTrigger id="kit-status" className="w-full">
                       <SelectValue />
                     </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="draft">Draft</SelectItem>
-                      <SelectItem value="review">Review</SelectItem>
-                      <SelectItem value="ready">Ready</SelectItem>
+                    <SelectContent align="start" alignItemWithTrigger={false}>
+                      <SelectGroup>
+                        <SelectItem value="draft">Draft</SelectItem>
+                        <SelectItem value="review">Review</SelectItem>
+                        <SelectItem value="ready">Ready</SelectItem>
+                      </SelectGroup>
                     </SelectContent>
                   </Select>
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="kit-long-select">Длинный список</FieldLabel>
+                  <Select value={longSelectValue} onValueChange={setLongSelectValue} items={longSelectItems}>
+                    <SelectTrigger id="kit-long-select" className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent align="start" alignItemWithTrigger={false}>
+                      <SelectGroup>
+                        {longSelectItems.map((item) => (
+                          <SelectItem value={item.value} key={item.value}>
+                            {item.label}
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                  <FieldDescription>Scrollable after max content height.</FieldDescription>
                 </Field>
               </div>
 
@@ -1449,6 +1483,7 @@ function PatternsSection() {
           body="Rail and overlay navigation."
           checklist={[
             "Dashboard uses LayoutDashboard.",
+            "Bulk actions use ClipboardList.",
             "Bot pages keep bot/message iconography.",
             "Icon-only links keep aria labels.",
           ]}
@@ -1602,7 +1637,10 @@ function PatternsSection() {
               @AVstrkv
             </Badge>
             <Badge variant="secondary">Выход: 19.06.2026</Badge>
-            <Badge variant="secondary">OC от коллег</Badge>
+            <Badge variant="secondary">
+              <Workflow data-icon="inline-start" />
+              OC от коллег
+            </Badge>
           </CardContent>
         </Card>
       </ExampleBlock>

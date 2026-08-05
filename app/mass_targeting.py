@@ -6,6 +6,7 @@ from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
 from .models import Employee
+from .positions import position_titles_for_scope, resolve_scope_slug
 
 
 MASS_TARGET_NONE = "__none__"
@@ -31,13 +32,6 @@ MASS_TARGET_CANDIDATE_STAGE_OPTIONS = {
     "preonboarding",
     "contract",
 }
-ROLE_SCOPE_TO_POSITION = {
-    "designer": "Дизайнер",
-    "project_manager": "Project manager",
-    "analyst": "Аналитик",
-}
-
-
 def _normalize_values(values: list[str], allowed: set[str]) -> list[str]:
     normalized: list[str] = []
     for value in values:
@@ -120,10 +114,11 @@ def mass_target_employee_query(
 
     normalized_role_scope = (target_role_scope or "").strip()
     if normalized_role_scope and normalized_role_scope != "all":
-        target_position = ROLE_SCOPE_TO_POSITION.get(normalized_role_scope)
-        if not target_position:
+        normalized_scope = resolve_scope_slug(normalized_role_scope)
+        target_titles = position_titles_for_scope(db, normalized_scope)
+        if not target_titles:
             return query.filter(Employee.id == -1)
-        query = query.filter(Employee.desired_position == target_position)
+        query = query.filter(Employee.desired_position.in_(target_titles))
 
     normalized_employee_stages = normalize_mass_target_employee_stages(target_employee_stages)
     normalized_candidate_stages = normalize_mass_target_candidate_stages(target_candidate_stages)

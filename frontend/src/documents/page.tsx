@@ -246,10 +246,10 @@ export function DocumentsPage({ apiUrl }: DocumentsPageProps) {
             </Field>
             <Field>
               <FieldLabel>Файл</FieldLabel>
-              <Input
+              <input
                 ref={fileInputRef}
                 type="file"
-                className="sr-only"
+                className="hidden"
                 onChange={(event) => setFileDraft((prev) => ({ ...prev, upload: event.target.files?.[0] || null }))}
               />
               <div className="flex min-w-0 items-center gap-3">

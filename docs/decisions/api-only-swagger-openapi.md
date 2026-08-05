@@ -2,7 +2,7 @@
 title: API-only Swagger/OpenAPI
 date: 2026-06-01
 status: accepted
-doc_type: decision
+doc_type: adr
 area: backend
 related:
   - "../api"

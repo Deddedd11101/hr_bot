@@ -10,7 +10,7 @@ related:
   - "[[decisions/frontend-page-composition-rules]]"
   - "[[lld/classic-to-react-admin-migration]]"
   - "[[features/ui-design-guidelines]]"
-source_of_truth: true
+source_of_truth: false
 ---
 
 # Контекст
@@ -1194,3 +1194,60 @@ source_of_truth: true
 ### Checks
 
 - `npm run build`
+
+## Documents, Bot Menu And Workspace DnD UX - 2026-06-11
+
+### Changed
+
+- Documents file picker now uses a real hidden file input, shows the selected filename, and clears it only after a successful upload.
+- Documents menu scaffold controls moved out of the page header into a compact two-action toolbar.
+- Bot menu set creation moved into a modal.
+- Bot menu now exposes one save action per menu set; it saves the set and its existing buttons through the current JSON endpoints.
+- Bot menu button editor only shows the target field relevant to the selected action type and clears conflicting frontend values when the action changes.
+- Scenario and survey workspace lists now show distinct captured-item and drop-target states during drag-and-drop.
+
+### Screens
+
+- `/app/documents`
+- `/app/bot-menu`
+- `/app/flows/workspace-v2`
+- `/app/surveys/workspace`
+
+### Shared UI API
+
+- No shared component API changed.
+
+### Backend Contract Gaps
+
+- Bot menu has no atomic JSON bulk-save endpoint. The per-set save action is sequential and can partially save if a later request fails.
+- Backend validation must still reject conflicting bot-menu action targets; frontend guards are not a data-integrity boundary.
+- Employee detail autosave versus explicit save remains unresolved and was not changed.
+
+### Checks
+
+- `npm run build`
+- `npx tsc --noEmit` remains blocked by existing project-wide errors in calendar/date-picker/design-system/employee/workspace typings
+- Browser smoke pass completed on documents, bot menu, scenarios, and surveys in light/dark themes; no console errors or horizontal overflow
+- Documents `Выбрать файл` button opens the system file picker; the hidden native input is excluded from keyboard and accessibility navigation
+
+## Scenario And Survey Drag Preview - 2026-06-16
+
+### Changed
+
+- Scenario and survey list drag now uses a compact custom drag preview instead of the browser-rendered full card/list silhouette.
+- Reorder mechanics were not changed; this is a frontend-only visual layer over the existing HTML drag-and-drop flow.
+- Root step/question drag in the central workspace uses the same compact preview.
+
+### Screens
+
+- `/app/flows/workspace-v2`
+- `/app/surveys/workspace`
+
+### Shared UI API
+
+- No shared component API changed.
+
+### Checks
+
+- `npm run build`
+- Browser smoke on scenarios and surveys: page identity, non-empty render, console health, screenshot, and same-item drag gesture

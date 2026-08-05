@@ -23,6 +23,7 @@ from .employees import (
     _build_employee_detail_payload,
     _build_employee_views,
     _create_employee_record,
+    _delete_employee_document_link,
     _delete_employee_record,
     _employee_display_name,
     _employee_identity_conflict_detail,
@@ -32,6 +33,8 @@ from .employees import (
     _is_employee_identity_integrity_error,
     _launch_employee_flow_now,
     _promote_candidate_to_adaptation,
+    _reset_employee_bot_linkage,
+    _save_offer_document_file,
     _save_offer_document_link,
     _schedule_employee_flow_request,
     _send_file_to_telegram,
@@ -118,6 +121,8 @@ def update_employee(
     birth_date: str = Form(""),
     work_email: str = Form(""),
     work_hours: str = Form(""),
+    is_manager: str = Form("false"),
+    is_mentor: str = Form("false"),
     manager_employee_id: str = Form(""),
     mentor_adaptation_employee_id: str = Form(""),
     mentor_ipr_employee_id: str = Form(""),
@@ -153,6 +158,8 @@ def update_employee(
             birth_date=birth_date,
             work_email=work_email,
             work_hours=work_hours,
+            is_manager=is_manager == "true",
+            is_mentor=is_mentor == "true",
             manager_employee_id=manager_employee_id,
             mentor_adaptation_employee_id=mentor_adaptation_employee_id,
             mentor_ipr_employee_id=mentor_ipr_employee_id,
@@ -498,8 +505,7 @@ def delete_employee_document_link(
     link_row = db.get(EmployeeDocumentLink, link_id)
     if not link_row or link_row.employee_id != employee_id:
         return _employee_edit_redirect(employee_id, "Ссылка на документ не найдена.", "error")
-    db.delete(link_row)
-    db.commit()
+    _delete_employee_document_link(db, link_row)
     return _employee_edit_redirect(employee_id, "Ссылка на документ удалена.", "success")
 
 
@@ -600,6 +606,8 @@ def update_employee_api(
             birth_date=str(payload.get("birth_date") or ""),
             work_email=str(payload.get("work_email") or ""),
             work_hours=str(payload.get("work_hours") or ""),
+            is_manager=bool(payload.get("is_manager")),
+            is_mentor=bool(payload.get("is_mentor")),
             manager_employee_id=str(payload.get("manager_employee_id") or ""),
             mentor_adaptation_employee_id=str(payload.get("mentor_adaptation_employee_id") or ""),
             mentor_ipr_employee_id=str(payload.get("mentor_ipr_employee_id") or ""),
@@ -653,6 +661,34 @@ def create_employee_document_link_api(
     }
 
 
+@router.post("/api/employees/{employee_id}/document-slots/offer/file")
+async def upload_offer_document_file_api(
+    request: Request,
+    employee_id: int,
+    upload: UploadFile = File(...),
+    db: Session = Depends(get_db),
+):
+    require_api_auth(request)
+    employee = db.get(Employee, employee_id)
+    if not employee:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Сотрудник не найден")
+    filename = (upload.filename or "").strip() or "offer.bin"
+    content = await upload.read()
+    if not content:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Выберите файл оффера.")
+    link_row = _save_offer_document_file(
+        db,
+        employee,
+        filename=filename,
+        content=content,
+        mime_type=upload.content_type,
+    )
+    return {
+        "item": _serialize_document_link(link_row, employee_id),
+        "payload": _build_employee_detail_payload(db, employee),
+    }
+
+
 @router.delete("/api/employees/{employee_id}/document-links/{link_id}")
 def delete_employee_document_link_api(
     request: Request,
@@ -667,8 +703,7 @@ def delete_employee_document_link_api(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Сотрудник не найден")
     if not link_row or link_row.employee_id != employee_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ссылка на документ не найдена")
-    db.delete(link_row)
-    db.commit()
+    _delete_employee_document_link(db, link_row)
     return _build_employee_detail_payload(db, employee)
 
 
@@ -754,6 +789,20 @@ def promote_employee_to_adaptation_api(
     except ValueError as exc:
         db.rollback()
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    return _build_employee_detail_payload(db, employee)
+
+
+@router.post("/api/employees/{employee_id}/bot-link/reset")
+def reset_employee_bot_linkage_api(
+    request: Request,
+    employee_id: int,
+    db: Session = Depends(get_db),
+):
+    require_api_auth(request)
+    employee = db.get(Employee, employee_id)
+    if not employee:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Сотрудник не найден")
+    employee = _reset_employee_bot_linkage(db, employee)
     return _build_employee_detail_payload(db, employee)
 
 
@@ -910,5 +959,3 @@ def react_employee_edit_page(
             "list_url": "/app/employees?list_kind=candidates" if list_kind == "candidates" else "/app/employees",
         },
     )
-
-

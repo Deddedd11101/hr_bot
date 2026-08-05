@@ -2,7 +2,7 @@ import React from "react";
 import {
   BadgeCheck,
   Bot,
-  Braces,
+  ClipboardList,
   FolderOpen,
   FileCheck2,
   LayoutDashboard,
@@ -10,7 +10,6 @@ import {
   Moon,
   PanelLeft,
   Settings,
-  Sparkles,
   Sun,
   Users,
   Workflow,
@@ -34,13 +33,12 @@ const OPEN_KEY = "app-shell-sidebar-open";
 
 const primaryItems = [
   { key: "employees", label: "Сотрудники", href: "/app/employees", icon: Users },
-  { key: "bulk_actions", label: "Массовые действия", href: "/app/bulk-actions", icon: Sparkles },
+  { key: "bulk_actions", label: "Массовые действия", href: "/app/bulk-actions", icon: ClipboardList },
   { key: "flows", label: "Сценарии", href: "/app/flows/workspace-v2", icon: Workflow },
   { key: "surveys", label: "Опросы", href: "/app/surveys/workspace", icon: FileCheck2 },
 ] as const;
 
 const secondaryItems = [
-  { key: "design_system", label: "Дизайн-система", href: "/app/design-system", icon: Braces },
   { key: "bot_menu", label: "Меню бота", href: "/app/bot-menu", icon: Bot },
   { key: "documents", label: "Документы", href: "/app/documents", icon: FolderOpen },
   { key: "settings", label: "Настройки", href: "/app/settings", icon: Settings },

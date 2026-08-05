@@ -1,12 +1,12 @@
 import React from "react";
-import { Save, Shield, Trash2 } from "lucide-react";
+import { BriefcaseBusiness, GripVertical, Save, Shield, Trash2 } from "lucide-react";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
 import { ConfirmAction } from "@/components/ui/confirm-action";
-import { Field, FieldContent, FieldGroup, FieldLabel, FieldLegend, FieldSet, FieldTitle } from "@/components/ui/field";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Field, FieldContent, FieldGroup, FieldLabel, FieldTitle } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -16,7 +16,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 
 type HrSettings = {
@@ -67,11 +66,21 @@ type AdminAccount = {
   is_active: boolean;
 };
 
+type Position = {
+  id: number;
+  title: string;
+  slug: string;
+  is_active: boolean;
+  sort_order: number;
+  created_at?: string;
+};
+
 type Workspace = {
   current_user: AdminAccount;
   role_labels: Record<string, string>;
   menu_role_scope_labels: Record<string, string>;
   menu_employee_scope_labels: Record<string, string>;
+  positions: Position[];
   hr_settings: HrSettings;
   menu_sets: MenuSet[];
   available_scenarios: ScenarioOption[];
@@ -110,6 +119,37 @@ const activeOptions = [
   { value: "false", label: "Отключен" },
 ];
 
+function sortedPositions(positions: Position[]): Position[] {
+  return [...positions].sort((left, right) => {
+    if (left.sort_order !== right.sort_order) {
+      return left.sort_order - right.sort_order;
+    }
+    return left.id - right.id;
+  });
+}
+
+function movePosition(positions: Position[], draggedId: number, targetId: number): Position[] {
+  if (draggedId === targetId) {
+    return positions;
+  }
+  const currentPositions = sortedPositions(positions);
+  const draggedPosition = currentPositions.find((position) => position.id === draggedId);
+  if (!draggedPosition) {
+    return positions;
+  }
+  const withoutDragged = currentPositions.filter((position) => position.id !== draggedId);
+  const targetIndex = withoutDragged.findIndex((position) => position.id === targetId);
+  if (targetIndex < 0) {
+    return positions;
+  }
+  const nextPositions = [...withoutDragged];
+  nextPositions.splice(targetIndex, 0, draggedPosition);
+  return nextPositions.map((position, index) => ({
+    ...position,
+    sort_order: (index + 1) * 10,
+  }));
+}
+
 async function requestJson(path: string, options: RequestInit = {}) {
   const response = await fetch(path, {
     credentials: "same-origin",
@@ -140,6 +180,7 @@ function normalizeWorkspace(workspace: Workspace): Workspace {
     employee_options: workspace.employee_options || [],
     employee_stage_options: workspace.employee_stage_options || [],
     candidate_stage_options: workspace.candidate_stage_options || [],
+    positions: workspace.positions || [],
     menu_sets: (workspace.menu_sets || []).map((menuSet) => ({
       ...menuSet,
       role_scope: menuSet.role_scope || "all",
@@ -157,6 +198,7 @@ function cloneWorkspace(workspace: Workspace): Workspace {
   return {
     ...workspace,
     hr_settings: { ...workspace.hr_settings },
+    positions: workspace.positions.map((position) => ({ ...position })),
     menu_sets: workspace.menu_sets.map((menuSet) => ({
       ...menuSet,
       target_employee_stages: [...menuSet.target_employee_stages],
@@ -304,6 +346,10 @@ export function SettingsPage({ apiUrl }: SettingsPageProps) {
   const [error, setError] = React.useState("");
   const [newAccount, setNewAccount] = React.useState({ login: "", password: "", role: "hr", is_active: true });
   const [accountPasswords, setAccountPasswords] = React.useState<Record<number, string>>({});
+  const [newPositionTitle, setNewPositionTitle] = React.useState("");
+  const [draggedPositionId, setDraggedPositionId] = React.useState<number | null>(null);
+  const [dragOverPositionId, setDragOverPositionId] = React.useState<number | null>(null);
+  const [positionsReordering, setPositionsReordering] = React.useState(false);
 
   React.useEffect(() => {
     requestJson(apiUrl)
@@ -342,6 +388,115 @@ export function SettingsPage({ apiUrl }: SettingsPageProps) {
     });
   };
 
+  const updatePositionLocal = (positionId: number, patch: Partial<Position>) => {
+    setWorkspace((current) => {
+      if (!current) return current;
+      const next = cloneWorkspace(current);
+      next.positions = next.positions.map((position) =>
+        position.id === positionId ? { ...position, ...patch } : position,
+      );
+      return next;
+    });
+  };
+
+  const positionPayload = (position: Position) => ({
+    title: position.title,
+    sort_order: position.sort_order,
+    is_active: position.is_active,
+  });
+
+  const reloadWorkspace = async () => {
+    const nextWorkspace = await requestJson(apiUrl);
+    setWorkspace(normalizeWorkspace(nextWorkspace));
+    return nextWorkspace;
+  };
+
+  const savePositionOrder = async (nextPositions: Position[]) => {
+    if (!workspace || positionsReordering) return;
+
+    const orderedPositions = sortedPositions(nextPositions);
+    const originalOrders = new Map(workspace.positions.map((position) => [position.id, position.sort_order]));
+    const changedPositions = orderedPositions.filter(
+      (position) => originalOrders.get(position.id) !== position.sort_order,
+    );
+    if (!changedPositions.length) return;
+
+    setPositionsReordering(true);
+    setError("");
+    setMessage("");
+    setWorkspace((current) => (current ? { ...cloneWorkspace(current), positions: orderedPositions } : current));
+
+    try {
+      let latestWorkspace: Workspace | null = null;
+      for (const position of changedPositions) {
+        latestWorkspace = await requestJson(`/api/settings/positions/${position.id}`, {
+          method: "PATCH",
+          body: JSON.stringify({ sort_order: position.sort_order }),
+        });
+      }
+      if (latestWorkspace) {
+        setWorkspace(normalizeWorkspace(latestWorkspace));
+      }
+      setMessage("Порядок должностей сохранен");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Не удалось сохранить порядок должностей");
+      try {
+        await reloadWorkspace();
+      } catch (reloadErr) {
+        setError(
+          reloadErr instanceof Error
+            ? `Не удалось сохранить порядок должностей. ${reloadErr.message}`
+            : "Не удалось сохранить порядок должностей и обновить данные",
+        );
+      }
+    } finally {
+      setPositionsReordering(false);
+      setDraggedPositionId(null);
+      setDragOverPositionId(null);
+    }
+  };
+
+  const handlePositionDrop = (targetId: number, sourceId = draggedPositionId) => {
+    if (!workspace || sourceId === null || positionsReordering) return;
+    const nextPositions = movePosition(workspace.positions, sourceId, targetId);
+    void savePositionOrder(nextPositions);
+  };
+
+  React.useEffect(() => {
+    if (draggedPositionId === null || positionsReordering) return;
+
+    const findPositionIdAtPoint = (clientX: number, clientY: number) => {
+      const element = document.elementFromPoint(clientX, clientY);
+      const row = element?.closest("[data-position-id]");
+      const rowId = row?.getAttribute("data-position-id") || "";
+      return rowId ? Number(rowId) : null;
+    };
+
+    const handleMouseMove = (event: MouseEvent) => {
+      event.preventDefault();
+      const targetId = findPositionIdAtPoint(event.clientX, event.clientY);
+      setDragOverPositionId(targetId && targetId !== draggedPositionId ? targetId : null);
+    };
+
+    const handleMouseUp = (event: MouseEvent) => {
+      event.preventDefault();
+      const targetId = findPositionIdAtPoint(event.clientX, event.clientY);
+      if (targetId && targetId !== draggedPositionId) {
+        handlePositionDrop(targetId, draggedPositionId);
+      } else {
+        setDraggedPositionId(null);
+        setDragOverPositionId(null);
+      }
+    };
+
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp, { once: true });
+    return () => {
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [draggedPositionId, positionsReordering, workspace]);
+
   if (loading) {
     return (
       <Card className="admin-page-shell border border-border/80 bg-card shadow-none ring-0">
@@ -360,6 +515,7 @@ export function SettingsPage({ apiUrl }: SettingsPageProps) {
 
   const isAdmin = workspace.current_user.role === "admin";
   const roles = roleOptions(workspace.role_labels);
+  const orderedPositions = sortedPositions(workspace.positions);
 
   return (
     <div className="admin-page-stack gap-5">
@@ -380,36 +536,6 @@ export function SettingsPage({ apiUrl }: SettingsPageProps) {
             <FieldLabel>Основной ID получателя</FieldLabel>
             <Input value={workspace.hr_settings.telegram_user_id} onChange={(event) => updateHrSettings({ telegram_user_id: event.target.value })} placeholder="123456789" inputMode="numeric" autoComplete="off" />
           </Field>
-          <Field className="md:col-span-2">
-            <FieldLabel>Дополнительные ID получателей</FieldLabel>
-            <Textarea
-              value={workspace.hr_settings.notification_recipient_ids}
-              onChange={(event) => updateHrSettings({ notification_recipient_ids: event.target.value })}
-              rows={3}
-              placeholder={"123456789\n987654321"}
-              autoComplete="off"
-            />
-          </Field>
-          <FieldSet className="rounded-lg border border-border bg-muted/35 p-3 md:col-span-2">
-            <FieldLegend className="sr-only">Уведомления</FieldLegend>
-            <FieldGroup className="grid gap-2 xl:grid-cols-3">
-            {[
-              ["notify_scenario_completed", "По завершению сценариев"],
-              ["notify_test_task_received", "По получению тестового задания"],
-              ["notify_user_actions", "По действиям других пользователей"],
-            ].map(([key, label]) => (
-              <Field orientation="horizontal" key={key}>
-                <Checkbox
-                  checked={Boolean(workspace.hr_settings[key as keyof HrSettings])}
-                  onCheckedChange={(checked) => updateHrSettings({ [key]: Boolean(checked) } as Partial<HrSettings>)}
-                />
-                <FieldContent>
-                  <FieldTitle>{label}</FieldTitle>
-                </FieldContent>
-              </Field>
-            ))}
-            </FieldGroup>
-          </FieldSet>
         </FieldGroup>
         <div className="flex justify-end">
           <Button onClick={() => setWorkspaceFromApi(requestJson("/api/settings/hr", { method: "POST", body: JSON.stringify(workspace.hr_settings) }), "HR-настройки сохранены")}>
@@ -418,6 +544,145 @@ export function SettingsPage({ apiUrl }: SettingsPageProps) {
           </Button>
         </div>
       </SettingsCard>
+
+      {isAdmin ? (
+        <SettingsCard title="Должности">
+          <div className="grid gap-3 rounded-lg border border-border bg-muted/35 p-3 lg:grid-cols-[1fr_auto] lg:items-end">
+            <Field>
+              <FieldLabel>Новая должность</FieldLabel>
+              <Input
+                value={newPositionTitle}
+                onChange={(event) => setNewPositionTitle(event.target.value)}
+                placeholder="Например, QA engineer"
+                autoComplete="off"
+                disabled={positionsReordering}
+              />
+            </Field>
+            <Button
+              disabled={!newPositionTitle.trim() || positionsReordering}
+              onClick={() =>
+                setWorkspaceFromApi(
+                  requestJson("/api/settings/positions", {
+                    method: "POST",
+                    body: JSON.stringify({ title: newPositionTitle.trim() }),
+                  }),
+                  "Должность создана",
+                ).then(() => setNewPositionTitle(""))
+              }
+            >
+              <BriefcaseBusiness data-icon="inline-start" />
+              Создать
+            </Button>
+          </div>
+
+          <div className="grid gap-2">
+            {orderedPositions.map((position) => (
+              <div
+                key={position.id}
+                data-position-id={position.id}
+                onDragOver={(event) => {
+                  if (draggedPositionId !== null && draggedPositionId !== position.id && !positionsReordering) {
+                    event.preventDefault();
+                    event.dataTransfer.dropEffect = "move";
+                    setDragOverPositionId(position.id);
+                  }
+                }}
+                onDragLeave={() => setDragOverPositionId((current) => (current === position.id ? null : current))}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  handlePositionDrop(position.id);
+                }}
+                className={cn(
+                  "relative grid gap-2 rounded-lg border border-border bg-background p-3 transition-colors xl:grid-cols-[auto_minmax(220px,1fr)_160px_auto] xl:items-center",
+                  draggedPositionId === position.id ? "border-primary/40 bg-primary/5 opacity-80" : null,
+                  positionsReordering ? "opacity-70" : null,
+                )}
+              >
+                {dragOverPositionId === position.id && draggedPositionId !== position.id ? (
+                  <div className="pointer-events-none absolute -top-2 left-3 right-3 z-10 flex items-center gap-2">
+                    <span className="size-2 rounded-full bg-primary shadow-[0_0_0_3px_var(--card)]" />
+                    <span className="h-0.5 flex-1 rounded-full bg-primary shadow-[0_0_0_3px_var(--card)]" />
+                  </div>
+                ) : null}
+                <button
+                  type="button"
+                  disabled={positionsReordering}
+                  aria-label="Перетащить должность"
+                  title="Перетащить"
+                  onMouseDown={(event) => {
+                    if (positionsReordering) return;
+                    event.preventDefault();
+                    setDraggedPositionId(position.id);
+                    setDragOverPositionId(null);
+                  }}
+                  onDragStart={(event) => {
+                    setDraggedPositionId(position.id);
+                    event.dataTransfer.effectAllowed = "move";
+                    event.dataTransfer.setData("text/plain", String(position.id));
+                  }}
+                  onDragEnd={() => {
+                    setDraggedPositionId(null);
+                    setDragOverPositionId(null);
+                  }}
+                  className="inline-flex size-9 cursor-grab items-center justify-center rounded-md border border-border bg-muted/45 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50 active:cursor-grabbing"
+                >
+                  <GripVertical className="size-4" />
+                </button>
+                <Input
+                  value={position.title}
+                  onChange={(event) => updatePositionLocal(position.id, { title: event.target.value })}
+                  aria-label="Название должности"
+                  autoComplete="off"
+                  disabled={positionsReordering}
+                />
+                <div className="grid gap-1">
+                  <AppSelect
+                    value={position.is_active ? "true" : "false"}
+                    onChange={(value) => updatePositionLocal(position.id, { is_active: value === "true" })}
+                    options={activeOptions}
+                    allowEmpty={false}
+                    disabled={positionsReordering}
+                  />
+                </div>
+                <div className="flex gap-2 xl:justify-end">
+                  <Button
+                    variant="secondary"
+                    size="icon"
+                    aria-label="Сохранить должность"
+                    disabled={!position.title.trim() || positionsReordering}
+                    onClick={() =>
+                      setWorkspaceFromApi(
+                        requestJson(`/api/settings/positions/${position.id}`, {
+                          method: "PATCH",
+                          body: JSON.stringify(positionPayload(position)),
+                        }),
+                        "Должность сохранена",
+                      )
+                    }
+                  >
+                    <Save />
+                  </Button>
+                  <ConfirmAction
+                    title="Удалить должность?"
+                    description="Должность будет отключена в справочнике. Уже выбранные legacy-значения в карточках сохранятся."
+                    actionLabel="Отключить"
+                    onConfirm={() =>
+                      setWorkspaceFromApi(
+                        requestJson(`/api/settings/positions/${position.id}`, { method: "DELETE" }),
+                        "Должность отключена",
+                      )
+                    }
+                  >
+                    <Button variant="outline" size="icon" aria-label="Удалить должность" disabled={positionsReordering}>
+                      <Trash2 />
+                    </Button>
+                  </ConfirmAction>
+                </div>
+              </div>
+            ))}
+          </div>
+        </SettingsCard>
+      ) : null}
 
       {isAdmin ? (
         <SettingsCard title="Доступ в админку">

@@ -1,8 +1,10 @@
 from sqlalchemy.orm import Session
 
 from ..auth import ROLE_LABELS
-from ..flow_templates import EMPLOYEE_SCOPE_LABELS, ROLE_SCOPE_LABELS
+from ..flow_templates import EMPLOYEE_SCOPE_LABELS
+from ..messaging.service import MENU_BACK_BUTTON_TEXT, MENU_HOME_BUTTON_TEXT
 from ..models import AdminAccount, BotMenuButton, BotMenuSet, DocumentLibraryItem, Employee, HrSettings, ScenarioTemplate
+from ..positions import ROLE_SCOPE_ALL, build_role_scope_labels, position_options, resolve_scope_slug
 from ..time_utils import utc_now
 from .employees import CANDIDATE_WORK_STAGE_VALUES, EMPLOYEE_STAGE_VALUES
 from .documents import _document_option
@@ -22,6 +24,8 @@ def _get_or_create_hr_settings(db: Session) -> HrSettings:
         notify_test_task_received=True,
         notify_user_actions=True,
         default_menu_set_id=None,
+        default_employee_menu_set_id=None,
+        default_candidate_menu_set_id=None,
         created_at=now,
         updated_at=now,
     )
@@ -41,6 +45,8 @@ def _serialize_hr_settings(settings_row: HrSettings) -> dict:
         "notify_test_task_received": bool(settings_row.notify_test_task_received),
         "notify_user_actions": bool(settings_row.notify_user_actions),
         "default_menu_set_id": settings_row.default_menu_set_id,
+        "default_employee_menu_set_id": settings_row.default_employee_menu_set_id,
+        "default_candidate_menu_set_id": settings_row.default_candidate_menu_set_id,
     }
 
 
@@ -115,8 +121,8 @@ def _employee_options(db: Session) -> list[dict]:
 
 
 def _normalize_menu_role_scope(value: str) -> str:
-    normalized = (value or "").strip()
-    return normalized if normalized in ROLE_SCOPE_LABELS else "all"
+    normalized = resolve_scope_slug(value or "")
+    return normalized or ROLE_SCOPE_ALL
 
 
 def _normalize_menu_employee_scope(value: str) -> str:
@@ -187,6 +193,8 @@ def _settings_workspace_payload(db: Session, current_user: AdminAccount) -> dict
     menu_sets = _menu_sets(db)
     menu_buttons = _menu_buttons_by_set(db)
     scenarios = db.query(ScenarioTemplate).order_by(ScenarioTemplate.title, ScenarioTemplate.id).all()
+    role_scope_labels = build_role_scope_labels(db)
+    positions = position_options(db, include_inactive=True)
     document_items = (
         db.query(DocumentLibraryItem)
         .filter(DocumentLibraryItem.is_active.is_(True))
@@ -197,8 +205,19 @@ def _settings_workspace_payload(db: Session, current_user: AdminAccount) -> dict
     return {
         "current_user": _serialize_admin_account(current_user),
         "role_labels": ROLE_LABELS,
-        "menu_role_scope_labels": ROLE_SCOPE_LABELS,
+        "menu_role_scope_labels": role_scope_labels,
         "menu_employee_scope_labels": EMPLOYEE_SCOPE_LABELS,
+        "positions": [
+            {
+                "id": position.id,
+                "title": position.title,
+                "slug": position.slug,
+                "is_active": bool(position.is_active),
+                "sort_order": position.sort_order,
+                "created_at": position.created_at.isoformat() if position.created_at else "",
+            }
+            for position in positions
+        ],
         "hr_settings": _serialize_hr_settings(hr_settings),
         "menu_sets": [_serialize_menu_set(menu_set, menu_buttons.get(menu_set.id, [])) for menu_set in menu_sets],
         "available_scenarios": [
@@ -241,6 +260,8 @@ def _apply_menu_button_payload(button: BotMenuButton, payload: dict) -> None:
 
 
 def _validate_menu_button_payload_refs(db: Session, button: BotMenuButton) -> str | None:
+    if button.label.strip() in {MENU_BACK_BUTTON_TEXT, MENU_HOME_BUTTON_TEXT}:
+        return "Названия «Назад» и «Главное меню» зарезервированы для навигации бота"
     if button.action_type == "open_set" and button.target_menu_set_id:
         if db.get(BotMenuSet, button.target_menu_set_id) is None:
             return "Целевой набор меню не найден"
@@ -261,6 +282,6 @@ def _delete_menu_set_relations(db: Session, menu_set_id: int) -> None:
         synchronize_session=False,
     )
     db.query(Employee).filter(Employee.current_menu_set_id == menu_set_id).update(
-        {Employee.current_menu_set_id: None},
+        {Employee.current_menu_set_id: None, Employee.current_menu_path: None},
         synchronize_session=False,
     )

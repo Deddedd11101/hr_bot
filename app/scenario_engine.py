@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import calendar
 import html
+import json
 import re
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Literal, NamedTuple, Optional
 
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, Message, ReplyKeyboardMarkup
 from pytz import timezone as tz_get
@@ -12,28 +14,50 @@ from sqlalchemy.orm import Session
 
 from .config import settings
 from .employee_card import render_employee_card_png
-from .flow_templates import EMPLOYEE_ROLE_VALUES
 from .messaging.identity import get_primary_chat_id
 from .messaging import as_messenger
-from .models import Employee, EmployeeDocumentLink, EmployeeFile, FlowLaunchRequest, FlowStepTemplate, OnboardingEvent, ScenarioProgress, ScenarioTemplate, StepButtonNotification, StepSendNotification, SurveyAnswer
+from .models import Employee, EmployeeDocumentLink, EmployeeFile, FlowLaunchRequest, FlowStepTemplate, HrSettings, OnboardingEvent, ScenarioProgress, ScenarioTemplate, StepButtonNotification, StepSendNotification, SurveyAnswer
 from .notifications import notify_hr_stage
+from .positions import position_matches_scope
 from .time_utils import utc_now
 
 
 CALLBACK_PREFIX = "scenario:"
 BACK_CALLBACK_DATA = f"{CALLBACK_PREFIX}back"
+DATE_CALLBACK_PREFIX = f"{CALLBACK_PREFIX}date:"
 SCENARIO_BACK_BUTTON_TEXT = "Назад"
 RECRUITMENT_SCENARIO_KEY = "recruitment_hiring"
 FIRST_DAY_SCENARIO_KEY = "first_day"
 PROBATION_SCENARIO_KEYS = {"mid_probation", "end_probation"}
 DOCUMENT_TAG_RE = re.compile(r"\{doc:([^}]+)\}")
 SINGLE_STEP_REQUEST_PREFIX = "__single_step__:"
-INTERACTIVE_RESPONSE_TYPES = {"text", "file", "buttons", "branching"}
+INTERACTIVE_RESPONSE_TYPES = {"text", "date", "file", "buttons", "branching"}
+DATE_WEEKDAY_LABELS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
+DATE_MONTH_LABELS = [
+    "Январь",
+    "Февраль",
+    "Март",
+    "Апрель",
+    "Май",
+    "Июнь",
+    "Июль",
+    "Август",
+    "Сентябрь",
+    "Октябрь",
+    "Ноябрь",
+    "Декабрь",
+]
 NOTIFICATION_SCOPE_TO_EMPLOYEE_FIELD = {
     "manager": ("manager_employee_id", "manager_telegram_id"),
     "mentor_adaptation": ("mentor_adaptation_employee_id", "mentor_adaptation_telegram_id"),
     "mentor_ipr": ("mentor_ipr_employee_id", "mentor_ipr_telegram_id"),
 }
+
+
+class DateCallbackResult(NamedTuple):
+    handled: bool
+    action: Literal["noop", "updated", "selected"]
+    reply_markup: InlineKeyboardMarkup | None = None
 
 
 def get_scenario_steps(db: Session, scenario_key: str) -> list[FlowStepTemplate]:
@@ -137,6 +161,44 @@ def get_next_step(db: Session, scenario_key: str, current_step: FlowStepTemplate
     return None
 
 
+def get_root_step_by_key(db: Session, scenario_key: str, step_key: str) -> Optional[FlowStepTemplate]:
+    return (
+        db.query(FlowStepTemplate)
+        .filter(
+            FlowStepTemplate.flow_key == scenario_key,
+            FlowStepTemplate.step_key == step_key,
+            FlowStepTemplate.parent_step_id.is_(None),
+        )
+        .first()
+    )
+
+
+def get_root_ancestor_step(db: Session, step: FlowStepTemplate | None) -> Optional[FlowStepTemplate]:
+    current = step
+    while current and current.parent_step_id is not None:
+        current = db.get(FlowStepTemplate, current.parent_step_id)
+    return current
+
+
+def resolve_branch_return_step(
+    db: Session,
+    scenario_key: str,
+    branch_step: FlowStepTemplate | None,
+) -> Optional[FlowStepTemplate]:
+    if not branch_step:
+        return None
+    target_step_key = (getattr(branch_step, "return_to_step_key", None) or "").strip()
+    if not target_step_key:
+        return None
+    target_step = get_root_step_by_key(db, scenario_key, target_step_key)
+    if not target_step:
+        return None
+    branch_root = get_root_ancestor_step(db, branch_step)
+    if branch_root and branch_root.step_key == target_step.step_key:
+        return None
+    return target_step
+
+
 def resolve_followup_step(
     db: Session,
     scenario_key: str,
@@ -151,6 +213,9 @@ def resolve_followup_step(
                 return next_chain_step
             return resolve_after_parent(db.get(FlowStepTemplate, step.parent_step_id))
         if step.parent_step_id and step.branch_option_index is not None:
+            branch_return_step = resolve_branch_return_step(db, scenario_key, step)
+            if branch_return_step:
+                return branch_return_step
             parent_step = db.get(FlowStepTemplate, step.parent_step_id)
             if not parent_step:
                 return None
@@ -169,6 +234,9 @@ def resolve_followup_step(
         return resolve_after_parent(db.get(FlowStepTemplate, current_step.parent_step_id))
 
     if current_step.parent_step_id and current_step.branch_option_index is not None:
+        branch_return_step = resolve_branch_return_step(db, scenario_key, current_step)
+        if branch_return_step:
+            return branch_return_step
         return resolve_after_parent(db.get(FlowStepTemplate, current_step.parent_step_id))
 
     return get_next_step(db, scenario_key, current_step)
@@ -254,6 +322,7 @@ def get_or_create_progress(db: Session, employee_id: int, scenario_key: str) -> 
         scenario_key=scenario_key,
         current_step_key=None,
         step_history=None,
+        response_undo_history=None,
         waiting_for_response=False,
         is_completed=False,
         started_at=now,
@@ -270,6 +339,7 @@ def reset_progress(db: Session, employee_id: int, scenario_key: str) -> Scenario
     progress = get_or_create_progress(db, employee_id, scenario_key)
     progress.current_step_key = None
     progress.step_history = None
+    progress.response_undo_history = None
     progress.waiting_for_response = False
     progress.is_completed = False
     progress.started_at = now
@@ -334,12 +404,210 @@ def _serialize_step_history(progress: ScenarioProgress, history: list[str]) -> N
     progress.step_history = "\n".join(normalized) if normalized else None
 
 
+def _deserialize_response_undo_history(progress: ScenarioProgress) -> list[dict[str, Any]]:
+    raw_value = (getattr(progress, "response_undo_history", None) or "").strip()
+    if not raw_value:
+        return []
+    try:
+        payload = json.loads(raw_value)
+    except json.JSONDecodeError:
+        return []
+    if not isinstance(payload, list):
+        return []
+    return [item for item in payload if isinstance(item, dict)]
+
+
+def _serialize_response_undo_history(progress: ScenarioProgress, history: list[dict[str, Any]]) -> None:
+    progress.response_undo_history = json.dumps(history, ensure_ascii=False) if history else None
+
+
+def _get_latest_survey_answer(
+    db: Session,
+    employee: Employee,
+    scenario: ScenarioTemplate,
+    step: FlowStepTemplate,
+) -> SurveyAnswer | None:
+    if not is_survey(scenario):
+        return None
+    return (
+        db.query(SurveyAnswer)
+        .filter(
+            SurveyAnswer.employee_id == employee.id,
+            SurveyAnswer.scenario_key == scenario.scenario_key,
+            SurveyAnswer.step_key == step.step_key,
+        )
+        .order_by(SurveyAnswer.id.desc())
+        .first()
+    )
+
+
+def _capture_response_undo_snapshot(
+    db: Session,
+    employee: Employee,
+    scenario: ScenarioTemplate,
+    step: FlowStepTemplate,
+    uploaded_file: EmployeeFile | None = None,
+) -> dict[str, Any]:
+    employee_before: dict[str, Any] = {
+        "candidate_status": employee.candidate_status,
+    }
+    target_field = (step.target_field or "").strip()
+    if target_field and hasattr(employee, target_field):
+        employee_before[target_field] = getattr(employee, target_field)
+    if scenario.scenario_key == RECRUITMENT_SCENARIO_KEY and step.response_type == "branching":
+        employee_before["employee_stage"] = employee.employee_stage
+    survey_answer = _get_latest_survey_answer(db, employee, scenario, step)
+    survey_before: dict[str, Any] | None = None
+    if is_survey(scenario):
+        survey_before = {
+            "existed": survey_answer is not None,
+            "answer_value": survey_answer.answer_value if survey_answer else None,
+            "file_name": survey_answer.file_name if survey_answer else None,
+        }
+    file_before: dict[str, Any] | None = None
+    if uploaded_file is not None:
+        file_before = {
+            "id": uploaded_file.id,
+            "stored_path": uploaded_file.stored_path,
+        }
+    return {
+        "step_key": step.step_key,
+        "employee_before": employee_before,
+        "survey_before": survey_before,
+        "file_before": file_before,
+    }
+
+
+def _restore_response_undo_snapshot(
+    db: Session,
+    employee: Employee,
+    scenario: ScenarioTemplate,
+    step: FlowStepTemplate,
+    snapshot: dict[str, Any],
+) -> None:
+    employee_before = snapshot.get("employee_before")
+    if isinstance(employee_before, dict):
+        for field_name, previous_value in employee_before.items():
+            if hasattr(employee, field_name):
+                setattr(employee, field_name, previous_value)
+
+    survey_before = snapshot.get("survey_before")
+    if isinstance(survey_before, dict) and is_survey(scenario):
+        current_answer = _get_latest_survey_answer(db, employee, scenario, step)
+        existed_before = bool(survey_before.get("existed"))
+        if not existed_before:
+            if current_answer is not None:
+                db.delete(current_answer)
+        elif current_answer is not None:
+            current_answer.answer_value = survey_before.get("answer_value")
+            current_answer.file_name = survey_before.get("file_name")
+            current_answer.answered_at = utc_now()
+
+    file_before = snapshot.get("file_before")
+    if isinstance(file_before, dict):
+        file_id = file_before.get("id")
+        db_file = db.get(EmployeeFile, file_id) if file_id is not None else None
+        if db_file is not None:
+            path_value = (db_file.stored_path or "").strip()
+            if path_value:
+                path = Path(path_value)
+                if path.exists():
+                    try:
+                        path.unlink()
+                    except OSError:
+                        pass
+            db.delete(db_file)
+
+
+def _push_response_undo_snapshot(progress: ScenarioProgress, snapshot: dict[str, Any]) -> None:
+    history = _deserialize_response_undo_history(progress)
+    history.append(snapshot)
+    _serialize_response_undo_history(progress, history)
+
+
+def _pop_response_undo_snapshot(progress: ScenarioProgress) -> dict[str, Any] | None:
+    history = _deserialize_response_undo_history(progress)
+    if not history:
+        return None
+    snapshot = history.pop()
+    _serialize_response_undo_history(progress, history)
+    return snapshot
+
+
 def progress_has_back_step(progress: ScenarioProgress | None) -> bool:
     return bool(progress and _deserialize_step_history(progress))
 
 
 def _get_tz():
     return tz_get(settings.TIMEZONE)
+
+
+def _parse_iso_date(value: str) -> date | None:
+    try:
+        return datetime.strptime(value, "%Y-%m-%d").date()
+    except ValueError:
+        return None
+
+
+def _parse_year_month(value: str) -> date | None:
+    try:
+        parsed = datetime.strptime(value, "%Y-%m").date()
+    except ValueError:
+        return None
+    return parsed.replace(day=1)
+
+
+def _month_shift(value: date, delta: int) -> date:
+    month_index = value.month - 1 + delta
+    year = value.year + month_index // 12
+    month = month_index % 12 + 1
+    return date(year, month, 1)
+
+
+def _date_step_markup(
+    step: FlowStepTemplate,
+    include_back: bool = False,
+    month_cursor: date | None = None,
+) -> InlineKeyboardMarkup:
+    month = (month_cursor or datetime.now(_get_tz()).date()).replace(day=1)
+    cal = calendar.Calendar(firstweekday=0)
+    rows: list[list[InlineKeyboardButton]] = [
+        [
+            InlineKeyboardButton(
+                text="◀",
+                callback_data=f"{DATE_CALLBACK_PREFIX}{step.id}:nav:{_month_shift(month, -1).strftime('%Y-%m')}",
+            ),
+            InlineKeyboardButton(
+                text=f"{DATE_MONTH_LABELS[month.month - 1]} {month.year}",
+                callback_data=f"{DATE_CALLBACK_PREFIX}{step.id}:noop",
+            ),
+            InlineKeyboardButton(
+                text="▶",
+                callback_data=f"{DATE_CALLBACK_PREFIX}{step.id}:nav:{_month_shift(month, 1).strftime('%Y-%m')}",
+            ),
+        ],
+        [
+            InlineKeyboardButton(text=label, callback_data=f"{DATE_CALLBACK_PREFIX}{step.id}:noop")
+            for label in DATE_WEEKDAY_LABELS
+        ],
+    ]
+    for week in cal.monthdayscalendar(month.year, month.month):
+        week_row: list[InlineKeyboardButton] = []
+        for day_value in week:
+            if day_value <= 0:
+                week_row.append(InlineKeyboardButton(text=" ", callback_data=f"{DATE_CALLBACK_PREFIX}{step.id}:noop"))
+                continue
+            selected = date(month.year, month.month, day_value)
+            week_row.append(
+                InlineKeyboardButton(
+                    text=str(day_value),
+                    callback_data=f"{DATE_CALLBACK_PREFIX}{step.id}:set:{selected.strftime('%Y-%m-%d')}",
+                )
+            )
+        rows.append(week_row)
+    if include_back:
+        rows.append([InlineKeyboardButton(text=SCENARIO_BACK_BUTTON_TEXT, callback_data=BACK_CALLBACK_DATA)])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def _combine_date_time(value: date, hour: int, minute: int) -> datetime:
@@ -398,14 +666,7 @@ def matches_role_scope(employee: Employee, scenario: ScenarioTemplate) -> bool:
     if getattr(scenario, "target_employee_id", None) and scenario.target_employee_id != employee.id:
         return False
 
-    if scenario.role_scope == "all":
-        return True
-    role_map = {
-        "designer": "Дизайнер",
-        "project_manager": "Project manager",
-        "analyst": "Аналитик",
-    }
-    return (employee.desired_position or "") == role_map.get(scenario.role_scope, "")
+    return position_matches_scope(employee.desired_position, scenario.role_scope)
 
 
 def format_message(db: Session, template: str, employee: Employee, anchor_date: date, step_time: Optional[str]) -> str:
@@ -424,12 +685,18 @@ def format_message(db: Session, template: str, employee: Employee, anchor_date: 
         .all()
     )
     links_by_title = {(link.title or "").strip().lower(): link for link in links}
+    links_by_slot = {
+        (getattr(link, "slot_key", None) or "").strip().lower(): link
+        for link in links
+        if (getattr(link, "slot_key", None) or "").strip()
+    }
 
     def replace_document_tag(match: re.Match[str]) -> str:
         document_title = match.group(1).strip()
         if not document_title:
             return ""
-        link = links_by_title.get(document_title.lower())
+        normalized_key = document_title.lower()
+        link = links_by_title.get(normalized_key) or links_by_slot.get(normalized_key)
         if not link or not (link.url or "").strip():
             return document_title
         href = html.escape(link.url.strip(), quote=True)
@@ -462,6 +729,10 @@ def _resolve_explicit_notification_recipient(db: Session | None, raw_value: str)
     normalized = (raw_value or "").strip()
     if not normalized:
         return None
+    if normalized == "hr" and db is not None:
+        hr_settings = db.get(HrSettings, 1)
+        hr_chat_id = (getattr(hr_settings, "telegram_user_id", None) or "").strip()
+        return hr_chat_id or None
     if normalized.startswith("employee:") and db is not None:
         employee_id_raw = normalized.split(":", 1)[1].strip()
         if employee_id_raw.isdigit():
@@ -547,6 +818,56 @@ def get_step_send_notifications(db: Session, step_id: int) -> list[StepSendNotif
     )
 
 
+def resolve_tagged_employee_documents(db: Session, template: str, employee: Employee) -> list[EmployeeFile]:
+    if not template.strip():
+        return []
+    links = (
+        db.query(EmployeeDocumentLink)
+        .filter(EmployeeDocumentLink.employee_id == employee.id)
+        .all()
+    )
+    links_by_title = {(link.title or "").strip().lower(): link for link in links}
+    links_by_slot = {
+        (getattr(link, "slot_key", None) or "").strip().lower(): link
+        for link in links
+        if (getattr(link, "slot_key", None) or "").strip()
+    }
+    files: list[EmployeeFile] = []
+    seen_file_ids: set[int] = set()
+    for match in DOCUMENT_TAG_RE.finditer(template):
+        document_key = match.group(1).strip().lower()
+        link = links_by_title.get(document_key) or links_by_slot.get(document_key)
+        if not link or (getattr(link, "item_kind", "link") or "link") != "file":
+            continue
+        employee_file_id = getattr(link, "employee_file_id", None)
+        if not employee_file_id or employee_file_id in seen_file_ids:
+            continue
+        employee_file = db.get(EmployeeFile, employee_file_id)
+        if employee_file:
+            seen_file_ids.add(employee_file_id)
+            files.append(employee_file)
+    return files
+
+
+async def send_tagged_employee_documents(
+    messenger_or_bot: Any,
+    db: Session,
+    chat_id: str,
+    template: str,
+    employee: Employee,
+) -> None:
+    messenger = as_messenger(messenger_or_bot)
+    for employee_file in resolve_tagged_employee_documents(db, template, employee):
+        file_path = Path(employee_file.stored_path)
+        if not file_path.exists():
+            continue
+        filename = employee_file.original_filename or file_path.name
+        if file_path.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}:
+            await messenger.send_photo_path(chat_id=chat_id, path=file_path, filename=filename)
+        else:
+            await messenger.send_document_path(chat_id=chat_id, path=file_path, filename=filename)
+
+
 def get_button_notifications(db: Session, step_id: int, option_index: int) -> list[StepButtonNotification]:
     return (
         db.query(StepButtonNotification)
@@ -560,6 +881,8 @@ def get_button_notifications(db: Session, step_id: int, option_index: int) -> li
 
 
 def step_reply_markup(step: FlowStepTemplate, include_back: bool = False) -> Optional[InlineKeyboardMarkup]:
+    if step.response_type == "date":
+        return _date_step_markup(step, include_back=include_back)
     if step.response_type not in {"text", "buttons", "branching"}:
         return None
     buttons = []
@@ -609,28 +932,60 @@ def resolve_branch_followup_step(
     return resolve_followup_step(db, scenario_key, branch_step)
 
 
-async def send_step_attachment(messenger_or_bot: Any, chat_id: str, step: FlowStepTemplate) -> None:
+async def send_step_attachment(
+    messenger_or_bot: Any,
+    chat_id: str,
+    step: FlowStepTemplate,
+    reply_markup: Any | None = None,
+    caption: str | None = None,
+) -> bool:
     messenger = as_messenger(messenger_or_bot)
     attachment_path = (getattr(step, "attachment_path", None) or "").strip()
     if not attachment_path:
-        return
+        return False
     path = Path(attachment_path)
     if not path.exists():
-        return
+        return False
     filename = getattr(step, "attachment_filename", None) or path.name
     if path.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}:
-        await messenger.send_photo_path(chat_id=chat_id, path=path, filename=filename)
-        return
-    await messenger.send_document_path(chat_id=chat_id, path=path, filename=filename)
+        await messenger.send_photo_path(
+            chat_id=chat_id,
+            path=path,
+            filename=filename,
+            reply_markup=reply_markup,
+            caption=caption,
+        )
+        return True
+    await messenger.send_document_path(
+        chat_id=chat_id,
+        path=path,
+        filename=filename,
+        reply_markup=reply_markup,
+        caption=caption,
+    )
+    return True
 
 
-async def send_employee_card_image(messenger_or_bot: Any, chat_id: str, employee: Employee) -> None:
+async def send_employee_card_image(
+    messenger_or_bot: Any,
+    chat_id: str,
+    employee: Employee,
+    reply_markup: Any | None = None,
+    caption: str | None = None,
+) -> bool:
     messenger = as_messenger(messenger_or_bot)
     try:
         image_bytes = render_employee_card_png(employee)
     except ImportError:
-        return
-    await messenger.send_photo_bytes(chat_id=chat_id, data=image_bytes, filename=f"employee_card_{employee.id}.png")
+        return False
+    await messenger.send_photo_bytes(
+        chat_id=chat_id,
+        data=image_bytes,
+        filename=f"employee_card_{employee.id}.png",
+        reply_markup=reply_markup,
+        caption=caption,
+    )
+    return True
 
 
 async def send_step_buttons(messenger_or_bot: Any, chat_id: str, step: FlowStepTemplate) -> None:
@@ -667,6 +1022,12 @@ def apply_response_to_employee(
     if target_field == "full_name":
         employee.full_name = normalized or None
         return bool(normalized)
+    if target_field == "first_workday":
+        parsed_date = _parse_iso_date(normalized)
+        if not parsed_date:
+            return False
+        employee.first_workday = parsed_date
+        return True
     if target_field == "desired_position":
         # Custom button values for a role should not block the scenario flow.
         employee.desired_position = normalized or None
@@ -696,6 +1057,24 @@ def apply_response_to_employee(
     if target_field in {"resume", "candidate_file"}:
         return uploaded_file is not None
     return True
+
+
+async def _finish_launch_transition(
+    messenger_or_bot: Any,
+    db: Session,
+    employee: Employee,
+    scenario: ScenarioTemplate,
+    progress: ScenarioProgress,
+    step: FlowStepTemplate,
+) -> None:
+    messenger = as_messenger(messenger_or_bot)
+    progress.waiting_for_response = False
+    progress.is_completed = True
+    progress.completed_at = utc_now()
+    progress.updated_at = utc_now()
+    db.commit()
+    if step.launch_scenario_key:
+        await start_scenario(messenger, db, employee, step.launch_scenario_key)
 
 
 def _compute_followup_run_at(step: FlowStepTemplate) -> Optional[datetime]:
@@ -758,26 +1137,42 @@ async def send_step(
                 _serialize_step_history(progress, history)
 
     anchor_date = scenario_anchor_date(employee, scenario) or datetime.now(_get_tz()).date()
-    message_text = format_message(db, resolve_step_message_template(step), employee, anchor_date, step.send_time)
+    message_template = resolve_step_message_template(step)
+    message_text = format_message(db, message_template, employee, anchor_date, step.send_time)
     has_attachment = bool((getattr(step, "attachment_path", None) or "").strip())
     send_employee_card = bool(getattr(step, "send_employee_card", False))
     reply_markup = step_reply_markup(step, include_back=include_back)
     back_keyboard = step_back_keyboard(step, include_back=include_back)
-    inline_buttons_after_attachment = (has_attachment or send_employee_card) and reply_markup is not None
+    media_can_host_inline_buttons = bool(reply_markup and (has_attachment or send_employee_card))
+    needs_fallback_inline_buttons_message = bool(reply_markup and not message_text.strip() and not media_can_host_inline_buttons)
 
     if message_text.strip():
         await messenger.send_text(
             chat_id=chat_id,
             text=message_text,
-            reply_markup=None if inline_buttons_after_attachment else (reply_markup or back_keyboard),
+            reply_markup=None if media_can_host_inline_buttons else (reply_markup or back_keyboard),
         )
+    media_reply_markup = reply_markup if media_can_host_inline_buttons else None
     if send_employee_card:
-        await send_employee_card_image(messenger, chat_id, employee)
-    await send_step_attachment(messenger, chat_id, step)
-    if inline_buttons_after_attachment:
+        employee_card_reply_markup = media_reply_markup if not has_attachment else None
+        await send_employee_card_image(
+            messenger,
+            chat_id,
+            employee,
+            reply_markup=employee_card_reply_markup,
+        )
+    if has_attachment:
+        await send_step_attachment(
+            messenger,
+            chat_id,
+            step,
+            reply_markup=media_reply_markup,
+        )
+    await send_tagged_employee_documents(messenger, db, chat_id, message_template, employee)
+    if needs_fallback_inline_buttons_message:
         await messenger.send_text(
             chat_id=chat_id,
-            text="Выберите вариант ответа:",
+            text="Выберите дату:" if step.response_type == "date" else "\u2060",
             reply_markup=reply_markup,
         )
 
@@ -818,7 +1213,11 @@ async def send_step(
             step.send_time,
         )
 
-    if step.response_type == "launch_scenario" or not auto_follow:
+    if step.response_type == "launch_scenario":
+        await _finish_launch_transition(messenger, db, employee, scenario, progress, step)
+        return
+
+    if not auto_follow:
         return
 
     if not progress.waiting_for_response:
@@ -832,6 +1231,8 @@ async def send_step(
                 await notify_hr_stage(messenger, employee, step.step_key)
             except Exception:
                 pass
+            return
+        if scheduled_at is not None and next_step.send_mode == "specific_time":
             return
         if settings.DEMO_MODE or next_step.send_mode == "immediate":
             await send_step(messenger, db, employee, scenario, next_step)
@@ -880,13 +1281,64 @@ async def handle_text_response(messenger_or_bot: Any, db: Session, employee: Emp
     step = get_step_by_key(db, scenario.scenario_key, progress.current_step_key)
     if not step or step.response_type != "text":
         return False
+    undo_snapshot = _capture_response_undo_snapshot(db, employee, scenario, step)
     store_survey_answer(db, employee, scenario, step, message.text)
     if not apply_response_to_employee(db, employee, step, message.text):
+        _restore_response_undo_snapshot(db, employee, scenario, step, undo_snapshot)
         return False
     employee.candidate_status = step.step_key
+    _push_response_undo_snapshot(progress, undo_snapshot)
     db.commit()
     await advance_after_response(messenger_or_bot, db, employee, scenario, step)
     return True
+
+
+async def handle_date_response_by_step_id(
+    messenger_or_bot: Any,
+    db: Session,
+    employee: Employee,
+    step_id: int,
+    action: str,
+    value: str,
+) -> DateCallbackResult:
+    if employee.is_bot_blocked:
+        return DateCallbackResult(False, "noop", None)
+    step = db.get(FlowStepTemplate, step_id)
+    if not step or step.response_type != "date":
+        return DateCallbackResult(False, "noop", None)
+    progress = get_waiting_progress_for_step(db, employee.id, step.flow_key, step.step_key)
+    if not progress:
+        return DateCallbackResult(False, "noop", None)
+    scenario = db.query(ScenarioTemplate).filter(ScenarioTemplate.scenario_key == step.flow_key).first()
+    if not scenario:
+        return DateCallbackResult(False, "noop", None)
+    if action == "noop":
+        return DateCallbackResult(True, "noop", None)
+    if action == "nav":
+        month_cursor = _parse_year_month(value)
+        if not month_cursor:
+            return DateCallbackResult(False, "noop", None)
+        return DateCallbackResult(
+            True,
+            "updated",
+            _date_step_markup(step, include_back=progress_has_back_step(progress), month_cursor=month_cursor),
+        )
+    if action != "set":
+        return DateCallbackResult(False, "noop", None)
+
+    selected_date = _parse_iso_date(value)
+    if not selected_date:
+        return DateCallbackResult(False, "noop", None)
+    undo_snapshot = _capture_response_undo_snapshot(db, employee, scenario, step)
+    store_survey_answer(db, employee, scenario, step, selected_date.isoformat())
+    if not apply_response_to_employee(db, employee, step, selected_date.isoformat()):
+        _restore_response_undo_snapshot(db, employee, scenario, step, undo_snapshot)
+        return DateCallbackResult(False, "noop", None)
+    employee.candidate_status = step.step_key
+    _push_response_undo_snapshot(progress, undo_snapshot)
+    db.commit()
+    await advance_after_response(messenger_or_bot, db, employee, scenario, step)
+    return DateCallbackResult(True, "selected", None)
 
 
 async def handle_button_response(messenger_or_bot: Any, db: Session, employee: Employee, scenario_key: str, step_key: str, option_index: int) -> bool:
@@ -907,8 +1359,10 @@ async def handle_button_response(messenger_or_bot: Any, db: Session, employee: E
     if option_index < 0 or option_index >= len(options):
         return False
     selected_value = options[option_index]
+    undo_snapshot = _capture_response_undo_snapshot(db, employee, scenario, step)
     store_survey_answer(db, employee, scenario, step, selected_value)
     if not apply_response_to_employee(db, employee, step, selected_value):
+        _restore_response_undo_snapshot(db, employee, scenario, step, undo_snapshot)
         return False
     apply_status_from_recruitment_choice(db, employee, scenario, step, selected_value)
     button_notifications = get_button_notifications(db, step.id, option_index)
@@ -923,6 +1377,7 @@ async def handle_button_response(messenger_or_bot: Any, db: Session, employee: E
             step.send_time,
         )
     employee.candidate_status = step.step_key
+    _push_response_undo_snapshot(progress, undo_snapshot)
     db.commit()
     if step.target_field in {"personal_data_consent", "employee_data_consent"} and not getattr(employee, step.target_field):
         progress.waiting_for_response = False
@@ -948,13 +1403,6 @@ async def handle_button_response(messenger_or_bot: Any, db: Session, employee: E
                 return True
 
             await send_step(messenger, db, employee, scenario, branch_step)
-            if branch_step.response_type == "launch_scenario" and branch_step.launch_scenario_key:
-                progress.waiting_for_response = False
-                progress.is_completed = True
-                progress.completed_at = utc_now()
-                progress.updated_at = utc_now()
-                db.commit()
-                await start_scenario(messenger, db, employee, branch_step.launch_scenario_key)
             return True
     await advance_after_response(messenger, db, employee, scenario, step)
     return True
@@ -997,12 +1445,15 @@ async def handle_file_response(
     step = get_step_by_key(db, scenario.scenario_key, progress.current_step_key)
     if not step or step.response_type != "file":
         return False
+    undo_snapshot = _capture_response_undo_snapshot(db, employee, scenario, step, uploaded_file)
     store_survey_answer(db, employee, scenario, step, uploaded_file.original_filename, uploaded_file.original_filename)
     if step.target_field == "resume":
         uploaded_file.category = "resume"
     if not apply_response_to_employee(db, employee, step, uploaded_file.original_filename, uploaded_file):
+        _restore_response_undo_snapshot(db, employee, scenario, step, undo_snapshot)
         return False
     employee.candidate_status = step.step_key
+    _push_response_undo_snapshot(progress, undo_snapshot)
     db.commit()
     await advance_after_response(messenger_or_bot, db, employee, scenario, step)
     return True
@@ -1018,6 +1469,12 @@ async def handle_back_response(messenger_or_bot: Any, db: Session, employee: Emp
     scenario = db.query(ScenarioTemplate).filter(ScenarioTemplate.scenario_key == progress.scenario_key).first()
     if not scenario:
         return False
+
+    undo_snapshot = _pop_response_undo_snapshot(progress)
+    undo_step_key = (undo_snapshot or {}).get("step_key") if isinstance(undo_snapshot, dict) else None
+    undo_step = get_step_by_key(db, scenario.scenario_key, undo_step_key) if undo_step_key else None
+    if undo_snapshot and undo_step:
+        _restore_response_undo_snapshot(db, employee, scenario, undo_step, undo_snapshot)
 
     history = _deserialize_step_history(progress)
     previous_step: Optional[FlowStepTemplate] = None
@@ -1061,5 +1518,3 @@ async def start_scenario(messenger_or_bot: Any, db: Session, employee: Employee,
     db.commit()
     await send_step(messenger, db, employee, scenario, first_step)
     return True
-
-

@@ -26,7 +26,7 @@ source_of_truth: false
 
 ## Backend/API
 
-- [[api]] — полный JSON API из `app/main.py`.
+- [[api]] — полный JSON API под `/api/*`; route ownership сейчас распределен по `app/web/*`, а `app/main.py` является composition root.
 - [[web-surface]] — classic HTML pages, form actions, downloads и redirects.
 - [[features/scenario-engine]] — scenario templates, step types, branching, progress и launch behavior.
 - [[features/notifications]] — текущая модель notifications и gaps.
@@ -50,4 +50,6 @@ source_of_truth: false
 ## Documentation process
 
 - [[documentation-standard]] — формат docs, LLD/ADR/runbook rules и Obsidian practices.
+- [[documentation-workflow]] — практический gate для мелких и значимых изменений.
+- [[inventory]] — классификация docs, source-of-truth статус и риски устаревания.
 - [[decisions/documentation-format-standard]] — решение по легкому стандарту документации.

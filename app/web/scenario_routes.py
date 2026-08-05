@@ -13,15 +13,16 @@ from sqlalchemy.orm import Session
 
 from ..database import get_session
 from ..flow_templates import (
+    CANDIDATE_WORK_STAGE_LABELS,
     EMPLOYEE_SCOPE_LABELS,
     NOTIFICATION_RECIPIENT_SCOPE_LABELS,
     RESPONSE_TYPE_LABELS,
-    ROLE_SCOPE_LABELS,
     SEND_MODE_LABELS,
     TARGET_FIELD_LABELS,
     TRIGGER_MODE_LABELS,
 )
 from ..models import Employee, FlowStepTemplate, ScenarioTemplate, StepButtonNotification, SurveyAnswer
+from ..positions import ROLE_SCOPE_ALL, build_role_scope_labels, resolve_scope_slug
 from ..time_utils import utc_now
 from .scenarios import (
     _apply_workspace_step_update,
@@ -192,16 +193,24 @@ def update_workspace_scenario_api(
     if not scenario or scenario.scenario_kind not in {"scenario", "survey"}:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Сценарий или опрос не найден")
 
+    title = str(payload.get("title") or "").strip()
     description = str(payload.get("description") or "").strip()
     role_scope = str(payload.get("role_scope") or "").strip()
     employee_scope = str(payload.get("employee_scope") or "").strip()
     trigger_mode = str(payload.get("trigger_mode") or "").strip()
+    candidate_work_stage_trigger = str(payload.get("candidate_work_stage_trigger") or "").strip()
     target_employee_id = str(payload.get("target_employee_id") or "").strip()
 
+    scenario.title = title[:120] or scenario.title or "Без названия"
     scenario.description = description[:50] or None
-    scenario.role_scope = role_scope if role_scope in ROLE_SCOPE_LABELS else "all"
+    scenario.role_scope = resolve_scope_slug(role_scope or "") or ROLE_SCOPE_ALL
     scenario.employee_scope = employee_scope if employee_scope in EMPLOYEE_SCOPE_LABELS else "all"
     scenario.trigger_mode = trigger_mode if trigger_mode in TRIGGER_MODE_LABELS else "manual_only"
+    scenario.candidate_work_stage_trigger = (
+        candidate_work_stage_trigger
+        if scenario.trigger_mode == "candidate_hr_stage" and candidate_work_stage_trigger in CANDIDATE_WORK_STAGE_LABELS
+        else None
+    ) or None
     scenario.target_employee_id = int(target_employee_id) if target_employee_id.isdigit() else None
     db.commit()
 
@@ -336,7 +345,7 @@ def update_workspace_step_api(
     if not scenario:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Сценарий не найден")
 
-    _apply_workspace_step_update(step, payload, scenario.scenario_kind)
+    _apply_workspace_step_update(db, step, payload, scenario.scenario_kind)
     _sync_workspace_button_notifications(db, step, payload, scenario.scenario_kind)
     _sync_workspace_step_send_notifications(db, step, payload, scenario.scenario_kind)
     db.commit()
@@ -378,7 +387,7 @@ def create_workspace_root_step_api(
         step_key=f"{scenario.scenario_key}_step_{int(utc_now().timestamp())}",
         step_title=title,
         sort_order=next_order,
-        default_text="Новый вопрос" if scenario.scenario_kind == "survey" else "Новое сообщение сценария.",
+        default_text="Новый вопрос" if scenario.scenario_kind == "survey" else "",
         custom_text=None,
         response_type="text" if scenario.scenario_kind == "survey" else "none",
         button_options=None,
@@ -487,7 +496,7 @@ def create_workspace_branch_step_api(
         branch_option_index=option_index,
         step_title=f"Ветка: {button_label}",
         sort_order=(parent_step.sort_order or 0) * 100 + option_index + 1,
-        default_text="Новое сообщение сценария.",
+        default_text="",
         custom_text=None,
         response_type="none",
         button_options=None,
@@ -545,7 +554,7 @@ def create_workspace_chain_step_api(
         branch_option_index=None,
         step_title=title,
         sort_order=next_order,
-        default_text="Новое сообщение сценария.",
+        default_text="",
         custom_text=None,
         response_type="none",
         button_options=None,
@@ -813,7 +822,7 @@ def _create_template_entity(
         scenario_kind=kind,
         title=title.strip() or meta["new_title"],
         sort_order=(last_scenario.sort_order + 10) if last_scenario else 10,
-        role_scope=role_scope if role_scope in ROLE_SCOPE_LABELS else "all",
+        role_scope=resolve_scope_slug(role_scope or "") or ROLE_SCOPE_ALL,
         employee_scope=employee_scope if employee_scope in EMPLOYEE_SCOPE_LABELS else "all",
         target_employee_id=int(target_employee_id) if (target_employee_id or "").strip().isdigit() else None,
         trigger_mode=trigger_mode if trigger_mode in TRIGGER_MODE_LABELS else "manual_only",
@@ -851,7 +860,7 @@ def _edit_template_page(
             "active_tab": meta["active_tab"],
             "scenario": scenario,
             "steps": editor_data["steps"],
-            "role_scope_labels": ROLE_SCOPE_LABELS,
+            "role_scope_labels": build_role_scope_labels(db, include_inactive=True),
             "employee_scope_labels": EMPLOYEE_SCOPE_LABELS,
             "trigger_mode_labels": TRIGGER_MODE_LABELS,
             "response_type_labels": RESPONSE_TYPE_LABELS,
@@ -1047,7 +1056,7 @@ async def update_scenario(
 
         target_step_id_int = int(target_step_id) if (target_step_id or "").strip().isdigit() else None
         scenario.title = title.strip() or scenario.title
-        scenario.role_scope = role_scope if role_scope in ROLE_SCOPE_LABELS else "all"
+        scenario.role_scope = resolve_scope_slug(role_scope or "") or ROLE_SCOPE_ALL
         scenario.employee_scope = employee_scope if employee_scope in EMPLOYEE_SCOPE_LABELS else "all"
         scenario.target_employee_id = int(target_employee_id) if (target_employee_id or "").strip().isdigit() else None
         scenario.trigger_mode = "manual_only" if scenario.scenario_kind == "survey" else (trigger_mode if trigger_mode in TRIGGER_MODE_LABELS else "manual_only")
@@ -1212,7 +1221,7 @@ async def update_scenario(
                     step_key=f"{scenario.scenario_key}_step_{int(utc_now().timestamp())}",
                     step_title="Новый вопрос" if scenario.scenario_kind == "survey" else "Новый шаг",
                     sort_order=next_order,
-                    default_text="Новое сообщение опроса." if scenario.scenario_kind == "survey" else "Новое сообщение сценария.",
+                    default_text="Новое сообщение опроса." if scenario.scenario_kind == "survey" else "",
                     custom_text=None,
                     response_type="none",
                     button_options=None,
@@ -1327,7 +1336,7 @@ async def update_scenario(
                         branch_option_index=option_idx,
                         step_title=f"Ветка: {option_label}",
                         sort_order=step.sort_order * 100 + option_idx + 1,
-                        default_text=f"Сообщение для варианта \"{option_label}\".",
+                        default_text="",
                         custom_text=None,
                         response_type="none",
                         button_options=None,
@@ -1411,7 +1420,7 @@ async def update_scenario(
                                 branch_option_index=None,
                                 step_title=f"Шаг {chain_index + 1}",
                                 sort_order=(chain_index + 1) * 10,
-                                default_text="Новое сообщение сценария.",
+                                default_text="",
                                 custom_text=None,
                                 response_type="none",
                                 button_options=None,
@@ -1570,7 +1579,7 @@ async def update_scenario(
                         branch_option_index=option_idx,
                         step_title=f"Ветка: {option_label}",
                         sort_order=chain_parent_step.sort_order * 100 + option_idx + 1,
-                        default_text=f"Сообщение для варианта \"{option_label}\".",
+                        default_text="",
                         custom_text=None,
                         response_type="none",
                         button_options=None,
@@ -1655,7 +1664,7 @@ async def update_scenario(
                                 branch_option_index=None,
                                 step_title=f"Шаг {chain_index + 1}",
                                 sort_order=(chain_index + 1) * 10,
-                                default_text="Новое сообщение сценария.",
+                                default_text="",
                                 custom_text=None,
                                 response_type="none",
                                 button_options=None,
@@ -1856,4 +1865,3 @@ def export_survey_results(
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f'attachment; filename=\"{filename}\"'},
     )
-

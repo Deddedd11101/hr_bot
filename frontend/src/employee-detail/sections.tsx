@@ -7,6 +7,7 @@ import {
     FileText,
     Link2,
     Play,
+    RefreshCcw,
     Send,
     ShieldAlert,
     Trash2,
@@ -37,6 +38,7 @@ import {
     FieldTitle,
 } from "@/components/ui/field";
 import { Checkbox } from "@/components/ui/checkbox";
+import { ConfirmAction } from "@/components/ui/confirm-action";
 import { DatePicker, DateTimePicker, TimeSelect } from "@/components/ui/date-picker";
 import { Input } from "@/components/ui/input";
 import {
@@ -58,8 +60,14 @@ type DetailItem = {
     linkLabel?: string | null;
     extraAction?: (() => void) | null;
     extraActionLabel?: string | null;
+    extraActionConfirmTitle?: string | null;
+    extraActionConfirmDescription?: string | null;
+    extraActionConfirmLabel?: string | null;
     deleteAction?: (() => void) | null;
     deleteActionLabel?: string | null;
+    deleteConfirmTitle?: string | null;
+    deleteConfirmDescription?: string | null;
+    deleteConfirmLabel?: string | null;
 };
 
 const EMPTY_SELECT_VALUE = "__empty__";
@@ -206,16 +214,35 @@ function DocumentList(props: {
                                             </Button>
                                         ) : null}
                                         {item.deleteAction ? (
-                                            <Button
-                                                type="button"
-                                                variant="ghost"
-                                                size="icon-sm"
-                                                onClick={item.deleteAction}
-                                                aria-label={item.deleteActionLabel || "Удалить"}
-                                                title={item.deleteActionLabel || "Удалить"}
-                                            >
-                                                <Trash2 />
-                                            </Button>
+                                            item.deleteConfirmTitle && item.deleteConfirmDescription ? (
+                                                <ConfirmAction
+                                                    title={item.deleteConfirmTitle}
+                                                    description={item.deleteConfirmDescription}
+                                                    actionLabel={item.deleteConfirmLabel || item.deleteActionLabel || "Удалить"}
+                                                    onConfirm={item.deleteAction}
+                                                >
+                                                    <Button
+                                                        type="button"
+                                                        variant="ghost"
+                                                        size="icon-sm"
+                                                        aria-label={item.deleteActionLabel || "Удалить"}
+                                                        title={item.deleteActionLabel || "Удалить"}
+                                                    >
+                                                        <Trash2 />
+                                                    </Button>
+                                                </ConfirmAction>
+                                            ) : (
+                                                <Button
+                                                    type="button"
+                                                    variant="ghost"
+                                                    size="icon-sm"
+                                                    onClick={item.deleteAction}
+                                                    aria-label={item.deleteActionLabel || "Удалить"}
+                                                    title={item.deleteActionLabel || "Удалить"}
+                                                >
+                                                    <Trash2 />
+                                                </Button>
+                                            )
                                         ) : null}
                                     </div>
                                 </div>
@@ -254,6 +281,18 @@ function ScenarioList(props: { items: DetailItem[] }) {
     return (
         <div className="employee-document-list">
             {props.items.map(function (item) {
+                const extraActionButton = item.extraAction ? (
+                    <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        onClick={item.extraActionConfirmTitle ? undefined : item.extraAction}
+                        aria-label={item.extraActionLabel || "Удалить"}
+                        title={item.extraActionLabel || "Удалить"}
+                    >
+                        <Trash2 />
+                    </Button>
+                ) : null;
                 return (
                     <div className="employee-document-row" key={item.id}>
                         <div className="employee-document-icon">
@@ -274,18 +313,16 @@ function ScenarioList(props: { items: DetailItem[] }) {
                                     <ExternalLink />
                                 </a>
                             ) : null}
-                            {item.extraAction ? (
-                                <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="icon-sm"
-                                    onClick={item.extraAction}
-                                    aria-label={item.extraActionLabel || "Удалить"}
-                                    title={item.extraActionLabel || "Удалить"}
+                            {item.extraAction && item.extraActionConfirmTitle && item.extraActionConfirmDescription && extraActionButton ? (
+                                <ConfirmAction
+                                    title={item.extraActionConfirmTitle}
+                                    description={item.extraActionConfirmDescription}
+                                    actionLabel={item.extraActionConfirmLabel || item.extraActionLabel || "Удалить"}
+                                    onConfirm={item.extraAction}
                                 >
-                                    <Trash2 />
-                                </Button>
-                            ) : null}
+                                    {extraActionButton}
+                                </ConfirmAction>
+                            ) : extraActionButton}
                         </div>
                     </div>
                 );
@@ -516,6 +553,20 @@ export function EmployeeProfileSection(props: any) {
                                     />
                                 </Field>
                             </FieldGroup>
+                            <div className="employee-checkbox-grid">
+                                <CheckboxField
+                                    name="is_manager"
+                                    checked={!!form.is_manager}
+                                    onChange={handleChange}
+                                    title="Может быть руководителем"
+                                />
+                                <CheckboxField
+                                    name="is_mentor"
+                                    checked={!!form.is_mentor}
+                                    onChange={handleChange}
+                                    title="Может быть наставником"
+                                />
+                            </div>
                         </CardContent>
                     </DetailCard>
 
@@ -532,7 +583,7 @@ export function EmployeeProfileSection(props: any) {
                                         value={form.manager_employee_id}
                                         onChange={handleChange}
                                         placeholder="Не выбран"
-                                        options={options.staff_employee_values}
+                                        options={options.manager_employee_values}
                                     />
                                 </Field>
                                 <Field>
@@ -542,7 +593,7 @@ export function EmployeeProfileSection(props: any) {
                                         value={form.mentor_adaptation_employee_id}
                                         onChange={handleChange}
                                         placeholder="Не выбран"
-                                        options={options.staff_employee_values}
+                                        options={options.mentor_employee_values}
                                     />
                                 </Field>
                                 <Field>
@@ -552,7 +603,7 @@ export function EmployeeProfileSection(props: any) {
                                         value={form.mentor_ipr_employee_id}
                                         onChange={handleChange}
                                         placeholder="Не выбран"
-                                        options={options.staff_employee_values}
+                                        options={options.mentor_employee_values}
                                     />
                                 </Field>
                                 <Field>
@@ -643,6 +694,9 @@ export function EmployeeOperationsSection(props: any) {
         opsState,
         offerUrl,
         setOfferUrl,
+        offerFile,
+        setOfferFile,
+        offerDocumentItem,
         payload,
         form,
         scheduleForm,
@@ -652,15 +706,16 @@ export function EmployeeOperationsSection(props: any) {
         fileForm,
         setFileForm,
         handleOfferSubmit,
+        handleOfferFileSubmit,
         handleOfferDelete,
         handleScheduleSubmit,
         handleLaunchSubmit,
         handleFileSubmit,
         handlePromoteToAdaptation,
+        handleResetBotLinkage,
         handleDeleteEmployee,
         employeeFileItems,
         hrFileItems,
-        documentItems,
         launchItems,
         manualLaunchItems,
         isCandidate,
@@ -696,15 +751,21 @@ export function EmployeeOperationsSection(props: any) {
                                 Сначала укажите реальный первый день сотрудника в карточке.
                             </p>
                         ) : null}
-                        <Button
-                            type="button"
-                            variant="secondary"
-                            onClick={handlePromoteToAdaptation}
-                            disabled={!canPromoteToAdaptation}
+                        <ConfirmAction
+                            title="Перевести кандидата в адаптацию?"
+                            description="Статус карточки изменится на адаптацию, а даты адаптационного периода будут подготовлены из первого рабочего дня."
+                            actionLabel="Перевести"
+                            onConfirm={handlePromoteToAdaptation}
                         >
-                            <Play data-icon="inline-start" />
-                            Перевести в адаптацию
-                        </Button>
+                            <Button
+                                type="button"
+                                variant="secondary"
+                                disabled={!canPromoteToAdaptation}
+                            >
+                                <Play data-icon="inline-start" />
+                                Перевести в адаптацию
+                            </Button>
+                        </ConfirmAction>
                     </CardContent>
                 </DetailCard>
             ) : null}
@@ -845,14 +906,15 @@ export function EmployeeOperationsSection(props: any) {
             />
 
             <DocumentList
-                title="Ссылки HR"
-                items={documentItems}
-                emptyTitle="Ссылок нет"
+                title="Оффер"
+                items={offerDocumentItem ? [offerDocumentItem] : []}
+                emptyTitle="Оффер пока не добавлен"
             >
+                <div className="employee-ops-stack">
                     <form className="employee-inline-form" onSubmit={handleOfferSubmit}>
                         <FieldGroup>
                             <Field>
-                                <FieldLabel>Новая ссылка</FieldLabel>
+                                <FieldLabel>Ссылка на оффер</FieldLabel>
                                 <Input
                                     type="url"
                                     value={offerUrl}
@@ -865,11 +927,44 @@ export function EmployeeOperationsSection(props: any) {
                             <div className="employee-action-row">
                                 <Button type="submit" variant="outline">
                                     <Link2 data-icon="inline-start" />
-                                    Добавить ссылку
+                                    Сохранить ссылку
                                 </Button>
                             </div>
                         </FieldGroup>
                     </form>
+                    <form className="employee-inline-form" onSubmit={handleOfferFileSubmit}>
+                        <FieldGroup>
+                            <Field>
+                                <FieldLabel>Файл оффера</FieldLabel>
+                                <Input
+                                    id="react-offer-file-input"
+                                    className="employee-file-native"
+                                    type="file"
+                                    onChange={function (event) {
+                                        const file = event.target.files && event.target.files[0] ? event.target.files[0] : null;
+                                        setOfferFile(file);
+                                    }}
+                                />
+                                <div className="employee-file-picker">
+                                    <label
+                                        htmlFor="react-offer-file-input"
+                                        className={buttonVariants({ variant: "outline", size: "sm" })}
+                                    >
+                                        <Upload data-icon="inline-start" />
+                                        Выбрать файл
+                                    </label>
+                                    <span>{offerFile ? offerFile.name : "Файл не выбран"}</span>
+                                </div>
+                            </Field>
+                            <div className="employee-action-row">
+                                <Button type="submit" variant="secondary">
+                                    <Upload data-icon="inline-start" />
+                                    Загрузить оффер
+                                </Button>
+                            </div>
+                        </FieldGroup>
+                    </form>
+                </div>
             </DocumentList>
 
             <DetailCard>
@@ -897,11 +992,22 @@ export function EmployeeOperationsSection(props: any) {
                         Редкие действия
                     </CardTitle>
                 </CardHeader>
-                <CardFooter>
-                    <Button type="button" variant="destructive" onClick={handleDeleteEmployee}>
-                        <Trash2 data-icon="inline-start" />
-                        Удалить сотрудника
+                <CardFooter className="employee-action-row">
+                    <Button type="button" variant="outline" onClick={handleResetBotLinkage}>
+                        <RefreshCcw data-icon="inline-start" />
+                        Сбросить привязку к боту
                     </Button>
+                    <ConfirmAction
+                        title="Удалить сотрудника?"
+                        description="Карточка сотрудника будет удалена. Это действие нельзя отменить."
+                        actionLabel="Удалить"
+                        onConfirm={handleDeleteEmployee}
+                    >
+                        <Button type="button" variant="outline">
+                            <Trash2 data-icon="inline-start" />
+                            Удалить сотрудника
+                        </Button>
+                    </ConfirmAction>
                 </CardFooter>
             </DetailCard>
         </div>

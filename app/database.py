@@ -12,7 +12,7 @@ class Base(DeclarativeBase):
 
 engine = create_engine(
     settings.DATABASE_URL,
-    connect_args={"check_same_thread": False} if settings.DATABASE_URL.startswith("sqlite") else {},
+    connect_args={"check_same_thread": False, "timeout": 30} if settings.DATABASE_URL.startswith("sqlite") else {},
 )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -26,9 +26,11 @@ def init_db() -> None:
     _ensure_sqlite_schema()
     from .auth import seed_admin_accounts
     from .flow_templates import seed_flow_templates
+    from .positions import seed_positions_catalog
 
     seed_admin_accounts()
     seed_flow_templates()
+    seed_positions_catalog()
 
 
 @contextmanager
@@ -55,9 +57,12 @@ def _ensure_sqlite_schema() -> None:
         required = {
             "telegram_username": "TEXT",
             "current_menu_set_id": "INTEGER",
+            "current_menu_path": "TEXT",
             "desired_position": "TEXT",
             "work_email": "TEXT",
             "work_hours": "TEXT",
+            "is_manager": "BOOLEAN NOT NULL DEFAULT 0",
+            "is_mentor": "BOOLEAN NOT NULL DEFAULT 0",
             "profile_photo_path": "TEXT",
             "profile_photo_filename": "TEXT",
             "salary_expectation": "TEXT",
@@ -85,6 +90,24 @@ def _ensure_sqlite_schema() -> None:
         for col, ddl in required.items():
             if col not in columns:
                 conn.execute(text(f"ALTER TABLE employees ADD COLUMN {col} {ddl}"))
+
+        conn.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS positions (
+                    id INTEGER NOT NULL,
+                    title VARCHAR(255) NOT NULL,
+                    slug VARCHAR(128) NOT NULL,
+                    is_active BOOLEAN NOT NULL DEFAULT 1,
+                    sort_order INTEGER NOT NULL DEFAULT 0,
+                    created_at DATETIME NOT NULL,
+                    PRIMARY KEY (id)
+                )
+                """
+            )
+        )
+        conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_positions_slug ON positions (slug)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_positions_id ON positions (id)"))
 
         employee_columns = {row[1] for row in conn.execute(text("PRAGMA table_info(employees)")).fetchall()}
         if "desired_position" in employee_columns:
@@ -133,6 +156,7 @@ def _ensure_sqlite_schema() -> None:
                         telegram_user_id VARCHAR(64),
                         telegram_username TEXT,
                         current_menu_set_id INTEGER,
+                        current_menu_path TEXT,
                         first_workday DATE,
                         birth_date DATE,
                         created_at DATETIME NOT NULL,
@@ -141,6 +165,8 @@ def _ensure_sqlite_schema() -> None:
                         desired_position TEXT,
                         work_email TEXT,
                         work_hours TEXT,
+                        is_manager BOOLEAN NOT NULL DEFAULT 0,
+                        is_mentor BOOLEAN NOT NULL DEFAULT 0,
                         profile_photo_path TEXT,
                         profile_photo_filename TEXT,
                         salary_expectation TEXT,
@@ -176,6 +202,7 @@ def _ensure_sqlite_schema() -> None:
                         telegram_user_id,
                         telegram_username,
                         current_menu_set_id,
+                        current_menu_path,
                         first_workday,
                         birth_date,
                         created_at,
@@ -184,6 +211,8 @@ def _ensure_sqlite_schema() -> None:
                         desired_position,
                         work_email,
                         work_hours,
+                        is_manager,
+                        is_mentor,
                         profile_photo_path,
                         profile_photo_filename,
                         salary_expectation,
@@ -212,6 +241,7 @@ def _ensure_sqlite_schema() -> None:
                         NULLIF(telegram_user_id, ''),
                         telegram_username,
                         current_menu_set_id,
+                        NULL,
                         first_workday,
                         NULL,
                         created_at,
@@ -220,6 +250,8 @@ def _ensure_sqlite_schema() -> None:
                         desired_position,
                         NULL,
                         NULL,
+                        0,
+                        0,
                         NULL,
                         NULL,
                         salary_expectation,
@@ -259,6 +291,7 @@ def _ensure_sqlite_schema() -> None:
             "day_offset_workdays": "INTEGER NOT NULL DEFAULT 0",
             "target_field": "TEXT",
             "launch_scenario_key": "TEXT",
+            "return_to_step_key": "TEXT",
             "attachment_path": "TEXT",
             "attachment_filename": "TEXT",
             "send_employee_card": "BOOLEAN NOT NULL DEFAULT 0",
@@ -379,6 +412,8 @@ def _ensure_sqlite_schema() -> None:
                     """
                 )
             )
+        if scenario_table_columns and "candidate_work_stage_trigger" not in scenario_table_columns:
+            conn.execute(text("ALTER TABLE scenario_templates ADD COLUMN candidate_work_stage_trigger TEXT"))
         if scenario_table_columns and "sort_order" in {row[1] for row in conn.execute(text("PRAGMA table_info(scenario_templates)")).fetchall()}:
             conn.execute(
                 text(
@@ -401,6 +436,7 @@ def _ensure_sqlite_schema() -> None:
                         scenario_key VARCHAR(64) NOT NULL,
                         current_step_key VARCHAR(128),
                         step_history TEXT,
+                        response_undo_history TEXT,
                         waiting_for_response BOOLEAN NOT NULL DEFAULT 0,
                         is_completed BOOLEAN NOT NULL DEFAULT 0,
                         started_at DATETIME NOT NULL,
@@ -428,6 +464,28 @@ def _ensure_sqlite_schema() -> None:
             progress_columns = {row[1] for row in progress_table_info}
             if "step_history" not in progress_columns:
                 conn.execute(text("ALTER TABLE scenario_progress ADD COLUMN step_history TEXT"))
+            if "response_undo_history" not in progress_columns:
+                conn.execute(text("ALTER TABLE scenario_progress ADD COLUMN response_undo_history TEXT"))
+
+        employee_document_link_columns = {
+            row[1] for row in conn.execute(text("PRAGMA table_info(employee_document_links)")).fetchall()
+        }
+        if employee_document_link_columns:
+            if "slot_key" not in employee_document_link_columns:
+                conn.execute(text("ALTER TABLE employee_document_links ADD COLUMN slot_key TEXT"))
+                conn.execute(
+                    text(
+                        """
+                        UPDATE employee_document_links
+                        SET slot_key = 'offer'
+                        WHERE title = 'Оффер' AND (slot_key IS NULL OR slot_key = '')
+                        """
+                    )
+                )
+            if "item_kind" not in employee_document_link_columns:
+                conn.execute(text("ALTER TABLE employee_document_links ADD COLUMN item_kind TEXT NOT NULL DEFAULT 'link'"))
+            if "employee_file_id" not in employee_document_link_columns:
+                conn.execute(text("ALTER TABLE employee_document_links ADD COLUMN employee_file_id INTEGER"))
 
         survey_answers_info = conn.execute(text("PRAGMA table_info(survey_answers)")).fetchall()
         if not survey_answers_info:
@@ -489,6 +547,8 @@ def _ensure_sqlite_schema() -> None:
             "notify_test_task_received": "BOOLEAN NOT NULL DEFAULT 1",
             "notify_user_actions": "BOOLEAN NOT NULL DEFAULT 1",
             "default_menu_set_id": "INTEGER",
+            "default_employee_menu_set_id": "INTEGER",
+            "default_candidate_menu_set_id": "INTEGER",
         }
         for col, ddl in hr_settings_required.items():
             if hr_settings_columns and col not in hr_settings_columns:

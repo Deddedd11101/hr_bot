@@ -2,7 +2,7 @@
 title: Safe extraction of main.py support layer
 date: 2026-05-26
 status: accepted
-doc_type: decision
+doc_type: adr
 area: backend
 task_tokens:
   - HRB-P1-07
