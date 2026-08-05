@@ -2,22 +2,22 @@
 
 HR Bot - сервис для HR-коммуникаций через административную панель и Telegram-бота.
 
-Проект объединяет карточки кандидатов и сотрудников, сценарии сообщений, опросы, массовые действия, Telegram delivery и stage-first процесс поставки.
+Проект объединяет карточки кандидатов и сотрудников, сценарии сообщений, опросы, массовые действия, доставку сообщений в Telegram и stage-first процесс поставки.
 
-## Current Status
+## Текущее Состояние
 
-- Backend: FastAPI application with SQLAlchemy models, scheduler jobs and web/API routes.
-- Bot: Aiogram worker for Telegram delivery, responses, files and menu navigation.
-- Frontend: React/Vite operator surfaces. Vite build output is committed under `app/static/workspace_v2`.
-- Data: SQLite by default plus local file storage under `storage/`.
-- Delivery: integration/stage workflow through GitHub Actions `Deploy Stage`; manual SSH is not the normal deploy path.
-- Documentation: `docs/` is the project source of truth. Start with `docs/documentation-guide.md`.
+- Backend: FastAPI-приложение с SQLAlchemy-моделями, scheduler jobs и web/API routes.
+- Bot: Aiogram worker для Telegram delivery, ответов, файлов и навигации по меню.
+- Frontend: операторские React/Vite-экраны. Vite build output коммитится в `app/static/workspace_v2`.
+- Data: по умолчанию SQLite плюс локальное файловое хранилище в `storage/`.
+- Delivery: integration/stage workflow через GitHub Actions `Deploy Stage`; ручной SSH не является нормальным deploy path.
+- Documentation: `docs/` является source of truth проекта. Начинать с `docs/documentation-guide.md`.
 
-Classic HTML surfaces still exist as fallback/legacy paths while React operator screens continue to replace them. Do not treat old classic templates as the preferred UI unless the relevant docs say the route is still intentionally legacy.
+Classic HTML surfaces еще существуют как fallback/legacy paths, пока React-экраны продолжают заменять старую админку. Не считать старые classic templates предпочтительным UI, если релевантные docs явно не говорят, что route все еще намеренно legacy.
 
-## Stack
+## Стек
 
-| Area | Stack |
+| Область | Стек |
 | --- | --- |
 | Backend | FastAPI, SQLAlchemy, Jinja2 |
 | Bot | Aiogram |
@@ -27,20 +27,20 @@ Classic HTML surfaces still exist as fallback/legacy paths while React operator 
 | Frontend | React 18, Vite, Tailwind v4, Base UI, selected Radix/shadcn wrappers |
 | CI/CD | GitHub Actions |
 
-## Repository Layout
+## Структура Репозитория
 
-| Path | Purpose |
+| Путь | Назначение |
 | --- | --- |
-| `app/` | FastAPI app, bot runtime, web routes, messaging, static assets and templates. |
-| `frontend/` | React/Vite source for operator surfaces. |
-| `app/static/workspace_v2/` | Built Vite assets used by the FastAPI app. This is generated, but currently part of the deploy contract. |
-| `docs/` | Live documentation, decisions, runbooks, maps and historical handoffs. |
-| `tests/` | Backend smoke and contract tests. |
-| `tools/` | Operational scripts, diagnostics and portability tools. |
-| `storage/` | Local runtime files. Do not commit or delete blindly. |
-| `backups/` | Local/stage database backups. Do not clean without retention policy. |
+| `app/` | FastAPI app, bot runtime, web routes, messaging, static assets и templates. |
+| `frontend/` | React/Vite source для операторских экранов. |
+| `app/static/workspace_v2/` | Собранные Vite assets, которые использует FastAPI app. Это generated output, но сейчас он часть deploy contract. |
+| `docs/` | Live-документация, decisions, runbooks, maps и historical handoffs. |
+| `tests/` | Backend smoke и contract tests. |
+| `tools/` | Operational scripts, diagnostics и portability tools. |
+| `storage/` | Локальные runtime-файлы. Не коммитить и не удалять вслепую. |
+| `backups/` | Локальные/stage backup-и базы. Не чистить без retention policy. |
 
-## Local Start
+## Локальный Запуск
 
 Windows PowerShell:
 
@@ -50,23 +50,23 @@ python -m venv .venv
 .\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
-Open:
+Открыть:
 
 ```text
 http://127.0.0.1:8000
 ```
 
-Run the Telegram bot worker separately when needed:
+Telegram bot worker запускать отдельно, когда он нужен:
 
 ```powershell
 .\.venv\Scripts\python.exe -m app.bot_runner
 ```
 
-See the current runbook: `docs/local-runbook.md`.
+Актуальный runbook: `docs/local-runbook.md`.
 
 ## Frontend Assets
 
-Install frontend dependencies and build assets:
+Установить frontend-зависимости и собрать assets:
 
 ```powershell
 cd frontend
@@ -74,19 +74,19 @@ npm install
 npm run build
 ```
 
-The Vite output goes to:
+Vite output попадает сюда:
 
 ```text
 app/static/workspace_v2
 ```
 
-For CI/deploy parity use `npm ci` before `npm run build`.
+Для parity с CI/deploy использовать `npm ci` перед `npm run build`.
 
-## Environment
+## Окружение
 
-Create `.env` from `.env.example`.
+Создать `.env` из `.env.example`.
 
-Minimum useful local variables:
+Минимально полезные локальные переменные:
 
 ```env
 TELEGRAM_BOT_TOKEN=replace-with-your-bot-token
@@ -94,7 +94,7 @@ DATABASE_URL=sqlite:///./hr_bot.db
 ADMIN_SESSION_SECRET=change-me-admin-session-secret
 ```
 
-For a quick local demo, `.env.example` includes:
+Для быстрого локального demo `.env.example` содержит:
 
 ```env
 DEMO_MODE=true
@@ -102,11 +102,11 @@ DEMO_STEP_MINUTES=1
 MANUAL_STEP_MINUTES=1
 ```
 
-Demo mode changes scheduler timing. Do not use it as proof of normal runtime behavior.
+Demo mode меняет timing scheduler-а. Не использовать его как доказательство нормального runtime-поведения.
 
-## Checks
+## Проверки
 
-Backend smoke checks used by CI:
+Backend smoke checks, которые использует CI:
 
 ```powershell
 .\.venv\Scripts\python.exe -m compileall app
@@ -114,62 +114,62 @@ Backend smoke checks used by CI:
 .\.venv\Scripts\python.exe -m unittest tests.test_scenario_engine_smoke tests.test_messaging_identity tests.test_employee_api_smoke -v
 ```
 
-If frontend source changed:
+Если менялся frontend source:
 
 ```powershell
 cd frontend
 npm run build
 ```
 
-If docs, API routes, config vars or SQLAlchemy models changed and `tools/check_docs_contracts.py` exists in the worktree:
+Если менялись docs, API routes, config vars или SQLAlchemy models и в worktree есть `tools/check_docs_contracts.py`:
 
 ```powershell
 .\.venv\Scripts\python.exe tools\check_docs_contracts.py
 ```
 
-## Documentation
+## Документация
 
-Read these first:
+Сначала читать:
 
-| Document | Purpose |
+| Документ | Назначение |
 | --- | --- |
-| `docs/documentation-guide.md` | How to read and maintain docs; live docs vs history. |
-| `docs/project_state.md` | Current system state, risks and priorities. |
-| `docs/backlog.md` | Canonical tasks and statuses. |
-| `docs/stage-change-log.md` | What actually reached stage. |
-| `docs/architecture.md` | Runtime topology and subsystem boundaries. |
-| `docs/local-runbook.md` | Local run commands. |
-| `docs/stage-deploy.md` | Stage deploy runbook and smoke checks. |
-| `docs/subagent-delivery.md` | Branching, integration and handoff rules for parallel agents. |
+| `docs/documentation-guide.md` | Как читать и поддерживать docs; live docs vs history. |
+| `docs/project_state.md` | Текущее состояние системы, риски и приоритеты. |
+| `docs/backlog.md` | Канонические задачи и статусы. |
+| `docs/stage-change-log.md` | Что фактически попало на stage. |
+| `docs/architecture.md` | Runtime topology и границы подсистем. |
+| `docs/local-runbook.md` | Команды локального запуска. |
+| `docs/stage-deploy.md` | Stage deploy runbook и smoke checks. |
+| `docs/subagent-delivery.md` | Правила веток, integration и handoff для параллельных агентов. |
 
-Historical docs such as `docs/handoffs/*`, `docs/daily/*`, roadmap snapshots and demo briefs are context, not current contract.
+Historical docs вроде `docs/handoffs/*`, `docs/daily/*`, roadmap snapshots и demo briefs - это контекст, а не текущий contract.
 
-## Delivery And Stage
+## Delivery И Stage
 
-Stage deploy is handled through GitHub Actions `Deploy Stage`.
+Stage deploy выполняется через GitHub Actions `Deploy Stage`.
 
-Current model:
+Текущая модель:
 
-- normal deploy ref is `stage` or an agreed integration ref;
-- workflow is manually dispatched with a `ref`;
-- preflight runs backend checks and frontend build;
-- stage deploy refuses dirty server worktrees;
-- SQLite backup is created and verified before checkout/restart;
-- web, worker, WireGuard and HTTP smoke checks run after restart.
+- обычный deploy ref - `stage` или согласованный integration ref;
+- workflow запускается вручную с выбранным `ref`;
+- preflight запускает backend checks и frontend build;
+- stage deploy отказывается работать с dirty server worktree;
+- перед checkout/restart создается и проверяется SQLite backup;
+- после restart проверяются web, worker, WireGuard и HTTP smoke.
 
-Do not use manual root SSH as the normal deploy path. See `docs/stage-deploy.md` and `docs/subagent-delivery.md`.
+Не использовать ручной root SSH как нормальный deploy path. См. `docs/stage-deploy.md` и `docs/subagent-delivery.md`.
 
-## Working Rules
+## Рабочие Правила
 
-- Use a clean worktree for new tasks. The historical dirty `D:\HRBot\hr_bot` worktree is rescue context, not the default place for new work.
-- Do not overwrite unrelated dirty changes.
-- Significant code, architecture, deploy, API, schema or process changes must update the relevant docs in the same work.
-- Do not delete `storage/*`, `backups/*`, `stage_snapshots/*` or database backups without an explicit retention policy.
-- Do not delete `app/static/workspace_v2` as "generated trash"; it is currently part of runtime delivery.
+- Для новых задач использовать clean worktree. Historical dirty `D:\HRBot\hr_bot` worktree - rescue context, а не рабочее место по умолчанию.
+- Не перетирать unrelated dirty changes.
+- Значимые изменения кода, архитектуры, deploy, API, schema или процесса должны обновлять релевантные docs в той же работе.
+- Не удалять `storage/*`, `backups/*`, `stage_snapshots/*` или database backups без явной retention policy.
+- Не удалять `app/static/workspace_v2` как "generated trash": сейчас это часть runtime delivery.
 
-## Runtime Data And Secrets
+## Runtime Data И Secrets
 
-Never commit real secrets or local runtime data:
+Никогда не коммитить реальные secrets или локальные runtime data:
 
 - `.env`
 - `hr_bot.db`
@@ -177,6 +177,6 @@ Never commit real secrets or local runtime data:
 - `storage/*`
 - `backups/*`
 - `stage_snapshots/*`
-- browser/test/debug artifacts such as `.edge-debug/` and `.codex-artifacts/`
+- browser/test/debug artifacts вроде `.edge-debug/` и `.codex-artifacts/`
 
-The exact ignore policy lives in `.gitignore`.
+Точная ignore policy живет в `.gitignore`.
