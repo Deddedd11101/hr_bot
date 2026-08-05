@@ -34,6 +34,44 @@ source_of_truth: true
 
 ## Записи
 
+### 2026-08-05 18:30 MSK - app deploy - scenario deploy guard
+
+- Deploy ref: `stage`.
+- Deployed commit: `9adc625`.
+- GitHub Actions run: `31020531883` -> success.
+- В stage включено:
+  - перед checkout/restart создается verified SQLite backup;
+  - дополнительно сохраняется JSON snapshot scenario config в `backups/scenarios.before-deploy.<timestamp>.json`;
+  - deploy guard покрывает `scenario_templates`, `flow_step_templates`, `step_button_notifications`, `step_send_notifications`;
+  - если scenario config меняется во время deploy/restart, workflow восстанавливает эти таблицы из snapshot и намеренно падает;
+  - worker log check теперь смотрит только окно после текущего restart, чтобы старые pre-deploy tracebacks не давали ложный failure.
+- Локальные проверки перед deploy:
+  - `D:\HRBot\hr_bot_stage_pipeline\.venv\Scripts\python.exe tools\check_docs_contracts.py`;
+  - `D:\HRBot\hr_bot_stage_pipeline\.venv\Scripts\python.exe -m compileall app tests tools`;
+  - `D:\HRBot\hr_bot_stage_pipeline\.venv\Scripts\python.exe -m ruff check --select F821 app tests`;
+  - embedded Python heredocs in `.github/workflows/deploy-stage.yml` compile;
+  - CI smoke unittest set with CI env;
+  - `npm ci` and `npm run build`;
+  - `git diff --check`.
+- GitHub Actions preflight:
+  - backend dependencies install;
+  - `compileall`;
+  - `ruff F821`;
+  - backend smoke tests;
+  - frontend build;
+  - smoke imports.
+- Stage safety checks:
+  - verified SQLite backup created before checkout/restart: `backups/hr_bot.before-deploy.20260805-153024.db`;
+  - scenario config snapshot created: `backups/scenarios.before-deploy.20260805-153024.json`;
+  - scenario configuration fingerprint unchanged.
+- Stage smoke checks:
+  - `/app/employees` -> `303`;
+  - `/app/flows/workspace-v2` -> `303`;
+  - Telegram API reachability -> `HTTP/2 302`;
+  - deploy job завершился успешно и вывел `9adc625`.
+- Открытый риск:
+  - первый deploy run `31020098639` применил restart, но завершился failure из-за старого worker traceback в окне `journalctl --since "5 minutes ago"`; после фикса окно проверки ограничено временем текущего restart.
+
 ### 2026-07-22 14:47 MSK - db import + ops - staff employees and positions catalog seed
 
 - Import source: `employees.xlsx` from HR handoff, converted to JSON payload for GitHub Actions.
