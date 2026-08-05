@@ -1105,6 +1105,25 @@ async def update_scenario(
         chain_notify_on_send_recipient_ids_values = form_list("chain_notify_on_send_recipient_ids")
         chain_notify_on_send_recipient_scope_values = form_list("chain_notify_on_send_recipient_scope")
 
+        submitted_button_notification_rows = {}
+        submitted_button_notification_rows_by_ref = {}
+        for index, parent_id in enumerate(button_notification_parent_ids):
+            parent_id_value = int(parent_id) if str(parent_id).strip().isdigit() else None
+            parent_ref_value = button_notification_parent_refs[index].strip() if index < len(button_notification_parent_refs) else ""
+            option_idx_raw = button_notification_option_indexes[index] if index < len(button_notification_option_indexes) else ""
+            option_idx = int(option_idx_raw) if str(option_idx_raw).strip().isdigit() else None
+            if (parent_id_value is None and not parent_ref_value) or option_idx is None:
+                continue
+            payload = {
+                "text": button_notification_texts[index] if index < len(button_notification_texts) else "",
+                "recipient_ids": button_notification_recipient_ids_values[index] if index < len(button_notification_recipient_ids_values) else "",
+                "recipient_scope": button_notification_recipient_scope_values[index] if index < len(button_notification_recipient_scope_values) else "",
+            }
+            if parent_id_value is not None:
+                submitted_button_notification_rows[(parent_id_value, option_idx)] = payload
+            if parent_ref_value:
+                submitted_button_notification_rows_by_ref[(parent_ref_value, option_idx)] = payload
+
         for index, current_step_id in enumerate(step_ids):
             step = db.get(FlowStepTemplate, current_step_id)
             if not step or step.flow_key != scenario.scenario_key:
@@ -1263,25 +1282,6 @@ async def update_scenario(
                     "row_index": len(submitted_chain_rows[(parent_id_value, branch_option_value)]),
                 }
             )
-
-        submitted_button_notification_rows = {}
-        submitted_button_notification_rows_by_ref = {}
-        for index, parent_id in enumerate(button_notification_parent_ids):
-            parent_id_value = int(parent_id) if str(parent_id).strip().isdigit() else None
-            parent_ref_value = button_notification_parent_refs[index].strip() if index < len(button_notification_parent_refs) else ""
-            option_idx_raw = button_notification_option_indexes[index] if index < len(button_notification_option_indexes) else ""
-            option_idx = int(option_idx_raw) if str(option_idx_raw).strip().isdigit() else None
-            if (parent_id_value is None and not parent_ref_value) or option_idx is None:
-                continue
-            payload = {
-                "text": button_notification_texts[index] if index < len(button_notification_texts) else "",
-                "recipient_ids": button_notification_recipient_ids_values[index] if index < len(button_notification_recipient_ids_values) else "",
-                "recipient_scope": button_notification_recipient_scope_values[index] if index < len(button_notification_recipient_scope_values) else "",
-            }
-            if parent_id_value is not None:
-                submitted_button_notification_rows[(parent_id_value, option_idx)] = payload
-            if parent_ref_value:
-                submitted_button_notification_rows_by_ref[(parent_ref_value, option_idx)] = payload
 
         chain_step_id_by_ref: dict[str, int] = {}
 
@@ -1856,5 +1856,4 @@ def export_survey_results(
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f'attachment; filename=\"{filename}\"'},
     )
-
 

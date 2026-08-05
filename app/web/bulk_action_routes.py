@@ -16,6 +16,7 @@ from .bulk_actions import (
     _bulk_target_recipients,
     _bulk_workspace_payload,
     _ensure_confirmed,
+    _mass_actions_redirect,
     _parse_bulk_run_at,
     _recipient_scope_label,
     _send_mass_message,
@@ -739,5 +740,4 @@ def delete_bulk_message_action_api(
     db.delete(action)
     db.commit()
     return {"message": "Запланированная отправка удалена.", "payload": _bulk_workspace_payload(db)}
-
 
