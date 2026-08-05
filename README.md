@@ -1,134 +1,100 @@
 # HR Bot
 
-Сервис для работы с кандидатами и сотрудниками через FastAPI-админку и Telegram-бота.
+HR Bot - сервис для HR-коммуникаций через административную панель и Telegram-бота.
 
-## О проекте
+Проект объединяет карточки кандидатов и сотрудников, сценарии сообщений, опросы, массовые действия, Telegram delivery и stage-first процесс поставки.
 
-Проект автоматизирует HR-коммуникацию через Telegram и административную панель.
+## Current Status
 
-В системе можно:
-- вести карточки кандидатов и сотрудников;
-- запускать сценарии сообщений и опросов;
-- собирать ответы и файлы;
-- отслеживать прохождение сценариев через админку.
+- Backend: FastAPI application with SQLAlchemy models, scheduler jobs and web/API routes.
+- Bot: Aiogram worker for Telegram delivery, responses, files and menu navigation.
+- Frontend: React/Vite operator surfaces. Vite build output is committed under `app/static/workspace_v2`.
+- Data: SQLite by default plus local file storage under `storage/`.
+- Delivery: integration/stage workflow through GitHub Actions `Deploy Stage`; manual SSH is not the normal deploy path.
+- Documentation: `docs/` is the project source of truth. Start with `docs/documentation-guide.md`.
 
-## Из чего состоит
+Classic HTML surfaces still exist as fallback/legacy paths while React operator screens continue to replace them. Do not treat old classic templates as the preferred UI unless the relevant docs say the route is still intentionally legacy.
 
-Проект состоит из нескольких основных частей:
+## Stack
 
-- админка на FastAPI;
-- Telegram-бот на Aiogram;
-- движок сценариев;
-- планировщик APScheduler;
-- SQLite-база данных и локальное файловое хранилище.
+| Area | Stack |
+| --- | --- |
+| Backend | FastAPI, SQLAlchemy, Jinja2 |
+| Bot | Aiogram |
+| Scheduler | APScheduler |
+| Database | SQLite by default |
+| Storage | Local filesystem storage |
+| Frontend | React 18, Vite, Tailwind v4, Base UI, selected Radix/shadcn wrappers |
+| CI/CD | GitHub Actions |
 
-## Основные сценарии
+## Repository Layout
 
-Сейчас проект поддерживает:
+| Path | Purpose |
+| --- | --- |
+| `app/` | FastAPI app, bot runtime, web routes, messaging, static assets and templates. |
+| `frontend/` | React/Vite source for operator surfaces. |
+| `app/static/workspace_v2/` | Built Vite assets used by the FastAPI app. This is generated, but currently part of the deploy contract. |
+| `docs/` | Live documentation, decisions, runbooks, maps and historical handoffs. |
+| `tests/` | Backend smoke and contract tests. |
+| `tools/` | Operational scripts, diagnostics and portability tools. |
+| `storage/` | Local runtime files. Do not commit or delete blindly. |
+| `backups/` | Local/stage database backups. Do not clean without retention policy. |
 
-- подбор и найм;
-- первый рабочий день;
-- первую рабочую неделю;
-- середину испытательного срока;
-- завершение испытательного срока;
-- опросы;
-- ручные сценарии и массовые действия.
+## Local Start
 
-## Где что находится
-
-- админка: `app.main:app`
-- Telegram-бот: `app.bot_runner`
-- карта документации и Obsidian vault: `docs/README.md`
-- настройки окружения: `.env`
-- пример настроек: `.env.example`
-- база данных по умолчанию: `hr_bot.db`
-- файлы сотрудников: `storage/employee_files/`
-- файлы шагов сценариев: `storage/scenario_step_files/`
-
-## Что уже готово
-
-- Модель сотрудника с Telegram `user_id` и датой первого рабочего дня.
-- Стандартный флоу уведомлений для первого дня.
-- REST API и HTML-админка для управления сотрудниками.
-- Telegram-бот, который отправляет запланированные сообщения сотрудникам.
-- Дополнительные поля кандидата и сотрудника: должность, зарплатные ожидания, согласия, тестовое, статус, заметки.
-- Приём входящих файлов в Telegram и сохранение в карточке сотрудника.
-- Загрузка файлов из админки, скачивание и отправка файлов сотруднику в Telegram.
-- Локальное файловое хранилище через `FILE_STORAGE_DIR`, по умолчанию `./storage/employee_files`.
-
-## Быстрый старт
-
-1. Создать `.env` из `.env.example`.
-2. Поднять виртуальное окружение.
-3. Установить зависимости из `requirements.txt`.
-4. Запустить админку.
-5. Запустить Telegram-бота.
-
-Минимально обязательная переменная:
-
-```env
-TELEGRAM_BOT_TOKEN=your-real-bot-token
-```
-
-## Локальный запуск на Windows
-
-### 1. Создать окружение
+Windows PowerShell:
 
 ```powershell
 python -m venv .venv
-```
-
-### 2. Установить зависимости
-
-```powershell
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
-```
-
-### 3. Запустить админку
-
-```powershell
 .\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
-`--reload` не является основной командой для этого проекта. Используй его только как optional dev-mode, если он стабильно работает в текущем окружении.
+Open:
 
-### 4. Запустить Telegram-бота
+```text
+http://127.0.0.1:8000
+```
+
+Run the Telegram bot worker separately when needed:
 
 ```powershell
 .\.venv\Scripts\python.exe -m app.bot_runner
 ```
 
-## Локальный запуск на macOS / Linux
+See the current runbook: `docs/local-runbook.md`.
 
-### 1. Создать окружение
+## Frontend Assets
 
-```bash
-python3 -m venv .venv
+Install frontend dependencies and build assets:
+
+```powershell
+cd frontend
+npm install
+npm run build
 ```
 
-### 2. Установить зависимости
+The Vite output goes to:
 
-```bash
-.venv/bin/python -m pip install -r requirements.txt
+```text
+app/static/workspace_v2
 ```
 
-### 3. Запустить админку
+For CI/deploy parity use `npm ci` before `npm run build`.
 
-```bash
-.venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+## Environment
+
+Create `.env` from `.env.example`.
+
+Minimum useful local variables:
+
+```env
+TELEGRAM_BOT_TOKEN=replace-with-your-bot-token
+DATABASE_URL=sqlite:///./hr_bot.db
+ADMIN_SESSION_SECRET=change-me-admin-session-secret
 ```
 
-`--reload` не является основной командой для этого проекта. Используй его только как optional dev-mode, если он стабильно работает в текущем окружении.
-
-### 4. Запустить Telegram-бота
-
-```bash
-.venv/bin/python -m app.bot_runner
-```
-
-## Демо-режим
-
-Для быстрого локального прогона можно включить:
+For a quick local demo, `.env.example` includes:
 
 ```env
 DEMO_MODE=true
@@ -136,42 +102,81 @@ DEMO_STEP_MINUTES=1
 MANUAL_STEP_MINUTES=1
 ```
 
-В этом режиме шаги сценариев идут быстро, без ожидания реальных дат и часов.
+Demo mode changes scheduler timing. Do not use it as proof of normal runtime behavior.
 
-## Stage и деплой
+## Checks
 
-Для stage используется отдельный сервер.
+Backend smoke checks used by CI:
 
-Текущая схема обновления:
-- код попадает в `main`;
-- stage получает обновления из репозитория;
-- сервисы `hr-bot-web` и `hr-bot-worker` перезапускаются после деплоя.
+```powershell
+.\.venv\Scripts\python.exe -m compileall app
+.\.venv\Scripts\python.exe -m ruff check --select F821 app tests
+.\.venv\Scripts\python.exe -m unittest tests.test_scenario_engine_smoke tests.test_messaging_identity tests.test_employee_api_smoke -v
+```
 
-## CI/CD
+If frontend source changed:
 
-В репозитории настроены два GitHub Actions workflow:
+```powershell
+cd frontend
+npm run build
+```
 
-- `CI`:
-  - ставит зависимости;
-  - компилирует Python-код;
-  - делает базовый smoke import основных модулей.
-- `Deploy Stage`:
-  - запускается после успешного `CI` для ветки `main`;
-  - подключается к stage-серверу по SSH;
-  - делает `git pull --ff-only origin main`;
-  - перезапускает `hr-bot-web` и `hr-bot-worker`.
+If docs, API routes, config vars or SQLAlchemy models changed and `tools/check_docs_contracts.py` exists in the worktree:
 
-Для автодеплоя на stage нужно добавить в GitHub Secrets:
+```powershell
+.\.venv\Scripts\python.exe tools\check_docs_contracts.py
+```
 
-- `STAGE_HOST`
-- `STAGE_PORT`
-- `STAGE_USERNAME`
-- `STAGE_PASSWORD`
-- `STAGE_APP_DIR`
+## Documentation
 
-Для текущего stage это обычно:
+Read these first:
 
-- `STAGE_HOST=92.51.38.32`
-- `STAGE_PORT=22`
-- `STAGE_USERNAME=root`
-- `STAGE_APP_DIR=/opt/hr_bot`
+| Document | Purpose |
+| --- | --- |
+| `docs/documentation-guide.md` | How to read and maintain docs; live docs vs history. |
+| `docs/project_state.md` | Current system state, risks and priorities. |
+| `docs/backlog.md` | Canonical tasks and statuses. |
+| `docs/stage-change-log.md` | What actually reached stage. |
+| `docs/architecture.md` | Runtime topology and subsystem boundaries. |
+| `docs/local-runbook.md` | Local run commands. |
+| `docs/stage-deploy.md` | Stage deploy runbook and smoke checks. |
+| `docs/subagent-delivery.md` | Branching, integration and handoff rules for parallel agents. |
+
+Historical docs such as `docs/handoffs/*`, `docs/daily/*`, roadmap snapshots and demo briefs are context, not current contract.
+
+## Delivery And Stage
+
+Stage deploy is handled through GitHub Actions `Deploy Stage`.
+
+Current model:
+
+- normal deploy ref is `stage` or an agreed integration ref;
+- workflow is manually dispatched with a `ref`;
+- preflight runs backend checks and frontend build;
+- stage deploy refuses dirty server worktrees;
+- SQLite backup is created and verified before checkout/restart;
+- web, worker, WireGuard and HTTP smoke checks run after restart.
+
+Do not use manual root SSH as the normal deploy path. See `docs/stage-deploy.md` and `docs/subagent-delivery.md`.
+
+## Working Rules
+
+- Use a clean worktree for new tasks. The historical dirty `D:\HRBot\hr_bot` worktree is rescue context, not the default place for new work.
+- Do not overwrite unrelated dirty changes.
+- Significant code, architecture, deploy, API, schema or process changes must update the relevant docs in the same work.
+- Do not delete `storage/*`, `backups/*`, `stage_snapshots/*` or database backups without an explicit retention policy.
+- Do not delete `app/static/workspace_v2` as "generated trash"; it is currently part of runtime delivery.
+
+## Runtime Data And Secrets
+
+Never commit real secrets or local runtime data:
+
+- `.env`
+- `hr_bot.db`
+- `ci.db`
+- `storage/*`
+- `backups/*`
+- `stage_snapshots/*`
+- browser/test/debug artifacts such as `.edge-debug/` and `.codex-artifacts/`
+
+The exact ignore policy lives in `.gitignore`.
