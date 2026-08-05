@@ -81,7 +81,7 @@ source_of_truth: true
    - `systemctl is-active --quiet wg-quick@redshield`;
    - HTTP smoke checks;
    - Telegram API reachability check;
-   - worker log check на свежие Telegram/network tracebacks.
+   - worker log check на Telegram/network tracebacks только с момента текущего restart, чтобы pre-existing ошибки до deploy не давали ложный failure.
 8. после restart сверяет snapshot scenario config tables:
    - `scenario_templates`;
    - `flow_step_templates`;

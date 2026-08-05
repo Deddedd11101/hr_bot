@@ -144,6 +144,7 @@ jobs:
             fi
             git checkout -B stage-deploy "${target_ref}"
             .venv/bin/python -m pip install -r requirements.txt
+            restart_since="$(date --iso-8601=seconds)"
             systemctl restart hr-bot-web
             systemctl restart hr-bot-worker
             systemctl is-active --quiet hr-bot-web
@@ -235,6 +236,6 @@ jobs:
             wait_http_status "/app/employees" "200 303"
             wait_http_status "/app/flows/workspace-v2" "200 303"
             curl -4 -I --connect-timeout 10 https://api.telegram.org/
-            journalctl -u hr-bot-worker --since "5 minutes ago" --no-pager -n 100 | \
+            journalctl -u hr-bot-worker --since "${restart_since}" --no-pager -n 100 | \
               grep -E "TelegramNetworkError|Request timeout|Traceback|Unclosed client session" && exit 1 || true
             git rev-parse --short HEAD
