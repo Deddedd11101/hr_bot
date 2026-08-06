@@ -15,6 +15,7 @@ SCENARIO_TEMPLATE_FIELDS = [
     "scenario_kind",
     "role_scope",
     "employee_scope",
+    "recipient_mode",
     "trigger_mode",
     "target_employee_id",
     "description",
@@ -71,7 +72,7 @@ def _normalize_scenario_keys(raw_values: list[str]) -> list[str]:
 def _load_scenario_row(connection: sqlite3.Connection, scenario_key: str) -> dict[str, Any]:
     row = connection.execute(
         """
-        SELECT scenario_key, title, sort_order, scenario_kind, role_scope, employee_scope, trigger_mode, target_employee_id, description
+        SELECT scenario_key, title, sort_order, scenario_kind, role_scope, employee_scope, recipient_mode, trigger_mode, target_employee_id, description
         FROM scenario_templates
         WHERE scenario_key = ?
         """,
@@ -164,7 +165,8 @@ def export_scenarios(db_path: Path, output_dir: Path, scenario_keys: list[str]) 
     assets_dir = output_dir / "assets"
     assets_dir.mkdir(exist_ok=True)
 
-    with _connect(db_path) as connection:
+    connection = _connect(db_path)
+    try:
         payload: dict[str, Any] = {
             "version": 1,
             "exported_from": str(db_path),
@@ -201,6 +203,8 @@ def export_scenarios(db_path: Path, output_dir: Path, scenario_keys: list[str]) 
                     "button_notifications": serialized_notifications,
                 }
             )
+    finally:
+        connection.close()
 
     manifest_path = output_dir / "manifest.json"
     manifest_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -230,7 +234,11 @@ def _delete_existing_scenario(connection: sqlite3.Connection, scenario_key: str)
 
 
 def _upsert_scenario_template(connection: sqlite3.Connection, template: dict[str, Any]) -> None:
-    template = {**template, "employee_scope": template.get("employee_scope") or "all"}
+    template = {
+        **template,
+        "employee_scope": template.get("employee_scope") or "all",
+        "recipient_mode": template.get("recipient_mode") or "self",
+    }
     existing = connection.execute(
         "SELECT id FROM scenario_templates WHERE scenario_key = ?",
         (template["scenario_key"],),
@@ -247,6 +255,7 @@ def _upsert_scenario_template(connection: sqlite3.Connection, template: dict[str
                 scenario_kind = ?,
                 role_scope = ?,
                 employee_scope = ?,
+                recipient_mode = ?,
                 trigger_mode = ?,
                 target_employee_id = ?,
                 description = ?
@@ -258,6 +267,7 @@ def _upsert_scenario_template(connection: sqlite3.Connection, template: dict[str
                 template.get("scenario_kind"),
                 template.get("role_scope"),
                 template.get("employee_scope") or "all",
+                template.get("recipient_mode") or "self",
                 template.get("trigger_mode"),
                 template.get("target_employee_id"),
                 template.get("description"),
@@ -269,8 +279,8 @@ def _upsert_scenario_template(connection: sqlite3.Connection, template: dict[str
     connection.execute(
         """
         INSERT INTO scenario_templates (
-            scenario_key, title, sort_order, scenario_kind, role_scope, employee_scope, trigger_mode, target_employee_id, description
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            scenario_key, title, sort_order, scenario_kind, role_scope, employee_scope, recipient_mode, trigger_mode, target_employee_id, description
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         values,
     )
@@ -308,7 +318,8 @@ def import_scenarios(db_path: Path, input_dir: Path, storage_root: Path) -> None
     payload = _load_manifest(input_dir)
     imported = 0
 
-    with _connect(db_path) as connection:
+    connection = _connect(db_path)
+    try:
         for scenario_item in payload.get("scenarios", []):
             template = scenario_item["template"]
             scenario_key = template["scenario_key"]
@@ -416,6 +427,8 @@ def import_scenarios(db_path: Path, input_dir: Path, storage_root: Path) -> None
             imported += 1
 
         connection.commit()
+    finally:
+        connection.close()
 
     print(f"Imported {imported} scenario(s) into {db_path}")
 

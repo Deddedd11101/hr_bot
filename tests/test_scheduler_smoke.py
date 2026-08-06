@@ -7,7 +7,7 @@ from app.config import settings
 from app.database import SessionLocal, init_db
 from app.messaging.identity import set_primary_chat_id
 from app.models import Employee, EmployeeMessengerAccount, FlowLaunchRequest, FlowStepTemplate, OnboardingEvent, ScenarioProgress, ScenarioTemplate
-from app.scheduler import run_scheduled_step, schedule_employee_scenario
+from app.scheduler import run_scheduled_step, schedule_all_employees, schedule_employee_scenario
 from app.scenario_engine import send_step
 
 
@@ -274,3 +274,89 @@ class SchedulerSmokeTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(messenger.sent_texts, [])
         self.assertEqual(sent_event_ids, existing_event_ids)
+
+    async def test_pending_trigger_request_marks_processed_and_records_delivery_error_for_missing_manager(self) -> None:
+        now = datetime.now(UTC).replace(tzinfo=None)
+        scenario_key = f"trigger_missing_manager_{self.unique_tag}"
+        scheduler = _FakeScheduler()
+        messenger = _FakeMessenger()
+
+        with SessionLocal() as db:
+            employee = Employee(
+                full_name=f"Trigger Subject {self.unique_tag}",
+                telegram_user_id="800001",
+                telegram_username=None,
+                first_workday=date(2026, 7, 8),
+                created_at=now,
+                is_flow_scheduled=False,
+                candidate_status="new",
+                employee_stage="adaptation",
+            )
+            scenario = ScenarioTemplate(
+                scenario_key=scenario_key,
+                title=f"Trigger scenario {self.unique_tag}",
+                role_scope="all",
+                employee_scope="employees",
+                scenario_kind="scenario",
+                sort_order=0,
+                trigger_mode="manager_assigned_adaptation",
+                recipient_mode="manager",
+            )
+            step = FlowStepTemplate(
+                flow_key=scenario_key,
+                step_key="first_step",
+                step_title="Первый шаг",
+                sort_order=10,
+                default_text="Назначь наставника",
+                response_type="text",
+                send_mode="immediate",
+                day_offset_workdays=0,
+            )
+            db.add_all([employee, scenario, step])
+            db.flush()
+            self.employee_id = employee.id
+            set_primary_chat_id(employee, "800001", db=db)
+            db.add(
+                FlowLaunchRequest(
+                    employee_id=employee.id,
+                    flow_key=scenario_key,
+                    requested_at=now,
+                    processed_at=None,
+                    launch_type="trigger",
+                    skip_step_key=None,
+                )
+            )
+            db.commit()
+
+        await schedule_all_employees(scheduler, messenger)
+
+        with SessionLocal() as db:
+            request_row = (
+                db.query(FlowLaunchRequest)
+                .filter(
+                    FlowLaunchRequest.employee_id == self.employee_id,
+                    FlowLaunchRequest.flow_key == scenario_key,
+                    FlowLaunchRequest.launch_type == "trigger",
+                )
+                .first()
+            )
+            self.assertIsNotNone(request_row)
+            self.assertIsNotNone(request_row.processed_at)
+
+        job = scheduler.get_job(f"employee-{self.employee_id}-{scenario_key}-first_step")
+        self.assertIsNotNone(job)
+        await job["func"](*job["args"])
+
+        with SessionLocal() as db:
+            progress = (
+                db.query(ScenarioProgress)
+                .filter(
+                    ScenarioProgress.employee_id == self.employee_id,
+                    ScenarioProgress.scenario_key == scenario_key,
+                )
+                .first()
+            )
+            self.assertIsNotNone(progress)
+            self.assertIn("не назначен", progress.last_delivery_error or "")
+
+        self.assertEqual(messenger.sent_texts, [])
