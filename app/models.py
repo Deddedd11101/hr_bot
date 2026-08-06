@@ -542,6 +542,12 @@ class ScenarioTemplate(Base):
         nullable=True,
         doc="Опциональный HR-статус кандидата, который запускает сценарий при trigger_mode=candidate_hr_stage.",
     )
+    recipient_mode: Mapped[str] = mapped_column(
+        String(64),
+        nullable=False,
+        default="self",
+        doc="Кому отправлять шаги сценария: self | manager | mentor_adaptation | mentor_ipr | hr.",
+    )
     target_employee_id: Mapped[Optional[int]] = mapped_column(
         Integer,
         nullable=True,
@@ -685,6 +691,9 @@ class ScenarioProgress(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     employee_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
     scenario_key: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    recipient_mode: Mapped[str] = mapped_column(String(64), nullable=False, default="self")
+    recipient_employee_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
+    recipient_chat_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     current_step_key: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
     step_history: Mapped[Optional[str]] = mapped_column(
         String(4096),
@@ -698,6 +707,11 @@ class ScenarioProgress(Base):
     )
     waiting_for_response: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     is_completed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    last_delivery_error: Mapped[Optional[str]] = mapped_column(
+        String(1024),
+        nullable=True,
+        doc="Последняя ошибка доставки шага сценария адресату.",
+    )
     started_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)

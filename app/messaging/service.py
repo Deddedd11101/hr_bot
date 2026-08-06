@@ -11,6 +11,7 @@ from ..positions import position_matches_scope
 from ..scenario_engine import (
     SCENARIO_BACK_BUTTON_TEXT,
     DATE_CALLBACK_PREFIX,
+    get_waiting_progress,
     handle_back_response,
     handle_button_response_by_step_id,
     handle_date_response_by_step_id,
@@ -441,9 +442,11 @@ async def save_incoming_file(
     if access.state != "ok" or access.employee is None:
         return None, None, access.state
     employee = access.employee
+    progress = get_waiting_progress(db, employee.id)
+    context_employee = db.get(Employee, progress.employee_id) if progress and progress.employee_id else employee
 
     db_file = EmployeeFile(
-        employee_id=employee.id,
+        employee_id=context_employee.id,
         direction="inbound",
         category=category,
         telegram_file_id=external_file_id,
@@ -457,7 +460,7 @@ async def save_incoming_file(
     db.add(db_file)
     db.commit()
     db.refresh(db_file)
-    return employee, db_file, "saved"
+    return context_employee, db_file, "saved"
 
 
 async def handle_saved_document(

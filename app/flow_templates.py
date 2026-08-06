@@ -51,6 +51,14 @@ TRIGGER_MODE_LABELS = {
     "end_probation": "В конце испытательного срока",
 }
 
+RECIPIENT_MODE_LABELS = {
+    "self": "Сам сотрудник или кандидат",
+    "manager": "Руководитель сотрудника",
+    "mentor_adaptation": "Наставник адаптации",
+    "mentor_ipr": "Наставник ИПР",
+    "hr": "HR из настроек",
+}
+
 RESPONSE_TYPE_LABELS = {
     "none": "Без ответа",
     "text": "Текстовый ответ",

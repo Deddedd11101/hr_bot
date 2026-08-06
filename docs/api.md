@@ -135,6 +135,7 @@ source_of_truth: true
 - `selected_scenario_id`
 - `workspace`
   - `scenario`
+    - `recipient_mode`
   - `root_steps`
   - `stats`
   - label dictionaries для UI rendering
@@ -221,7 +222,7 @@ source_of_truth: true
 | --- | --- | --- | --- | --- | --- | --- |
 | `GET` | `/api/flows/workspace` | Вернуть sidebar сценариев/опросов и payload выбранного item. | Optional query: `scenario_id`, `kind=scenario\|survey` | Workspace payload with `kind`, `item_label`, `scenarios[]`, optional `workspace` | Нет | `401` |
 | `POST` | `/api/flows/workspace/scenarios` | Создать новый scenario/survey shell. | JSON: optional `title`, optional `description`, optional `kind=scenario\|survey` | `{ message, scenario_id, payload }` | Inserts `scenario_templates` через direct SQL и current schema introspection | `401`, `409`, `500` если DB содержит required unsupported columns |
-| `POST` | `/api/flows/workspace/scenarios/{scenario_id}/settings` | Обновить item-level metadata. | JSON: `description`, `role_scope`, `employee_scope`, `trigger_mode`, `target_employee_id` | `{ message, payload }` | Обновляет одну строку `scenario_templates`; для survey сохраняется `trigger_mode=manual_only` | `401`, `404` |
+| `POST` | `/api/flows/workspace/scenarios/{scenario_id}/settings` | Обновить item-level metadata. | JSON: `description`, `role_scope`, `employee_scope`, `recipient_mode`, `trigger_mode`, `target_employee_id` | `{ message, payload }` | Обновляет одну строку `scenario_templates`; `recipient_mode` управляет адресатом runtime-шага, а progress все равно остается на context employee | `401`, `404` |
 | `POST` | `/api/flows/workspace/scenarios/reorder` | Сохранить sidebar order сценариев/опросов. | JSON: `scenario_ids[]`, optional `kind=scenario\|survey` | `{ message, payload }` | Перезаписывает `sort_order` выбранных items внутри kind | `401`, `400` если список пустой |
 | `POST` | `/api/flows/workspace/scenarios/bulk-copy` | Скопировать один или несколько scenarios/surveys. | JSON: `scenario_ids[]`, optional `kind=scenario\|survey` | `{ message, payload }` | Дублирует items и step trees внутри kind | `401`, `400`, `404` |
 | `POST` | `/api/flows/workspace/scenarios/bulk-delete` | Удалить один или несколько scenarios/surveys. | JSON: `scenario_ids[]`, optional `kind=scenario\|survey` | `{ message, payload }` | Удаляет items и dependent step trees внутри kind | `401`, `400`, `404` |
@@ -255,6 +256,28 @@ source_of_truth: true
 | `POST` | `/api/settings/positions/{position_id}` | Обновить должность. | Path: `position_id`; JSON: `title`, `is_active`, `sort_order` | `{ positions[] }` | Обновляет position row | `401`, `404`, `409` |
 | `PATCH` | `/api/settings/positions/{position_id}` | Частично обновить должность. | Path: `position_id`; JSON subset fields | `{ positions[] }` | Обновляет position row | `401`, `404`, `409` |
 | `DELETE` | `/api/settings/positions/{position_id}` | Деактивировать должность. | Path: `position_id` | `{ positions[] }` | Ставит `is_active=false`, физически не удаляет row | `401`, `404` |
+
+## Scenario recipient contract
+
+- `scenario_templates.recipient_mode` определяет, кто получает шаги runtime:
+  - `self` — сам context employee;
+  - `manager` — `manager_employee_id`;
+  - `mentor_adaptation` — `mentor_adaptation_employee_id`;
+  - `mentor_ipr` — `mentor_ipr_employee_id`;
+  - `hr` — `HrSettings.telegram_user_id`.
+- `context employee` не меняется:
+  - launch request, progress, survey answers, employee field updates и message templating продолжают работать по `ScenarioProgress.employee_id`.
+- `recipient employee` меняется:
+  - runtime отправляет шаги по resolved recipient chat id;
+  - `scenario_progress` хранит `recipient_mode`, `recipient_employee_id`, `recipient_chat_id`, чтобы reply-flow шел по адресату, а не по subject employee.
+- Failure behavior не silent:
+  - если related recipient не назначен или у него нет Telegram binding, шаг не отправляется;
+  - `scenario_progress.last_delivery_error` получает причину, а worker/web logs пишут warning.
+- Ограничение для `hr`:
+  - send-only шаги поддерживаются через `HrSettings.telegram_user_id`;
+  - interactive шаги требуют, чтобы этот Telegram уже был связан с `Employee`, иначе runtime фиксирует delivery error и не уходит в “ожидание ответа в пустоту”.
+- Специальный compatibility rule:
+  - `trigger_mode=manager_assigned_adaptation` при старом `recipient_mode=self` runtime трактует как `manager`, чтобы старые trigger-сценарии не продолжали ошибочно писать самому адаптируемому сотруднику.
 
 ## API shared documents workspace
 

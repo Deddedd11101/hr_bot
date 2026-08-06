@@ -3,6 +3,7 @@ from __future__ import annotations
 import calendar
 import html
 import json
+import logging
 import re
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
@@ -10,16 +11,20 @@ from typing import Any, Literal, NamedTuple, Optional
 
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, Message, ReplyKeyboardMarkup
 from pytz import timezone as tz_get
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from .config import settings
 from .employee_card import render_employee_card_png
+from .messaging import as_messenger, find_employee_by_channel_user_id
 from .messaging.identity import get_primary_chat_id
-from .messaging import as_messenger
 from .models import Employee, EmployeeDocumentLink, EmployeeFile, FlowLaunchRequest, FlowStepTemplate, HrSettings, OnboardingEvent, ScenarioProgress, ScenarioTemplate, StepButtonNotification, StepSendNotification, SurveyAnswer
 from .notifications import notify_hr_stage
 from .positions import position_matches_scope
 from .time_utils import utc_now
+
+
+logger = logging.getLogger(__name__)
 
 
 CALLBACK_PREFIX = "scenario:"
@@ -52,12 +57,32 @@ NOTIFICATION_SCOPE_TO_EMPLOYEE_FIELD = {
     "mentor_adaptation": ("mentor_adaptation_employee_id", "mentor_adaptation_telegram_id"),
     "mentor_ipr": ("mentor_ipr_employee_id", "mentor_ipr_telegram_id"),
 }
+RECIPIENT_MODE_SELF = "self"
+RECIPIENT_MODE_MANAGER = "manager"
+RECIPIENT_MODE_MENTOR_ADAPTATION = "mentor_adaptation"
+RECIPIENT_MODE_MENTOR_IPR = "mentor_ipr"
+RECIPIENT_MODE_HR = "hr"
+SCENARIO_RECIPIENT_MODES = {
+    RECIPIENT_MODE_SELF,
+    RECIPIENT_MODE_MANAGER,
+    RECIPIENT_MODE_MENTOR_ADAPTATION,
+    RECIPIENT_MODE_MENTOR_IPR,
+    RECIPIENT_MODE_HR,
+}
 
 
 class DateCallbackResult(NamedTuple):
     handled: bool
     action: Literal["noop", "updated", "selected"]
     reply_markup: InlineKeyboardMarkup | None = None
+
+
+class ScenarioRecipientResolution(NamedTuple):
+    mode: str
+    employee_id: int | None
+    chat_id: str | None
+    label: str
+    error: str | None = None
 
 
 def get_scenario_steps(db: Session, scenario_key: str) -> list[FlowStepTemplate]:
@@ -320,11 +345,15 @@ def get_or_create_progress(db: Session, employee_id: int, scenario_key: str) -> 
     progress = ScenarioProgress(
         employee_id=employee_id,
         scenario_key=scenario_key,
+        recipient_mode=RECIPIENT_MODE_SELF,
+        recipient_employee_id=employee_id,
+        recipient_chat_id=None,
         current_step_key=None,
         step_history=None,
         response_undo_history=None,
         waiting_for_response=False,
         is_completed=False,
+        last_delivery_error=None,
         started_at=now,
         updated_at=now,
         completed_at=None,
@@ -338,10 +367,14 @@ def reset_progress(db: Session, employee_id: int, scenario_key: str) -> Scenario
     now = utc_now()
     progress = get_or_create_progress(db, employee_id, scenario_key)
     progress.current_step_key = None
+    progress.recipient_mode = RECIPIENT_MODE_SELF
+    progress.recipient_employee_id = employee_id
+    progress.recipient_chat_id = None
     progress.step_history = None
     progress.response_undo_history = None
     progress.waiting_for_response = False
     progress.is_completed = False
+    progress.last_delivery_error = None
     progress.started_at = now
     progress.updated_at = now
     progress.completed_at = None
@@ -352,7 +385,13 @@ def get_waiting_progress(db: Session, employee_id: int) -> Optional[ScenarioProg
     return (
         db.query(ScenarioProgress)
         .filter(
-            ScenarioProgress.employee_id == employee_id,
+            or_(
+                ScenarioProgress.recipient_employee_id == employee_id,
+                (
+                    ScenarioProgress.recipient_employee_id.is_(None)
+                    & (ScenarioProgress.employee_id == employee_id)
+                ),
+            ),
             ScenarioProgress.waiting_for_response.is_(True),
             ScenarioProgress.is_completed.is_(False),
         )
@@ -370,7 +409,13 @@ def get_waiting_progress_for_step(
     return (
         db.query(ScenarioProgress)
         .filter(
-            ScenarioProgress.employee_id == employee_id,
+            or_(
+                ScenarioProgress.recipient_employee_id == employee_id,
+                (
+                    ScenarioProgress.recipient_employee_id.is_(None)
+                    & (ScenarioProgress.employee_id == employee_id)
+                ),
+            ),
             ScenarioProgress.scenario_key == scenario_key,
             ScenarioProgress.current_step_key == step_key,
             ScenarioProgress.waiting_for_response.is_(True),
@@ -378,6 +423,105 @@ def get_waiting_progress_for_step(
         )
         .order_by(ScenarioProgress.updated_at.desc())
         .first()
+    )
+
+
+def _normalize_recipient_mode(value: str | None) -> str:
+    normalized = (value or "").strip()
+    return normalized if normalized in SCENARIO_RECIPIENT_MODES else RECIPIENT_MODE_SELF
+
+
+def _scenario_recipient_mode(scenario: ScenarioTemplate) -> str:
+    configured = _normalize_recipient_mode(getattr(scenario, "recipient_mode", None))
+    if getattr(scenario, "trigger_mode", None) == "manager_assigned_adaptation" and configured == RECIPIENT_MODE_SELF:
+        return RECIPIENT_MODE_MANAGER
+    return configured
+
+
+def _resolve_related_recipient_employee(db: Session, employee: Employee, relation_field: str) -> Employee | None:
+    related_employee_id = getattr(employee, relation_field, None)
+    if not related_employee_id:
+        return None
+    return db.get(Employee, related_employee_id)
+
+
+def resolve_scenario_recipient(
+    db: Session,
+    employee: Employee,
+    scenario: ScenarioTemplate,
+    *,
+    requires_response: bool,
+) -> ScenarioRecipientResolution:
+    mode = _scenario_recipient_mode(scenario)
+    if mode == RECIPIENT_MODE_SELF:
+        chat_id = get_primary_chat_id(employee, db=db)
+        if not chat_id:
+            return ScenarioRecipientResolution(mode, employee.id, None, employee.full_name or f"Employee #{employee.id}", "У получателя не привязан Telegram.")
+        return ScenarioRecipientResolution(mode, employee.id, chat_id, employee.full_name or f"Employee #{employee.id}")
+
+    if mode == RECIPIENT_MODE_MANAGER:
+        recipient = _resolve_related_recipient_employee(db, employee, "manager_employee_id")
+    elif mode == RECIPIENT_MODE_MENTOR_ADAPTATION:
+        recipient = _resolve_related_recipient_employee(db, employee, "mentor_adaptation_employee_id")
+    elif mode == RECIPIENT_MODE_MENTOR_IPR:
+        recipient = _resolve_related_recipient_employee(db, employee, "mentor_ipr_employee_id")
+    else:
+        recipient = None
+
+    if mode in {RECIPIENT_MODE_MANAGER, RECIPIENT_MODE_MENTOR_ADAPTATION, RECIPIENT_MODE_MENTOR_IPR}:
+        if recipient is None:
+            return ScenarioRecipientResolution(mode, None, None, mode, "Получатель не назначен в карточке сотрудника.")
+        chat_id = get_primary_chat_id(recipient, db=db)
+        if not chat_id:
+            return ScenarioRecipientResolution(mode, recipient.id, None, recipient.full_name or f"Employee #{recipient.id}", "У получателя не привязан Telegram.")
+        return ScenarioRecipientResolution(mode, recipient.id, chat_id, recipient.full_name or f"Employee #{recipient.id}")
+
+    hr_settings = db.get(HrSettings, 1)
+    hr_chat_id = (getattr(hr_settings, "telegram_user_id", None) or "").strip()
+    hr_label = (getattr(hr_settings, "hr_name", None) or "").strip() or "HR"
+    if not hr_chat_id:
+        return ScenarioRecipientResolution(mode, None, None, hr_label, "В HR-настройках не указан Telegram user id.")
+    hr_employee = find_employee_by_channel_user_id(db, channel="telegram", external_user_id=hr_chat_id)
+    if requires_response and hr_employee is None:
+        return ScenarioRecipientResolution(
+            mode,
+            None,
+            hr_chat_id,
+            hr_label,
+            "HR-адресат не связан с карточкой сотрудника, поэтому интерактивный шаг не сможет принять ответ.",
+        )
+    return ScenarioRecipientResolution(mode, hr_employee.id if hr_employee else None, hr_chat_id, hr_label)
+
+
+def _store_progress_recipient(progress: ScenarioProgress, resolution: ScenarioRecipientResolution) -> None:
+    progress.recipient_mode = resolution.mode
+    progress.recipient_employee_id = resolution.employee_id
+    progress.recipient_chat_id = resolution.chat_id
+
+
+def _mark_delivery_failure(
+    db: Session,
+    progress: ScenarioProgress,
+    employee: Employee,
+    scenario: ScenarioTemplate,
+    step: FlowStepTemplate,
+    resolution: ScenarioRecipientResolution,
+) -> None:
+    _store_progress_recipient(progress, resolution)
+    progress.current_step_key = step.step_key
+    progress.waiting_for_response = False
+    progress.is_completed = False
+    progress.last_delivery_error = resolution.error
+    progress.updated_at = utc_now()
+    db.commit()
+    logger.warning(
+        "Scenario delivery skipped: scenario=%s step=%s subject_employee_id=%s recipient_mode=%s recipient_employee_id=%s error=%s",
+        scenario.scenario_key,
+        step.step_key,
+        employee.id,
+        resolution.mode,
+        resolution.employee_id,
+        resolution.error,
     )
 
 
@@ -536,6 +680,10 @@ def _pop_response_undo_snapshot(progress: ScenarioProgress) -> dict[str, Any] | 
 
 def progress_has_back_step(progress: ScenarioProgress | None) -> bool:
     return bool(progress and _deserialize_step_history(progress))
+
+
+def _load_progress_context_employee(db: Session, progress: ScenarioProgress) -> Employee | None:
+    return db.get(Employee, progress.employee_id) if progress.employee_id else None
 
 
 def _get_tz():
@@ -1117,15 +1265,25 @@ async def send_step(
     step: FlowStepTemplate,
     scheduled_at: Optional[datetime] = None,
     auto_follow: bool = True,
-) -> None:
+) -> bool:
     messenger = as_messenger(messenger_or_bot)
     if employee.is_bot_blocked:
-        return
-    chat_id = get_primary_chat_id(employee, db=db)
-    if not chat_id:
-        return
+        return False
 
     progress = get_or_create_progress(db, employee.id, scenario.scenario_key)
+    resolution = resolve_scenario_recipient(
+        db,
+        employee,
+        scenario,
+        requires_response=step_requires_response(step),
+    )
+    if resolution.error or not resolution.chat_id:
+        _mark_delivery_failure(db, progress, employee, scenario, step, resolution)
+        return False
+
+    chat_id = resolution.chat_id
+    _store_progress_recipient(progress, resolution)
+    progress.last_delivery_error = None
     include_back = progress_has_back_step(progress)
     previous_step_key = progress.current_step_key
     if previous_step_key and previous_step_key != step.step_key:
@@ -1215,10 +1373,10 @@ async def send_step(
 
     if step.response_type == "launch_scenario":
         await _finish_launch_transition(messenger, db, employee, scenario, progress, step)
-        return
+        return True
 
     if not auto_follow:
-        return
+        return True
 
     if not progress.waiting_for_response:
         next_step = resolve_followup_step(db, scenario.scenario_key, step)
@@ -1231,14 +1389,15 @@ async def send_step(
                 await notify_hr_stage(messenger, employee, step.step_key)
             except Exception:
                 pass
-            return
+            return True
         if scheduled_at is not None and next_step.send_mode == "specific_time":
-            return
+            return True
         if settings.DEMO_MODE or next_step.send_mode == "immediate":
-            await send_step(messenger, db, employee, scenario, next_step)
+            return await send_step(messenger, db, employee, scenario, next_step)
         else:
             if not queue_followup_step(db, employee, scenario, next_step):
-                await send_step(messenger, db, employee, scenario, next_step)
+                return await send_step(messenger, db, employee, scenario, next_step)
+    return True
 
 
 async def advance_after_response(
@@ -1275,21 +1434,24 @@ async def handle_text_response(messenger_or_bot: Any, db: Session, employee: Emp
     progress = get_waiting_progress(db, employee.id)
     if not progress or not progress.current_step_key:
         return False
+    context_employee = _load_progress_context_employee(db, progress)
+    if not context_employee:
+        return False
     scenario = db.query(ScenarioTemplate).filter(ScenarioTemplate.scenario_key == progress.scenario_key).first()
     if not scenario:
         return False
     step = get_step_by_key(db, scenario.scenario_key, progress.current_step_key)
     if not step or step.response_type != "text":
         return False
-    undo_snapshot = _capture_response_undo_snapshot(db, employee, scenario, step)
-    store_survey_answer(db, employee, scenario, step, message.text)
-    if not apply_response_to_employee(db, employee, step, message.text):
-        _restore_response_undo_snapshot(db, employee, scenario, step, undo_snapshot)
+    undo_snapshot = _capture_response_undo_snapshot(db, context_employee, scenario, step)
+    store_survey_answer(db, context_employee, scenario, step, message.text)
+    if not apply_response_to_employee(db, context_employee, step, message.text):
+        _restore_response_undo_snapshot(db, context_employee, scenario, step, undo_snapshot)
         return False
-    employee.candidate_status = step.step_key
+    context_employee.candidate_status = step.step_key
     _push_response_undo_snapshot(progress, undo_snapshot)
     db.commit()
-    await advance_after_response(messenger_or_bot, db, employee, scenario, step)
+    await advance_after_response(messenger_or_bot, db, context_employee, scenario, step)
     return True
 
 
@@ -1308,6 +1470,9 @@ async def handle_date_response_by_step_id(
         return DateCallbackResult(False, "noop", None)
     progress = get_waiting_progress_for_step(db, employee.id, step.flow_key, step.step_key)
     if not progress:
+        return DateCallbackResult(False, "noop", None)
+    context_employee = _load_progress_context_employee(db, progress)
+    if not context_employee:
         return DateCallbackResult(False, "noop", None)
     scenario = db.query(ScenarioTemplate).filter(ScenarioTemplate.scenario_key == step.flow_key).first()
     if not scenario:
@@ -1329,15 +1494,15 @@ async def handle_date_response_by_step_id(
     selected_date = _parse_iso_date(value)
     if not selected_date:
         return DateCallbackResult(False, "noop", None)
-    undo_snapshot = _capture_response_undo_snapshot(db, employee, scenario, step)
-    store_survey_answer(db, employee, scenario, step, selected_date.isoformat())
-    if not apply_response_to_employee(db, employee, step, selected_date.isoformat()):
-        _restore_response_undo_snapshot(db, employee, scenario, step, undo_snapshot)
+    undo_snapshot = _capture_response_undo_snapshot(db, context_employee, scenario, step)
+    store_survey_answer(db, context_employee, scenario, step, selected_date.isoformat())
+    if not apply_response_to_employee(db, context_employee, step, selected_date.isoformat()):
+        _restore_response_undo_snapshot(db, context_employee, scenario, step, undo_snapshot)
         return DateCallbackResult(False, "noop", None)
-    employee.candidate_status = step.step_key
+    context_employee.candidate_status = step.step_key
     _push_response_undo_snapshot(progress, undo_snapshot)
     db.commit()
-    await advance_after_response(messenger_or_bot, db, employee, scenario, step)
+    await advance_after_response(messenger_or_bot, db, context_employee, scenario, step)
     return DateCallbackResult(True, "selected", None)
 
 
@@ -1347,6 +1512,9 @@ async def handle_button_response(messenger_or_bot: Any, db: Session, employee: E
     messenger = as_messenger(messenger_or_bot)
     progress = get_waiting_progress_for_step(db, employee.id, scenario_key, step_key)
     if not progress:
+        return False
+    context_employee = _load_progress_context_employee(db, progress)
+    if not context_employee:
         return False
     scenario = db.query(ScenarioTemplate).filter(ScenarioTemplate.scenario_key == scenario_key).first()
     step = get_step_by_key(db, scenario_key, step_key) if scenario else None
@@ -1359,33 +1527,33 @@ async def handle_button_response(messenger_or_bot: Any, db: Session, employee: E
     if option_index < 0 or option_index >= len(options):
         return False
     selected_value = options[option_index]
-    undo_snapshot = _capture_response_undo_snapshot(db, employee, scenario, step)
-    store_survey_answer(db, employee, scenario, step, selected_value)
-    if not apply_response_to_employee(db, employee, step, selected_value):
-        _restore_response_undo_snapshot(db, employee, scenario, step, undo_snapshot)
+    undo_snapshot = _capture_response_undo_snapshot(db, context_employee, scenario, step)
+    store_survey_answer(db, context_employee, scenario, step, selected_value)
+    if not apply_response_to_employee(db, context_employee, step, selected_value):
+        _restore_response_undo_snapshot(db, context_employee, scenario, step, undo_snapshot)
         return False
-    apply_status_from_recruitment_choice(db, employee, scenario, step, selected_value)
+    apply_status_from_recruitment_choice(db, context_employee, scenario, step, selected_value)
     button_notifications = get_button_notifications(db, step.id, option_index)
     for button_notification in button_notifications:
         await send_custom_notification(
             messenger,
             db,
-            employee,
+            context_employee,
             button_notification.message_text,
             button_notification.recipient_ids,
             button_notification.recipient_scope,
             step.send_time,
         )
-    employee.candidate_status = step.step_key
+    context_employee.candidate_status = step.step_key
     _push_response_undo_snapshot(progress, undo_snapshot)
     db.commit()
-    if step.target_field in {"personal_data_consent", "employee_data_consent"} and not getattr(employee, step.target_field):
+    if step.target_field in {"personal_data_consent", "employee_data_consent"} and not getattr(context_employee, step.target_field):
         progress.waiting_for_response = False
         progress.is_completed = True
         progress.completed_at = utc_now()
         db.commit()
         try:
-            await notify_hr_stage(messenger, employee, "recruitment_consent_no")
+            await notify_hr_stage(messenger, context_employee, "recruitment_consent_no")
         except Exception:
             pass
         return True
@@ -1394,17 +1562,17 @@ async def handle_button_response(messenger_or_bot: Any, db: Session, employee: E
         if branch_step:
             if branch_step.response_type == "chain":
                 if step_has_sendable_content(branch_step):
-                    await send_step(messenger, db, employee, scenario, branch_step, auto_follow=False)
+                    await send_step(messenger, db, context_employee, scenario, branch_step, auto_follow=False)
                 next_branch_step = resolve_branch_followup_step(db, scenario.scenario_key, branch_step)
                 if next_branch_step:
-                    await send_step(messenger, db, employee, scenario, next_branch_step)
+                    await send_step(messenger, db, context_employee, scenario, next_branch_step)
                 else:
-                    await advance_after_response(messenger, db, employee, scenario, branch_step)
+                    await advance_after_response(messenger, db, context_employee, scenario, branch_step)
                 return True
 
-            await send_step(messenger, db, employee, scenario, branch_step)
+            await send_step(messenger, db, context_employee, scenario, branch_step)
             return True
-    await advance_after_response(messenger, db, employee, scenario, step)
+    await advance_after_response(messenger, db, context_employee, scenario, step)
     return True
 
 
@@ -1439,23 +1607,28 @@ async def handle_file_response(
     progress = get_waiting_progress(db, employee.id)
     if not progress or not progress.current_step_key:
         return False
+    context_employee = _load_progress_context_employee(db, progress)
+    if not context_employee:
+        return False
     scenario = db.query(ScenarioTemplate).filter(ScenarioTemplate.scenario_key == progress.scenario_key).first()
     if not scenario:
         return False
     step = get_step_by_key(db, scenario.scenario_key, progress.current_step_key)
     if not step or step.response_type != "file":
         return False
-    undo_snapshot = _capture_response_undo_snapshot(db, employee, scenario, step, uploaded_file)
-    store_survey_answer(db, employee, scenario, step, uploaded_file.original_filename, uploaded_file.original_filename)
+    if uploaded_file.employee_id != context_employee.id:
+        uploaded_file.employee_id = context_employee.id
+    undo_snapshot = _capture_response_undo_snapshot(db, context_employee, scenario, step, uploaded_file)
+    store_survey_answer(db, context_employee, scenario, step, uploaded_file.original_filename, uploaded_file.original_filename)
     if step.target_field == "resume":
         uploaded_file.category = "resume"
-    if not apply_response_to_employee(db, employee, step, uploaded_file.original_filename, uploaded_file):
-        _restore_response_undo_snapshot(db, employee, scenario, step, undo_snapshot)
+    if not apply_response_to_employee(db, context_employee, step, uploaded_file.original_filename, uploaded_file):
+        _restore_response_undo_snapshot(db, context_employee, scenario, step, undo_snapshot)
         return False
-    employee.candidate_status = step.step_key
+    context_employee.candidate_status = step.step_key
     _push_response_undo_snapshot(progress, undo_snapshot)
     db.commit()
-    await advance_after_response(messenger_or_bot, db, employee, scenario, step)
+    await advance_after_response(messenger_or_bot, db, context_employee, scenario, step)
     return True
 
 
@@ -1466,6 +1639,9 @@ async def handle_back_response(messenger_or_bot: Any, db: Session, employee: Emp
     progress = get_waiting_progress(db, employee.id)
     if not progress or not progress.current_step_key:
         return False
+    context_employee = _load_progress_context_employee(db, progress)
+    if not context_employee:
+        return False
     scenario = db.query(ScenarioTemplate).filter(ScenarioTemplate.scenario_key == progress.scenario_key).first()
     if not scenario:
         return False
@@ -1474,7 +1650,7 @@ async def handle_back_response(messenger_or_bot: Any, db: Session, employee: Emp
     undo_step_key = (undo_snapshot or {}).get("step_key") if isinstance(undo_snapshot, dict) else None
     undo_step = get_step_by_key(db, scenario.scenario_key, undo_step_key) if undo_step_key else None
     if undo_snapshot and undo_step:
-        _restore_response_undo_snapshot(db, employee, scenario, undo_step, undo_snapshot)
+        _restore_response_undo_snapshot(db, context_employee, scenario, undo_step, undo_snapshot)
 
     history = _deserialize_step_history(progress)
     previous_step: Optional[FlowStepTemplate] = None
@@ -1485,7 +1661,7 @@ async def handle_back_response(messenger_or_bot: Any, db: Session, employee: Emp
         previous_step = None
 
     if not previous_step:
-        chat_id = get_primary_chat_id(employee, db=db)
+        chat_id = progress.recipient_chat_id or get_primary_chat_id(employee, db=db)
         if chat_id:
             await messenger.send_text(chat_id=chat_id, text="Это первый шаг сценария, назад идти некуда.")
         _serialize_step_history(progress, [])
@@ -1500,7 +1676,7 @@ async def handle_back_response(messenger_or_bot: Any, db: Session, employee: Emp
     progress.completed_at = None
     progress.updated_at = utc_now()
     db.commit()
-    await send_step(messenger, db, employee, scenario, previous_step, auto_follow=False)
+    await send_step(messenger, db, context_employee, scenario, previous_step, auto_follow=False)
     return True
 
 
@@ -1515,6 +1691,7 @@ async def start_scenario(messenger_or_bot: Any, db: Session, employee: Employee,
     if not first_step:
         return False
     reset_progress(db, employee.id, scenario_key)
+    progress = get_or_create_progress(db, employee.id, scenario_key)
+    progress.recipient_mode = _scenario_recipient_mode(scenario)
     db.commit()
-    await send_step(messenger, db, employee, scenario, first_step)
-    return True
+    return await send_step(messenger, db, employee, scenario, first_step)

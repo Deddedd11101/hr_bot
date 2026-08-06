@@ -67,11 +67,11 @@ source_of_truth: true
 
 | Таблица | Назначение | Ключевые поля | Связи и примечания |
 | --- | --- | --- | --- |
-| `scenario_templates` | Metadata сценариев и опросов | `scenario_key`, `title`, `scenario_kind`, `role_scope`, `employee_scope`, `trigger_mode`, `target_employee_id`, `description`, `sort_order` | Parent entity для steps и runtime launches |
+| `scenario_templates` | Metadata сценариев и опросов | `scenario_key`, `title`, `scenario_kind`, `role_scope`, `employee_scope`, `recipient_mode`, `trigger_mode`, `target_employee_id`, `description`, `sort_order` | Parent entity для steps и runtime launches; `recipient_mode` отделяет context employee от фактического Telegram-получателя |
 | `flow_step_templates` | Step definitions | `flow_key`, `step_key`, `parent_step_id`, `branch_option_index`, `response_type`, `button_options`, scheduling fields, target field, attachment fields, notification fields | Root steps имеют `parent_step_id = NULL`; branches и chains вложены через `parent_step_id` |
 | `step_button_notifications` | Notification overrides для button options | `flow_key`, `step_id`, `option_index`, `message_text`, recipient fields | Дополнительная notification model для конкретной button option |
 | `step_send_notifications` | Notification rules при показе шага | `flow_key`, `step_id`, `rule_index`, `message_text`, recipient fields | Новая множественная модель step-level notifications; legacy `notify_on_send_*` остается compatibility seam |
-| `scenario_progress` | Runtime position сценария по employee | `employee_id`, `scenario_key`, `current_step_key`, `waiting_for_response`, `is_completed`, timestamps | Tracks active/completed scenario state |
+| `scenario_progress` | Runtime position сценария по context employee | `employee_id`, `scenario_key`, `recipient_mode`, `recipient_employee_id`, `recipient_chat_id`, `current_step_key`, `waiting_for_response`, `is_completed`, `last_delivery_error`, timestamps | Tracks active/completed scenario state и отдельно хранит resolved recipient для reply-flow и audit |
 | `flow_launch_requests` | Launch queue для manual и scheduled work | `employee_id`, `flow_key`, `requested_at`, `processed_at`, `launch_type`, `skip_step_key` | Используется для будущих запусков и follow-up continuation steps |
 | `survey_answers` | Сохраненные ответы на survey-like steps | `employee_id`, `scenario_key`, `step_key`, `answer_value`, `file_name`, `answered_at` | Отдельно от `scenario_progress`, потому что answers can accumulate |
 | `onboarding_events` | Исторический лог onboarding sends | `employee_id`, `scheduled_at`, `sent_at`, `event_key`, `message` | Используется scheduled onboarding logic |
@@ -112,9 +112,25 @@ source_of_truth: true
 - Legacy fields `employees.telegram_user_id` и `employees.telegram_username` все еще существуют и активно синхронизируются.
 - Значит, identity сейчас живет в двух местах. App старается держать их aligned, но модель transitional.
 
+### `scenario_progress`
+
+- `employee_id` здесь означает не “кому ушло сообщение”, а context employee, по которому идет процесс.
+- `recipient_employee_id` и `recipient_chat_id` фиксируют фактического Telegram-получателя текущего шага.
+- Это нужно, чтобы:
+  - reply-flow руководителя или наставника не создавал ложный progress на самом руководителе;
+  - runtime мог обновлять карточку subject employee по ответу другого участника;
+  - missing recipient не превращался в silent drop.
+- `last_delivery_error` — минимальный code-backed audit seam:
+  - если recipient не назначен или у него нет Telegram binding, progress сохраняет причину последней неудачной доставки;
+  - это не полноценный outbox, но уже не беззвучная потеря шага.
+
 ### `scenario_templates` и `flow_step_templates`
 
 - Scenario authoring table-driven.
+- У scenario теперь есть отдельный recipient layer:
+  - `employee_id` в launch/progress остается subject/context employee;
+  - `recipient_mode` определяет фактического получателя шага;
+  - templating сообщения продолжает подставлять данные именно context employee, а не recipient employee.
 - Steps могут представлять:
   - обычные send-only nodes;
   - text/file/button response nodes;
@@ -129,6 +145,12 @@ source_of_truth: true
 SQLite schema guard делает больше, чем “создать таблицы, если их нет”. Важное поведение:
 
 - добавляет missing columns в `employees`, `scenario_templates`, `flow_step_templates`, `hr_settings`, mass action tables и launch tables;
+- отдельный новый recipient-sensitive участок schema patching:
+  - `scenario_templates.recipient_mode`;
+  - `scenario_progress.recipient_mode`;
+  - `scenario_progress.recipient_employee_id`;
+  - `scenario_progress.recipient_chat_id`;
+  - `scenario_progress.last_delivery_error`;
 - создает целые таблицы, если они отсутствуют:
   - `step_button_notifications`;
   - `step_send_notifications`;

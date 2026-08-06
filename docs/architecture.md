@@ -276,6 +276,7 @@ HR Bot — приложение в одном репозитории с неск
   - button notifications живут в `StepButtonNotification`;
   - step-level notifications больше не должны держаться только на legacy `notify_on_send_*` полях и вынесены в `StepSendNotification`;
   - legacy `notify_on_send_*` остаются compatibility seam, чтобы classic fallback и старые payloads не ломались мгновенно, но source of truth для новых множественных правил уже отдельная таблица.
+  - scenario metadata теперь несет еще и `recipient_mode`: workspace описывает не только “по какой карточке идет процесс”, но и “кому бот доставляет шаги”.
   - survey flow поверх тех же `FlowStepTemplate` теперь принудительно нормализуется иначе, чем scenario flow: вопрос сохраняется как единый `title/text`, ответ считается текстовым по умолчанию, optional `button_options` работают как готовые варианты текстового ответа без branching, а `send_mode`, `launch_scenario`, `target_field` и step notifications для survey-step не являются допустимой конфигурацией.
 
 ### Scenario workspace route layer
@@ -344,8 +345,12 @@ HR Bot — приложение в одном репозитории с неск
 ### Выполнение сценария
 
 1. Сценарий стартует вручную, через scheduled launch request или через trigger mode, который обрабатывает scheduler.
-2. Engine отправляет текущий шаг, вложения, опциональную карточку сотрудника и опциональные уведомления.
-3. Ответы пользователя обновляют employee data, файлы, survey answers и `scenario_progress`.
+2. Engine держит два слоя адресации:
+   - `context employee`/subject employee — по кому идет процесс и чьими данными рендерится сообщение;
+   - `recipient employee` — кто реально получает шаг в Telegram по `recipient_mode`.
+3. Engine отправляет текущий шаг, вложения, опциональную карточку сотрудника и опциональные уведомления уже по resolved recipient.
+4. Ответы пользователя продолжают один и тот же `scenario_progress`, даже если отвечает руководитель или наставник, а обновляются данные именно context employee.
+5. Если recipient не назначен или не привязан к Telegram, runtime не шлет шаг молча в пустоту: progress получает `last_delivery_error`, а worker пишет warning в logs.
 
 ### Массовая коммуникация
 
