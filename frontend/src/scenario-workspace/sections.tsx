@@ -375,6 +375,7 @@ export function WorkspaceCanvasSection(props: {
   scenarioSettingsState: { saving: boolean; message: string; error: boolean };
   roleScopeOptions: SingleOption[];
   employeeScopeOptions: SingleOption[];
+  recipientModeOptions: SingleOption[];
   triggerModeOptions: SingleOption[];
   candidateWorkStageOptions: SingleOption[];
   targetEmployeeOptions: SingleOption[];
@@ -411,6 +412,7 @@ export function WorkspaceCanvasSection(props: {
     scenarioSettingsState,
     roleScopeOptions,
     employeeScopeOptions,
+    recipientModeOptions,
     triggerModeOptions,
     candidateWorkStageOptions,
     targetEmployeeOptions,
@@ -551,6 +553,28 @@ export function WorkspaceCanvasSection(props: {
                         onChange={(nextValue) => onScenarioSettingsFormChange((prev) => (prev ? { ...prev, employee_scope: nextValue } : prev))}
                       />
                     </label>
+                    <label className="grid min-w-0 gap-2.5">
+                      <span className="text-sm font-semibold text-foreground/75">Кому отправлять сценарий</span>
+                      <SingleSelectPicker
+                        options={recipientModeOptions}
+                        value={scenarioSettingsForm.recipient_mode}
+                        placeholder="Адресат"
+                        onChange={(nextValue) =>
+                          onScenarioSettingsFormChange((prev) => (prev ? { ...prev, recipient_mode: nextValue || "self" } : prev))
+                        }
+                      />
+                      <span className="text-xs leading-5 text-muted-foreground">
+                        Сценарий запускается по карточке сотрудника, но сообщения получает выбранный адресат.
+                      </span>
+                    </label>
+                    {scenarioSettingsForm.recipient_mode && scenarioSettingsForm.recipient_mode !== "self" ? (
+                      <Alert className="border-warning/30 bg-warning/10">
+                        <AlertTitle>Проверь получателя</AlertTitle>
+                        <AlertDescription>
+                          Получатель должен быть назначен в карточке сотрудника и привязан к Telegram.
+                        </AlertDescription>
+                      </Alert>
+                    ) : null}
                     {!isSurveyWorkspace ? (
                       <label className="grid min-w-0 gap-2.5">
                         <span className="text-sm font-semibold text-foreground/75">Запуск</span>

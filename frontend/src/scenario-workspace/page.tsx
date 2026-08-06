@@ -129,6 +129,10 @@ export function ScenarioWorkspacePage() {
     () => Object.entries(payload?.workspace?.employee_scope_labels || {}).map(([value, label]) => ({ value, label })),
     [payload],
   );
+  const recipientModeOptions = React.useMemo<SingleOption[]>(
+    () => Object.entries(payload?.workspace?.recipient_mode_labels || {}).map(([value, label]) => ({ value, label })),
+    [payload],
+  );
   const triggerModeOptions = React.useMemo<SingleOption[]>(
     () => Object.entries(payload?.workspace?.trigger_mode_labels || {}).map(([value, label]) => ({ value, label })),
     [payload],
@@ -344,6 +348,7 @@ export function ScenarioWorkspacePage() {
       description: scenario.description || "",
       role_scope: scenario.role_scope || "all",
       employee_scope: scenario.employee_scope || "all",
+      recipient_mode: scenario.recipient_mode || "self",
       trigger_mode: scenario.trigger_mode || "manual_only",
       candidate_work_stage_trigger: scenario.candidate_work_stage_trigger || "",
       target_employee_id: scenario.target_employee_id ? String(scenario.target_employee_id) : "",
@@ -834,6 +839,7 @@ export function ScenarioWorkspacePage() {
             scenarioSettingsState={scenarioSettingsState}
             roleScopeOptions={roleScopeOptions}
             employeeScopeOptions={employeeScopeOptions}
+            recipientModeOptions={recipientModeOptions}
             triggerModeOptions={triggerModeOptions}
             candidateWorkStageOptions={candidateWorkStageOptions}
             targetEmployeeOptions={targetEmployeeOptions}
