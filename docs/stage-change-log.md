@@ -34,6 +34,48 @@ source_of_truth: true
 
 ## Записи
 
+### 2026-08-06 12:05 MSK - app deploy - scenario recipient contract
+
+- Deploy ref: `stage`.
+- Deployed commit: `1bfd73b`.
+- GitHub Actions run: `31087492320` -> success.
+- В stage включено:
+  - явный `recipient_mode` для сценариев: `self`, `manager`, `mentor_adaptation`, `mentor_ipr`, `hr`;
+  - runtime разделяет `context/subject employee` и фактического Telegram-получателя;
+  - `manager_assigned_adaptation` больше не обязан запускать процесс на карточке руководителя: progress остается на адаптируемом сотруднике, а доставка идет руководителю;
+  - ответы получателя продолжают progress исходной карточки сотрудника;
+  - ошибки доставки фиксируются в `ScenarioProgress.last_delivery_error`, если recipient не назначен или не привязан к Telegram;
+  - `tools/scenario_portability.py` переносит `recipient_mode`, чтобы перенос сценариев не откатывал адресата в `self`;
+  - в React scenario workspace добавлена настройка `Кому отправлять сценарий` с предупреждением для non-self адресатов.
+- Review gates before integration:
+  - DB/Storage steward verdict: approved;
+  - Docs Radar verdict: approved.
+- Локальные проверки перед deploy:
+  - `D:\HRBot\hr_bot_stage_pipeline\.venv\Scripts\python.exe -m compileall app tests tools`;
+  - `D:\HRBot\hr_bot_stage_pipeline\.venv\Scripts\python.exe -m ruff check --select F821 app tests tools`;
+  - `D:\HRBot\hr_bot_stage_pipeline\.venv\Scripts\python.exe tools\check_docs_contracts.py`;
+  - `D:\HRBot\hr_bot_stage_pipeline\.venv\Scripts\python.exe -m unittest tests.test_scenario_engine_smoke tests.test_messaging_identity tests.test_employee_api_smoke tests.test_scheduler_smoke tests.test_scenario_portability -v` -> 115 tests OK;
+  - `npm ci` and `npm run build` in `frontend`;
+  - `git diff --check`.
+- GitHub Actions preflight:
+  - backend dependencies install;
+  - `compileall`;
+  - `ruff F821`;
+  - backend smoke tests;
+  - frontend build;
+  - smoke imports.
+- Stage safety checks:
+  - verified SQLite backup created before checkout/restart: `backups/hr_bot.before-deploy.20260806-090515.db`;
+  - scenario config snapshot created: `backups/scenarios.before-deploy.20260806-090515.json`;
+  - scenario configuration fingerprint unchanged.
+- Stage smoke checks:
+  - `/app/employees` -> `303`;
+  - `/app/flows/workspace-v2` -> `303`;
+  - Telegram API reachability -> `HTTP/2 302`;
+  - deploy job завершился успешно и вывел `1bfd73b`.
+- Открытый риск:
+  - автоматического retry после исправления карточки recipient сейчас нет: для MVP используется manual relaunch или будущая отдельная retry/outbox модель.
+
 ### 2026-08-05 18:30 MSK - app deploy - scenario deploy guard
 
 - Deploy ref: `stage`.
