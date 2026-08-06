@@ -86,6 +86,60 @@ Reviewer может быть интегратором или отдельным 
 10. добавить запись в `docs/stage-change-log.md`;
 11. после успешного deploy инициировать cleanup feature branch/worktree, если она больше не нужна.
 
+### DB/Storage steward
+
+Отвечает не за фичи целиком, а за сохранность и эволюцию durable state:
+
+- SQLite schema и `_ensure_sqlite_schema()` behavior;
+- schema drift между `app/models.py`, `app/database.py`, live SQLite и docs;
+- backup/restore discipline, backup verification и retention questions;
+- storage consistency для `storage/*`, stored file paths и DB file references;
+- data safety при imports, scenario portability, cleanup и ручных repair scripts;
+- будущую migration strategy, но без внедрения Alembic или нового migration framework без отдельного LLD.
+
+DB/Storage steward не деплоит feature branch напрямую на stage и не меняет live stage DB вручную, если можно подготовить repo-backed script/workflow. Нормальный результат его работы как субагента: feature branch, commit, проверки и handoff интегратору.
+
+Frontend и backend агенты должны звать DB/Storage steward на review до merge, если изменение затрагивает хотя бы один пункт:
+
+- SQLAlchemy model, `_ensure_sqlite_schema()`, `DATABASE_URL`, `FILE_STORAGE_DIR` или `.env.example`;
+- новые/измененные таблицы, колонки, индексы, uniqueness, nullable/default semantics;
+- любые `DELETE`, bulk update, import, restore, cleanup или migration-like scripts;
+- scenario persistence: `scenario_templates`, `flow_step_templates`, `step_button_notifications`, `step_send_notifications`, `tools/scenario_portability.py`;
+- employee identity/files/storage: `employee_messenger_accounts`, `employee_files`, `employee_document_links`, `document_library_items`, `storage/*`;
+- stage deploy workflow, backup creation, scenario snapshot, smoke checks или rollback path;
+- перенос данных между local/stage DB, особенно сценарии и файлы;
+- product decisions around two legal entities/IP separation, audit, retention, privacy or access boundaries.
+
+DB/Storage steward должен получать от других агентов короткий context packet:
+
+```text
+DB/Storage review request
+
+branch: <branch>
+commit: <commit or WIP>
+base: <origin/stage or dependency>
+
+Touched durable state:
+- tables/columns:
+- files/storage paths:
+- scripts/workflows:
+- stage/manual operations:
+
+Data safety:
+- destructive SQL: no/yes
+- backup required: no/yes
+- dry-run path: no/yes
+- restore/rollback path:
+
+Checks run:
+- ...
+
+Open questions:
+- ...
+```
+
+Жесткое правило: если изменение может удалить или переписать user-created scenario config, employee identity, files, backups, stage snapshots or storage, оно не считается review-ready без backup/dry-run story и явного DB/Storage steward sign-off.
+
 ## Ветки
 
 - `main` — стабильная default branch, где лежит workflow и принятый baseline.
