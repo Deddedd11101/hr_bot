@@ -20,6 +20,7 @@ from app.scenario_engine import (
     scenario_anchor_date,
     send_step,
     send_step_attachment,
+    start_scenario,
 )
 from app.web.settings import _get_or_create_hr_settings
 
@@ -278,6 +279,289 @@ class ScenarioEngineSmokeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(bot.calls), 1)
         self.assertEqual(bot.calls[0][0], "document")
         self.assertEqual(bot.calls[0][1]["chat_id"], "employee-chat")
+
+    async def test_start_scenario_defaults_recipient_to_subject_employee(self) -> None:
+        init_db()
+        now = datetime.now(UTC).replace(tzinfo=None)
+        scenario_key = f"test_recipient_self_{int(datetime.now(UTC).timestamp() * 1000000)}"
+
+        with SessionLocal() as db:
+            scenario = ScenarioTemplate(
+                scenario_key=scenario_key,
+                title="Self recipient",
+                role_scope="all",
+                scenario_kind="scenario",
+                sort_order=0,
+                trigger_mode="manual_only",
+            )
+            step = FlowStepTemplate(
+                flow_key=scenario_key,
+                step_key="step_one",
+                step_title="Step one",
+                sort_order=10,
+                default_text="Привет, {name}",
+                response_type="none",
+                send_mode="immediate",
+                day_offset_workdays=0,
+            )
+            employee = Employee(
+                full_name="Self Tester",
+                telegram_user_id="123456789",
+                created_at=now,
+                is_flow_scheduled=False,
+                employee_stage="candidate",
+            )
+            db.add_all([scenario, step, employee])
+            db.commit()
+            db.refresh(employee)
+
+            messenger = FakeMessenger()
+            started = await start_scenario(messenger, db, employee, scenario_key)
+
+            self.assertTrue(started)
+            self.assertEqual([item["chat_id"] for item in messenger.texts], ["123456789"])
+            progress = db.query(ScenarioProgress).filter_by(employee_id=employee.id, scenario_key=scenario_key).first()
+            self.assertIsNotNone(progress)
+            self.assertEqual(progress.recipient_mode, "self")
+            self.assertEqual(progress.recipient_employee_id, employee.id)
+            self.assertEqual(progress.last_delivery_error, None)
+
+    async def test_manager_recipient_routes_message_and_reply_through_subject_progress(self) -> None:
+        init_db()
+        now = datetime.now(UTC).replace(tzinfo=None)
+        scenario_key = f"test_recipient_manager_{int(datetime.now(UTC).timestamp() * 1000000)}"
+
+        with SessionLocal() as db:
+            manager = Employee(
+                full_name="Manager Receiver",
+                telegram_user_id="555001",
+                created_at=now,
+                is_flow_scheduled=False,
+                employee_stage="staff",
+            )
+            employee = Employee(
+                full_name="Subject Employee",
+                telegram_user_id="123456789",
+                created_at=now,
+                is_flow_scheduled=False,
+                employee_stage="adaptation",
+            )
+            scenario = ScenarioTemplate(
+                scenario_key=scenario_key,
+                title="Manager recipient",
+                role_scope="all",
+                scenario_kind="scenario",
+                sort_order=0,
+                trigger_mode="manual_only",
+                recipient_mode="manager",
+            )
+            step = FlowStepTemplate(
+                flow_key=scenario_key,
+                step_key="step_one",
+                step_title="Step one",
+                sort_order=10,
+                default_text="Введи имя наставника",
+                response_type="text",
+                send_mode="immediate",
+                day_offset_workdays=0,
+                target_field="full_name",
+            )
+            next_step = FlowStepTemplate(
+                flow_key=scenario_key,
+                step_key="step_two",
+                step_title="Step two",
+                sort_order=20,
+                default_text="Спасибо",
+                response_type="none",
+                send_mode="immediate",
+                day_offset_workdays=0,
+            )
+            db.add_all([manager, employee, scenario, step, next_step])
+            db.commit()
+            db.refresh(manager)
+            db.refresh(employee)
+            employee.manager_employee_id = manager.id
+            db.commit()
+
+            messenger = FakeMessenger()
+            started = await start_scenario(messenger, db, employee, scenario_key)
+
+            self.assertTrue(started)
+            self.assertEqual([item["chat_id"] for item in messenger.texts[:1]], ["555001"])
+            progress = db.query(ScenarioProgress).filter_by(employee_id=employee.id, scenario_key=scenario_key).first()
+            self.assertIsNotNone(progress)
+            self.assertEqual(progress.employee_id, employee.id)
+            self.assertEqual(progress.recipient_employee_id, manager.id)
+            self.assertEqual(progress.current_step_key, "step_one")
+            self.assertTrue(progress.waiting_for_response)
+
+            handled = await handle_text_response(messenger, db, manager, SimpleNamespace(text="Новый наставник"))
+
+            self.assertTrue(handled)
+            db.refresh(employee)
+            self.assertEqual(employee.full_name, "Новый наставник")
+            refreshed_progress = db.query(ScenarioProgress).filter_by(employee_id=employee.id, scenario_key=scenario_key).first()
+            self.assertIsNotNone(refreshed_progress)
+            self.assertTrue(refreshed_progress.is_completed)
+            self.assertEqual(messenger.texts[-1]["chat_id"], "555001")
+            self.assertEqual(messenger.texts[-1]["text"], "Спасибо")
+
+    async def test_manager_recipient_fails_when_manager_missing(self) -> None:
+        init_db()
+        now = datetime.now(UTC).replace(tzinfo=None)
+        scenario_key = f"test_recipient_manager_missing_{int(datetime.now(UTC).timestamp() * 1000000)}"
+
+        with SessionLocal() as db:
+            employee = Employee(
+                full_name="Subject Employee",
+                telegram_user_id="123456789",
+                created_at=now,
+                is_flow_scheduled=False,
+                employee_stage="adaptation",
+            )
+            scenario = ScenarioTemplate(
+                scenario_key=scenario_key,
+                title="Manager missing",
+                role_scope="all",
+                scenario_kind="scenario",
+                sort_order=0,
+                trigger_mode="manual_only",
+                recipient_mode="manager",
+            )
+            step = FlowStepTemplate(
+                flow_key=scenario_key,
+                step_key="step_one",
+                step_title="Step one",
+                sort_order=10,
+                default_text="Назначь наставника",
+                response_type="text",
+                send_mode="immediate",
+                day_offset_workdays=0,
+            )
+            db.add_all([employee, scenario, step])
+            db.commit()
+            db.refresh(employee)
+
+            messenger = FakeMessenger()
+            started = await start_scenario(messenger, db, employee, scenario_key)
+
+            self.assertFalse(started)
+            self.assertEqual(messenger.texts, [])
+            progress = db.query(ScenarioProgress).filter_by(employee_id=employee.id, scenario_key=scenario_key).first()
+            self.assertIsNotNone(progress)
+            self.assertIn("не назначен", progress.last_delivery_error or "")
+
+    async def test_manager_recipient_fails_when_manager_has_no_telegram(self) -> None:
+        init_db()
+        now = datetime.now(UTC).replace(tzinfo=None)
+        scenario_key = f"test_recipient_manager_no_tg_{int(datetime.now(UTC).timestamp() * 1000000)}"
+
+        with SessionLocal() as db:
+            manager = Employee(
+                full_name="Manager Without Telegram",
+                telegram_user_id=None,
+                created_at=now,
+                is_flow_scheduled=False,
+                employee_stage="staff",
+            )
+            employee = Employee(
+                full_name="Subject Employee",
+                telegram_user_id="123456789",
+                created_at=now,
+                is_flow_scheduled=False,
+                employee_stage="adaptation",
+            )
+            scenario = ScenarioTemplate(
+                scenario_key=scenario_key,
+                title="Manager no telegram",
+                role_scope="all",
+                scenario_kind="scenario",
+                sort_order=0,
+                trigger_mode="manual_only",
+                recipient_mode="manager",
+            )
+            step = FlowStepTemplate(
+                flow_key=scenario_key,
+                step_key="step_one",
+                step_title="Step one",
+                sort_order=10,
+                default_text="Назначь наставника",
+                response_type="text",
+                send_mode="immediate",
+                day_offset_workdays=0,
+            )
+            db.add_all([manager, employee, scenario, step])
+            db.commit()
+            db.refresh(manager)
+            db.refresh(employee)
+            employee.manager_employee_id = manager.id
+            db.commit()
+
+            messenger = FakeMessenger()
+            started = await start_scenario(messenger, db, employee, scenario_key)
+
+            self.assertFalse(started)
+            self.assertEqual(messenger.texts, [])
+            progress = db.query(ScenarioProgress).filter_by(employee_id=employee.id, scenario_key=scenario_key).first()
+            self.assertIsNotNone(progress)
+            self.assertIn("Telegram", progress.last_delivery_error or "")
+
+    async def test_manager_assigned_adaptation_uses_subject_employee_but_sends_to_manager(self) -> None:
+        init_db()
+        now = datetime.now(UTC).replace(tzinfo=None)
+        scenario_key = f"test_manager_trigger_recipient_{int(datetime.now(UTC).timestamp() * 1000000)}"
+
+        with SessionLocal() as db:
+            manager = Employee(
+                full_name="Manager Trigger",
+                telegram_user_id="909001",
+                created_at=now,
+                is_flow_scheduled=False,
+                employee_stage="staff",
+                is_manager=True,
+            )
+            employee = Employee(
+                full_name="Adaptation Subject",
+                telegram_user_id="909002",
+                created_at=now,
+                is_flow_scheduled=False,
+                employee_stage="adaptation",
+            )
+            scenario = ScenarioTemplate(
+                scenario_key=scenario_key,
+                title="Manager trigger scenario",
+                role_scope="all",
+                scenario_kind="scenario",
+                sort_order=0,
+                trigger_mode="manager_assigned_adaptation",
+            )
+            step = FlowStepTemplate(
+                flow_key=scenario_key,
+                step_key="step_one",
+                step_title="Step one",
+                sort_order=10,
+                default_text="Привет, {full_name}",
+                response_type="none",
+                send_mode="immediate",
+                day_offset_workdays=0,
+            )
+            db.add_all([manager, employee, scenario, step])
+            db.commit()
+            db.refresh(manager)
+            db.refresh(employee)
+            employee.manager_employee_id = manager.id
+            db.commit()
+
+            messenger = FakeMessenger()
+            started = await start_scenario(messenger, db, employee, scenario_key)
+
+            self.assertTrue(started)
+            self.assertEqual(messenger.texts[0]["chat_id"], "909001")
+            self.assertIn("Adaptation Subject", messenger.texts[0]["text"])
+            progress = db.query(ScenarioProgress).filter_by(employee_id=employee.id, scenario_key=scenario_key).first()
+            self.assertIsNotNone(progress)
+            self.assertEqual(progress.recipient_mode, "manager")
+            self.assertEqual(progress.recipient_employee_id, manager.id)
 
     def test_resolve_notification_recipients_merges_explicit_and_employee_scope(self) -> None:
         employee = SimpleNamespace(

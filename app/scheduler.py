@@ -178,8 +178,6 @@ async def run_scheduled_step(bot, employee_id: int, scenario_key: str, step_key:
             and not scenario_anchor_date(employee, scenario)
         ):
             return
-        if not get_primary_chat_id(employee, db=db):
-            return
         await send_step(bot, db, employee, scenario, step, scheduled_at=scheduled_at)
 
 
@@ -313,8 +311,6 @@ async def schedule_all_employees(scheduler: AsyncIOScheduler, bot) -> None:
             )
             started_count = 0
             for employee in recipients:
-                if not get_primary_chat_id(employee, db=db):
-                    continue
                 if not matches_role_scope(employee, scenario):
                     continue
                 started = await start_scenario(bot, db, employee, scenario.scenario_key)
@@ -359,8 +355,6 @@ async def schedule_all_employees(scheduler: AsyncIOScheduler, bot) -> None:
                 and not scenario_anchor_date(employee, scenario)
             ):
                 request.processed_at = utc_now()
-                continue
-            if not get_primary_chat_id(employee, db=db):
                 continue
             if request.skip_step_key and request.skip_step_key.startswith(SINGLE_STEP_REQUEST_PREFIX):
                 step_key = request.skip_step_key[len(SINGLE_STEP_REQUEST_PREFIX):]

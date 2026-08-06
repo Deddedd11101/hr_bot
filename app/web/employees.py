@@ -325,14 +325,14 @@ def _enqueue_manager_assignment_trigger(
     manager_employee = db.get(Employee, current_manager_employee_id)
     if not manager_employee:
         return
-    scenario = _manager_assignment_trigger_scenario(db, manager_employee)
+    scenario = _manager_assignment_trigger_scenario(db, subject_employee)
     if not scenario:
         return
 
     duplicate_request = (
         db.query(FlowLaunchRequest)
         .filter(
-            FlowLaunchRequest.employee_id == manager_employee.id,
+            FlowLaunchRequest.employee_id == subject_employee.id,
             FlowLaunchRequest.flow_key == scenario.scenario_key,
             FlowLaunchRequest.processed_at.is_(None),
             FlowLaunchRequest.launch_type == "trigger",
@@ -344,7 +344,7 @@ def _enqueue_manager_assignment_trigger(
 
     db.add(
         FlowLaunchRequest(
-            employee_id=manager_employee.id,
+            employee_id=subject_employee.id,
             flow_key=scenario.scenario_key,
             requested_at=datetime.now(),
             processed_at=None,

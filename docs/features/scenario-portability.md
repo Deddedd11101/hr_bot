@@ -61,6 +61,12 @@ source_of_truth: true
   - `all`;
   - `employees`;
   - `candidates`;
+- `recipient_mode` сценария:
+  - `self`;
+  - `manager`;
+  - `mentor_adaptation`;
+  - `mentor_ipr`;
+  - `hr`;
 - список шагов;
 - parent/child связи шагов через `parent_step_key`;
 - button notifications;
@@ -106,7 +112,9 @@ cd D:\HRBot\hr_bot
 
 - обновляет или создаёт запись сценария по `scenario_key`;
 - переносит `employee_scope`, чтобы не терять настройку `Для всех сотрудников` / `Для всех кандидатов`;
+- переносит `recipient_mode`, чтобы сценарии для руководителя, наставника или HR не откатывались в legacy `self`;
 - для старых пакетов без `employee_scope` использует безопасное значение `all`;
+- для старых пакетов без `recipient_mode` использует безопасное значение `self`;
 - удаляет старые шаги и button notifications только у импортируемого сценария;
 - заново создаёт шаги в правильном порядке;
 - восстанавливает parent/branch-связи по `step_key`;

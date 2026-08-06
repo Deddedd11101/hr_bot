@@ -53,14 +53,59 @@ Scenario engine превращает scenario templates плюс employee state 
 
 1. Найти scenario и первый step.
 2. Отрендерить step text с employee context.
-3. Отправить text, optional employee card, optional attachment и optional buttons.
+3. Разделить subject и recipient:
+   - `context employee` / `subject employee` — по чьей карточке идет процесс;
+   - `recipient employee` — кто реально получает шаг в Telegram.
+4. Отправить text, optional employee card, optional attachment и optional buttons уже по resolved recipient.
 4. Если в тексте есть `{doc:...}`, runtime резолвит персональный document slot сотрудника:
    - для link-based slot подставляет кликабельную ссылку в текст;
    - для file-based slot оставляет human-readable title в тексте и дополнительно отправляет сам файл в чат.
-5. Сохранить progress в `scenario_progress`, включая короткую историю предыдущих интерактивных шагов.
+5. Сохранить progress в `scenario_progress`, включая короткую историю предыдущих интерактивных шагов и resolved recipient (`recipient_mode`, `recipient_employee_id`, `recipient_chat_id`).
 6. Если user response не нужен, auto-advance к следующему step или schedule follow-up delivery.
-7. Если response нужен, ждать text/file/button input и применить result к employee state.
+7. Если response нужен, ждать text/file/button input от resolved recipient и применить result к employee state context employee.
 8. Для активного интерактивного шага runtime поддерживает default `Назад`: для text/file это reply button, для button/branching — inline button. Откат возвращает только на предыдущий интерактивный шаг в рамках текущего незавершенного сценария.
+
+## Recipient model
+
+- `scenario_templates.recipient_mode` определяет, кому доставлять шаги:
+  - `self`;
+  - `manager`;
+  - `mentor_adaptation`;
+  - `mentor_ipr`;
+  - `hr`.
+- Backward compatibility:
+  - старые сценарии по умолчанию остаются `self`;
+  - `trigger_mode=manager_assigned_adaptation` при legacy `recipient_mode=self` runtime трактует как `manager`, чтобы старые trigger-сценарии не слали шаги самому адаптируемому сотруднику.
+- Runtime не меняет subject progress:
+  - `ScenarioProgress.employee_id` всегда остается context employee;
+  - recipient хранится отдельно, чтобы ответы руководителя или наставника продолжали тот же progress, а не создавали новый на их карточке.
+
+## Semantics of `FlowLaunchRequest`
+
+- `FlowLaunchRequest` не делает snapshot recipient-а на момент постановки события.
+- Сознательное текущее правило:
+  - request хранит только subject employee и `flow_key`;
+  - recipient вычисляется заново в момент фактической обработки и отправки шага.
+- Практический смысл:
+  - если после события HR сменил руководителя или наставника до обработки очереди, сообщение уйдет уже актуальному назначенному адресату.
+- Это особенно важно для `manager_assigned_adaptation`:
+  - queue строится по адаптируемому сотруднику;
+  - runtime решает, кто его текущий руководитель на момент отправки.
+- Если продукту когда-нибудь понадобится жесткий snapshot “кому именно должно было уйти на момент события”, это уже другая модель:
+  - отдельные recipient snapshot fields в launch queue или отдельная delivery/outbox table;
+  - сейчас такую модель не вводим без отдельного согласования.
+
+## Delivery failure behavior
+
+- Если recipient не назначен или не привязан к Telegram, runtime не отправляет шаг молча в пустоту.
+- В этом случае:
+  - `ScenarioProgress.last_delivery_error` получает причину;
+  - worker/web logs пишут warning;
+  - pending `FlowLaunchRequest` все равно считается обработанным, если уже прошел через scheduler queue.
+- Автоматического retry после исправления карточки сейчас нет.
+- Текущая operational модель:
+  - после исправления менеджера/наставника/Telegram binding нужен manual relaunch;
+  - либо в будущем нужна отдельная retry-модель с явной семантикой повторной доставки.
 
 Для time-based сценариев есть дополнительное правило:
 

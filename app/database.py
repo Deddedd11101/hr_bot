@@ -414,6 +414,12 @@ def _ensure_sqlite_schema() -> None:
             )
         if scenario_table_columns and "candidate_work_stage_trigger" not in scenario_table_columns:
             conn.execute(text("ALTER TABLE scenario_templates ADD COLUMN candidate_work_stage_trigger TEXT"))
+        if scenario_table_columns and "recipient_mode" not in scenario_table_columns:
+            conn.execute(
+                text(
+                    "ALTER TABLE scenario_templates ADD COLUMN recipient_mode TEXT NOT NULL DEFAULT 'self'"
+                )
+            )
         if scenario_table_columns and "sort_order" in {row[1] for row in conn.execute(text("PRAGMA table_info(scenario_templates)")).fetchall()}:
             conn.execute(
                 text(
@@ -434,11 +440,15 @@ def _ensure_sqlite_schema() -> None:
                         id INTEGER NOT NULL,
                         employee_id INTEGER NOT NULL,
                         scenario_key VARCHAR(64) NOT NULL,
+                        recipient_mode TEXT NOT NULL DEFAULT 'self',
+                        recipient_employee_id INTEGER,
+                        recipient_chat_id TEXT,
                         current_step_key VARCHAR(128),
                         step_history TEXT,
                         response_undo_history TEXT,
                         waiting_for_response BOOLEAN NOT NULL DEFAULT 0,
                         is_completed BOOLEAN NOT NULL DEFAULT 0,
+                        last_delivery_error TEXT,
                         started_at DATETIME NOT NULL,
                         updated_at DATETIME NOT NULL,
                         completed_at DATETIME,
@@ -462,10 +472,18 @@ def _ensure_sqlite_schema() -> None:
             )
         else:
             progress_columns = {row[1] for row in progress_table_info}
+            if "recipient_mode" not in progress_columns:
+                conn.execute(text("ALTER TABLE scenario_progress ADD COLUMN recipient_mode TEXT NOT NULL DEFAULT 'self'"))
+            if "recipient_employee_id" not in progress_columns:
+                conn.execute(text("ALTER TABLE scenario_progress ADD COLUMN recipient_employee_id INTEGER"))
+            if "recipient_chat_id" not in progress_columns:
+                conn.execute(text("ALTER TABLE scenario_progress ADD COLUMN recipient_chat_id TEXT"))
             if "step_history" not in progress_columns:
                 conn.execute(text("ALTER TABLE scenario_progress ADD COLUMN step_history TEXT"))
             if "response_undo_history" not in progress_columns:
                 conn.execute(text("ALTER TABLE scenario_progress ADD COLUMN response_undo_history TEXT"))
+            if "last_delivery_error" not in progress_columns:
+                conn.execute(text("ALTER TABLE scenario_progress ADD COLUMN last_delivery_error TEXT"))
 
         employee_document_link_columns = {
             row[1] for row in conn.execute(text("PRAGMA table_info(employee_document_links)")).fetchall()

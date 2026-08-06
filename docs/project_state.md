@@ -52,6 +52,7 @@ source_of_truth: true
 - Карточки сотрудников и кандидатов есть и в classic, и в React admin surfaces.
 - Scenario templates, step templates, branching, chain steps и manual launches уже реализованы.
 - Telegram bot умеет отправлять шаги, собирать text/files/button responses и писать progress в SQLite.
+- Runtime сценариев больше не предполагает, что subject employee и Telegram-получатель всегда один и тот же человек: появился recipient-layer для сценариев руководителя/наставника/HR.
 - Mass actions, onboarding scheduler и scenario portability tooling уже есть в коде.
 - Unknown Telegram users больше не создают candidate records автоматически.
 - Bot access можно заблокировать per employee через `is_bot_blocked`.
@@ -179,7 +180,7 @@ source_of_truth: true
 - С position catalog снят базовый structural debt, но не финальный data debt: `employees.desired_position` пока остается строкой, а не foreign key. Это осознанно для мягкой совместимости со stage SQLite, но если каталог начнет обрастать richer metadata или multi-select rules, следующим шагом потребуется отдельное решение по нормализации employee-to-position связи.
 - Следующий шаг по employee document slots — определить shortlist именованных slots (`offer`, `adaptation_tasks`, `adaptation_feedback` и т.д.) и их UI/contract, чтобы сценарные `{doc:...}` не опирались на свободное название записи и не требовали новых спецполей в карточке.
 - Для employee lifecycle следующий шаг теперь уже не “добавить еще одну кнопку”, а определить, должен ли bot-driven `offer accepted` создавать отдельный статус/событие до перевода в адаптацию. Текущая безопасная модель — явное HR-действие `Перевести в адаптацию`, а не автоматический cutover по ответу в боте.
-- После введения `manager_assigned_adaptation` следующий trigger-step не должен превращаться в россыпь hardcoded `if manager changed then ...`. Нужна последовательная карта assignment/lifecycle events: какие из них создают `FlowLaunchRequest`, какие только обновляют данные, а какие требуют отдельного операционного подтверждения.
+- После введения recipient-layer и `manager_assigned_adaptation` следующий trigger-step не должен превращаться в россыпь hardcoded `if manager changed then ...`. Базовый seam теперь есть: launch request хранит context employee, а runtime сам резолвит recipient. Дальше нужна последовательная карта assignment/lifecycle events: какие из них создают `FlowLaunchRequest`, какие только обновляют данные, а какие требуют отдельного операционного подтверждения.
 - Для `scenario_edit.html` уже снят еще один конкретный blocker: per-button notifications больше не являются classic-only фичей. Следующий вопрос теперь уже уже не про “как редактировать уведомления по кнопкам”, а какие именно nested/batch update semantics legacy editor все еще держит уникально.
 - Для `scenario_edit.html` снят и второй notification-blocker: step-level notifications тоже перестали быть classic-only плоской формой. Следующий вопрос теперь не “как завести несколько уведомлений у шага”, а нужен ли legacy editor вообще после закрытия remaining nested update seams.
 - Следующий вопрос по branching теперь уже уже не “как вернуться из ветки в основной поток”, а где остановить мощность редактора: текущая модель сознательно разрешает только `branch -> root step` того же сценария, без произвольных графовых прыжков между любыми шагами.

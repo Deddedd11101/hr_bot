@@ -16,6 +16,7 @@ from ..flow_templates import (
     CANDIDATE_WORK_STAGE_LABELS,
     EMPLOYEE_SCOPE_LABELS,
     NOTIFICATION_RECIPIENT_SCOPE_LABELS,
+    RECIPIENT_MODE_LABELS,
     RESPONSE_TYPE_LABELS,
     SEND_MODE_LABELS,
     TARGET_FIELD_LABELS,
@@ -130,6 +131,7 @@ def create_workspace_scenario_api(
             "scenario_kind": kind,
             "role_scope": "all",
             "employee_scope": "all",
+            "recipient_mode": "self",
             "trigger_mode": "manual_only",
             "target_employee_id": None,
             "description": description,
@@ -197,6 +199,7 @@ def update_workspace_scenario_api(
     description = str(payload.get("description") or "").strip()
     role_scope = str(payload.get("role_scope") or "").strip()
     employee_scope = str(payload.get("employee_scope") or "").strip()
+    recipient_mode = str(payload.get("recipient_mode") or "").strip()
     trigger_mode = str(payload.get("trigger_mode") or "").strip()
     candidate_work_stage_trigger = str(payload.get("candidate_work_stage_trigger") or "").strip()
     target_employee_id = str(payload.get("target_employee_id") or "").strip()
@@ -205,6 +208,7 @@ def update_workspace_scenario_api(
     scenario.description = description[:50] or None
     scenario.role_scope = resolve_scope_slug(role_scope or "") or ROLE_SCOPE_ALL
     scenario.employee_scope = employee_scope if employee_scope in EMPLOYEE_SCOPE_LABELS else "all"
+    scenario.recipient_mode = recipient_mode if recipient_mode in RECIPIENT_MODE_LABELS else "self"
     scenario.trigger_mode = trigger_mode if trigger_mode in TRIGGER_MODE_LABELS else "manual_only"
     scenario.candidate_work_stage_trigger = (
         candidate_work_stage_trigger
@@ -802,6 +806,7 @@ def _create_template_entity(
     title: str,
     role_scope: str,
     employee_scope: str,
+    recipient_mode: str,
     target_employee_id: str,
     trigger_mode: str,
     description: str,
@@ -824,6 +829,7 @@ def _create_template_entity(
         sort_order=(last_scenario.sort_order + 10) if last_scenario else 10,
         role_scope=resolve_scope_slug(role_scope or "") or ROLE_SCOPE_ALL,
         employee_scope=employee_scope if employee_scope in EMPLOYEE_SCOPE_LABELS else "all",
+        recipient_mode=recipient_mode if recipient_mode in RECIPIENT_MODE_LABELS else "self",
         target_employee_id=int(target_employee_id) if (target_employee_id or "").strip().isdigit() else None,
         trigger_mode=trigger_mode if trigger_mode in TRIGGER_MODE_LABELS else "manual_only",
         description=description.strip() or None,
@@ -862,6 +868,7 @@ def _edit_template_page(
             "steps": editor_data["steps"],
             "role_scope_labels": build_role_scope_labels(db, include_inactive=True),
             "employee_scope_labels": EMPLOYEE_SCOPE_LABELS,
+            "recipient_mode_labels": RECIPIENT_MODE_LABELS,
             "trigger_mode_labels": TRIGGER_MODE_LABELS,
             "response_type_labels": RESPONSE_TYPE_LABELS,
             "send_mode_labels": SEND_MODE_LABELS,
@@ -892,12 +899,13 @@ def create_scenario(
     title: str = Form("Новый сценарий"),
     role_scope: str = Form("all"),
     employee_scope: str = Form("all"),
+    recipient_mode: str = Form("self"),
     target_employee_id: str = Form(""),
     trigger_mode: str = Form("manual_only"),
     description: str = Form(""),
     db: Session = Depends(get_db),
 ):
-    return _create_template_entity(request, "scenario", title, role_scope, employee_scope, target_employee_id, trigger_mode, description, db)
+    return _create_template_entity(request, "scenario", title, role_scope, employee_scope, recipient_mode, target_employee_id, trigger_mode, description, db)
 
 
 @router.post("/surveys")
@@ -906,12 +914,13 @@ def create_survey(
     title: str = Form("Новый опрос"),
     role_scope: str = Form("all"),
     employee_scope: str = Form("all"),
+    recipient_mode: str = Form("self"),
     target_employee_id: str = Form(""),
     trigger_mode: str = Form("manual_only"),
     description: str = Form(""),
     db: Session = Depends(get_db),
 ):
-    return _create_template_entity(request, "survey", title, role_scope, employee_scope, target_employee_id, trigger_mode, description, db)
+    return _create_template_entity(request, "survey", title, role_scope, employee_scope, recipient_mode, target_employee_id, trigger_mode, description, db)
 
 
 @router.get("/flows/{scenario_id}")
@@ -985,6 +994,7 @@ async def update_scenario(
     title: str = Form(...),
     role_scope: str = Form("all"),
     employee_scope: str = Form("all"),
+    recipient_mode: str = Form("self"),
     target_employee_id: str = Form(""),
     trigger_mode: str = Form("manual_only"),
     description: str = Form(""),
@@ -1058,6 +1068,7 @@ async def update_scenario(
         scenario.title = title.strip() or scenario.title
         scenario.role_scope = resolve_scope_slug(role_scope or "") or ROLE_SCOPE_ALL
         scenario.employee_scope = employee_scope if employee_scope in EMPLOYEE_SCOPE_LABELS else "all"
+        scenario.recipient_mode = recipient_mode if recipient_mode in RECIPIENT_MODE_LABELS else "self"
         scenario.target_employee_id = int(target_employee_id) if (target_employee_id or "").strip().isdigit() else None
         scenario.trigger_mode = "manual_only" if scenario.scenario_kind == "survey" else (trigger_mode if trigger_mode in TRIGGER_MODE_LABELS else "manual_only")
         scenario.description = description.strip() or None

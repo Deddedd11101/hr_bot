@@ -446,7 +446,7 @@ class EmployeeApiSmokeTests(unittest.TestCase):
             request_row = (
                 db.query(FlowLaunchRequest)
                 .filter(
-                    FlowLaunchRequest.employee_id == manager_id,
+                    FlowLaunchRequest.employee_id == self.employee_id,
                     FlowLaunchRequest.flow_key == scenario_key,
                     FlowLaunchRequest.launch_type == "trigger",
                     FlowLaunchRequest.processed_at.is_(None),
@@ -454,6 +454,7 @@ class EmployeeApiSmokeTests(unittest.TestCase):
                 .first()
             )
             self.assertIsNotNone(request_row)
+            self.assertEqual(request_row.employee_id, self.employee_id)
             manager = db.get(Employee, manager_id)
             scenario = db.query(ScenarioTemplate).filter(ScenarioTemplate.scenario_key == scenario_key).first()
             if manager is not None:
