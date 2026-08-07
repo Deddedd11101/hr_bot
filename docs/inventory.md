@@ -33,6 +33,7 @@ source_of_truth: false
 | Decisions | Почему выбрана или отменена модель. | `decisions/` |
 | Handoffs | Исторический контекст продолжения работы. Не канон. | `handoffs/` |
 | Daily/history | Журнал хода работ. Не канон. | `daily/`, dated snapshot docs |
+| Audits | Разовые ревизии, cleanup/BA/security analysis. Не канон, пока выводы не перенесены в live docs. | `*-audit-*.md` |
 | Templates | Шаблоны для новых docs. | `templates/` |
 
 ## Live Docs
@@ -74,6 +75,8 @@ source_of_truth: false
 | `daily/` | Daily/history | Журнал, не канон. Полезен для восстановления последовательности событий. |
 | [[roadmap-2026-05-12]] | Daily/history | Snapshot для показа, не текущий план работ. |
 | [[demo-day-brief-2026-05-12]] | Daily/history | Личная шпаргалка демо, не продуктовый contract. |
+| [[business-logic-audit-2026-08-05]] | Audits | BA-аудит сценариев, lifecycle-пересечений и product questions. Читать как draft input для владельца продукта, не как текущий contract. |
+| [[cleanup-audit-2026-08-05]] | Audits | Cleanup-аудит локальных артефактов и retention candidates. Читать как snapshot ревизии, не как автоматическое разрешение на удаление. |
 
 ## Текущие Documentation Risks
 

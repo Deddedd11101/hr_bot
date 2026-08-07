@@ -33,6 +33,8 @@ source_of_truth: false
 ## Scenario behavior
 
 - [[features/scenario-engine]] — типы шагов, ветвления, ручные запуски, progress.
+- [[business-logic-audit-2026-08-05]] — черновой BA-аудит сценариев, lifecycle-пересечений и нарушений логики; не source of truth.
+- [[features/scenario-catalog]] — draft-каталог бизнес-сценариев и карточек по DB-снимку; использовать для согласования, не как утвержденный регламент.
 - [[api]] — JSON endpoints для scenario workspace.
 - [[web-surface]] — classic operator actions для сценариев.
 
