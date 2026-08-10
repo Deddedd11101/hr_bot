@@ -2,6 +2,30 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
+@keyframes theme-switch-reveal {
+  from {
+    clip-path: circle(0 at var(--theme-switch-x) var(--theme-switch-y));
+  }
+  to {
+    clip-path: circle(var(--theme-switch-radius) at var(--theme-switch-x) var(--theme-switch-y));
+  }
+}
+
+:root[data-theme-switch-transition="true"]::view-transition-new(root) {
+  animation: theme-switch-reveal 500ms ease-in-out;
+}
+
+:root[data-theme-switch-transition="true"]::view-transition-old(root) {
+  animation: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root[data-theme-switch-transition="true"]::view-transition-new(root),
+  :root[data-theme-switch-transition="true"]::view-transition-old(root) {
+    animation: none;
+  }
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
