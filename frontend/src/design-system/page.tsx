@@ -14,7 +14,6 @@ import {
   Layers3,
   ListFilter,
   MessageCircle,
-  Moon,
   MousePointer2,
   Palette,
   Play,
@@ -23,7 +22,6 @@ import {
   Save,
   Send,
   Shield,
-  Sun,
   Trash2,
   Workflow,
 } from "lucide-react";
@@ -104,6 +102,7 @@ import {
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { ThemeSwitch } from "@/components/ui/theme-switch";
 import {
   Tooltip,
   TooltipContent,
@@ -241,6 +240,8 @@ const exampleCode = {
   <Button variant="secondary">Применить позже</Button>
   <Button variant="outline">Открыть детали</Button>
 </div>`,
+  themeSwitch: `<ThemeSwitch />
+<ThemeSwitch iconSize={20} />`,
   confirmAction: `<ConfirmAction
   title="Удалить запись?"
   description="Действие нельзя отменить."
@@ -294,15 +295,7 @@ function useDocumentTheme() {
     };
   }, []);
 
-  const toggleTheme = React.useCallback(() => {
-    setTheme((currentTheme) => {
-      const nextTheme = currentTheme === "dark" ? "light" : "dark";
-      applyDocumentTheme(nextTheme);
-      return nextTheme;
-    });
-  }, []);
-
-  return { theme, toggleTheme };
+  return theme;
 }
 
 function useActiveSection(sectionIds: readonly string[]) {
@@ -1050,6 +1043,17 @@ function PrimitivesSection() {
             </div>
           </ExampleBlock>
 
+          <ExampleBlock title="Theme switch" code={exampleCode.themeSwitch}>
+            <div className="flex flex-wrap items-end gap-6">
+              {[14, 16, 20].map((iconSize) => (
+                <div key={iconSize} className="grid justify-items-center gap-2">
+                  <ThemeSwitch iconSize={iconSize} />
+                  <span className="text-xs text-muted-foreground">{iconSize}px</span>
+                </div>
+              ))}
+            </div>
+          </ExampleBlock>
+
           <ExampleBlock title="Status language">
             <div className="space-y-4">
               <div className="flex flex-wrap gap-2">
@@ -1759,7 +1763,7 @@ function ReviewRulesSection() {
 }
 
 export function DesignSystemPage() {
-  const { theme, toggleTheme } = useDocumentTheme();
+  const theme = useDocumentTheme();
   const activeSection = useActiveSection(sectionLinks.map((link) => link.id));
   const handleSectionJump = React.useCallback((sectionId: string) => {
     const target = document.getElementById(sectionId);
@@ -1809,10 +1813,7 @@ export function DesignSystemPage() {
             </div>
 
             <div className="flex flex-wrap items-center gap-2 xl:justify-end">
-              <Button variant="secondary" onClick={toggleTheme}>
-                {theme === "dark" ? <Sun className="size-4" /> : <Moon className="size-4" />}
-                {theme === "dark" ? "Light mode" : "Dark mode"}
-              </Button>
+              <ThemeSwitch />
               <Button variant="outline" onClick={() => window.location.assign("/app/settings")}>
                 Open live settings
               </Button>
