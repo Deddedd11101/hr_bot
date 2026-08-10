@@ -34,6 +34,38 @@ source_of_truth: true
 
 ## Записи
 
+### 2026-08-10 17:37 MSK - app deploy - ui kit theme switch
+
+- Deploy ref: `stage`.
+- Deployed commit: `495ae1c`.
+- GitHub Actions run: `31398992960` -> success.
+- В stage включено:
+  - `ThemeSwitch` в design-system UI kit;
+  - scoped theme transition CSS;
+  - regenerated `app/static/workspace_v2/app.css` and `design-system.js`.
+- Локальные проверки перед deploy:
+  - `npm ci` in `frontend`;
+  - `npm run build` in `frontend`;
+  - `git diff --check origin/stage..HEAD`.
+- GitHub Actions preflight:
+  - backend dependencies install;
+  - `compileall`;
+  - `ruff F821`;
+  - backend smoke tests;
+  - frontend build;
+  - smoke imports.
+- Stage safety checks:
+  - verified SQLite backup created before checkout/restart: `backups/hr_bot.before-deploy.20260810-143644.db`;
+  - scenario config snapshot created: `backups/scenarios.before-deploy.20260810-143644.json`;
+  - scenario configuration fingerprint unchanged.
+- Stage smoke checks:
+  - `/app/employees` -> `303`;
+  - `/app/flows/workspace-v2` -> `303`;
+  - Telegram API reachability -> `HTTP/2 302`;
+  - deploy job завершился успешно и вывел `495ae1c`.
+- Открытый риск:
+  - browser visual check `/app/design-system` не завершен: in-app browser был не авторизован и получил redirect на `/login`. Нужна ручная авторизация в браузере или отдельная сессия для визуального smoke.
+
 ### 2026-08-06 12:05 MSK - app deploy - scenario recipient contract
 
 - Deploy ref: `stage`.
