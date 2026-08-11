@@ -34,6 +34,40 @@ source_of_truth: true
 
 ## Записи
 
+### 2026-08-12 01:17 MSK - app deploy - theme switch fallback
+
+- Deploy ref: `stage`.
+- Deployed commit: `7778b60`.
+- GitHub Actions run: `31541694972` -> success.
+- В stage включено:
+  - fallback-анимация для `ThemeSwitch`, если View Transitions API недоступен или отключен;
+  - scoped CSS для fallback-состояния;
+  - regenerated `app/static/workspace_v2/app.css` and `design-system.js`.
+- Локальные проверки перед deploy:
+  - `npm ci` in `frontend`;
+  - `npm run build` in `frontend`;
+  - `git diff --check origin/stage..HEAD`.
+- GitHub Actions preflight:
+  - backend dependencies install;
+  - `compileall`;
+  - `ruff F821`;
+  - backend smoke tests;
+  - frontend build;
+  - smoke imports.
+- Stage safety checks:
+  - verified SQLite backup created before checkout/restart: `backups/hr_bot.before-deploy.20260811-221738.db`;
+  - scenario config snapshot created: `backups/scenarios.before-deploy.20260811-221738.json`;
+  - scenario configuration fingerprint unchanged.
+- Stage smoke checks:
+  - `/app/employees` -> `303`;
+  - `/app/flows/workspace-v2` -> `303`;
+  - Telegram API reachability -> `HTTP/2 302`;
+  - deploy job завершился успешно и вывел `7778b60`.
+- Открытые риски:
+  - `npm audit` в frontend по-прежнему сообщает `5 vulnerabilities`; это существующий dependency-audit долг вне scope этой UI-выкладки;
+  - Vite chunk warning по `graph-view` остается вне scope;
+  - browser visual check `/app/design-system` не выполнялся в этой поставке; server-side smoke и build прошли.
+
 ### 2026-08-12 00:42 MSK - app deploy - motion theme switch
 
 - Deploy ref: `stage`.
