@@ -18,9 +18,47 @@ type ViewTransitionDocument = Document & {
   };
 };
 
+const THEME_SWITCH_DURATION_MS = 500;
+
 export interface ThemeSwitchProps {
   iconSize?: number;
   className?: string;
+}
+
+function getRevealRadius(x: number, y: number) {
+  return Math.hypot(
+    Math.max(x, window.innerWidth - x),
+    Math.max(y, window.innerHeight - y),
+  );
+}
+
+function applyWithOverlayFallback(origin: { x: number; y: number }, apply: () => void) {
+  const overlay = document.createElement("div");
+  overlay.className = "theme-switch-fallback-overlay";
+  overlay.style.setProperty("--theme-switch-x", `${origin.x}px`);
+  overlay.style.setProperty("--theme-switch-y", `${origin.y}px`);
+  overlay.style.setProperty("--theme-switch-radius", `${getRevealRadius(origin.x, origin.y)}px`);
+
+  document.body.appendChild(overlay);
+  apply();
+
+  const animation = overlay.animate(
+    [
+      { clipPath: "circle(0 at var(--theme-switch-x) var(--theme-switch-y))" },
+      { clipPath: "circle(var(--theme-switch-radius) at var(--theme-switch-x) var(--theme-switch-y))" },
+    ],
+    {
+      duration: THEME_SWITCH_DURATION_MS,
+      easing: "ease-in-out",
+      fill: "forwards",
+    },
+  );
+
+  animation.finished
+    .catch(() => undefined)
+    .finally(() => {
+      overlay.remove();
+    });
 }
 
 function applyWithTransition(origin: { x: number; y: number }, apply: () => void) {
@@ -28,16 +66,18 @@ function applyWithTransition(origin: { x: number; y: number }, apply: () => void
   const root = document.documentElement;
   const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-  if (!transitionDocument.startViewTransition || window.innerWidth > 1800 || reduceMotion) {
+  if (window.innerWidth > 1800 || reduceMotion) {
     apply();
     return;
   }
 
   const { x, y } = origin;
-  const endRadius = Math.hypot(
-    Math.max(x, window.innerWidth - x),
-    Math.max(y, window.innerHeight - y),
-  );
+  const endRadius = getRevealRadius(x, y);
+
+  if (!transitionDocument.startViewTransition) {
+    applyWithOverlayFallback(origin, apply);
+    return;
+  }
 
   document.documentElement.style.setProperty("--theme-switch-x", `${x}px`);
   document.documentElement.style.setProperty("--theme-switch-y", `${y}px`);
