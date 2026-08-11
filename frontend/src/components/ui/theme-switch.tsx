@@ -1,5 +1,6 @@
 import React from "react";
 import { Moon, Sun } from "lucide-react";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 
 import { cn } from "@/lib/utils";
 import {
@@ -59,6 +60,7 @@ function applyWithTransition(origin: { x: number; y: number }, apply: () => void
 
 export function ThemeSwitch({ iconSize = 16, className }: ThemeSwitchProps) {
   const [theme, setTheme] = React.useState<AppTheme>(() => readStoredTheme());
+  const reduceMotion = useReducedMotion();
 
   React.useEffect(() => {
     const syncTheme = () => setTheme(readDocumentTheme());
@@ -85,35 +87,46 @@ export function ThemeSwitch({ iconSize = 16, className }: ThemeSwitchProps) {
   };
 
   return (
-    <button
+    <motion.button
       type="button"
       onClick={toggleTheme}
       className={cn(
-        "relative flex size-9 cursor-pointer items-center justify-center overflow-hidden rounded-full border border-border bg-accent text-foreground outline-none transition-transform duration-200",
-        "hover:scale-105 active:scale-95 motion-reduce:transition-none motion-reduce:hover:scale-100 motion-reduce:active:scale-100",
+        "relative flex size-9 cursor-pointer items-center justify-center rounded-full border border-border bg-accent text-foreground outline-none",
         "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
         className,
       )}
+      whileHover={reduceMotion ? undefined : { scale: 1.08 }}
+      whileTap={reduceMotion ? undefined : { scale: 0.88 }}
+      transition={reduceMotion ? { duration: 0 } : { type: "spring", duration: 0.2, bounce: 0 }}
       aria-label="Тёмная тема"
       aria-pressed={isDark}
       title={isDark ? "Включить светлую тему" : "Включить тёмную тему"}
     >
-      <span
-        className={cn(
-          "absolute inset-0 flex items-center justify-center transition-[opacity,transform] duration-200 motion-reduce:transition-none",
-          isDark ? "scale-75 rotate-45 opacity-0" : "scale-100 rotate-0 opacity-100",
+      <AnimatePresence mode="wait" initial={false}>
+        {isDark ? (
+          <motion.span
+            key="moon"
+            initial={{ rotate: -45, scale: 0.5, opacity: 0 }}
+            animate={{ rotate: 0, scale: 1, opacity: 1 }}
+            exit={{ rotate: 45, scale: 0.5, opacity: 0 }}
+            transition={reduceMotion ? { duration: 0 } : { type: "spring", duration: 0.28, bounce: 0.3 }}
+            className="flex items-center justify-center"
+          >
+            <Moon aria-hidden="true" size={iconSize} />
+          </motion.span>
+        ) : (
+          <motion.span
+            key="sun"
+            initial={{ rotate: 45, scale: 0.5, opacity: 0 }}
+            animate={{ rotate: 0, scale: 1, opacity: 1 }}
+            exit={{ rotate: -45, scale: 0.5, opacity: 0 }}
+            transition={reduceMotion ? { duration: 0 } : { type: "spring", duration: 0.28, bounce: 0.3 }}
+            className="flex items-center justify-center"
+          >
+            <Sun aria-hidden="true" size={iconSize} />
+          </motion.span>
         )}
-      >
-        <Sun aria-hidden="true" size={iconSize} />
-      </span>
-      <span
-        className={cn(
-          "absolute inset-0 flex items-center justify-center transition-[opacity,transform] duration-200 motion-reduce:transition-none",
-          isDark ? "scale-100 rotate-0 opacity-100" : "scale-75 -rotate-45 opacity-0",
-        )}
-      >
-        <Moon aria-hidden="true" size={iconSize} />
-      </span>
-    </button>
+      </AnimatePresence>
+    </motion.button>
   );
 }
