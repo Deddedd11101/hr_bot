@@ -19,6 +19,15 @@
   animation: none;
 }
 
+.theme-switch-fallback-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483647;
+  pointer-events: none;
+  background: var(--background);
+  clip-path: circle(0 at var(--theme-switch-x) var(--theme-switch-y));
+}
+
 @media (prefers-reduced-motion: reduce) {
   :root[data-theme-switch-transition="true"]::view-transition-new(root),
   :root[data-theme-switch-transition="true"]::view-transition-old(root) {
