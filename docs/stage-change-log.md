@@ -34,6 +34,47 @@ source_of_truth: true
 
 ## Записи
 
+### 2026-08-12 17:57 MSK - app deploy - employee assignment history
+
+- Deploy ref: `stage`.
+- Deployed commit: `a09a86e`.
+- GitHub Actions run: `31609517382` -> success.
+- В stage включено:
+  - additive SQLite schema `employee_assignment_history`;
+  - audit trail для текущих назначений сотрудника: руководитель, наставник по адаптации, наставник по ИПР;
+  - employee update runtime закрывает предыдущую active row и создает новую при изменении назначения;
+  - employee detail API отдает `assignment_history`;
+  - React employee detail показывает read-only секцию "История назначений";
+  - no backfill: история начинается после deploy.
+- Локальные проверки перед deploy:
+  - `python -m compileall app tests`;
+  - `ruff check --select F821 app tests`;
+  - `python -m unittest tests.test_employee_api_smoke tests.test_messaging_identity tests.test_scenario_engine_smoke -v` -> 121 tests OK;
+  - `tools/check_docs_contracts.py`;
+  - `npm ci` in `frontend`;
+  - `npm run build` in `frontend`;
+  - `git diff --check origin/stage..HEAD`.
+- GitHub Actions preflight:
+  - backend dependencies install;
+  - `compileall`;
+  - `ruff F821`;
+  - backend smoke tests;
+  - frontend build;
+  - smoke imports.
+- Stage safety checks:
+  - verified SQLite backup created before checkout/restart: `backups/hr_bot.before-deploy.20260812-145707.db`;
+  - scenario config snapshot created: `backups/scenarios.before-deploy.20260812-145707.json`;
+  - scenario configuration fingerprint unchanged.
+- Stage smoke checks:
+  - `/app/employees` -> `303`;
+  - `/app/flows/workspace-v2` -> `303`;
+  - Telegram API reachability -> `HTTP/2 302`;
+  - deploy job завершился успешно и вывел `a09a86e`.
+- Открытые риски:
+  - история назначений не backfill-ится и начнет наполняться только новыми изменениями после deploy;
+  - `assigned_by_account_id` nullable, это совместимо с текущей SQLite-моделью;
+  - full UI smoke в карточке сотрудника не выполнен автоматически: browser-control не вернул usable page state, прямой SSH из локальной среды недоступен. Нужно вручную проверить на stage смену руководителя/наставников и read-only секцию "История назначений".
+
 ### 2026-08-12 13:31 MSK - app deploy - Telegram start identity flow
 
 - Deploy ref: `stage`.
