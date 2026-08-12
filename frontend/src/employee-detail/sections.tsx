@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
     Card,
@@ -70,7 +71,47 @@ type DetailItem = {
     deleteConfirmLabel?: string | null;
 };
 
+type AssignmentHistoryItem = {
+    id: string | number;
+    assignment_role?: string | null;
+    role_label?: string | null;
+    assigned_employee_id?: string | number | null;
+    assigned_employee_name?: string | null;
+    started_at?: string | null;
+    ended_at?: string | null;
+    is_active?: boolean;
+    assigned_by_account_id?: string | number | null;
+};
+
 const EMPTY_SELECT_VALUE = "__empty__";
+
+function formatAssignmentDate(value?: string | null) {
+    if (!value) {
+        return "";
+    }
+    const rawValue = String(value);
+    const dateOnlyMatch = rawValue.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (dateOnlyMatch) {
+        return dateOnlyMatch[3] + "." + dateOnlyMatch[2] + "." + dateOnlyMatch[1];
+    }
+    const date = new Date(rawValue);
+    if (Number.isNaN(date.getTime())) {
+        return rawValue;
+    }
+    return date.toLocaleString("ru-RU", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+    });
+}
+
+function formatAssignmentPeriod(item: AssignmentHistoryItem) {
+    const startedAt = formatAssignmentDate(item.started_at) || "Дата не указана";
+    const endedAt = item.ended_at ? formatAssignmentDate(item.ended_at) : "по настоящее время";
+    return startedAt + " — " + endedAt;
+}
 
 function changeFieldValue(handleChange: any, name: string, value: string) {
     handleChange({ target: { name, value } });
@@ -376,6 +417,54 @@ export function EmployeeDetailHeader(props: { meta: any }) {
                 {meta.list_title}
             </a>
         </div>
+    );
+}
+
+export function AssignmentHistorySection(props: { items: AssignmentHistoryItem[] }) {
+    const items = Array.isArray(props.items) ? props.items : [];
+
+    return (
+        <DetailCard>
+            <CardHeader>
+                <CardTitle>История назначений</CardTitle>
+            </CardHeader>
+            <CardContent>
+                {items.length ? (
+                    <div className="employee-assignment-history-list">
+                        {items.map(function (item) {
+                            const title = item.role_label || item.assignment_role || "Назначение";
+                            return (
+                                <div className="employee-assignment-history-row" key={item.id}>
+                                    <div className="employee-assignment-history-main">
+                                        <div className="employee-assignment-history-title">
+                                            <span>{title}</span>
+                                            {item.is_active ? <Badge variant="secondary">Текущий</Badge> : null}
+                                        </div>
+                                        <div className="employee-assignment-history-person">
+                                            {item.assigned_employee_name || "Сотрудник удален"}
+                                        </div>
+                                    </div>
+                                    <div className="employee-assignment-history-period">
+                                        {formatAssignmentPeriod(item)}
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                ) : (
+                    <Empty className="employee-empty-state">
+                        <EmptyHeader>
+                            <EmptyMedia variant="icon">
+                                <RefreshCcw />
+                            </EmptyMedia>
+                            <EmptyTitle>
+                                История назначений появится после первой смены руководителя или наставника.
+                            </EmptyTitle>
+                        </EmptyHeader>
+                    </Empty>
+                )}
+            </CardContent>
+        </DetailCard>
     );
 }
 

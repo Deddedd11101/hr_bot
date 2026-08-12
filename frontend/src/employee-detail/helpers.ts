@@ -1,5 +1,6 @@
 function normalizeEmployeeDetailPayload(payload: any) {
     return Object.assign({}, payload, {
+        assignment_history: Array.isArray(payload && payload.assignment_history) ? payload.assignment_history : [],
         options: Object.assign(
             {
                 employee_role_values: [],

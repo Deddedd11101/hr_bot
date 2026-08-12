@@ -47,6 +47,7 @@
     align-items: start;
 }
 
+.employee-detail-main,
 .employee-profile-form,
 .employee-detail-side {
     display: flex;
@@ -260,6 +261,59 @@
     font-size: 0.8rem;
 }
 
+.employee-assignment-history-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.employee-assignment-history-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) max-content;
+    gap: 12px;
+    align-items: center;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--background);
+    padding: 10px 12px;
+}
+
+.employee-assignment-history-main {
+    min-width: 0;
+}
+
+.employee-assignment-history-title {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 8px;
+    font-weight: 600;
+}
+
+.employee-assignment-history-title span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.employee-assignment-history-person,
+.employee-assignment-history-period {
+    color: var(--muted-foreground);
+    font-size: 0.8rem;
+}
+
+.employee-assignment-history-person {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.employee-assignment-history-period {
+    white-space: nowrap;
+    text-align: right;
+}
+
 .employee-empty-state {
     min-height: 118px;
     border: 1px dashed var(--border);
@@ -296,8 +350,14 @@
     }
 
     .employee-field-grid,
+    .employee-assignment-history-row,
     .employee-document-row {
         grid-template-columns: 1fr;
+    }
+
+    .employee-assignment-history-period {
+        white-space: normal;
+        text-align: left;
     }
 
     .employee-document-actions {
