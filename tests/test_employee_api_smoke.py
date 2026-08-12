@@ -651,6 +651,108 @@ class EmployeeApiSmokeTests(unittest.TestCase):
             self.assertEqual(by_role["mentor_ipr"].assigned_employee_id, mentor_ipr_id)
             self.assertTrue(all(row.ended_at is None for row in rows))
 
+    def test_employee_detail_api_includes_assignment_history(self) -> None:
+        manager_id = self._create_staff_employee(
+            full_name=f"Manager Payload {self.unique_tag}",
+            telegram_user_id="730009",
+            is_manager=True,
+        )
+        with SessionLocal() as db:
+            employee = db.get(Employee, self.employee_id)
+            self.assertIsNotNone(employee)
+            employee.employee_stage = "staff"
+            employee.candidate_work_stage = None
+            db.commit()
+
+        update_response = self.client.post(
+            f"/api/employees/{self.employee_id}",
+            json=self._staff_update_payload(manager_employee_id=str(manager_id)),
+        )
+        self.assertEqual(update_response.status_code, 200)
+
+        response = self.client.get(f"/api/employees/{self.employee_id}")
+
+        self.assertEqual(response.status_code, 200)
+        history_items = response.json()["assignment_history"]
+        self.assertEqual(len(history_items), 1)
+        self.assertEqual(history_items[0]["assignment_role"], "manager")
+        self.assertEqual(history_items[0]["role_label"], "Руководитель")
+        self.assertEqual(history_items[0]["assigned_employee_id"], manager_id)
+        self.assertEqual(history_items[0]["assigned_employee_name"], f"Manager Payload {self.unique_tag}")
+        self.assertTrue(history_items[0]["is_active"])
+        self.assertIsNone(history_items[0]["ended_at"])
+
+    def test_employee_detail_api_serializes_active_and_closed_assignment_history_rows(self) -> None:
+        first_manager_id = self._create_staff_employee(
+            full_name=f"Manager Closed {self.unique_tag}",
+            telegram_user_id="730010",
+            is_manager=True,
+        )
+        second_manager_id = self._create_staff_employee(
+            full_name=f"Manager Active {self.unique_tag}",
+            telegram_user_id="730011",
+            is_manager=True,
+        )
+        with SessionLocal() as db:
+            employee = db.get(Employee, self.employee_id)
+            self.assertIsNotNone(employee)
+            employee.employee_stage = "staff"
+            employee.candidate_work_stage = None
+            db.commit()
+
+        first_response = self.client.post(
+            f"/api/employees/{self.employee_id}",
+            json=self._staff_update_payload(manager_employee_id=str(first_manager_id)),
+        )
+        second_response = self.client.post(
+            f"/api/employees/{self.employee_id}",
+            json=self._staff_update_payload(manager_employee_id=str(second_manager_id)),
+        )
+
+        self.assertEqual(first_response.status_code, 200)
+        self.assertEqual(second_response.status_code, 200)
+
+        response = self.client.get(f"/api/employees/{self.employee_id}")
+
+        self.assertEqual(response.status_code, 200)
+        history_items = response.json()["assignment_history"]
+        self.assertEqual(len(history_items), 2)
+        self.assertEqual(history_items[0]["assigned_employee_id"], second_manager_id)
+        self.assertEqual(history_items[0]["assigned_employee_name"], f"Manager Active {self.unique_tag}")
+        self.assertTrue(history_items[0]["is_active"])
+        self.assertIsNone(history_items[0]["ended_at"])
+        self.assertEqual(history_items[1]["assigned_employee_id"], first_manager_id)
+        self.assertEqual(history_items[1]["assigned_employee_name"], f"Manager Closed {self.unique_tag}")
+        self.assertFalse(history_items[1]["is_active"])
+        self.assertIsNotNone(history_items[1]["ended_at"])
+
+    def test_employee_detail_api_tolerates_missing_assignment_history_employee(self) -> None:
+        missing_assigned_employee_id = 999999000 + self.employee_id
+        with SessionLocal() as db:
+            db.add(
+                EmployeeAssignmentHistory(
+                    subject_employee_id=self.employee_id,
+                    assigned_employee_id=missing_assigned_employee_id,
+                    assignment_role="mentor_adaptation",
+                    started_at=datetime(2026, 6, 10, 9, 0),
+                    ended_at=None,
+                    assigned_by_account_id=None,
+                    created_at=datetime(2026, 6, 10, 9, 0),
+                )
+            )
+            db.commit()
+
+        response = self.client.get(f"/api/employees/{self.employee_id}")
+
+        self.assertEqual(response.status_code, 200)
+        history_items = response.json()["assignment_history"]
+        self.assertEqual(len(history_items), 1)
+        self.assertEqual(history_items[0]["assignment_role"], "mentor_adaptation")
+        self.assertEqual(history_items[0]["role_label"], "Наставник адаптации")
+        self.assertEqual(history_items[0]["assigned_employee_id"], missing_assigned_employee_id)
+        self.assertEqual(history_items[0]["assigned_employee_name"], "")
+        self.assertTrue(history_items[0]["is_active"])
+
     def test_update_employee_api_enqueues_manager_trigger_for_adaptation_assignment(self) -> None:
         scenario_key = f"manager_assign_{self.unique_tag}"
         with SessionLocal() as db:

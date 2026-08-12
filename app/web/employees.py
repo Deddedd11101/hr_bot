@@ -70,6 +70,12 @@ ASSIGNMENT_ROLE_FIELD_MAP = {
     ASSIGNMENT_ROLE_MENTOR_IPR: "mentor_ipr_employee_id",
 }
 
+ASSIGNMENT_ROLE_LABELS = {
+    ASSIGNMENT_ROLE_MANAGER: "Руководитель",
+    ASSIGNMENT_ROLE_MENTOR_ADAPTATION: "Наставник адаптации",
+    ASSIGNMENT_ROLE_MENTOR_IPR: "Наставник ИПР",
+}
+
 
 def _is_workday(day: date) -> bool:
     return day.weekday() < 5
@@ -432,6 +438,46 @@ def _sync_assignment_history(
             current_assigned_employee_id=current_assignments.get(assignment_role),
             assigned_by_account_id=assigned_by_account_id,
         )
+
+
+def _serialize_assignment_history(db: Session, employee_id: int) -> list[dict]:
+    history_rows = (
+        db.query(EmployeeAssignmentHistory)
+        .filter(EmployeeAssignmentHistory.subject_employee_id == employee_id)
+        .order_by(
+            EmployeeAssignmentHistory.started_at.desc(),
+            EmployeeAssignmentHistory.id.desc(),
+        )
+        .all()
+    )
+    if not history_rows:
+        return []
+
+    assigned_employee_ids = {
+        row.assigned_employee_id
+        for row in history_rows
+        if row.assigned_employee_id is not None
+    }
+    assigned_names_by_id = {
+        employee_row.id: employee_row.full_name or ""
+        for employee_row in db.query(Employee)
+        .filter(Employee.id.in_(assigned_employee_ids))
+        .all()
+    }
+    return [
+        {
+            "id": row.id,
+            "assignment_role": row.assignment_role or "",
+            "role_label": ASSIGNMENT_ROLE_LABELS.get(row.assignment_role or "", row.assignment_role or ""),
+            "assigned_employee_id": row.assigned_employee_id,
+            "assigned_employee_name": assigned_names_by_id.get(row.assigned_employee_id, ""),
+            "started_at": row.started_at.isoformat() if row.started_at else "",
+            "ended_at": row.ended_at.isoformat() if row.ended_at else None,
+            "is_active": row.ended_at is None,
+            "assigned_by_account_id": row.assigned_by_account_id,
+        }
+        for row in history_rows
+    ]
 
 
 def _available_scenarios_for_employee(db: Session, employee: Employee) -> list[ScenarioTemplate]:
@@ -1252,4 +1298,5 @@ def _build_employee_detail_payload(db: Session, employee: Employee) -> dict:
             _serialize_launch_request(launch_request, scenario_by_key, employee.id)
             for launch_request in manual_launch_history
         ],
+        "assignment_history": _serialize_assignment_history(db, employee.id),
     }
