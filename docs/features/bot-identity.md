@@ -28,7 +28,7 @@ source_of_truth: true
 2. Если не найден, попробовать public Telegram username.
 3. Если `/start` не нашел карточку ни по numeric Telegram ID, ни по public username, создать новую candidate-карточку:
    - `employee_stage = candidate`;
-   - `candidate_work_stage = testing`;
+   - `candidate_work_stage = hr_interview` (`Собеседование с HR`);
    - `telegram_user_id = <numeric Telegram ID>`;
    - `telegram_username = <public username>`, если он есть.
 4. Если username matched existing candidate without numeric chat ID, `/start` привязывает numeric Telegram ID к этой карточке и считает это регистрацией кандидата.

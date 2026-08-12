@@ -4,7 +4,7 @@ from typing import Literal, NamedTuple, Optional
 
 from sqlalchemy.orm import Session
 
-from ..flow_templates import EMPLOYEE_SCOPE_CANDIDATES, EMPLOYEE_SCOPE_EMPLOYEES
+from ..flow_templates import CANDIDATE_WORK_STAGE_LABELS, EMPLOYEE_SCOPE_CANDIDATES, EMPLOYEE_SCOPE_EMPLOYEES
 from ..models import BotMenuButton, BotMenuSet, DocumentLibraryItem, Employee, EmployeeFile, HrSettings, ScenarioTemplate
 from ..notifications import notify_hr_test_task_received
 from ..positions import position_matches_scope
@@ -37,6 +37,7 @@ UNKNOWN_USER_TEXT = "Ваш аккаунт пока не привязан к HR-
 BLOCKED_USER_TEXT = "Доступ к HR-боту отключен. Обратитесь в HR."
 MENU_BACK_BUTTON_TEXT = "Назад"
 MENU_HOME_BUTTON_TEXT = "Главное меню"
+INITIAL_CANDIDATE_STAGE = "hr_interview"
 
 
 class InboundAccess(NamedTuple):
@@ -106,6 +107,9 @@ def _candidate_registration_allowed(employee: Employee) -> bool:
 
 
 def _create_candidate_for_start(db: Session, chat_user_id: str, username: Optional[str]) -> Employee:
+    initial_candidate_stage = (
+        INITIAL_CANDIDATE_STAGE if INITIAL_CANDIDATE_STAGE in CANDIDATE_WORK_STAGE_LABELS else "hr_interview"
+    )
     employee = Employee(
         full_name=None,
         telegram_user_id=chat_user_id,
@@ -115,7 +119,7 @@ def _create_candidate_for_start(db: Session, chat_user_id: str, username: Option
         is_flow_scheduled=False,
         candidate_status="new",
         employee_stage="candidate",
-        candidate_work_stage="testing",
+        candidate_work_stage=initial_candidate_stage,
     )
     db.add(employee)
     db.flush()

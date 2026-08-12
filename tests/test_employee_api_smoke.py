@@ -11,6 +11,7 @@ from openpyxl import load_workbook
 
 from app.auth import authenticate_account, create_admin_session_token
 from app.database import SessionLocal, init_db
+from app.flow_templates import CANDIDATE_WORK_STAGE_LABELS
 from app.main import AUTH_COOKIE_NAME, app
 from app.messaging.identity import get_primary_chat_id, set_primary_chat_id
 from app.messaging.service import (
@@ -117,6 +118,12 @@ class EmployeeApiSmokeTests(unittest.TestCase):
                     "default_employee_menu_set_id": hr_settings.default_employee_menu_set_id,
                     "default_candidate_menu_set_id": hr_settings.default_candidate_menu_set_id,
                 }
+
+    @staticmethod
+    def _initial_candidate_stage_key() -> str:
+        if "hr_interview" not in CANDIDATE_WORK_STAGE_LABELS:
+            raise AssertionError("Expected hr_interview candidate stage key is missing.")
+        return "hr_interview"
 
     def tearDown(self) -> None:
         with SessionLocal() as db:
@@ -1303,7 +1310,7 @@ class EmployeeApiSmokeTests(unittest.TestCase):
             self.assertIsNotNone(employee)
             self.assertEqual(db.query(Employee).count(), before_count + 1)
             self.assertEqual(employee.employee_stage, "candidate")
-            self.assertEqual(employee.candidate_work_stage, "testing")
+            self.assertEqual(employee.candidate_work_stage, self._initial_candidate_stage_key())
             self.assertEqual(get_primary_chat_id(employee, db=db), chat_id)
             self.assertEqual(employee.telegram_username, f"new_candidate_{unique_suffix}")
 
@@ -3289,7 +3296,7 @@ class EmployeeApiSmokeTests(unittest.TestCase):
             self.assertIsNotNone(created_employee)
             created_employee_id = created_employee.id
             self.assertEqual(created_employee.employee_stage, "candidate")
-            self.assertEqual(created_employee.candidate_work_stage, "testing")
+            self.assertEqual(created_employee.candidate_work_stage, self._initial_candidate_stage_key())
             self.assertEqual(created_employee.telegram_username, username)
             self.assertIn((chat_id, "Привет! Я HR-бот."), messenger.sent_texts)
             self.assertIn((chat_id, registration_text), messenger.sent_texts)
@@ -3324,7 +3331,7 @@ class EmployeeApiSmokeTests(unittest.TestCase):
             self.assertIsNotNone(created_employee)
             created_employee_id = created_employee.id
             self.assertEqual(created_employee.employee_stage, "candidate")
-            self.assertEqual(created_employee.candidate_work_stage, "testing")
+            self.assertEqual(created_employee.candidate_work_stage, self._initial_candidate_stage_key())
             self.assertIsNone(created_employee.telegram_username)
             self.assertIn((chat_id, "Привет! Я HR-бот."), messenger.sent_texts)
 
