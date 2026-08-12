@@ -34,6 +34,48 @@ source_of_truth: true
 
 ## Записи
 
+### 2026-08-12 13:31 MSK - app deploy - Telegram start identity flow
+
+- Deploy ref: `stage`.
+- Deployed commit: `b5cf5b4`.
+- GitHub Actions run: `31587617582` -> success.
+- В stage включено:
+  - новый `/start` identity flow для Telegram;
+  - известный numeric Telegram ID переиспользует существующую карточку без дублей;
+  - username match привязывает numeric ID к существующей карточке;
+  - candidate username/create event запускает candidate `bot_registration`;
+  - staff/adaptation/ipr username-linking только привязывает ID и показывает employee menu, без candidate registration;
+  - unknown username/no match создает candidate с `candidate_work_stage=hr_interview`;
+  - повторный `/start` не должен создавать дубль или перезапускать регистрацию;
+  - blocked matched user не relink-ится.
+- Локальные проверки перед deploy:
+  - `python -m compileall app tests`;
+  - `ruff check --select F821 app tests`;
+  - `python -m unittest tests.test_employee_api_smoke tests.test_messaging_identity tests.test_scenario_engine_smoke -v` -> 113 tests OK;
+  - `tools/check_docs_contracts.py`;
+  - `git diff --check origin/stage..HEAD`.
+- GitHub Actions preflight:
+  - backend dependencies install;
+  - `compileall`;
+  - `ruff F821`;
+  - backend smoke tests;
+  - frontend build;
+  - smoke imports.
+- Stage safety checks:
+  - verified SQLite backup created before checkout/restart: `backups/hr_bot.before-deploy.20260812-103027.db`;
+  - scenario config snapshot created: `backups/scenarios.before-deploy.20260812-103027.json`;
+  - scenario configuration fingerprint unchanged.
+- Stage smoke checks:
+  - `/app/employees` -> `303`;
+  - `/app/flows/workspace-v2` -> `303`;
+  - Telegram API reachability -> `HTTP/2 302`;
+  - deploy job завершился успешно и вывел `b5cf5b4`;
+  - deploy workflow checked fresh worker logs for Telegram network errors, request timeouts, tracebacks and unclosed client sessions.
+- Открытые риски:
+  - username-only employee linking остается interim-моделью до email/auth verification;
+  - duplicate public username остается возможным без unique index, потому что Telegram usernames могут меняться и переиспользоваться;
+  - real Telegram `/start` smoke с живым test user не выполнен автоматически: прямой SSH из локальной среды вернул `Permission denied`, а для полного продуктового smoke нужен реальный Telegram аккаунт.
+
 ### 2026-08-12 01:17 MSK - app deploy - theme switch fallback
 
 - Deploy ref: `stage`.
