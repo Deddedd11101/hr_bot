@@ -143,6 +143,7 @@ def update_employee(
     auth_redirect = require_auth(request)
     if auth_redirect:
         return auth_redirect
+    current_user = getattr(request.state, "current_user", None)
     employee = db.get(Employee, employee_id)
     if not employee:
         return RedirectResponse(url="/employees", status_code=status.HTTP_303_SEE_OTHER)
@@ -175,6 +176,7 @@ def update_employee(
             is_bot_blocked=is_bot_blocked == "true",
             test_task_due_at=test_task_due_at,
             notes=notes,
+            assigned_by_account_id=getattr(current_user, "id", None),
         )
     except EmployeeIdentityConflictError as exc:
         db.rollback()
@@ -590,7 +592,7 @@ def update_employee_api(
     payload: dict = Body(...),
     db: Session = Depends(get_db),
 ):
-    require_api_auth(request)
+    current_user = require_api_auth(request)
     employee = db.get(Employee, employee_id)
     if not employee:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Сотрудник не найден")
@@ -623,6 +625,7 @@ def update_employee_api(
             is_bot_blocked=bool(payload.get("is_bot_blocked")),
             test_task_due_at=str(payload.get("test_task_due_at") or ""),
             notes=str(payload.get("notes") or ""),
+            assigned_by_account_id=getattr(current_user, "id", None),
         )
     except EmployeeIdentityConflictError as exc:
         db.rollback()

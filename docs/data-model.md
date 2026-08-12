@@ -59,6 +59,7 @@ source_of_truth: true
 | Таблица | Назначение | Ключевые поля | Связи и примечания |
 | --- | --- | --- | --- |
 | `employees` | Единая запись для candidates и employees | `full_name`, `first_workday`, `employee_stage`, `candidate_work_stage`, legacy Telegram fields, HR profile fields, consent flags, `is_bot_blocked` | Центральная запись, на нее ссылается большинство runtime tables |
+| `employee_assignment_history` | Аудит назначений руководителя и наставников | `subject_employee_id`, `assigned_employee_id`, `assignment_role`, `started_at`, `ended_at`, `assigned_by_account_id` | Не заменяет текущие поля `employees.*_employee_id`; хранит только историю изменений назначений |
 | `positions` | Управляемый справочник должностей | `title`, `slug`, `is_active`, `sort_order`, timestamps | Используется settings UI, employee forms, scenario role scope и targeting; `employees.desired_position` пока остается строкой для backward compatibility |
 | `employee_messenger_accounts` | Channel-specific communication identities | `employee_id`, `channel`, `external_user_id`, `external_username`, `is_primary`, `is_active` | Один employee может иметь несколько channel identities; текущий runtime использует `telegram` |
 | `admin_accounts` | Пользователи админки | `login`, `password_hash`, `role`, `is_active` | Используется browser session auth |
@@ -103,6 +104,22 @@ source_of_truth: true
   - candidates обычно имеют `employee_stage = "candidate"`;
   - non-candidates используют stages вроде `adaptation`, `ipr`, `staff`.
 - Это просто, но продуктово грязно. Один row type растянут на recruiting, onboarding и staff communication.
+
+### `employee_assignment_history`
+
+- Таблица хранит только аудит изменений полей:
+  - `manager_employee_id`;
+  - `mentor_adaptation_employee_id`;
+  - `mentor_ipr_employee_id`.
+- Current source of truth для актуального состояния остается в `employees`.
+- При сохранении карточки сотрудника runtime делает ровно такую sync-semantics:
+  - если значение роли не изменилось, history не трогается;
+  - если активное назначение этой роли меняется или очищается, старая запись закрывается через `ended_at`;
+  - если появляется новое значение, создается новая активная запись;
+  - дубль активной записи для одной и той же пары `subject + role + assigned` не создается.
+- `assigned_by_account_id` сейчас best-effort:
+  - JSON API и classic card save пробрасывают текущий admin account id;
+  - nullable сохраняется как fallback, если update path не знает текущего аккаунта.
 
 ### `employee_messenger_accounts`
 
@@ -152,6 +169,7 @@ SQLite schema guard делает больше, чем “создать табл
   - `scenario_progress.recipient_chat_id`;
   - `scenario_progress.last_delivery_error`;
 - создает целые таблицы, если они отсутствуют:
+  - `employee_assignment_history`;
   - `step_button_notifications`;
   - `step_send_notifications`;
   - `scenario_progress`;
