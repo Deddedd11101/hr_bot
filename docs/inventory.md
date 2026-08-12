@@ -56,7 +56,7 @@ source_of_truth: false
 
 | Документ | Категория | Текущий статус аудита |
 | --- | --- | --- |
-| [[features/bot-identity]] | Product and feature behavior | Актуален по текущему non-destructive unknown-user behavior, username fallback, bot blocking и orphan-account risk; OTP/linking invite остаются будущим решением. |
+| [[features/bot-identity]] | Product and feature behavior | Актуален по текущему `/start` identity flow: numeric ID first, затем public username fallback, candidate auto-create only on `/start`, blocked-user deny и interim username-based employee linking; OTP/linking invite остаются будущим решением. |
 | [[features/employee-lifecycle]] | Product and feature behavior | Обновлен по explicit HR cutover `candidate -> adaptation` и manager assignment trigger; следующий аудит нужен при изменении lifecycle/event matrix. |
 | [[features/scenario-engine]] | Product and feature behavior | В целом актуален по back-step, audience targeting и scheduler caveats; требует сверки при изменении transition-to-scenario semantics. |
 | [[features/notifications]] | Product and feature behavior | Обновлен по `StepSendNotification` и legacy compatibility seam; следующий аудит нужен при финализации notification delivery rules. |

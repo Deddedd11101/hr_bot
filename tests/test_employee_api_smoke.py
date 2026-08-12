@@ -11,9 +11,11 @@ from openpyxl import load_workbook
 
 from app.auth import authenticate_account, create_admin_session_token
 from app.database import SessionLocal, init_db
+from app.flow_templates import CANDIDATE_WORK_STAGE_LABELS
 from app.main import AUTH_COOKIE_NAME, app
 from app.messaging.identity import get_primary_chat_id, set_primary_chat_id
 from app.messaging.service import (
+    BLOCKED_USER_TEXT,
     MENU_BACK_BUTTON_TEXT,
     MENU_HOME_BUTTON_TEXT,
     current_menu_set,
@@ -116,6 +118,12 @@ class EmployeeApiSmokeTests(unittest.TestCase):
                     "default_employee_menu_set_id": hr_settings.default_employee_menu_set_id,
                     "default_candidate_menu_set_id": hr_settings.default_candidate_menu_set_id,
                 }
+
+    @staticmethod
+    def _initial_candidate_stage_key() -> str:
+        if "hr_interview" not in CANDIDATE_WORK_STAGE_LABELS:
+            raise AssertionError("Expected hr_interview candidate stage key is missing.")
+        return "hr_interview"
 
     def tearDown(self) -> None:
         with SessionLocal() as db:
@@ -1290,7 +1298,7 @@ class EmployeeApiSmokeTests(unittest.TestCase):
             self.assertEqual(employee.telegram_username, username.upper())
             self.assertEqual(db.query(Employee).filter(Employee.id == self.employee_id).count(), 1)
 
-    def test_bot_start_does_not_create_candidate_when_card_is_missing(self) -> None:
+    def test_bot_start_creates_candidate_when_card_is_missing(self) -> None:
         with SessionLocal() as db:
             unique_suffix = uuid4().hex[:12]
             chat_id = str(910000000000 + (int(unique_suffix, 16) % 100000000000))
@@ -1298,9 +1306,19 @@ class EmployeeApiSmokeTests(unittest.TestCase):
 
             employee, created = get_or_create_employee_by_chat(db, chat_id, f"new_candidate_{unique_suffix}")
 
-            self.assertFalse(created)
-            self.assertIsNone(employee)
-            self.assertEqual(db.query(Employee).count(), before_count)
+            self.assertTrue(created)
+            self.assertIsNotNone(employee)
+            self.assertEqual(db.query(Employee).count(), before_count + 1)
+            self.assertEqual(employee.employee_stage, "candidate")
+            self.assertEqual(employee.candidate_work_stage, self._initial_candidate_stage_key())
+            self.assertEqual(get_primary_chat_id(employee, db=db), chat_id)
+            self.assertEqual(employee.telegram_username, f"new_candidate_{unique_suffix}")
+
+            db.query(EmployeeMessengerAccount).filter(EmployeeMessengerAccount.employee_id == employee.id).delete(
+                synchronize_session=False
+            )
+            db.delete(employee)
+            db.commit()
 
     def test_update_employee_api_persists_shared_fields_for_candidate(self) -> None:
         response = self.client.post(
@@ -3240,6 +3258,151 @@ class EmployeeApiSmokeTests(unittest.TestCase):
             asyncio.run(handle_start_command(messenger, db, chat_id, username))
 
             self.assertNotIn((chat_id, registration_text), messenger.sent_texts)
+
+    def test_bot_start_creates_candidate_for_unknown_username_and_runs_registration(self) -> None:
+        scenario_key = f"codex-registration-created-{self.unique_tag}"
+        username = f"fresh_candidate_{self.unique_tag}"
+        chat_id = str(961000000000 + (uuid4().int % 100000000000))
+        registration_text = f"created candidate registration {self.unique_tag}"
+        created_employee_id: int | None = None
+        with SessionLocal() as db:
+            scenario = ScenarioTemplate(
+                scenario_key=scenario_key,
+                title=f"codex-registration-created-{self.unique_tag}",
+                role_scope="all",
+                employee_scope="candidates",
+                scenario_kind="scenario",
+                sort_order=-100,
+                trigger_mode="bot_registration",
+            )
+            db.add(scenario)
+            db.add(
+                FlowStepTemplate(
+                    flow_key=scenario_key,
+                    step_key="registration_start",
+                    step_title="Registration start",
+                    sort_order=10,
+                    default_text=registration_text,
+                    response_type="none",
+                    send_mode="immediate",
+                )
+            )
+            db.commit()
+            messenger = DummyMessenger()
+
+            asyncio.run(handle_start_command(messenger, db, chat_id, username))
+
+            created_employee = db.query(Employee).filter(Employee.telegram_user_id == chat_id).order_by(Employee.id.desc()).first()
+            self.assertIsNotNone(created_employee)
+            created_employee_id = created_employee.id
+            self.assertEqual(created_employee.employee_stage, "candidate")
+            self.assertEqual(created_employee.candidate_work_stage, self._initial_candidate_stage_key())
+            self.assertEqual(created_employee.telegram_username, username)
+            self.assertIn((chat_id, "Привет! Я HR-бот."), messenger.sent_texts)
+            self.assertIn((chat_id, registration_text), messenger.sent_texts)
+
+            before_repeat_count = db.query(Employee).filter(Employee.telegram_user_id == chat_id).count()
+            messenger.sent_texts.clear()
+            asyncio.run(handle_start_command(messenger, db, chat_id, username))
+            after_repeat_count = db.query(Employee).filter(Employee.telegram_user_id == chat_id).count()
+
+            self.assertEqual(before_repeat_count, 1)
+            self.assertEqual(after_repeat_count, 1)
+            self.assertNotIn((chat_id, registration_text), messenger.sent_texts)
+
+            if created_employee_id is not None:
+                db.query(EmployeeMessengerAccount).filter(EmployeeMessengerAccount.employee_id == created_employee_id).delete(
+                    synchronize_session=False
+                )
+                created_employee = db.get(Employee, created_employee_id)
+                if created_employee is not None:
+                    db.delete(created_employee)
+                    db.commit()
+
+    def test_bot_start_creates_candidate_without_username(self) -> None:
+        chat_id = str(962000000000 + (uuid4().int % 100000000000))
+        created_employee_id: int | None = None
+        with SessionLocal() as db:
+            messenger = DummyMessenger()
+
+            asyncio.run(handle_start_command(messenger, db, chat_id, None))
+
+            created_employee = db.query(Employee).filter(Employee.telegram_user_id == chat_id).order_by(Employee.id.desc()).first()
+            self.assertIsNotNone(created_employee)
+            created_employee_id = created_employee.id
+            self.assertEqual(created_employee.employee_stage, "candidate")
+            self.assertEqual(created_employee.candidate_work_stage, self._initial_candidate_stage_key())
+            self.assertIsNone(created_employee.telegram_username)
+            self.assertIn((chat_id, "Привет! Я HR-бот."), messenger.sent_texts)
+
+            if created_employee_id is not None:
+                db.query(EmployeeMessengerAccount).filter(EmployeeMessengerAccount.employee_id == created_employee_id).delete(
+                    synchronize_session=False
+                )
+                created_employee = db.get(Employee, created_employee_id)
+                if created_employee is not None:
+                    db.delete(created_employee)
+                    db.commit()
+
+    def test_bot_start_links_staff_by_username_without_registration(self) -> None:
+        scenario_key = f"codex-registration-staff-{self.unique_tag}"
+        username = f"staff_link_{self.unique_tag}"
+        chat_id = str(963000000000 + (uuid4().int % 100000000000))
+        registration_text = f"staff should not get this {self.unique_tag}"
+        with SessionLocal() as db:
+            employee = db.get(Employee, self.employee_id)
+            self.assertIsNotNone(employee)
+            employee.telegram_username = f"@{username}"
+            employee.telegram_user_id = None
+            employee.employee_stage = "staff"
+            scenario = ScenarioTemplate(
+                scenario_key=scenario_key,
+                title=f"codex-registration-staff-{self.unique_tag}",
+                role_scope="all",
+                employee_scope="candidates",
+                scenario_kind="scenario",
+                sort_order=-100,
+                trigger_mode="bot_registration",
+            )
+            db.add(scenario)
+            db.add(
+                FlowStepTemplate(
+                    flow_key=scenario_key,
+                    step_key="registration_start",
+                    step_title="Registration start",
+                    sort_order=10,
+                    default_text=registration_text,
+                    response_type="none",
+                    send_mode="immediate",
+                )
+            )
+            db.commit()
+            messenger = DummyMessenger()
+
+            asyncio.run(handle_start_command(messenger, db, chat_id, username.upper()))
+
+            db.refresh(employee)
+            self.assertEqual(get_primary_chat_id(employee, db=db), chat_id)
+            self.assertIn((chat_id, "Привет! Я HR-бот."), messenger.sent_texts)
+            self.assertNotIn((chat_id, registration_text), messenger.sent_texts)
+
+    def test_bot_start_keeps_blocked_matched_user_blocked(self) -> None:
+        username = f"blocked_link_{self.unique_tag}"
+        chat_id = str(964000000000 + (uuid4().int % 100000000000))
+        with SessionLocal() as db:
+            employee = db.get(Employee, self.employee_id)
+            self.assertIsNotNone(employee)
+            employee.telegram_username = f"@{username}"
+            employee.telegram_user_id = None
+            employee.is_bot_blocked = True
+            db.commit()
+            messenger = DummyMessenger()
+
+            asyncio.run(handle_start_command(messenger, db, chat_id, username.upper()))
+
+            db.refresh(employee)
+            self.assertIsNone(get_primary_chat_id(employee, db=db))
+            self.assertEqual(messenger.sent_texts, [(chat_id, BLOCKED_USER_TEXT)])
 
     def test_bot_menu_back_returns_to_previous_menu(self) -> None:
         with SessionLocal() as db:

@@ -4,7 +4,7 @@ from typing import Literal, NamedTuple, Optional
 
 from sqlalchemy.orm import Session
 
-from ..flow_templates import EMPLOYEE_SCOPE_CANDIDATES, EMPLOYEE_SCOPE_EMPLOYEES
+from ..flow_templates import CANDIDATE_WORK_STAGE_LABELS, EMPLOYEE_SCOPE_CANDIDATES, EMPLOYEE_SCOPE_EMPLOYEES
 from ..models import BotMenuButton, BotMenuSet, DocumentLibraryItem, Employee, EmployeeFile, HrSettings, ScenarioTemplate
 from ..notifications import notify_hr_test_task_received
 from ..positions import position_matches_scope
@@ -29,6 +29,7 @@ from .identity import (
     get_public_chat_handle,
     set_primary_chat_id,
     set_public_chat_handle,
+    sync_legacy_telegram_account,
 )
 
 
@@ -36,12 +37,20 @@ UNKNOWN_USER_TEXT = "Ваш аккаунт пока не привязан к HR-
 BLOCKED_USER_TEXT = "Доступ к HR-боту отключен. Обратитесь в HR."
 MENU_BACK_BUTTON_TEXT = "Назад"
 MENU_HOME_BUTTON_TEXT = "Главное меню"
+INITIAL_CANDIDATE_STAGE = "hr_interview"
 
 
 class InboundAccess(NamedTuple):
     employee: Optional[Employee]
     state: Literal["ok", "unknown", "blocked"]
     newly_linked: bool = False
+
+
+class StartAccess(NamedTuple):
+    employee: Optional[Employee]
+    state: Literal["ok", "blocked"]
+    newly_linked: bool = False
+    created: bool = False
 
 
 def detect_category_from_caption(caption: Optional[str]) -> str:
@@ -91,6 +100,44 @@ def _registration_scenario(db: Session, employee: Employee) -> Optional[Scenario
         if scenario and matches_role_scope(employee, scenario):
             return scenario
     return None
+
+
+def _candidate_registration_allowed(employee: Employee) -> bool:
+    return (employee.employee_stage or "").strip() == "candidate"
+
+
+def _create_candidate_for_start(db: Session, chat_user_id: str, username: Optional[str]) -> Employee:
+    initial_candidate_stage = (
+        INITIAL_CANDIDATE_STAGE if INITIAL_CANDIDATE_STAGE in CANDIDATE_WORK_STAGE_LABELS else "hr_interview"
+    )
+    employee = Employee(
+        full_name=None,
+        telegram_user_id=chat_user_id,
+        telegram_username=(username or "").strip() or None,
+        first_workday=None,
+        created_at=utc_now(),
+        is_flow_scheduled=False,
+        candidate_status="new",
+        employee_stage="candidate",
+        candidate_work_stage=initial_candidate_stage,
+    )
+    db.add(employee)
+    db.flush()
+    sync_legacy_telegram_account(db, employee)
+    db.commit()
+    db.refresh(employee)
+    return employee
+
+
+def resolve_start_access(db: Session, chat_user_id: str, username: Optional[str]) -> StartAccess:
+    access = resolve_inbound_access(db, chat_user_id, username)
+    if access.employee is not None:
+        if access.state == "blocked":
+            return StartAccess(access.employee, "blocked", newly_linked=access.newly_linked, created=False)
+        return StartAccess(access.employee, "ok", newly_linked=access.newly_linked, created=False)
+
+    employee = _create_candidate_for_start(db, chat_user_id, username)
+    return StartAccess(employee, "ok", newly_linked=True, created=True)
 
 
 def default_menu_set(db: Session) -> Optional[BotMenuSet]:
@@ -385,19 +432,23 @@ async def handle_menu_button(messenger: MessengerClient, db: Session, employee: 
 def resolve_inbound_access(db: Session, chat_user_id: str, username: Optional[str]) -> InboundAccess:
     employee = find_employee_by_channel_user_id(db, channel="telegram", external_user_id=chat_user_id)
     if employee:
+        if employee.is_bot_blocked:
+            return InboundAccess(employee, "blocked", False)
         newly_linked = _sync_employee_after_inbound(db, employee, chat_user_id, username)
-        return InboundAccess(employee, "blocked" if employee.is_bot_blocked else "ok", newly_linked)
+        return InboundAccess(employee, "ok", newly_linked)
 
     employee = find_employee_by_public_chat_handle(db, channel="telegram", external_username=username)
     if employee:
+        if employee.is_bot_blocked:
+            return InboundAccess(employee, "blocked", False)
         newly_linked = _sync_employee_after_inbound(db, employee, chat_user_id, username)
-        return InboundAccess(employee, "blocked" if employee.is_bot_blocked else "ok", newly_linked)
+        return InboundAccess(employee, "ok", newly_linked)
     return InboundAccess(None, "unknown", False)
 
 
 def get_or_create_employee_by_chat(db: Session, chat_user_id: str, username: Optional[str]) -> tuple[Optional[Employee], bool]:
-    access = resolve_inbound_access(db, chat_user_id, username)
-    return access.employee, False
+    access = resolve_start_access(db, chat_user_id, username)
+    return access.employee, access.created
 
 
 async def send_access_state_message(messenger: MessengerClient, chat_user_id: str, state: Literal["unknown", "blocked"]) -> None:
@@ -408,9 +459,9 @@ async def send_access_state_message(messenger: MessengerClient, chat_user_id: st
 
 
 async def handle_start_command(messenger: MessengerClient, db: Session, chat_user_id: str, username: Optional[str]) -> None:
-    access = resolve_inbound_access(db, chat_user_id, username)
+    access = resolve_start_access(db, chat_user_id, username)
     if access.state != "ok" or access.employee is None:
-        await send_access_state_message(messenger, chat_user_id, access.state)
+        await send_access_state_message(messenger, chat_user_id, "blocked")
         return
 
     employee = access.employee
@@ -418,7 +469,7 @@ async def handle_start_command(messenger: MessengerClient, db: Session, chat_use
         chat_id=chat_user_id,
         text="Привет! Я HR-бот.",
     )
-    if access.newly_linked:
+    if access.newly_linked and _candidate_registration_allowed(employee):
         scenario = _registration_scenario(db, employee)
         if scenario and await start_scenario(messenger, db, employee, scenario.scenario_key):
             return
