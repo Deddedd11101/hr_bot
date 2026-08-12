@@ -26,29 +26,37 @@ source_of_truth: true
 
 1. Найти existing employee по Telegram channel user ID.
 2. Если не найден, попробовать public Telegram username.
-3. Если все еще не найден, не создавать record и вернуть короткую инструкцию обратиться в HR.
-4. Если employee record есть, но `is_bot_blocked = true`, запретить все bot interaction с коротким отказом.
-5. Если `/start` впервые привязал numeric Telegram chat ID к карточке, сразу запускается первый подходящий scenario с `trigger_mode=bot_registration`.
-6. Повторный `/start` не перезапускает registration-сценарий и работает как возврат к root menu.
+3. Если `/start` не нашел карточку ни по numeric Telegram ID, ни по public username, создать новую candidate-карточку:
+   - `employee_stage = candidate`;
+   - `candidate_work_stage = testing`;
+   - `telegram_user_id = <numeric Telegram ID>`;
+   - `telegram_username = <public username>`, если он есть.
+4. Если username matched existing candidate without numeric chat ID, `/start` привязывает numeric Telegram ID к этой карточке и считает это регистрацией кандидата.
+5. Если username matched existing `staff` / `adaptation` / `ipr`, `/start` только привязывает numeric Telegram ID и не запускает candidate registration scenario.
+6. Если employee record есть, но `is_bot_blocked = true`, запретить все bot interaction с коротким отказом и не перепривязывать Telegram identity.
+7. Candidate registration scenario запускается только при первом candidate-linking/create event и только для сценария, который реально матчится по `employee_scope=candidates`.
+8. Повторный `/start` не создает дубль, не перезапускает registration-сценарий и работает как возврат к root menu.
 
 ## Что изменилось в P0
 
 - `/start`, text, file, photo и callback entrypoints теперь используют один inbound access resolution path.
-- Unknown users больше не создают `employees` rows или `employee_files`.
+- Unknown users по-прежнему не могут создавать `employee_files` и не открывают runtime access через stray text/file input, но `/start` теперь является осознанной candidate-entry точкой и может создать новую candidate-карточку.
 - Known users все еще могут быть linked по сохраненному public username, если пишут с нового Telegram ID.
-- Registration-сценарий привязан к факту новой Telegram-привязки, а не к scheduler interval или каждому повторному `/start`.
+- Registration-сценарий привязан к факту нового candidate-linking/create event, а не к scheduler interval или каждому повторному `/start`.
 - Blocked users не могут открывать menu flows, отвечать на scenario steps, upload files или получать new launches через scheduler/manual start.
 - Known stray text вне expected scenario response игнорируется без service noise.
 
 ## Текущее практическое использование
 
-- Safe by default для текущего production-like использования.
-- Это все еще не финальная identity product model для existing employees, которые раньше не были linked.
+- Модель сознательно асимметрична:
+  - кандидат может войти в бот впервые через `/start` и быть создан автоматически;
+  - существующий сотрудник должен быть заранее известен по numeric ID или public username.
+- Это interim model до отдельной employee-auth/email verification схемы.
 
 ## Нужное будущее направление
 
-- Оставить unknown-user behavior non-destructive.
-- Выбрать intentional linking flow для existing employees.
+- Не расширять auto-create с `/start` на обычные text/file/callback события, иначе бот снова начнет плодить мусор от случайных входящих сообщений.
+- Выбрать intentional linking flow для existing employees beyond username fallback.
 - Решить, будет linking code-based, HR-approved или через другой verification path.
 
 ## Связанная работа

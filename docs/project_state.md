@@ -54,7 +54,7 @@ source_of_truth: true
 - Telegram bot умеет отправлять шаги, собирать text/files/button responses и писать progress в SQLite.
 - Runtime сценариев больше не предполагает, что subject employee и Telegram-получатель всегда один и тот же человек: появился recipient-layer для сценариев руководителя/наставника/HR.
 - Mass actions, onboarding scheduler и scenario portability tooling уже есть в коде.
-- Unknown Telegram users больше не создают candidate records автоматически.
+- Unknown Telegram users больше не создают runtime data от stray text/file input, но `/start` снова является осознанной candidate-entry точкой: сначала идет match по numeric Telegram ID и public username, а при отсутствии match создается новая candidate-карточка.
 - Bot access можно заблокировать per employee через `is_bot_blocked`.
 - Incoming Telegram photos обрабатываются как first-class inbound files вместе с documents.
 - Mass actions могут target employee stages и candidate stages отдельно.
@@ -192,7 +192,7 @@ source_of_truth: true
 - Для backend-слоя главный structural шаг уже завершен: `main.py` стал composition root, а vertical slices `employees`, `bulk-actions`, `settings`, `scenario/surveys` вынесены в `app/web/*` с green smoke после каждого этапа.
 - Следующий backend-шаг теперь не “еще один slice”, а финальный cleanup после декомпозиции: parity-pass remaining classic surfaces, точечное удаление ненужных fallback pages и отдельная нормализация shared helpers/tests там, где ownership уже разнесен.
 - После структурных pass по `employees-list`, `scenario-workspace` и `employee detail` следующий frontend-шаг уже не очередной split файлов, а parity-pass и последовательное удаление classic-only хвостов без rollback gap.
-- `HRB-DISC-01` выбрать long-term identity-linking flow для existing employees.
+- `HRB-DISC-01` выбрать long-term identity-linking flow для existing employees beyond interim username fallback и candidate auto-create on `/start`.
 - После текущей стабилизации следующий продуктовый модуль — `HRB-P2-06` отпуска MVP; Telegram Mini Apps не начинать как отдельный frontend до решения `HRB-DISC-03` по scope/auth/API boundaries.
 - `HRB-DISC-04` определить модель раздельного хранения данных для двух ИП; `HRB-P2-07` не начинать без LLD, потому что это влияет на БД, deploy/runbook, backup и UI context.
 - `HRB-DISC-05` определить модель ролей и доступа админки до расширения account management: директору может быть нужен operational доступ без права управлять аккаунтами, а технический `admin` должен быть отделен от ежедневной HR-работы.
