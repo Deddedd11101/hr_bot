@@ -108,6 +108,36 @@ def _ensure_sqlite_schema() -> None:
         )
         conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_positions_slug ON positions (slug)"))
         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_positions_id ON positions (id)"))
+        conn.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS employee_assignment_history (
+                    id INTEGER NOT NULL,
+                    subject_employee_id INTEGER NOT NULL,
+                    assigned_employee_id INTEGER NOT NULL,
+                    assignment_role VARCHAR(64) NOT NULL,
+                    started_at DATETIME NOT NULL,
+                    ended_at DATETIME,
+                    assigned_by_account_id INTEGER,
+                    created_at DATETIME NOT NULL,
+                    PRIMARY KEY (id)
+                )
+                """
+            )
+        )
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_employee_assignment_history_id ON employee_assignment_history (id)"))
+        conn.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_employee_assignment_history_subject_role_active "
+                "ON employee_assignment_history (subject_employee_id, assignment_role, ended_at)"
+            )
+        )
+        conn.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_employee_assignment_history_assigned_by_account_id "
+                "ON employee_assignment_history (assigned_by_account_id)"
+            )
+        )
 
         employee_columns = {row[1] for row in conn.execute(text("PRAGMA table_info(employees)")).fetchall()}
         if "desired_position" in employee_columns:

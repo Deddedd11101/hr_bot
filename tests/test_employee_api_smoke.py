@@ -31,6 +31,7 @@ from app.models import (
     BotMenuSet,
     DocumentLibraryItem,
     Employee,
+    EmployeeAssignmentHistory,
     EmployeeDocumentLink,
     EmployeeMessengerAccount,
     EmployeeFile,
@@ -125,6 +126,61 @@ class EmployeeApiSmokeTests(unittest.TestCase):
             raise AssertionError("Expected hr_interview candidate stage key is missing.")
         return "hr_interview"
 
+    def _staff_update_payload(self, **overrides) -> dict:
+        payload = {
+            "full_name": "API Smoke Employee",
+            "chat_id": "",
+            "chat_handle": "",
+            "first_workday": "2026-06-10",
+            "desired_position": "Аналитик",
+            "birth_date": "1999-04-10",
+            "work_email": "employee@example.com",
+            "work_hours": "10:00-19:00",
+            "is_manager": False,
+            "is_mentor": False,
+            "manager_employee_id": "",
+            "mentor_adaptation_employee_id": "",
+            "mentor_ipr_employee_id": "",
+            "adaptation_tasks_url": "",
+            "adaptation_feedback_url": "",
+            "adaptation_midpoint": "",
+            "adaptation_end": "",
+            "employee_stage": "staff",
+            "candidate_work_stage": "",
+            "salary_expectation": "",
+            "personal_data_consent": False,
+            "employee_data_consent": True,
+            "is_bot_blocked": False,
+            "test_task_due_at": "",
+            "notes": "",
+        }
+        payload.update(overrides)
+        return payload
+
+    def _create_staff_employee(
+        self,
+        *,
+        full_name: str,
+        telegram_user_id: str,
+        is_manager: bool = False,
+        is_mentor: bool = False,
+    ) -> int:
+        with SessionLocal() as db:
+            employee = Employee(
+                full_name=full_name,
+                telegram_user_id=telegram_user_id,
+                first_workday=None,
+                created_at=datetime.now(UTC).replace(tzinfo=None),
+                is_flow_scheduled=False,
+                employee_stage="staff",
+                is_manager=is_manager,
+                is_mentor=is_mentor,
+            )
+            db.add(employee)
+            db.commit()
+            db.refresh(employee)
+            return employee.id
+
     def tearDown(self) -> None:
         with SessionLocal() as db:
             db.query(BotMenuButton).filter(BotMenuButton.label.like(f"codex-%-{self.unique_tag}%")).delete(synchronize_session=False)
@@ -176,7 +232,14 @@ class EmployeeApiSmokeTests(unittest.TestCase):
                 db.query(FlowLaunchRequest).filter(FlowLaunchRequest.employee_id == extra_employee.id).delete(synchronize_session=False)
                 db.query(EmployeeFile).filter(EmployeeFile.employee_id == extra_employee.id).delete(synchronize_session=False)
                 db.query(EmployeeMessengerAccount).filter(EmployeeMessengerAccount.employee_id == extra_employee.id).delete()
+                db.query(EmployeeAssignmentHistory).filter(
+                    (EmployeeAssignmentHistory.subject_employee_id == extra_employee.id)
+                    | (EmployeeAssignmentHistory.assigned_employee_id == extra_employee.id)
+                ).delete(synchronize_session=False)
                 db.delete(extra_employee)
+            db.query(EmployeeAssignmentHistory).filter(
+                EmployeeAssignmentHistory.subject_employee_id == self.employee_id
+            ).delete(synchronize_session=False)
             employee = db.get(Employee, self.employee_id)
             if employee is not None:
                 db.delete(employee)
@@ -385,6 +448,208 @@ class EmployeeApiSmokeTests(unittest.TestCase):
                 if related_employee is not None:
                     db.delete(related_employee)
             db.commit()
+
+    def test_assign_manager_creates_history_row(self) -> None:
+        manager_id = self._create_staff_employee(
+            full_name=f"Manager History {self.unique_tag}",
+            telegram_user_id="730001",
+            is_manager=True,
+        )
+        with SessionLocal() as db:
+            employee = db.get(Employee, self.employee_id)
+            self.assertIsNotNone(employee)
+            employee.employee_stage = "staff"
+            employee.candidate_work_stage = None
+            db.commit()
+
+        response = self.client.post(
+            f"/api/employees/{self.employee_id}",
+            json=self._staff_update_payload(manager_employee_id=str(manager_id)),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        with SessionLocal() as db:
+            rows = (
+                db.query(EmployeeAssignmentHistory)
+                .filter(
+                    EmployeeAssignmentHistory.subject_employee_id == self.employee_id,
+                    EmployeeAssignmentHistory.assignment_role == "manager",
+                )
+                .order_by(EmployeeAssignmentHistory.id.asc())
+                .all()
+            )
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(rows[0].assigned_employee_id, manager_id)
+            self.assertIsNone(rows[0].ended_at)
+            self.assertIsNotNone(rows[0].assigned_by_account_id)
+
+    def test_replace_manager_closes_old_row_and_creates_new_row(self) -> None:
+        first_manager_id = self._create_staff_employee(
+            full_name=f"Manager Old {self.unique_tag}",
+            telegram_user_id="730002",
+            is_manager=True,
+        )
+        second_manager_id = self._create_staff_employee(
+            full_name=f"Manager New {self.unique_tag}",
+            telegram_user_id="730003",
+            is_manager=True,
+        )
+        with SessionLocal() as db:
+            employee = db.get(Employee, self.employee_id)
+            self.assertIsNotNone(employee)
+            employee.employee_stage = "staff"
+            employee.candidate_work_stage = None
+            db.commit()
+
+        first_response = self.client.post(
+            f"/api/employees/{self.employee_id}",
+            json=self._staff_update_payload(manager_employee_id=str(first_manager_id)),
+        )
+        second_response = self.client.post(
+            f"/api/employees/{self.employee_id}",
+            json=self._staff_update_payload(manager_employee_id=str(second_manager_id)),
+        )
+
+        self.assertEqual(first_response.status_code, 200)
+        self.assertEqual(second_response.status_code, 200)
+        with SessionLocal() as db:
+            rows = (
+                db.query(EmployeeAssignmentHistory)
+                .filter(
+                    EmployeeAssignmentHistory.subject_employee_id == self.employee_id,
+                    EmployeeAssignmentHistory.assignment_role == "manager",
+                )
+                .order_by(EmployeeAssignmentHistory.id.asc())
+                .all()
+            )
+            self.assertEqual(len(rows), 2)
+            self.assertEqual(rows[0].assigned_employee_id, first_manager_id)
+            self.assertIsNotNone(rows[0].ended_at)
+            self.assertEqual(rows[1].assigned_employee_id, second_manager_id)
+            self.assertIsNone(rows[1].ended_at)
+
+    def test_clear_mentor_closes_active_row(self) -> None:
+        mentor_id = self._create_staff_employee(
+            full_name=f"Mentor Clear {self.unique_tag}",
+            telegram_user_id="730004",
+            is_mentor=True,
+        )
+        with SessionLocal() as db:
+            employee = db.get(Employee, self.employee_id)
+            self.assertIsNotNone(employee)
+            employee.employee_stage = "staff"
+            employee.candidate_work_stage = None
+            db.commit()
+
+        assign_response = self.client.post(
+            f"/api/employees/{self.employee_id}",
+            json=self._staff_update_payload(mentor_adaptation_employee_id=str(mentor_id)),
+        )
+        clear_response = self.client.post(
+            f"/api/employees/{self.employee_id}",
+            json=self._staff_update_payload(mentor_adaptation_employee_id=""),
+        )
+
+        self.assertEqual(assign_response.status_code, 200)
+        self.assertEqual(clear_response.status_code, 200)
+        with SessionLocal() as db:
+            rows = (
+                db.query(EmployeeAssignmentHistory)
+                .filter(
+                    EmployeeAssignmentHistory.subject_employee_id == self.employee_id,
+                    EmployeeAssignmentHistory.assignment_role == "mentor_adaptation",
+                )
+                .order_by(EmployeeAssignmentHistory.id.asc())
+                .all()
+            )
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(rows[0].assigned_employee_id, mentor_id)
+            self.assertIsNotNone(rows[0].ended_at)
+
+    def test_saving_unchanged_employee_does_not_duplicate_history(self) -> None:
+        manager_id = self._create_staff_employee(
+            full_name=f"Manager Stable {self.unique_tag}",
+            telegram_user_id="730005",
+            is_manager=True,
+        )
+        with SessionLocal() as db:
+            employee = db.get(Employee, self.employee_id)
+            self.assertIsNotNone(employee)
+            employee.employee_stage = "staff"
+            employee.candidate_work_stage = None
+            db.commit()
+
+        first_response = self.client.post(
+            f"/api/employees/{self.employee_id}",
+            json=self._staff_update_payload(manager_employee_id=str(manager_id)),
+        )
+        second_response = self.client.post(
+            f"/api/employees/{self.employee_id}",
+            json=self._staff_update_payload(manager_employee_id=str(manager_id), notes="same assignment"),
+        )
+
+        self.assertEqual(first_response.status_code, 200)
+        self.assertEqual(second_response.status_code, 200)
+        with SessionLocal() as db:
+            rows = (
+                db.query(EmployeeAssignmentHistory)
+                .filter(
+                    EmployeeAssignmentHistory.subject_employee_id == self.employee_id,
+                    EmployeeAssignmentHistory.assignment_role == "manager",
+                )
+                .order_by(EmployeeAssignmentHistory.id.asc())
+                .all()
+            )
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(rows[0].assigned_employee_id, manager_id)
+            self.assertIsNone(rows[0].ended_at)
+
+    def test_separate_roles_do_not_conflict(self) -> None:
+        manager_id = self._create_staff_employee(
+            full_name=f"Manager Separate {self.unique_tag}",
+            telegram_user_id="730006",
+            is_manager=True,
+        )
+        mentor_adaptation_id = self._create_staff_employee(
+            full_name=f"Mentor Adapt Separate {self.unique_tag}",
+            telegram_user_id="730007",
+            is_mentor=True,
+        )
+        mentor_ipr_id = self._create_staff_employee(
+            full_name=f"Mentor IPR Separate {self.unique_tag}",
+            telegram_user_id="730008",
+            is_mentor=True,
+        )
+        with SessionLocal() as db:
+            employee = db.get(Employee, self.employee_id)
+            self.assertIsNotNone(employee)
+            employee.employee_stage = "staff"
+            employee.candidate_work_stage = None
+            db.commit()
+
+        response = self.client.post(
+            f"/api/employees/{self.employee_id}",
+            json=self._staff_update_payload(
+                manager_employee_id=str(manager_id),
+                mentor_adaptation_employee_id=str(mentor_adaptation_id),
+                mentor_ipr_employee_id=str(mentor_ipr_id),
+            ),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        with SessionLocal() as db:
+            rows = (
+                db.query(EmployeeAssignmentHistory)
+                .filter(EmployeeAssignmentHistory.subject_employee_id == self.employee_id)
+                .order_by(EmployeeAssignmentHistory.assignment_role.asc(), EmployeeAssignmentHistory.id.asc())
+                .all()
+            )
+            self.assertEqual(len(rows), 3)
+            by_role = {row.assignment_role: row for row in rows}
+            self.assertEqual(by_role["manager"].assigned_employee_id, manager_id)
+            self.assertEqual(by_role["mentor_adaptation"].assigned_employee_id, mentor_adaptation_id)
+            self.assertEqual(by_role["mentor_ipr"].assigned_employee_id, mentor_ipr_id)
+            self.assertTrue(all(row.ended_at is None for row in rows))
 
     def test_update_employee_api_enqueues_manager_trigger_for_adaptation_assignment(self) -> None:
         scenario_key = f"manager_assign_{self.unique_tag}"

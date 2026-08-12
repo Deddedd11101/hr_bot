@@ -21,6 +21,7 @@ from ..messaging.identity import (
 )
 from ..models import (
     Employee,
+    EmployeeAssignmentHistory,
     EmployeeDocumentLink,
     EmployeeFile,
     EmployeeMessengerAccount,
@@ -35,6 +36,9 @@ from ..time_utils import utc_now
 OFFER_DOCUMENT_TITLE = "Оффер"
 OFFER_DOCUMENT_SLOT = "offer"
 MANAGER_ASSIGNMENT_TRIGGER_MODE = "manager_assigned_adaptation"
+ASSIGNMENT_ROLE_MANAGER = "manager"
+ASSIGNMENT_ROLE_MENTOR_ADAPTATION = "mentor_adaptation"
+ASSIGNMENT_ROLE_MENTOR_IPR = "mentor_ipr"
 
 EMPLOYEE_STAGE_VALUES = {
     "candidate": "Кандидат",
@@ -58,6 +62,12 @@ VISIBLE_CANDIDATE_WORK_STAGE_VALUES = {
     value: label
     for value, label in CANDIDATE_WORK_STAGE_VALUES.items()
     if value != "contract"
+}
+
+ASSIGNMENT_ROLE_FIELD_MAP = {
+    ASSIGNMENT_ROLE_MANAGER: "manager_employee_id",
+    ASSIGNMENT_ROLE_MENTOR_ADAPTATION: "mentor_adaptation_employee_id",
+    ASSIGNMENT_ROLE_MENTOR_IPR: "mentor_ipr_employee_id",
 }
 
 
@@ -354,6 +364,76 @@ def _enqueue_manager_assignment_trigger(
     )
 
 
+def _sync_assignment_history_entry(
+    db: Session,
+    *,
+    subject_employee_id: int,
+    assignment_role: str,
+    previous_assigned_employee_id: int | None,
+    current_assigned_employee_id: int | None,
+    assigned_by_account_id: int | None,
+) -> None:
+    if previous_assigned_employee_id == current_assigned_employee_id:
+        return
+
+    now = utc_now()
+    active_rows = (
+        db.query(EmployeeAssignmentHistory)
+        .filter(
+            EmployeeAssignmentHistory.subject_employee_id == subject_employee_id,
+            EmployeeAssignmentHistory.assignment_role == assignment_role,
+            EmployeeAssignmentHistory.ended_at.is_(None),
+        )
+        .order_by(EmployeeAssignmentHistory.started_at.asc(), EmployeeAssignmentHistory.id.asc())
+        .all()
+    )
+    for row in active_rows:
+        row.ended_at = now
+
+    if not current_assigned_employee_id:
+        return
+
+    active_duplicate = next((row for row in active_rows if row.assigned_employee_id == current_assigned_employee_id), None)
+    if active_duplicate is not None:
+        active_duplicate.ended_at = None
+        return
+
+    db.add(
+        EmployeeAssignmentHistory(
+            subject_employee_id=subject_employee_id,
+            assigned_employee_id=current_assigned_employee_id,
+            assignment_role=assignment_role,
+            started_at=now,
+            ended_at=None,
+            assigned_by_account_id=assigned_by_account_id,
+            created_at=now,
+        )
+    )
+
+
+def _sync_assignment_history(
+    db: Session,
+    *,
+    employee: Employee,
+    previous_assignments: dict[str, int | None],
+    assigned_by_account_id: int | None,
+) -> None:
+    current_assignments = {
+        ASSIGNMENT_ROLE_MANAGER: employee.manager_employee_id,
+        ASSIGNMENT_ROLE_MENTOR_ADAPTATION: employee.mentor_adaptation_employee_id,
+        ASSIGNMENT_ROLE_MENTOR_IPR: employee.mentor_ipr_employee_id,
+    }
+    for assignment_role, field_name in ASSIGNMENT_ROLE_FIELD_MAP.items():
+        _sync_assignment_history_entry(
+            db,
+            subject_employee_id=employee.id,
+            assignment_role=assignment_role,
+            previous_assigned_employee_id=previous_assignments.get(field_name),
+            current_assigned_employee_id=current_assignments.get(assignment_role),
+            assigned_by_account_id=assigned_by_account_id,
+        )
+
+
 def _available_scenarios_for_employee(db: Session, employee: Employee) -> list[ScenarioTemplate]:
     return [
         scenario
@@ -591,6 +671,7 @@ def _apply_employee_update(
     is_bot_blocked: bool,
     test_task_due_at: str,
     notes: str,
+    assigned_by_account_id: int | None = None,
 ) -> Employee:
     is_candidate = _employee_list_kind(employee) == "candidates"
     previous_candidate_work_stage = (employee.candidate_work_stage or "").strip() or None
@@ -598,6 +679,11 @@ def _apply_employee_update(
     parsed_birth_date = _parse_optional_date(birth_date)
     previous_stage = (employee.employee_stage or "").strip()
     previous_manager_employee_id = employee.manager_employee_id
+    previous_assignments = {
+        "manager_employee_id": employee.manager_employee_id,
+        "mentor_adaptation_employee_id": employee.mentor_adaptation_employee_id,
+        "mentor_ipr_employee_id": employee.mentor_ipr_employee_id,
+    }
 
     employee.full_name = full_name.strip() or None
     _apply_employee_telegram_identity(employee, chat_id=chat_id, chat_handle=chat_handle, db=db)
@@ -661,6 +747,12 @@ def _apply_employee_update(
         normalized_stage = employee_stage.strip()
         employee.employee_stage = normalized_stage if normalized_stage in EMPLOYEE_STAGE_VALUES else None
         employee.employee_data_consent = employee_data_consent
+        _sync_assignment_history(
+            db,
+            employee=employee,
+            previous_assignments=previous_assignments,
+            assigned_by_account_id=assigned_by_account_id,
+        )
 
     employee.notes = notes.strip() or None
     db.commit()

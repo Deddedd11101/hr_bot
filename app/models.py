@@ -187,6 +187,28 @@ class Employee(Base):
     )
 
 
+class EmployeeAssignmentHistory(Base):
+    """История назначений руководителей и наставников по сотруднику."""
+
+    __tablename__ = "employee_assignment_history"
+    __table_args__ = (
+        Index("ix_employee_assignment_history_subject_role_active", "subject_employee_id", "assignment_role", "ended_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    subject_employee_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    assigned_employee_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    assignment_role: Mapped[str] = mapped_column(
+        String(64),
+        nullable=False,
+        doc="Роль назначения: manager | mentor_adaptation | mentor_ipr.",
+    )
+    started_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    ended_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    assigned_by_account_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+
+
 class Position(Base):
     """Управляемый справочник должностей."""
 
