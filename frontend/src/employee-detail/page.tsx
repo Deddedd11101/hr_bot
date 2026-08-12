@@ -8,6 +8,7 @@ import {
     updatePayloadState,
 } from "./helpers";
 import {
+    AssignmentHistorySection,
     EmployeeDetailError,
     EmployeeFlashNotice,
     EmployeeDetailHeader,
@@ -76,6 +77,7 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
                     return;
                 }
                 const normalizedPayload = Object.assign({}, payload, {
+                    assignment_history: Array.isArray(payload.assignment_history) ? payload.assignment_history : [],
                     options: Object.assign(
                         {
                             employee_role_values: [],
@@ -539,6 +541,7 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
     const meta = payload.meta;
     const isCandidate = !!meta.is_candidate;
     const workHoursParts = parseWorkHours(form.work_hours);
+    const assignmentHistory = Array.isArray(payload.assignment_history) ? payload.assignment_history : [];
 
     const fileItems = payload.files.map(function (file: any) {
         return {
@@ -627,17 +630,20 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
                 </div>
             </section>
             <section className="employee-detail-grid">
-                <EmployeeProfileSection
-                    form={form}
-                    isCandidate={isCandidate}
-                    meta={meta}
-                    options={payload.options}
-                    workHoursParts={workHoursParts}
-                    handleChange={handleChange}
-                    handleWorkHoursChange={handleWorkHoursChange}
-                    handleSubmit={handleSubmit}
-                    saveState={saveState}
-                />
+                <div className="employee-detail-main">
+                    <EmployeeProfileSection
+                        form={form}
+                        isCandidate={isCandidate}
+                        meta={meta}
+                        options={payload.options}
+                        workHoursParts={workHoursParts}
+                        handleChange={handleChange}
+                        handleWorkHoursChange={handleWorkHoursChange}
+                        handleSubmit={handleSubmit}
+                        saveState={saveState}
+                    />
+                    <AssignmentHistorySection items={assignmentHistory} />
+                </div>
                 <EmployeeOperationsSection
                     opsState={opsState}
                     offerUrl={offerUrl}
