@@ -348,7 +348,7 @@ export function WorkspaceSidebarSection(props: {
   const isCatalog = variant === "catalog";
 
   return (
-    <Card className={cn("flex min-h-0 flex-col overflow-hidden border border-border bg-card shadow-none ring-0", isCatalog ? "p-5" : "p-4")}>
+    <Card className={cn("flex min-h-0 flex-col overflow-hidden border border-border bg-card shadow-none ring-0", isCatalog ? "h-full p-5" : "p-4")}>
       <CardHeader className="gap-2 border-b border-border/70 p-0 pb-3">
         <div className="flex min-w-0 items-center justify-between gap-2">
           <div className="flex min-w-0 items-center gap-2">
@@ -473,8 +473,8 @@ export function WorkspaceSidebarSection(props: {
           {sidebarState.message}
         </p>
       ) : null}
-      <ScrollArea className="mt-4 min-h-0 flex-1">
-        <div className={cn("grid gap-2 pr-3", isCatalog && "grid-cols-[repeat(auto-fill,minmax(320px,1fr))] gap-3")}>
+      <ScrollArea className="mt-4 min-h-0 flex-1 rounded-lg">
+        <div className={cn("grid gap-2 pr-3 pb-1", isCatalog && "grid-cols-[repeat(auto-fill,minmax(320px,1fr))] gap-3")}>
           {scenarios.map((scenario) => {
             const isDragging = dragScenarioId === scenario.id;
             const isDropTarget = dropTargetId === scenario.id && !isDragging;
