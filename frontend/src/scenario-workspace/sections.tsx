@@ -28,7 +28,17 @@ import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 
-import { buildChildContainer, crumbIcon, itemKey, parseRecipientIds, responseTypeWaitState, summarizeItem, workspaceItemTitle } from "./model";
+import {
+  buildChildContainer,
+  crumbIcon,
+  itemKey,
+  normalizeNotificationRecipientIds,
+  parseRecipientIds,
+  responseTypeWaitState,
+  ROLE_NOTIFICATION_RECIPIENT_LABELS,
+  summarizeItem,
+  workspaceItemTitle,
+} from "./model";
 import { NotificationRecipientsPicker, SingleSelectPicker } from "./pickers";
 import type {
   Container,
@@ -893,9 +903,8 @@ export function WorkspaceStepDetailPane(props: {
   }, [detailTarget?.id, selectedItem?.kind]);
 
   const recipientLabelByToken = React.useMemo(() => {
-    const entries = (payloadWorkspace?.notification_recipient_options || []).map((option) => [option.token, option.label]);
-    return Object.fromEntries(entries) as Record<string, string>;
-  }, [payloadWorkspace]);
+    return ROLE_NOTIFICATION_RECIPIENT_LABELS;
+  }, []);
   const waitState = React.useMemo(
     () => responseTypeWaitState(form?.response_type || detailTarget?.response_type || "none"),
     [detailTarget?.response_type, form?.response_type],
@@ -904,7 +913,7 @@ export function WorkspaceStepDetailPane(props: {
   const saveNotificationRule = () => {
     if (!notificationRuleEditor) return;
     const normalizedMessageText = notificationRuleEditor.message_text.trim();
-    const normalizedRecipientIds = notificationRuleEditor.recipient_ids.trim();
+    const normalizedRecipientIds = normalizeNotificationRecipientIds(notificationRuleEditor.recipient_ids);
     if (!normalizedMessageText || !normalizedRecipientIds) {
       return;
     }
@@ -977,7 +986,7 @@ export function WorkspaceStepDetailPane(props: {
   const saveStepNotificationRule = () => {
     if (!stepNotificationRuleEditor) return;
     const normalizedMessageText = stepNotificationRuleEditor.message_text.trim();
-    const normalizedRecipientIds = stepNotificationRuleEditor.recipient_ids.trim();
+    const normalizedRecipientIds = normalizeNotificationRecipientIds(stepNotificationRuleEditor.recipient_ids);
     if (!normalizedMessageText || !normalizedRecipientIds) {
       return;
     }
@@ -1259,7 +1268,7 @@ export function WorkspaceStepDetailPane(props: {
                             {(notification.rules || []).length ? (
                               <div className="flex flex-col gap-2">
                                 {notification.rules.map((rule) => {
-                                  const selectedIds = parseRecipientIds(rule.recipient_ids);
+                                  const selectedIds = parseRecipientIds(normalizeNotificationRecipientIds(rule.recipient_ids));
                                   const recipientSummary = selectedIds.length
                                     ? selectedIds
                                         .map((id) => {
@@ -1423,7 +1432,7 @@ export function WorkspaceStepDetailPane(props: {
                         {(form?.step_send_notifications || []).length ? (
                           <div className="flex flex-col gap-2">
                             {form?.step_send_notifications.map((rule) => {
-                              const selectedIds = parseRecipientIds(rule.recipient_ids);
+                              const selectedIds = parseRecipientIds(normalizeNotificationRecipientIds(rule.recipient_ids));
                               const recipientSummary = selectedIds.length
                                 ? selectedIds
                                     .map((id) => {
@@ -1552,7 +1561,8 @@ export function WorkspaceStepDetailPane(props: {
             <Button
               onClick={saveNotificationRule}
               disabled={
-                !notificationRuleEditor?.message_text.trim() || !parseRecipientIds(notificationRuleEditor?.recipient_ids || "").length
+                !notificationRuleEditor?.message_text.trim() ||
+                !parseRecipientIds(normalizeNotificationRecipientIds(notificationRuleEditor?.recipient_ids || "")).length
               }
             >
               Сохранить правило
@@ -1598,7 +1608,8 @@ export function WorkspaceStepDetailPane(props: {
             <Button
               onClick={saveStepNotificationRule}
               disabled={
-                !stepNotificationRuleEditor?.message_text.trim() || !parseRecipientIds(stepNotificationRuleEditor?.recipient_ids || "").length
+                !stepNotificationRuleEditor?.message_text.trim() ||
+                !parseRecipientIds(normalizeNotificationRecipientIds(stepNotificationRuleEditor?.recipient_ids || "")).length
               }
             >
               Сохранить правило

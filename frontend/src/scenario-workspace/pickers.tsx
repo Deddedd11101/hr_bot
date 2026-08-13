@@ -1,9 +1,8 @@
 import * as React from "react";
-import { ChevronsUpDown, Search } from "lucide-react";
+import { ChevronsUpDown } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Select,
@@ -14,7 +13,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-import { parseRecipientIds } from "./model";
+import {
+  normalizeNotificationRecipientIds,
+  parseRecipientIds,
+  ROLE_NOTIFICATION_RECIPIENT_LABELS,
+  ROLE_NOTIFICATION_RECIPIENT_TOKENS,
+} from "./model";
 import type { SingleOption, WorkspaceData } from "./types";
 
 export function NotificationRecipientsPicker({
@@ -27,20 +31,23 @@ export function NotificationRecipientsPicker({
   onChange: (next: string) => void;
 }) {
   const [open, setOpen] = React.useState(false);
-  const [search, setSearch] = React.useState("");
-  const selectedIds = React.useMemo(() => parseRecipientIds(value), [value]);
-
-  const filteredRecipients = React.useMemo(() => {
-    if (!search.trim()) return recipientOptions;
-    const query = search.toLowerCase();
-    return recipientOptions.filter((option) => option.label.toLowerCase().includes(query));
-  }, [recipientOptions, search]);
+  const selectedIds = React.useMemo(() => parseRecipientIds(normalizeNotificationRecipientIds(value)), [value]);
+  const roleOptions = React.useMemo(() => {
+    return ROLE_NOTIFICATION_RECIPIENT_TOKENS.map((token) => {
+      const backendOption = recipientOptions.find((option) => option.token === token);
+      return {
+        token,
+        label: ROLE_NOTIFICATION_RECIPIENT_LABELS[token],
+        description: backendOption?.description || "",
+      };
+    });
+  }, [recipientOptions]);
 
   const toggleRecipient = (token: string) => {
     const nextIds = selectedIds.includes(token)
       ? selectedIds.filter((value) => value !== token)
       : selectedIds.concat(token);
-    onChange(nextIds.join(","));
+    onChange(normalizeNotificationRecipientIds(nextIds.join(",")));
   };
 
   const summary = selectedIds.length === 0 ? "Выбери получателей" : `${selectedIds.length} выбр.`;
@@ -51,38 +58,25 @@ export function NotificationRecipientsPicker({
         <span className="truncate">{summary}</span>
         <ChevronsUpDown className="opacity-60" />
       </PopoverTrigger>
-      <PopoverContent className="w-[360px] p-0" align="start">
-        <div className="border-b border-border p-3">
-          <div className="relative">
-            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Найти получателя"
-              className="pl-9"
-            />
-          </div>
-        </div>
-        <div className="h-72 overflow-auto">
-          <div className="flex flex-col gap-1 p-2">
-            {filteredRecipients.map((option) => {
-              const checked = selectedIds.includes(option.token);
-              return (
-                <button
-                  key={option.token}
-                  type="button"
-                  onClick={() => toggleRecipient(option.token)}
-                  className="flex items-center justify-between gap-3 rounded-lg px-3 py-2 text-left transition-colors hover:bg-muted"
-                >
-                  <div className="min-w-0">
-                    <div className="truncate text-sm font-medium">{option.label}</div>
-                    <div className="text-xs text-muted-foreground">{option.description}</div>
-                  </div>
-                  <Checkbox checked={checked} aria-label={`Выбрать ${option.label}`} />
-                </button>
-              );
-            })}
-          </div>
+      <PopoverContent className="w-[360px] p-2" align="start">
+        <div className="flex flex-col gap-1">
+          {roleOptions.map((option) => {
+            const checked = selectedIds.includes(option.token);
+            return (
+              <button
+                key={option.token}
+                type="button"
+                onClick={() => toggleRecipient(option.token)}
+                className="flex items-center justify-between gap-3 rounded-lg px-3 py-2 text-left transition-colors hover:bg-muted"
+              >
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-medium">{option.label}</div>
+                  <div className="text-xs text-muted-foreground">{option.description}</div>
+                </div>
+                <Checkbox checked={checked} aria-label={`Выбрать ${option.label}`} />
+              </button>
+            );
+          })}
         </div>
       </PopoverContent>
     </Popover>

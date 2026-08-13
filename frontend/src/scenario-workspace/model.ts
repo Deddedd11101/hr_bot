@@ -14,6 +14,21 @@ export const FALLBACK_RESPONSE_TYPE_LABELS: Record<string, string> = {
 };
 
 const INTERACTIVE_RESPONSE_TYPES = new Set(["text", "date", "file", "buttons", "branching"]);
+const ROLE_NOTIFICATION_RECIPIENT_TOKEN_SET = new Set([
+  "hr",
+  "manager",
+  "mentor_adaptation",
+  "mentor_ipr",
+]);
+
+export const ROLE_NOTIFICATION_RECIPIENT_LABELS: Record<string, string> = {
+  hr: "HR",
+  manager: "Руководитель",
+  mentor_adaptation: "Наставник по адаптации",
+  mentor_ipr: "Наставник по ИПР",
+};
+
+export const ROLE_NOTIFICATION_RECIPIENT_TOKENS = Object.keys(ROLE_NOTIFICATION_RECIPIENT_LABELS);
 
 export function payloadLabel(kind: "scenario" | "survey") {
   return kind === "survey" ? "опрос" : "сценарий";
@@ -180,6 +195,16 @@ export function parseRecipientIds(value: string) {
     .split(",")
     .map((chunk) => chunk.trim())
     .filter(Boolean);
+}
+
+export function normalizeNotificationRecipientIds(value: string) {
+  const normalizedTokens: string[] = [];
+  parseRecipientIds(value).forEach((token) => {
+    if (ROLE_NOTIFICATION_RECIPIENT_TOKEN_SET.has(token) && !normalizedTokens.includes(token)) {
+      normalizedTokens.push(token);
+    }
+  });
+  return normalizedTokens.join(",");
 }
 
 export function openActionLabel(item: WorkspaceItem | null) {
