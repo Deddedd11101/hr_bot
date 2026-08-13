@@ -58,6 +58,56 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
         upload: null as File | null,
     });
     const [offerFile, setOfferFile] = React.useState<File | null>(null);
+    const [manualBotMessageText, setManualBotMessageText] = React.useState("");
+    const [manualBotMessageState, setManualBotMessageState] = React.useState({
+        sending: false,
+        message: "",
+        error: false,
+    });
+
+    function applyEmployeePayload(payload: any) {
+        const normalizedPayload = Object.assign({}, payload, {
+            assignment_history: Array.isArray(payload.assignment_history) ? payload.assignment_history : [],
+            manual_bot_message_history: Array.isArray(payload.manual_bot_message_history)
+                ? payload.manual_bot_message_history
+                : [],
+            options: Object.assign(
+                {
+                    employee_role_values: [],
+                    employee_stage_values: [],
+                    candidate_work_stage_values: [],
+                    staff_employee_values: [],
+                    manager_employee_values: [],
+                    mentor_employee_values: [],
+                    scenarios: [],
+                },
+                payload.options || {},
+            ),
+        });
+        setState({
+            loading: false,
+            error: "",
+            payload: normalizedPayload,
+        });
+        setForm(normalizedPayload.employee);
+        return normalizedPayload;
+    }
+
+    function refetchEmployeeDetail() {
+        return fetch(apiUrl, {
+            credentials: "same-origin",
+            headers: { Accept: "application/json" },
+        })
+            .then(function (response) {
+                if (!response.ok) {
+                    throw new Error("Не удалось обновить карточку сотрудника");
+                }
+                return response.json();
+            })
+            .then(function (payload) {
+                return applyEmployeePayload(payload);
+            });
+    }
 
     React.useEffect(function () {
         let isMounted = true;
@@ -76,27 +126,7 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
                 if (!isMounted) {
                     return;
                 }
-                const normalizedPayload = Object.assign({}, payload, {
-                    assignment_history: Array.isArray(payload.assignment_history) ? payload.assignment_history : [],
-                    options: Object.assign(
-                        {
-                            employee_role_values: [],
-                            employee_stage_values: [],
-                            candidate_work_stage_values: [],
-                            staff_employee_values: [],
-                            manager_employee_values: [],
-                            mentor_employee_values: [],
-                            scenarios: [],
-                        },
-                        payload.options || {},
-                    ),
-                });
-                setState({
-                    loading: false,
-                    error: "",
-                    payload: normalizedPayload,
-                });
-                setForm(normalizedPayload.employee);
+                const normalizedPayload = applyEmployeePayload(payload);
                 setOfferUrl("");
                 setLaunchFlowKey(
                     normalizedPayload.options.scenarios.length ? normalizedPayload.options.scenarios[0].value : "",
@@ -529,6 +559,56 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
             });
     }
 
+    function handleManualBotMessageSubmit(event: React.FormEvent<HTMLFormElement>) {
+        event.preventDefault();
+        const messageText = manualBotMessageText.trim();
+        if (!messageText) {
+            setManualBotMessageState({
+                sending: false,
+                message: "Введите текст сообщения",
+                error: true,
+            });
+            return;
+        }
+        setFlashState({ message: "", error: false });
+        setManualBotMessageState({ sending: true, message: "", error: false });
+        fetch(apiUrl + "/bot-message", {
+            method: "POST",
+            credentials: "same-origin",
+            headers: {
+                "Content-Type": "application/json",
+                Accept: "application/json",
+            },
+            body: JSON.stringify({ text: messageText }),
+        })
+            .then(function (response) {
+                if (!response.ok) {
+                    return response.json().catch(function () { return {}; }).then(function (payload) {
+                        throw new Error(payload.detail || "Не удалось отправить сообщение");
+                    });
+                }
+                return response.json();
+            })
+            .then(function (payload) {
+                updatePayloadState(setState, setForm, payload);
+                setManualBotMessageText("");
+                setManualBotMessageState({
+                    sending: false,
+                    message: "Сообщение отправлено",
+                    error: false,
+                });
+            })
+            .catch(function (error) {
+                refetchEmployeeDetail().catch(function () { return null; }).finally(function () {
+                    setManualBotMessageState({
+                        sending: false,
+                        message: error.message || "Не удалось отправить сообщение",
+                        error: true,
+                    });
+                });
+            });
+    }
+
     if (state.loading || !form) {
         return <EmployeeDetailLoading />;
     }
@@ -542,6 +622,9 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
     const isCandidate = !!meta.is_candidate;
     const workHoursParts = parseWorkHours(form.work_hours);
     const assignmentHistory = Array.isArray(payload.assignment_history) ? payload.assignment_history : [];
+    const manualBotMessageHistory = Array.isArray(payload.manual_bot_message_history)
+        ? payload.manual_bot_message_history
+        : [];
 
     const fileItems = payload.files.map(function (file: any) {
         return {
@@ -672,6 +755,11 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
                     hrFileItems={hrFileItems}
                     launchItems={launchItems}
                     manualLaunchItems={manualLaunchItems}
+                    manualBotMessageText={manualBotMessageText}
+                    manualBotMessageState={manualBotMessageState}
+                    setManualBotMessageText={setManualBotMessageText}
+                    handleManualBotMessageSubmit={handleManualBotMessageSubmit}
+                    manualBotMessageHistory={manualBotMessageHistory}
                     isCandidate={isCandidate}
                 />
             </section>

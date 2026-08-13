@@ -314,6 +314,59 @@
     text-align: right;
 }
 
+.employee-manual-message-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.employee-manual-message-row {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 8px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--background);
+    padding: 10px 12px;
+}
+
+.employee-manual-message-header {
+    display: flex;
+    min-width: 0;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.employee-manual-message-meta {
+    display: flex;
+    min-width: 0;
+    flex-wrap: wrap;
+    gap: 6px 10px;
+    color: var(--muted-foreground);
+    font-size: 0.8rem;
+}
+
+.employee-manual-message-text {
+    margin: 0;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    color: var(--foreground);
+    font-size: 0.875rem;
+    line-height: 1.5;
+}
+
+.employee-manual-message-error {
+    margin: 0;
+    border-radius: var(--radius-md);
+    background: color-mix(in srgb, var(--destructive) 10%, transparent);
+    padding: 7px 9px;
+    color: var(--destructive);
+    font-size: 0.8rem;
+    line-height: 1.45;
+}
+
 .employee-empty-state {
     min-height: 118px;
     border: 1px dashed var(--border);

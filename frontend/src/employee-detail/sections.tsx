@@ -83,6 +83,17 @@ type AssignmentHistoryItem = {
     assigned_by_account_id?: string | number | null;
 };
 
+type ManualBotMessageHistoryItem = {
+    id: string | number;
+    sender_account_id?: string | number | null;
+    sender_label?: string | null;
+    message_text?: string | null;
+    status?: string | null;
+    error_text?: string | null;
+    sent_at?: string | null;
+    created_at?: string | null;
+};
+
 const EMPTY_SELECT_VALUE = "__empty__";
 
 function formatAssignmentDate(value?: string | null) {
@@ -111,6 +122,15 @@ function formatAssignmentPeriod(item: AssignmentHistoryItem) {
     const startedAt = formatAssignmentDate(item.started_at) || "Дата не указана";
     const endedAt = item.ended_at ? formatAssignmentDate(item.ended_at) : "по настоящее время";
     return startedAt + " — " + endedAt;
+}
+
+function formatHistoryDate(value?: string | null) {
+    return formatAssignmentDate(value) || "Дата не указана";
+}
+
+function isNumericTelegramId(value: any) {
+    const normalizedValue = String(value || "").trim();
+    return /^\-?\d+$/.test(normalizedValue);
 }
 
 function changeFieldValue(handleChange: any, name: string, value: string) {
@@ -468,6 +488,117 @@ export function AssignmentHistorySection(props: { items: AssignmentHistoryItem[]
     );
 }
 
+export function ManualBotMessageSection(props: {
+    form: any;
+    messageText: string;
+    sendState: { sending: boolean; message: string; error: boolean };
+    onMessageTextChange: (value: string) => void;
+    onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
+}) {
+    const hasNumericTelegramId = isNumericTelegramId(props.form?.chat_id);
+    const isBlocked = !!props.form?.is_bot_blocked;
+    const canSend = hasNumericTelegramId && !isBlocked && !!props.messageText.trim() && !props.sendState.sending;
+    const warningText = isBlocked
+        ? "Доступ к чат-боту заблокирован. Ручная отправка недоступна."
+        : hasNumericTelegramId
+            ? ""
+            : "Нужна активная Telegram-привязка с numeric ID. Username без ID недостаточно для ручной отправки.";
+
+    return (
+        <DetailCard>
+            <CardHeader>
+                <CardTitle>Отправить сообщение в бот</CardTitle>
+            </CardHeader>
+            <CardContent className="employee-ops-stack">
+                {warningText ? (
+                    <Alert>
+                        <AlertDescription>{warningText}</AlertDescription>
+                    </Alert>
+                ) : null}
+                <form className="employee-inline-form" onSubmit={props.onSubmit}>
+                    <FieldGroup>
+                        <Field>
+                            <FieldLabel>Текст сообщения</FieldLabel>
+                            <Textarea
+                                value={props.messageText}
+                                onChange={function (event) {
+                                    props.onMessageTextChange(event.target.value);
+                                }}
+                                rows={5}
+                                placeholder="Введите сообщение"
+                                disabled={!hasNumericTelegramId || isBlocked || props.sendState.sending}
+                            />
+                        </Field>
+                        <Button type="submit" disabled={!canSend}>
+                            <Send data-icon="inline-start" />
+                            {props.sendState.sending ? "Отправляю..." : "Отправить"}
+                        </Button>
+                    </FieldGroup>
+                </form>
+                {props.sendState.message ? (
+                    <p className={cn("employee-save-state", props.sendState.error && "is-error")}>
+                        {props.sendState.message}
+                    </p>
+                ) : null}
+            </CardContent>
+        </DetailCard>
+    );
+}
+
+export function ManualBotMessageHistorySection(props: { items: ManualBotMessageHistoryItem[] }) {
+    const items = Array.isArray(props.items) ? props.items : [];
+
+    return (
+        <DetailCard>
+            <CardHeader>
+                <CardTitle>История ручных сообщений</CardTitle>
+            </CardHeader>
+            <CardContent>
+                {items.length ? (
+                    <div className="employee-manual-message-list">
+                        {items.map(function (item) {
+                            const status = String(item.status || "").trim();
+                            const isFailed = status === "failed";
+                            const timestamp = item.sent_at || item.created_at || "";
+                            const senderLabel = item.sender_label || (
+                                item.sender_account_id ? "Account #" + item.sender_account_id : "Отправитель не указан"
+                            );
+                            return (
+                                <div className="employee-manual-message-row" key={item.id}>
+                                    <div className="employee-manual-message-header">
+                                        <div className="employee-manual-message-meta">
+                                            <span>{formatHistoryDate(timestamp)}</span>
+                                            <span>{senderLabel}</span>
+                                        </div>
+                                        <Badge variant={isFailed ? "destructive" : "secondary"}>
+                                            {isFailed ? "failed" : status || "sent"}
+                                        </Badge>
+                                    </div>
+                                    <p className="employee-manual-message-text">
+                                        {item.message_text || "Без текста сообщения"}
+                                    </p>
+                                    {isFailed && item.error_text ? (
+                                        <p className="employee-manual-message-error">{item.error_text}</p>
+                                    ) : null}
+                                </div>
+                            );
+                        })}
+                    </div>
+                ) : (
+                    <Empty className="employee-empty-state">
+                        <EmptyHeader>
+                            <EmptyMedia variant="icon">
+                                <Send />
+                            </EmptyMedia>
+                            <EmptyTitle>Ручных сообщений пока нет.</EmptyTitle>
+                        </EmptyHeader>
+                    </Empty>
+                )}
+            </CardContent>
+        </DetailCard>
+    );
+}
+
 export function EmployeeProfileSection(props: any) {
     const {
         form,
@@ -807,6 +938,11 @@ export function EmployeeOperationsSection(props: any) {
         hrFileItems,
         launchItems,
         manualLaunchItems,
+        manualBotMessageText,
+        manualBotMessageState,
+        setManualBotMessageText,
+        handleManualBotMessageSubmit,
+        manualBotMessageHistory,
         isCandidate,
     } = props;
     const canPromoteToAdaptation = isCandidate && !!String(form?.first_workday || "").trim();
@@ -858,6 +994,14 @@ export function EmployeeOperationsSection(props: any) {
                     </CardContent>
                 </DetailCard>
             ) : null}
+
+            <ManualBotMessageSection
+                form={form}
+                messageText={manualBotMessageText}
+                sendState={manualBotMessageState}
+                onMessageTextChange={setManualBotMessageText}
+                onSubmit={handleManualBotMessageSubmit}
+            />
 
             <DetailCard>
                 <CardHeader>
@@ -1064,6 +1208,8 @@ export function EmployeeOperationsSection(props: any) {
                     <ScenarioList items={launchItems} />
                 </CardContent>
             </DetailCard>
+
+            <ManualBotMessageHistorySection items={manualBotMessageHistory} />
 
             <DetailCard>
                 <CardHeader>
