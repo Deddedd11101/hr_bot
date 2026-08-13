@@ -13,6 +13,7 @@ import {
   itemKey,
   makeRootContainer,
   moveItemById,
+  normalizeNotificationRecipientIds,
   openActionLabel,
   payloadLabel,
   rebuildWorkspaceState,
@@ -31,12 +32,48 @@ import type {
   ScenarioSettingsForm,
   SingleOption,
   WorkspaceButtonNotification,
+  WorkspaceButtonNotificationRule,
   WorkspacePayload,
   WorkspaceRootStepOption,
   WorkspaceStepSendNotificationRule,
 } from "./types";
 
 const rootElement = document.getElementById("react-scenario-workspace-v2-root");
+
+function normalizeStepNotificationRules(rules: WorkspaceStepSendNotificationRule[] = []) {
+  return rules
+    .map((rule) => ({
+      ...rule,
+      message_text: rule.message_text || "",
+      recipient_ids: normalizeNotificationRecipientIds(rule.recipient_ids || ""),
+      recipient_scope: "",
+    }))
+    .filter((rule) => rule.message_text.trim() && rule.recipient_ids);
+}
+
+function normalizeButtonNotificationRules(rules: WorkspaceButtonNotificationRule[] = []) {
+  return rules
+    .map((rule) => ({
+      ...rule,
+      message_text: rule.message_text || "",
+      recipient_ids: normalizeNotificationRecipientIds(rule.recipient_ids || ""),
+      recipient_scope: "",
+    }))
+    .filter((rule) => rule.message_text.trim() && rule.recipient_ids);
+}
+
+function normalizeButtonNotifications(items: WorkspaceButtonNotification[] = []) {
+  return items.map((item) => {
+    const rules = normalizeButtonNotificationRules(item.rules || []);
+    return {
+      ...item,
+      message_text: rules[0]?.message_text || "",
+      recipient_ids: rules[0]?.recipient_ids || "",
+      recipient_scope: "",
+      rules,
+    };
+  });
+}
 
 export function ScenarioWorkspacePage() {
   const apiUrl = rootElement?.getAttribute("data-api-url") || "/api/flows/workspace";
@@ -328,10 +365,10 @@ export function ScenarioWorkspacePage() {
       return_to_step_key: detailTarget.return_to_step_key || "",
       send_employee_card: Boolean(detailTarget.send_employee_card),
       notify_on_send_text: detailTarget.notify_on_send_text || "",
-      notify_on_send_recipient_ids: detailTarget.notify_on_send_recipient_ids || "",
-      notify_on_send_recipient_scope: detailTarget.notify_on_send_recipient_scope || "",
-      step_send_notifications: detailTarget.step_send_notifications || [],
-      button_notifications: detailTarget.button_notifications || [],
+      notify_on_send_recipient_ids: normalizeNotificationRecipientIds(detailTarget.notify_on_send_recipient_ids || ""),
+      notify_on_send_recipient_scope: "",
+      step_send_notifications: normalizeStepNotificationRules(detailTarget.step_send_notifications || []),
+      button_notifications: normalizeButtonNotifications(detailTarget.button_notifications || []),
     });
     setSaveState({ saving: false, message: "", error: false });
     setAttachmentState({ uploading: false, message: "", error: false });
@@ -358,6 +395,8 @@ export function ScenarioWorkspacePage() {
 
   const handleSave = () => {
     if (!detailTarget || !form) return;
+    const stepSendNotifications = normalizeStepNotificationRules(form.step_send_notifications || []);
+    const buttonNotifications = normalizeButtonNotifications(form.button_notifications || []);
     setSaveState({ saving: true, message: "", error: false });
     fetch(`/api/flows/workspace/steps/${detailTarget.id}`, {
       method: "POST",
@@ -378,10 +417,10 @@ export function ScenarioWorkspacePage() {
         return_to_step_key: detailTarget?.kind === "branch_step" ? form.return_to_step_key : "",
         send_employee_card: form.send_employee_card,
         notify_on_send_text: form.notify_on_send_text,
-        notify_on_send_recipient_ids: form.notify_on_send_recipient_ids,
-        notify_on_send_recipient_scope: form.notify_on_send_recipient_scope,
-        step_send_notifications: form.step_send_notifications,
-        button_notifications: form.button_notifications,
+        notify_on_send_recipient_ids: normalizeNotificationRecipientIds(form.notify_on_send_recipient_ids || ""),
+        notify_on_send_recipient_scope: "",
+        step_send_notifications: stepSendNotifications,
+        button_notifications: buttonNotifications,
       }),
     })
       .then(async (response) => {
