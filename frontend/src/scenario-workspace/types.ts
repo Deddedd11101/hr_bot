@@ -8,6 +8,7 @@ export type ScenarioSummary = {
   candidate_work_stage_trigger: string;
   role_scope_label: string;
   employee_scope_label: string;
+  recipient_mode_label: string;
   trigger_mode_label: string;
   steps_count: number;
   classic_url: string;
