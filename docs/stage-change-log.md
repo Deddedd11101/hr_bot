@@ -34,6 +34,48 @@ source_of_truth: true
 
 ## Записи
 
+### 2026-08-13 17:05 MSK - app deploy - role-only scenario notifications
+
+- Deploy ref: `stage`.
+- Deployed commit: `c0d88cb`.
+- GitHub Actions run: `31708202844` -> success.
+- В stage включено:
+  - step-level and button scenario notifications now save new UI/API payloads with role tokens only: `hr`, `manager`, `mentor_adaptation`, `mentor_ipr`;
+  - scenario runtime resolves role notification recipients from current employee context;
+  - classic fallback submit normalizes unsupported explicit recipients;
+  - React scenario workspace picker no longer offers concrete staff employees for scenario notification recipients;
+  - legacy `employee:{id}` notification rows remain supported by runtime fallback if they are not edited.
+- Локальные проверки перед deploy:
+  - `python -m compileall app tests`;
+  - `ruff check --select F821 app tests`;
+  - `python -m unittest tests.test_scenario_engine_smoke tests.test_messaging_identity tests.test_employee_api_smoke -v` -> 125 tests OK;
+  - `tools/check_docs_contracts.py`;
+  - `npm ci` in `frontend`;
+  - `npm run build` in `frontend`;
+  - `git diff --check origin/stage..HEAD`.
+- GitHub Actions preflight:
+  - backend dependencies install;
+  - `compileall`;
+  - `ruff F821`;
+  - backend smoke tests;
+  - frontend build;
+  - smoke imports.
+- Stage safety checks:
+  - verified SQLite backup created before checkout/restart: `backups/hr_bot.before-deploy.20260813-140517.db`;
+  - scenario config snapshot created: `backups/scenarios.before-deploy.20260813-140517.json`;
+  - scenario configuration fingerprint unchanged.
+- Stage smoke checks:
+  - `/app/employees` -> `303`;
+  - `/app/flows/workspace-v2` -> `303`;
+  - Telegram API reachability -> `HTTP/2 302`;
+  - deploy job завершился успешно и вывел `c0d88cb`.
+- Открытые риски:
+  - existing `employee:{id}` rows remain in DB and are only preserved by runtime fallback;
+  - editing old notification rows with unsupported explicit recipients can normalize/drop them unless replaced with role tokens;
+  - storage naming debt remains: `recipient_ids` now effectively stores recipient tokens;
+  - `npm audit` dependency warnings and Vite `graph-view` chunk warning remain outside this deployment scope;
+  - full UI smoke in `/app/flows/workspace-v2` was not completed automatically; verify role-only picker/save/reload manually on stage.
+
 ### 2026-08-13 14:20 MSK - app deploy - GaAnTarasova repair tooling
 
 - Deploy ref: `stage`.
