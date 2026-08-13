@@ -35,6 +35,7 @@ from app.models import (
     EmployeeDocumentLink,
     EmployeeMessengerAccount,
     EmployeeFile,
+    EmployeeManualBotMessage,
     FlowLaunchRequest,
     FlowStepTemplate,
     HrSettings,
@@ -73,6 +74,11 @@ class DummyMessenger:
 
     async def close(self) -> None:
         return None
+
+
+class FailingMessenger(DummyMessenger):
+    async def send_text(self, chat_id: str, text: str, reply_markup=None) -> None:
+        raise RuntimeError("telegram send failed")
 
 
 class EmployeeApiSmokeTests(unittest.TestCase):
@@ -223,6 +229,9 @@ class EmployeeApiSmokeTests(unittest.TestCase):
                 db.query(SurveyAnswer).filter(SurveyAnswer.scenario_key == scenario.scenario_key).delete(synchronize_session=False)
                 db.delete(scenario)
             db.query(FlowLaunchRequest).filter(FlowLaunchRequest.employee_id == self.employee_id).delete(synchronize_session=False)
+            db.query(EmployeeManualBotMessage).filter(EmployeeManualBotMessage.employee_id == self.employee_id).delete(
+                synchronize_session=False
+            )
             db.query(EmployeeFile).filter(EmployeeFile.employee_id == self.employee_id).delete(synchronize_session=False)
             db.query(EmployeeMessengerAccount).filter(EmployeeMessengerAccount.employee_id == self.employee_id).delete()
             extra_employees = db.query(Employee).filter(Employee.full_name.like(f"%{self.unique_tag}%")).all()
@@ -230,6 +239,9 @@ class EmployeeApiSmokeTests(unittest.TestCase):
                 if extra_employee.id == self.employee_id:
                     continue
                 db.query(FlowLaunchRequest).filter(FlowLaunchRequest.employee_id == extra_employee.id).delete(synchronize_session=False)
+                db.query(EmployeeManualBotMessage).filter(
+                    EmployeeManualBotMessage.employee_id == extra_employee.id
+                ).delete(synchronize_session=False)
                 db.query(EmployeeFile).filter(EmployeeFile.employee_id == extra_employee.id).delete(synchronize_session=False)
                 db.query(EmployeeMessengerAccount).filter(EmployeeMessengerAccount.employee_id == extra_employee.id).delete()
                 db.query(EmployeeAssignmentHistory).filter(
@@ -1000,6 +1012,178 @@ class EmployeeApiSmokeTests(unittest.TestCase):
         self.assertEqual(launch_item["scenario_title"], f"Manual launch {self.unique_tag}")
         self.assertEqual(launch_item["processed_at_label"], "01.06.2026 09:45")
 
+    def test_manual_bot_message_send_logs_sent_history(self) -> None:
+        with SessionLocal() as db:
+            employee = db.get(Employee, self.employee_id)
+            self.assertIsNotNone(employee)
+            set_primary_chat_id(employee, "700001", db=db)
+            db.commit()
+
+        messenger = DummyMessenger()
+        with (
+            patch("app.web.employees.settings.TELEGRAM_BOT_TOKEN", "test-token"),
+            patch("app.web.employees.create_telegram_messenger", return_value=messenger),
+        ):
+            response = self.client.post(
+                f"/api/employees/{self.employee_id}/bot-message",
+                json={"text": "  Привет из HR  "},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(messenger.sent_texts, [("700001", "Привет из HR")])
+        self.assertEqual(payload["manual_bot_message_history"][0]["message_text"], "Привет из HR")
+        self.assertEqual(payload["manual_bot_message_history"][0]["status"], "sent")
+        self.assertTrue(payload["manual_bot_message_history"][0]["sent_at"])
+
+        with SessionLocal() as db:
+            history_rows = (
+                db.query(EmployeeManualBotMessage)
+                .filter(EmployeeManualBotMessage.employee_id == self.employee_id)
+                .order_by(EmployeeManualBotMessage.id.desc())
+                .all()
+            )
+            self.assertEqual(len(history_rows), 1)
+            self.assertEqual(history_rows[0].status, "sent")
+            self.assertEqual(history_rows[0].message_text, "Привет из HR")
+            self.assertIsNotNone(history_rows[0].sent_at)
+
+    def test_manual_bot_message_without_telegram_id_logs_failed(self) -> None:
+        response = self.client.post(
+            f"/api/employees/{self.employee_id}/bot-message",
+            json={"text": "Проверка канала"},
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["detail"], "У сотрудника не указан Telegram chat id.")
+
+        with SessionLocal() as db:
+            history_rows = (
+                db.query(EmployeeManualBotMessage)
+                .filter(EmployeeManualBotMessage.employee_id == self.employee_id)
+                .order_by(EmployeeManualBotMessage.id.desc())
+                .all()
+            )
+            self.assertEqual(len(history_rows), 1)
+            self.assertEqual(history_rows[0].status, "failed")
+            self.assertEqual(history_rows[0].error_text, "У сотрудника не указан Telegram chat id.")
+
+    def test_manual_bot_message_for_blocked_employee_logs_failed_without_send(self) -> None:
+        with SessionLocal() as db:
+            employee = db.get(Employee, self.employee_id)
+            self.assertIsNotNone(employee)
+            employee.is_bot_blocked = True
+            set_primary_chat_id(employee, "700002", db=db)
+            db.commit()
+
+        messenger = DummyMessenger()
+        with (
+            patch("app.web.employees.settings.TELEGRAM_BOT_TOKEN", "test-token"),
+            patch("app.web.employees.create_telegram_messenger", return_value=messenger),
+        ):
+            response = self.client.post(
+                f"/api/employees/{self.employee_id}/bot-message",
+                json={"text": "Проверка блокировки"},
+            )
+
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.json()["detail"], "Для этого сотрудника доступ к боту заблокирован.")
+        self.assertFalse(messenger.sent_texts)
+
+        with SessionLocal() as db:
+            history_rows = (
+                db.query(EmployeeManualBotMessage)
+                .filter(EmployeeManualBotMessage.employee_id == self.employee_id)
+                .order_by(EmployeeManualBotMessage.id.desc())
+                .all()
+            )
+            self.assertEqual(len(history_rows), 1)
+            self.assertEqual(history_rows[0].status, "failed")
+            self.assertEqual(history_rows[0].error_text, "Для этого сотрудника доступ к боту заблокирован.")
+
+    def test_manual_bot_message_empty_text_returns_400_without_log(self) -> None:
+        with SessionLocal() as db:
+            employee = db.get(Employee, self.employee_id)
+            self.assertIsNotNone(employee)
+            set_primary_chat_id(employee, "700003", db=db)
+            db.commit()
+
+        response = self.client.post(
+            f"/api/employees/{self.employee_id}/bot-message",
+            json={"text": "   "},
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["detail"], "Введите текст сообщения.")
+
+        with SessionLocal() as db:
+            history_rows = db.query(EmployeeManualBotMessage).filter(EmployeeManualBotMessage.employee_id == self.employee_id).all()
+            self.assertEqual(history_rows, [])
+
+    def test_manual_bot_message_send_exception_logs_failed(self) -> None:
+        with SessionLocal() as db:
+            employee = db.get(Employee, self.employee_id)
+            self.assertIsNotNone(employee)
+            set_primary_chat_id(employee, "700004", db=db)
+            db.commit()
+
+        with (
+            patch("app.web.employees.settings.TELEGRAM_BOT_TOKEN", "test-token"),
+            patch("app.web.employees.create_telegram_messenger", return_value=FailingMessenger()),
+        ):
+            response = self.client.post(
+                f"/api/employees/{self.employee_id}/bot-message",
+                json={"text": "Упади, пожалуйста"},
+            )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["detail"], "telegram send failed")
+
+        with SessionLocal() as db:
+            history_rows = (
+                db.query(EmployeeManualBotMessage)
+                .filter(EmployeeManualBotMessage.employee_id == self.employee_id)
+                .order_by(EmployeeManualBotMessage.id.desc())
+                .all()
+            )
+            self.assertEqual(len(history_rows), 1)
+            self.assertEqual(history_rows[0].status, "failed")
+            self.assertEqual(history_rows[0].error_text, "telegram send failed")
+            self.assertIsNone(history_rows[0].sent_at)
+
+    def test_employee_detail_api_includes_manual_bot_message_history_newest_first(self) -> None:
+        with SessionLocal() as db:
+            older = EmployeeManualBotMessage(
+                employee_id=self.employee_id,
+                sender_account_id=1,
+                message_text="Старое сообщение",
+                status="failed",
+                error_text="old error",
+                sent_at=None,
+                created_at=datetime(2026, 6, 1, 9, 0),
+            )
+            newer = EmployeeManualBotMessage(
+                employee_id=self.employee_id,
+                sender_account_id=1,
+                message_text="Новое сообщение",
+                status="sent",
+                error_text=None,
+                sent_at=datetime(2026, 6, 1, 10, 0),
+                created_at=datetime(2026, 6, 1, 10, 0),
+            )
+            db.add_all([older, newer])
+            db.commit()
+
+        response = self.client.get(f"/api/employees/{self.employee_id}")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(len(payload["manual_bot_message_history"]), 2)
+        self.assertEqual(payload["manual_bot_message_history"][0]["message_text"], "Новое сообщение")
+        self.assertEqual(payload["manual_bot_message_history"][0]["status"], "sent")
+        self.assertEqual(payload["manual_bot_message_history"][1]["message_text"], "Старое сообщение")
+        self.assertEqual(payload["manual_bot_message_history"][1]["status"], "failed")
+
     def test_react_frontend_fetch_contract_routes_exist(self) -> None:
         route_index = {
             (getattr(route, "path", ""), method)
@@ -1014,6 +1198,7 @@ class EmployeeApiSmokeTests(unittest.TestCase):
             ("/api/employees/{employee_id}", "GET"),
             ("/api/employees/{employee_id}", "POST"),
             ("/api/employees/{employee_id}", "DELETE"),
+            ("/api/employees/{employee_id}/bot-message", "POST"),
             ("/api/employees/{employee_id}/document-links", "POST"),
             ("/api/employees/{employee_id}/document-links/{link_id}", "DELETE"),
             ("/api/employees/{employee_id}/schedule", "POST"),
