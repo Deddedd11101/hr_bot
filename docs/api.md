@@ -125,6 +125,8 @@ source_of_truth: true
   - pending scheduled flow requests
 - `manual_launch_history`
   - processed manual launches
+- `manual_bot_message_history`
+  - read-only история ручных Telegram-сообщений из карточки сотрудника
 
 ### Payload scenario workspace
 
@@ -202,6 +204,7 @@ source_of_truth: true
 | `POST` | `/api/employees` | Создать карточку сотрудника или кандидата. | JSON: `full_name`, `chat_id`, `chat_handle`, `first_workday`, `employee_stage`, `candidate_work_stage`, `list_kind` | Employee list response с созданным `item` | Создает `employees`, sync messenger identity, создает pending `flow_launch_requests` для `recruitment_hiring` | `401`, `409` при messenger identity conflict, не нормализованный `500` при malformed date |
 | `GET` | `/api/employees/{employee_id}` | Вернуть полный employee detail payload. | Path: `employee_id` | Employee detail payload с `assignment_history[]` read-only rows (`assignment_role`, `role_label`, `assigned_employee_id`, `assigned_employee_name`, `started_at`, `ended_at`, `is_active`, optional `assigned_by_account_id`) | Нет | `401`, `404` если employee не найден |
 | `POST` | `/api/employees/{employee_id}` | Обновить карточку сотрудника или кандидата из React. | JSON fields: `full_name`, `chat_id`, `chat_handle`, `first_workday`, `desired_position`, `birth_date`, `work_email`, `work_hours`, `manager_employee_id`, `mentor_adaptation_employee_id`, `mentor_ipr_employee_id`, `adaptation_tasks_url`, `adaptation_feedback_url`, `adaptation_midpoint`, `adaptation_end`, `employee_stage`, `candidate_work_stage`, `salary_expectation`, `personal_data_consent`, `employee_data_consent`, `is_bot_blocked`, `test_task_due_at`, `notes` | Employee detail payload | Обновляет `employees`, sync messenger identity и legacy manager/mentor chat ids из выбранных staff relations | `401`, `404`, `409` при messenger identity conflict, `400` при invalid staff relation/date |
+| `POST` | `/api/employees/{employee_id}/bot-message` | Отправить ручное Telegram-сообщение прямо из карточки сотрудника и записать audit history. | JSON: `text` | Employee detail payload | Пишет строку в `employee_manual_bot_messages` со статусом `sent` или `failed`, отправляет текст в Telegram через primary chat id сотрудника | `401`, `404`, `400` при пустом тексте/отсутствии chat id/token/ошибке Telegram, `409` если `is_bot_blocked=true` |
 | `POST` | `/api/employees/{employee_id}/promote-to-adaptation` | Явно перевести кандидата в адаптацию через HR-действие. | Path: `employee_id` | Employee detail payload | Меняет `employee_stage` c `candidate` на `adaptation`, очищает `candidate_work_stage`, seed-ит `adaptation_midpoint` / `adaptation_end` от `first_workday`, сбрасывает `current_menu_set_id` | `401`, `404`, `400` если employee не candidate или не указан `first_workday` |
 | `POST` | `/api/employees/{employee_id}/document-links` | Создать или обновить offer link сотрудника. | JSON: `url` | `{ item, payload }`, где `payload` — employee detail payload | Создает или обновляет `employee_document_links` с title `Оффер` | `401`, `404`, `400` если URL пустой |
 | `DELETE` | `/api/employees/{employee_id}/document-links/{link_id}` | Удалить offer link entry. | Path: `employee_id`, `link_id` | Employee detail payload | Удаляет одну строку `employee_document_links` | `401`, `404` |

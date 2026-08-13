@@ -60,6 +60,7 @@ source_of_truth: true
 | --- | --- | --- | --- |
 | `employees` | Единая запись для candidates и employees | `full_name`, `first_workday`, `employee_stage`, `candidate_work_stage`, legacy Telegram fields, HR profile fields, consent flags, `is_bot_blocked` | Центральная запись, на нее ссылается большинство runtime tables |
 | `employee_assignment_history` | Аудит назначений руководителя и наставников | `subject_employee_id`, `assigned_employee_id`, `assignment_role`, `started_at`, `ended_at`, `assigned_by_account_id` | Не заменяет текущие поля `employees.*_employee_id`; хранит только историю изменений назначений |
+| `employee_manual_bot_messages` | Аудит ручных Telegram-сообщений из карточки сотрудника | `employee_id`, `sender_account_id`, `message_text`, `status`, `error_text`, `sent_at`, `created_at` | Не влияет на `scenario_progress` и `flow_launch_requests`; хранит операторские sends и ошибки доставки |
 | `positions` | Управляемый справочник должностей | `title`, `slug`, `is_active`, `sort_order`, timestamps | Используется settings UI, employee forms, scenario role scope и targeting; `employees.desired_position` пока остается строкой для backward compatibility |
 | `employee_messenger_accounts` | Channel-specific communication identities | `employee_id`, `channel`, `external_user_id`, `external_username`, `is_primary`, `is_active` | Один employee может иметь несколько channel identities; текущий runtime использует `telegram` |
 | `admin_accounts` | Пользователи админки | `login`, `password_hash`, `role`, `is_active` | Используется browser session auth |
@@ -121,6 +122,18 @@ source_of_truth: true
   - JSON API и classic card save пробрасывают текущий admin account id;
   - nullable сохраняется как fallback, если update path не знает текущего аккаунта.
 
+### `employee_manual_bot_messages`
+
+- Таблица фиксирует только прямые операторские сообщения из employee detail.
+- Это отдельный audit seam, а не часть сценарного runtime:
+  - не двигает `scenario_progress`;
+  - не создает `flow_launch_requests`;
+  - не заменяет массовые сообщения.
+- Поведение записи:
+  - пустой текст отклоняется validation-слоем и не логируется;
+  - blocked employee, missing/non-numeric chat id, missing token и Telegram exception пишутся как `status=failed`;
+  - успешная отправка пишет `status=sent` и `sent_at`.
+
 ### `employee_messenger_accounts`
 
 - Это реальная uniqueness boundary для Telegram identity.
@@ -170,6 +183,7 @@ SQLite schema guard делает больше, чем “создать табл
   - `scenario_progress.last_delivery_error`;
 - создает целые таблицы, если они отсутствуют:
   - `employee_assignment_history`;
+  - `employee_manual_bot_messages`;
   - `step_button_notifications`;
   - `step_send_notifications`;
   - `scenario_progress`;

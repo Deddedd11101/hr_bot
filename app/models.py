@@ -209,6 +209,25 @@ class EmployeeAssignmentHistory(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
 
 
+class EmployeeManualBotMessage(Base):
+    """История ручных Telegram-сообщений из карточки сотрудника."""
+
+    __tablename__ = "employee_manual_bot_messages"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    employee_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    sender_account_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
+    message_text: Mapped[str] = mapped_column(String(4096), nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(32),
+        nullable=False,
+        doc="sent | failed",
+    )
+    error_text: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)
+    sent_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+
+
 class Position(Base):
     """Управляемый справочник должностей."""
 

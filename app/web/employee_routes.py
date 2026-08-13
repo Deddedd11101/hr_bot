@@ -38,6 +38,7 @@ from .employees import (
     _save_offer_document_link,
     _schedule_employee_flow_request,
     _send_file_to_telegram,
+    _send_manual_bot_message,
     _serialize_document_link,
     _serialize_employee_view,
 )
@@ -641,6 +642,29 @@ def update_employee_api(
     except ValueError as exc:
         db.rollback()
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    return _build_employee_detail_payload(db, employee)
+
+
+@router.post("/api/employees/{employee_id}/bot-message")
+async def send_manual_bot_message_api(
+    request: Request,
+    employee_id: int,
+    payload: dict = Body(...),
+    db: Session = Depends(get_db),
+):
+    current_user = require_api_auth(request)
+    employee = db.get(Employee, employee_id)
+    if not employee:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Сотрудник не найден")
+    error_message = await _send_manual_bot_message(
+        db,
+        employee,
+        text=str(payload.get("text") or ""),
+        sender_account_id=getattr(current_user, "id", None),
+    )
+    if error_message:
+        status_code = status.HTTP_409_CONFLICT if employee.is_bot_blocked else status.HTTP_400_BAD_REQUEST
+        raise HTTPException(status_code=status_code, detail=error_message)
     return _build_employee_detail_payload(db, employee)
 
 

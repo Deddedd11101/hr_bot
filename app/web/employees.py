@@ -20,10 +20,12 @@ from ..messaging.identity import (
     sync_legacy_telegram_account,
 )
 from ..models import (
+    AdminAccount,
     Employee,
     EmployeeAssignmentHistory,
     EmployeeDocumentLink,
     EmployeeFile,
+    EmployeeManualBotMessage,
     EmployeeMessengerAccount,
     FlowLaunchRequest,
     ScenarioProgress,
@@ -75,6 +77,8 @@ ASSIGNMENT_ROLE_LABELS = {
     ASSIGNMENT_ROLE_MENTOR_ADAPTATION: "Наставник адаптации",
     ASSIGNMENT_ROLE_MENTOR_IPR: "Наставник ИПР",
 }
+MANUAL_BOT_MESSAGE_STATUS_SENT = "sent"
+MANUAL_BOT_MESSAGE_STATUS_FAILED = "failed"
 
 
 def _is_workday(day: date) -> bool:
@@ -477,6 +481,38 @@ def _serialize_assignment_history(db: Session, employee_id: int) -> list[dict]:
             "assigned_by_account_id": row.assigned_by_account_id,
         }
         for row in history_rows
+    ]
+
+
+def _sender_account_label(account: Optional[AdminAccount]) -> str:
+    if account is None:
+        return ""
+    login = (account.login or "").strip()
+    if login:
+        return login
+    return f"Account #{account.id}"
+
+
+def _serialize_manual_bot_message_history(db: Session, employee_id: int) -> list[dict]:
+    history_rows = (
+        db.query(EmployeeManualBotMessage, AdminAccount)
+        .outerjoin(AdminAccount, AdminAccount.id == EmployeeManualBotMessage.sender_account_id)
+        .filter(EmployeeManualBotMessage.employee_id == employee_id)
+        .order_by(EmployeeManualBotMessage.created_at.desc(), EmployeeManualBotMessage.id.desc())
+        .all()
+    )
+    return [
+        {
+            "id": row.id,
+            "sender_account_id": row.sender_account_id,
+            "sender_label": _sender_account_label(account),
+            "message_text": row.message_text or "",
+            "status": row.status or "",
+            "error_text": row.error_text or "",
+            "sent_at": row.sent_at.isoformat() if row.sent_at else "",
+            "created_at": row.created_at.isoformat() if row.created_at else "",
+        }
+        for row, account in history_rows
     ]
 
 
@@ -1165,6 +1201,121 @@ async def _send_file_to_telegram(chat_id: str, path: Path, filename: str) -> Non
         await messenger.close()
 
 
+def _append_manual_bot_message_log(
+    db: Session,
+    *,
+    employee_id: int,
+    sender_account_id: Optional[int],
+    message_text: str,
+    status: str,
+    error_text: Optional[str] = None,
+    sent_at: Optional[datetime] = None,
+) -> EmployeeManualBotMessage:
+    row = EmployeeManualBotMessage(
+        employee_id=employee_id,
+        sender_account_id=sender_account_id,
+        message_text=message_text,
+        status=status,
+        error_text=error_text,
+        sent_at=sent_at,
+        created_at=utc_now(),
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+async def _send_manual_bot_message(
+    db: Session,
+    employee: Employee,
+    *,
+    text: str,
+    sender_account_id: Optional[int],
+) -> Optional[str]:
+    message_text = str(text or "").strip()
+    if not message_text:
+        return "Введите текст сообщения."
+    if employee.is_bot_blocked:
+        error_message = "Для этого сотрудника доступ к боту заблокирован."
+        _append_manual_bot_message_log(
+            db,
+            employee_id=employee.id,
+            sender_account_id=sender_account_id,
+            message_text=message_text,
+            status=MANUAL_BOT_MESSAGE_STATUS_FAILED,
+            error_text=error_message,
+        )
+        return error_message
+
+    chat_id = (get_primary_chat_id(employee, db=db) or "").strip()
+    if not chat_id:
+        error_message = "У сотрудника не указан Telegram chat id."
+        _append_manual_bot_message_log(
+            db,
+            employee_id=employee.id,
+            sender_account_id=sender_account_id,
+            message_text=message_text,
+            status=MANUAL_BOT_MESSAGE_STATUS_FAILED,
+            error_text=error_message,
+        )
+        return error_message
+    if not (chat_id.isdigit() or (chat_id.startswith("-") and chat_id[1:].isdigit())):
+        error_message = (
+            "У сотрудника указан не числовой Telegram chat id. Для отправки нужен chat id из диалога с ботом."
+        )
+        _append_manual_bot_message_log(
+            db,
+            employee_id=employee.id,
+            sender_account_id=sender_account_id,
+            message_text=message_text,
+            status=MANUAL_BOT_MESSAGE_STATUS_FAILED,
+            error_text=error_message,
+        )
+        return error_message
+    if not settings.TELEGRAM_BOT_TOKEN:
+        error_message = "Не задан TELEGRAM_BOT_TOKEN."
+        _append_manual_bot_message_log(
+            db,
+            employee_id=employee.id,
+            sender_account_id=sender_account_id,
+            message_text=message_text,
+            status=MANUAL_BOT_MESSAGE_STATUS_FAILED,
+            error_text=error_message,
+        )
+        return error_message
+
+    messenger = create_telegram_messenger(settings.TELEGRAM_BOT_TOKEN)
+    try:
+        await messenger.send_text(chat_id=chat_id, text=message_text)
+    except Exception as exc:
+        error_message = str(exc).strip() or exc.__class__.__name__
+        _append_manual_bot_message_log(
+            db,
+            employee_id=employee.id,
+            sender_account_id=sender_account_id,
+            message_text=message_text,
+            status=MANUAL_BOT_MESSAGE_STATUS_FAILED,
+            error_text=error_message,
+        )
+        return error_message
+    finally:
+        try:
+            await messenger.close()
+        except Exception:
+            pass
+
+    _append_manual_bot_message_log(
+        db,
+        employee_id=employee.id,
+        sender_account_id=sender_account_id,
+        message_text=message_text,
+        status=MANUAL_BOT_MESSAGE_STATUS_SENT,
+        sent_at=utc_now(),
+    )
+    return None
+
+
 def _build_employee_detail_payload(db: Session, employee: Employee) -> dict:
     employee_files = (
         db.query(EmployeeFile)
@@ -1299,4 +1450,5 @@ def _build_employee_detail_payload(db: Session, employee: Employee) -> dict:
             for launch_request in manual_launch_history
         ],
         "assignment_history": _serialize_assignment_history(db, employee.id),
+        "manual_bot_message_history": _serialize_manual_bot_message_history(db, employee.id),
     }
