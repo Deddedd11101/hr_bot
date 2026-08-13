@@ -34,6 +34,49 @@ source_of_truth: true
 
 ## Записи
 
+### 2026-08-13 22:12 MSK - app deploy - manual Telegram messages
+
+- Deploy ref: `stage`.
+- Deployed commit: `8cf6db2`.
+- GitHub Actions run: `31734535232` -> success.
+- В stage включено:
+  - additive SQLite schema `employee_manual_bot_messages`;
+  - endpoint `POST /api/employees/{employee_id}/bot-message`;
+  - employee detail payload field `manual_bot_message_history`;
+  - React employee detail actions "Отправить сообщение в бот" and "История ручных сообщений";
+  - durable history for sent and failed manual Telegram messages;
+  - no scenario runtime change, no mass messaging change, no bot identity change.
+- Локальные проверки перед deploy:
+  - `python -m compileall app tests`;
+  - `ruff check --select F821 app tests`;
+  - `python -m unittest tests.test_employee_api_smoke tests.test_messaging_identity tests.test_scenario_engine_smoke -v` -> 131 tests OK;
+  - `tools/check_docs_contracts.py`;
+  - `npm ci` in `frontend`;
+  - `npm run build` in `frontend`;
+  - `git diff --check origin/stage..HEAD`.
+- GitHub Actions preflight:
+  - backend dependencies install;
+  - `compileall`;
+  - `ruff F821`;
+  - backend smoke tests;
+  - frontend build;
+  - smoke imports.
+- Stage safety checks:
+  - verified SQLite backup created before checkout/restart: `backups/hr_bot.before-deploy.20260813-191212.db`;
+  - scenario config snapshot created: `backups/scenarios.before-deploy.20260813-191212.json`;
+  - scenario configuration fingerprint unchanged.
+- Stage smoke checks:
+  - `/app/employees` -> `303`;
+  - `/app/flows/workspace-v2` -> `303`;
+  - Telegram API reachability -> `HTTP/2 302`;
+  - deploy job завершился успешно и вывел `8cf6db2`.
+- Открытые риски:
+  - manual message text is durable PII in SQLite and backups;
+  - no retention/access policy yet;
+  - app-level max length/sanitization for `message_text` and `error_text` should be a follow-up;
+  - `npm audit` dependency warnings and Vite `graph-view` chunk warning remain outside this deployment scope;
+  - real Telegram send smoke was not completed automatically; verify manually on stage with a linked employee, an employee without Telegram ID and a blocked employee.
+
 ### 2026-08-13 17:05 MSK - app deploy - role-only scenario notifications
 
 - Deploy ref: `stage`.
