@@ -1,5 +1,5 @@
 import * as React from "react";
-import { ChevronRight, Copy, FileStack, PanelLeft, Paperclip, Plus, Search, Trash2, X } from "lucide-react";
+import { ArrowRight, ChevronRight, Copy, FileStack, MoreHorizontal, PanelLeft, Paperclip, Plus, Search, Trash2, X } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -22,7 +22,6 @@ import {
 import { ConfirmAction } from "@/components/ui/confirm-action";
 import { EmojiPickerPopover } from "@/components/ui/emoji-picker-popover";
 import { Input } from "@/components/ui/input";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
@@ -75,6 +74,187 @@ export function WorkspaceFlashNotice(props: { message: string; error: boolean })
   );
 }
 
+export function ScenarioSettingsDialog(props: {
+  open: boolean;
+  itemLabel: string;
+  scenarioTitle: string;
+  isSurveyWorkspace: boolean;
+  scenarioSettingsForm: ScenarioSettingsForm | null;
+  scenarioSettingsState: { saving: boolean; message: string; error: boolean };
+  roleScopeOptions: SingleOption[];
+  employeeScopeOptions: SingleOption[];
+  recipientModeOptions: SingleOption[];
+  triggerModeOptions: SingleOption[];
+  candidateWorkStageOptions: SingleOption[];
+  targetEmployeeOptions: SingleOption[];
+  onOpenChange: (open: boolean) => void;
+  onSave: () => void;
+  onFormChange: (updater: (prev: ScenarioSettingsForm | null) => ScenarioSettingsForm | null) => void;
+}) {
+  const {
+    open,
+    itemLabel,
+    scenarioTitle,
+    isSurveyWorkspace,
+    scenarioSettingsForm,
+    scenarioSettingsState,
+    roleScopeOptions,
+    employeeScopeOptions,
+    recipientModeOptions,
+    triggerModeOptions,
+    candidateWorkStageOptions,
+    targetEmployeeOptions,
+    onOpenChange,
+    onSave,
+    onFormChange,
+  } = props;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[min(760px,calc(100vh-40px))] w-[min(560px,calc(100vw-32px))] overflow-hidden p-0">
+        <DialogHeader className="border-b border-border px-5 py-4">
+          <DialogTitle>Настройки {itemLabel}</DialogTitle>
+          <DialogDescription>{scenarioTitle || "Загружаю данные"}</DialogDescription>
+        </DialogHeader>
+        {!scenarioSettingsForm ? (
+          <div className="px-5 py-8 text-sm font-medium text-muted-foreground">Загружаю настройки…</div>
+        ) : (
+          <>
+            <ScrollArea className="max-h-[calc(100vh-210px)]">
+              <div className="grid gap-4 px-5 py-4">
+                <label className="grid min-w-0 gap-2.5">
+                  <span className="text-sm font-semibold text-foreground/75">Название</span>
+                  <Input
+                    value={scenarioSettingsForm.title}
+                    maxLength={120}
+                    placeholder="Название сценария"
+                    className="h-10 text-sm"
+                    onChange={(event) =>
+                      onFormChange((prev) => (prev ? { ...prev, title: event.target.value.slice(0, 120) } : prev))
+                    }
+                  />
+                </label>
+                <label className="grid min-w-0 gap-2.5">
+                  <span className="text-sm font-semibold text-foreground/75">Описание</span>
+                  <div className="relative">
+                    <Textarea
+                      value={scenarioSettingsForm.description}
+                      maxLength={50}
+                      placeholder="Коротко"
+                      className="min-h-[76px] pr-12 text-sm"
+                      onChange={(event) =>
+                        onFormChange((prev) => (prev ? { ...prev, description: event.target.value.slice(0, 50) } : prev))
+                      }
+                    />
+                    <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[0.58rem] font-semibold text-muted-foreground">
+                      {scenarioSettingsForm.description.length}/50
+                    </span>
+                  </div>
+                </label>
+                <label className="grid min-w-0 gap-2.5">
+                  <span className="text-sm font-semibold text-foreground/75">Должность</span>
+                  <SingleSelectPicker
+                    options={roleScopeOptions}
+                    value={scenarioSettingsForm.role_scope}
+                    placeholder="Должность"
+                    onChange={(nextValue) => onFormChange((prev) => (prev ? { ...prev, role_scope: nextValue } : prev))}
+                  />
+                </label>
+                <label className="grid min-w-0 gap-2.5">
+                  <span className="text-sm font-semibold text-foreground/75">Аудитория</span>
+                  <SingleSelectPicker
+                    options={employeeScopeOptions}
+                    value={scenarioSettingsForm.employee_scope}
+                    placeholder="Аудитория"
+                    onChange={(nextValue) => onFormChange((prev) => (prev ? { ...prev, employee_scope: nextValue } : prev))}
+                  />
+                </label>
+                <label className="grid min-w-0 gap-2.5">
+                  <span className="text-sm font-semibold text-foreground/75">Кому отправлять сценарий</span>
+                  <SingleSelectPicker
+                    options={recipientModeOptions}
+                    value={scenarioSettingsForm.recipient_mode}
+                    placeholder="Адресат"
+                    onChange={(nextValue) => onFormChange((prev) => (prev ? { ...prev, recipient_mode: nextValue || "self" } : prev))}
+                  />
+                  <span className="text-xs leading-5 text-muted-foreground">
+                    Сценарий запускается по карточке сотрудника, но сообщения получает выбранный адресат.
+                  </span>
+                </label>
+                {scenarioSettingsForm.recipient_mode && scenarioSettingsForm.recipient_mode !== "self" ? (
+                  <Alert className="border-warning/30 bg-warning/10">
+                    <AlertTitle>Проверь получателя</AlertTitle>
+                    <AlertDescription>
+                      Получатель должен быть назначен в карточке сотрудника и привязан к Telegram.
+                    </AlertDescription>
+                  </Alert>
+                ) : null}
+                {!isSurveyWorkspace ? (
+                  <label className="grid min-w-0 gap-2.5">
+                    <span className="text-sm font-semibold text-foreground/75">Запуск</span>
+                    <SingleSelectPicker
+                      options={triggerModeOptions}
+                      value={scenarioSettingsForm.trigger_mode}
+                      placeholder="Запуск"
+                      onChange={(nextValue) =>
+                        onFormChange((prev) =>
+                          prev
+                            ? {
+                                ...prev,
+                                trigger_mode: nextValue,
+                                candidate_work_stage_trigger:
+                                  nextValue === "candidate_hr_stage" ? prev.candidate_work_stage_trigger : "",
+                              }
+                            : prev,
+                        )
+                      }
+                    />
+                  </label>
+                ) : null}
+                {!isSurveyWorkspace && scenarioSettingsForm.trigger_mode === "candidate_hr_stage" ? (
+                  <label className="grid min-w-0 gap-2.5">
+                    <span className="text-sm font-semibold text-foreground/75">HR-статус кандидата</span>
+                    <SingleSelectPicker
+                      options={candidateWorkStageOptions}
+                      value={scenarioSettingsForm.candidate_work_stage_trigger}
+                      placeholder="Выбери статус"
+                      onChange={(nextValue) =>
+                        onFormChange((prev) => (prev ? { ...prev, candidate_work_stage_trigger: nextValue } : prev))
+                      }
+                    />
+                  </label>
+                ) : null}
+                <label className="grid min-w-0 gap-2.5">
+                  <span className="text-sm font-semibold text-foreground/75">Карточка</span>
+                  <SingleSelectPicker
+                    options={targetEmployeeOptions}
+                    value={scenarioSettingsForm.target_employee_id}
+                    placeholder="Любая"
+                    onChange={(nextValue) => onFormChange((prev) => (prev ? { ...prev, target_employee_id: nextValue } : prev))}
+                  />
+                </label>
+                {scenarioSettingsState.message ? (
+                  <p className={`text-sm ${scenarioSettingsState.error ? "text-destructive" : "text-muted-foreground"}`}>
+                    {scenarioSettingsState.message}
+                  </p>
+                ) : null}
+              </div>
+            </ScrollArea>
+            <DialogFooter className="border-t border-border px-5 py-4">
+              <Button variant="secondary" onClick={() => onOpenChange(false)}>
+                Закрыть
+              </Button>
+              <Button onClick={onSave} disabled={scenarioSettingsState.saving}>
+                {scenarioSettingsState.saving ? "Сохраняю..." : "Сохранить"}
+              </Button>
+            </DialogFooter>
+          </>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function setWorkspaceDragImage(
   event: React.DragEvent<HTMLElement>,
   { title, meta }: { title: string; meta: string },
@@ -101,6 +281,7 @@ function setWorkspaceDragImage(
 }
 
 export function WorkspaceSidebarSection(props: {
+  variant?: "sidebar" | "catalog";
   sidebarTitle: string;
   isSurveyWorkspace: boolean;
   createItemLabel: string;
@@ -129,8 +310,10 @@ export function WorkspaceSidebarSection(props: {
   onScenarioDrop: (scenarioId: number) => void;
   onScenarioDragEnd: () => void;
   onToggleScenarioSelection: (scenarioId: number) => void;
+  onOpenScenarioSettings?: (scenarioId: number) => void;
 }) {
   const {
+    variant = "sidebar",
     sidebarTitle,
     isSurveyWorkspace,
     createItemLabel,
@@ -159,15 +342,19 @@ export function WorkspaceSidebarSection(props: {
     onScenarioDrop,
     onScenarioDragEnd,
     onToggleScenarioSelection,
+    onOpenScenarioSettings,
   } = props;
   const [dropTargetId, setDropTargetId] = React.useState<number | null>(null);
+  const isCatalog = variant === "catalog";
 
   return (
-    <Card className="flex min-h-0 flex-col overflow-hidden border border-border bg-card p-4 shadow-none ring-0">
+    <Card className={cn("flex min-h-0 flex-col overflow-hidden border border-border bg-card shadow-none ring-0", isCatalog ? "p-5" : "p-4")}>
       <CardHeader className="gap-2 border-b border-border/70 p-0 pb-3">
         <div className="flex min-w-0 items-center justify-between gap-2">
           <div className="flex min-w-0 items-center gap-2">
-            <CardTitle className="truncate text-[1.35rem] font-semibold">{sidebarTitle}</CardTitle>
+            <CardTitle className={cn("truncate font-semibold", isCatalog ? "text-[1.75rem]" : "text-[1.35rem]")}>
+              {isCatalog ? `Каталог: ${sidebarTitle.toLowerCase()}` : sidebarTitle}
+            </CardTitle>
             <Badge variant="secondary" className="shrink-0">
               {scenarios.length}
             </Badge>
@@ -180,7 +367,7 @@ export function WorkspaceSidebarSection(props: {
           ) : null}
         </div>
       </CardHeader>
-      <div className="mt-3 flex flex-col gap-2 rounded-lg border border-border bg-muted/35 p-2">
+      <div className={cn("mt-3 flex gap-2 rounded-lg border border-border bg-muted/35 p-2", isCatalog ? "flex-row flex-wrap items-center" : "flex-col")}>
         {creatingScenario ? (
           <div className="flex items-center gap-2">
             <Input
@@ -197,7 +384,7 @@ export function WorkspaceSidebarSection(props: {
             </Button>
           </div>
         ) : null}
-        <div className="relative">
+        <div className={cn("relative", isCatalog ? "min-w-[260px] flex-1" : "")}>
           <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
           <Input
             placeholder={isSurveyWorkspace ? "Найти" : "Найти сценарий"}
@@ -206,6 +393,7 @@ export function WorkspaceSidebarSection(props: {
             className="h-8 pl-8 text-sm"
           />
         </div>
+        <div className={isCatalog ? "min-w-[260px]" : ""}>
         <SingleSelectPicker
           options={[
             { value: "updated_desc", label: "Сначала недавно изменённые" },
@@ -217,6 +405,7 @@ export function WorkspaceSidebarSection(props: {
           placeholder="Сортировка"
           onChange={(value) => onSortModeChange(value as "updated_desc" | "created_desc" | "created_asc" | "title_asc")}
         />
+        </div>
         <div className="flex flex-wrap items-center gap-1.5">
           {!isSurveyWorkspace ? (
             <div className="flex items-center gap-1 rounded-lg border border-border bg-background p-1">
@@ -285,22 +474,26 @@ export function WorkspaceSidebarSection(props: {
         </p>
       ) : null}
       <ScrollArea className="mt-4 min-h-0 flex-1">
-        <div className="grid gap-2 pr-3">
+        <div className={cn("grid gap-2 pr-3", isCatalog && "grid-cols-[repeat(auto-fill,minmax(320px,1fr))] gap-3")}>
           {scenarios.map((scenario) => {
             const isDragging = dragScenarioId === scenario.id;
             const isDropTarget = dropTargetId === scenario.id && !isDragging;
             return (
               <article
               key={scenario.id}
-              role="button"
-              tabIndex={0}
-              onClick={() => onSelectScenario(scenario.id)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" || event.key === " ") {
-                  event.preventDefault();
-                  onSelectScenario(scenario.id);
-                }
-              }}
+              role={isCatalog ? undefined : "button"}
+              tabIndex={isCatalog ? undefined : 0}
+              onClick={isCatalog ? undefined : () => onSelectScenario(scenario.id)}
+              onKeyDown={
+                isCatalog
+                  ? undefined
+                  : (event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        onSelectScenario(scenario.id);
+                      }
+                    }
+              }
               draggable
               onDragStart={(event) => {
                 event.dataTransfer.effectAllowed = "move";
@@ -328,8 +521,10 @@ export function WorkspaceSidebarSection(props: {
                 onScenarioDragEnd();
               }}
               className={cn(
-                "relative flex w-full min-w-0 cursor-pointer flex-col gap-2 rounded-lg border p-3 text-left transition-[border-color,background-color,opacity,transform,box-shadow]",
-                scenario.id === selectedScenarioId
+                "relative flex w-full min-w-0 flex-col rounded-lg border text-left transition-[border-color,background-color,opacity,transform,box-shadow]",
+                isCatalog ? "gap-3 p-4" : "gap-2 p-3",
+                isCatalog ? "cursor-default" : "cursor-pointer",
+                !isCatalog && scenario.id === selectedScenarioId
                   ? "border-primary/70 bg-muted/50"
                   : "border-border bg-card hover:bg-accent/60",
                 isDragging && "scale-[0.985] border-primary/40 bg-muted/70 opacity-50",
@@ -337,7 +532,7 @@ export function WorkspaceSidebarSection(props: {
               )}
             >
               {isDropTarget ? <span className="pointer-events-none absolute inset-x-3 -top-1 h-0.5 rounded-full bg-primary" /> : null}
-              <div className="flex items-center justify-between gap-3">
+              <div className="flex items-start justify-between gap-3">
                 <div
                   className="inline-flex min-w-0 items-center gap-2"
                   onClick={(event) => event.stopPropagation()}
@@ -350,14 +545,40 @@ export function WorkspaceSidebarSection(props: {
                   />
                   <span className="min-w-0 truncate text-[0.95rem] font-semibold">{scenario.title}</span>
                 </div>
-                <FileStack className="size-4 shrink-0 text-muted-foreground" />
+                <div className="flex shrink-0 items-center gap-1">
+                  {onOpenScenarioSettings && !isSurveyWorkspace ? (
+                    <Button
+                      size="icon-sm"
+                      variant="ghost"
+                      title="Настройки"
+                      aria-label={`Настройки ${scenario.title}`}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onOpenScenarioSettings(scenario.id);
+                      }}
+                    >
+                      <MoreHorizontal />
+                    </Button>
+                  ) : null}
+                  {!isCatalog ? <FileStack className="size-4 text-muted-foreground" /> : null}
+                </div>
               </div>
               <p className="text-[0.83rem] leading-5 text-muted-foreground">{scenario.description || "Без описания"}</p>
               <div className="flex flex-wrap gap-1.5">
                 <Badge variant="secondary">{scenario.role_scope_label}</Badge>
                 <Badge variant="secondary">{scenario.employee_scope_label}</Badge>
+                {!isSurveyWorkspace ? <Badge variant="secondary">{scenario.recipient_mode_label}</Badge> : null}
                 <Badge variant="secondary">{scenario.trigger_mode_label}</Badge>
+                <Badge variant="outline">{scenario.steps_count} шагов</Badge>
               </div>
+              {isCatalog ? (
+                <div className="flex justify-end pt-1">
+                  <Button size="sm" variant="secondary" onClick={() => onSelectScenario(scenario.id)}>
+                    Открыть
+                    <ArrowRight data-icon="inline-end" />
+                  </Button>
+                </div>
+              ) : null}
             </article>
             );
           })}
@@ -375,25 +596,12 @@ export function WorkspaceCanvasSection(props: {
   selectedStepId: number | null;
   viewMode: "list" | "graph";
   stepTitle: string;
-  itemLabel: string;
   isSurveyWorkspace: boolean;
   graph: WorkspaceGraph | null | undefined;
   payloadWorkspace: WorkspaceData | null | undefined;
   exportUrl: string;
-  scenarioSettingsForm: ScenarioSettingsForm | null;
-  scenarioSettingsOpen: boolean;
-  scenarioSettingsState: { saving: boolean; message: string; error: boolean };
-  roleScopeOptions: SingleOption[];
-  employeeScopeOptions: SingleOption[];
-  recipientModeOptions: SingleOption[];
-  triggerModeOptions: SingleOption[];
-  candidateWorkStageOptions: SingleOption[];
-  targetEmployeeOptions: SingleOption[];
   dragStepId: number | null;
   onBreadcrumbClick: (index: number) => void;
-  onScenarioSettingsOpenChange: (open: boolean) => void;
-  onSaveScenarioSettings: () => void;
-  onScenarioSettingsFormChange: (updater: (prev: ScenarioSettingsForm | null) => ScenarioSettingsForm | null) => void;
   onAddRootStep: () => void;
   onAddChainStep: () => void;
   onSelectItem: (itemKey: string) => void;
@@ -412,25 +620,12 @@ export function WorkspaceCanvasSection(props: {
     selectedStepId,
     viewMode,
     stepTitle,
-    itemLabel,
     isSurveyWorkspace,
     graph,
     payloadWorkspace,
     exportUrl,
-    scenarioSettingsForm,
-    scenarioSettingsOpen,
-    scenarioSettingsState,
-    roleScopeOptions,
-    employeeScopeOptions,
-    recipientModeOptions,
-    triggerModeOptions,
-    candidateWorkStageOptions,
-    targetEmployeeOptions,
     dragStepId,
     onBreadcrumbClick,
-    onScenarioSettingsOpenChange,
-    onSaveScenarioSettings,
-    onScenarioSettingsFormChange,
     onAddRootStep,
     onAddChainStep,
     onSelectItem,
@@ -495,150 +690,6 @@ export function WorkspaceCanvasSection(props: {
               <Button render={<a href={exportUrl} />} variant="outline" size="sm">
                 Выгрузить Excel
               </Button>
-            ) : null}
-            {!isSurveyWorkspace && scenarioSettingsForm ? (
-              <Popover open={scenarioSettingsOpen} onOpenChange={onScenarioSettingsOpenChange}>
-                <PopoverTrigger render={<Button variant="secondary" size="sm" />}>
-                  Настройки
-                </PopoverTrigger>
-                <PopoverContent align="end" className="w-[min(440px,calc(100vw-32px))] p-4">
-                  <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <h4 className="text-base font-semibold">Настройки {itemLabel}</h4>
-                      <p className="mt-1 text-sm text-muted-foreground">{payloadWorkspace?.scenario.title}</p>
-                    </div>
-                    <Button size="sm" onClick={onSaveScenarioSettings} disabled={scenarioSettingsState.saving} className="min-w-[132px] whitespace-nowrap px-8">
-                      {scenarioSettingsState.saving ? "Сохраняю..." : "Сохранить"}
-                    </Button>
-                  </div>
-                  <div className="flex flex-col gap-4">
-                    <label className="grid min-w-0 gap-2.5">
-                      <span className="text-sm font-semibold text-foreground/75">Название</span>
-                      <Input
-                        value={scenarioSettingsForm.title}
-                        maxLength={120}
-                        placeholder="Название сценария"
-                        className="h-10 text-sm"
-                        onChange={(event) =>
-                          onScenarioSettingsFormChange((prev) =>
-                            prev ? { ...prev, title: event.target.value.slice(0, 120) } : prev,
-                          )
-                        }
-                      />
-                    </label>
-                    <label className="grid min-w-0 gap-2.5">
-                      <span className="text-sm font-semibold text-foreground/75">Описание</span>
-                      <div className="relative">
-                        <textarea
-                          value={scenarioSettingsForm.description}
-                          maxLength={50}
-                          placeholder="Коротко"
-                          className="min-h-[76px] w-full rounded-lg border border-input bg-background px-3 py-2 pr-12 text-sm outline-none"
-                          onChange={(event) =>
-                            onScenarioSettingsFormChange((prev) =>
-                              prev ? { ...prev, description: event.target.value.slice(0, 50) } : prev,
-                            )
-                          }
-                        />
-                        <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[0.58rem] font-semibold text-muted-foreground">
-                          {scenarioSettingsForm.description.length}/50
-                        </span>
-                      </div>
-                    </label>
-                    <label className="grid min-w-0 gap-2.5">
-                      <span className="text-sm font-semibold text-foreground/75">Должность</span>
-                      <SingleSelectPicker
-                        options={roleScopeOptions}
-                        value={scenarioSettingsForm.role_scope}
-                        placeholder="Должность"
-                        onChange={(nextValue) => onScenarioSettingsFormChange((prev) => (prev ? { ...prev, role_scope: nextValue } : prev))}
-                      />
-                    </label>
-                    <label className="grid min-w-0 gap-2.5">
-                      <span className="text-sm font-semibold text-foreground/75">Аудитория</span>
-                      <SingleSelectPicker
-                        options={employeeScopeOptions}
-                        value={scenarioSettingsForm.employee_scope}
-                        placeholder="Аудитория"
-                        onChange={(nextValue) => onScenarioSettingsFormChange((prev) => (prev ? { ...prev, employee_scope: nextValue } : prev))}
-                      />
-                    </label>
-                    <label className="grid min-w-0 gap-2.5">
-                      <span className="text-sm font-semibold text-foreground/75">Кому отправлять сценарий</span>
-                      <SingleSelectPicker
-                        options={recipientModeOptions}
-                        value={scenarioSettingsForm.recipient_mode}
-                        placeholder="Адресат"
-                        onChange={(nextValue) =>
-                          onScenarioSettingsFormChange((prev) => (prev ? { ...prev, recipient_mode: nextValue || "self" } : prev))
-                        }
-                      />
-                      <span className="text-xs leading-5 text-muted-foreground">
-                        Сценарий запускается по карточке сотрудника, но сообщения получает выбранный адресат.
-                      </span>
-                    </label>
-                    {scenarioSettingsForm.recipient_mode && scenarioSettingsForm.recipient_mode !== "self" ? (
-                      <Alert className="border-warning/30 bg-warning/10">
-                        <AlertTitle>Проверь получателя</AlertTitle>
-                        <AlertDescription>
-                          Получатель должен быть назначен в карточке сотрудника и привязан к Telegram.
-                        </AlertDescription>
-                      </Alert>
-                    ) : null}
-                    {!isSurveyWorkspace ? (
-                      <label className="grid min-w-0 gap-2.5">
-                        <span className="text-sm font-semibold text-foreground/75">Запуск</span>
-                        <SingleSelectPicker
-                          options={triggerModeOptions}
-                          value={scenarioSettingsForm.trigger_mode}
-                          placeholder="Запуск"
-                          onChange={(nextValue) =>
-                            onScenarioSettingsFormChange((prev) =>
-                              prev
-                                ? {
-                                    ...prev,
-                                    trigger_mode: nextValue,
-                                    candidate_work_stage_trigger:
-                                      nextValue === "candidate_hr_stage" ? prev.candidate_work_stage_trigger : "",
-                                  }
-                                : prev,
-                            )
-                          }
-                        />
-                      </label>
-                    ) : null}
-                    {!isSurveyWorkspace && scenarioSettingsForm.trigger_mode === "candidate_hr_stage" ? (
-                      <label className="grid min-w-0 gap-2.5">
-                        <span className="text-sm font-semibold text-foreground/75">HR-статус кандидата</span>
-                        <SingleSelectPicker
-                          options={candidateWorkStageOptions}
-                          value={scenarioSettingsForm.candidate_work_stage_trigger}
-                          placeholder="Выбери статус"
-                          onChange={(nextValue) =>
-                            onScenarioSettingsFormChange((prev) =>
-                              prev ? { ...prev, candidate_work_stage_trigger: nextValue } : prev,
-                            )
-                          }
-                        />
-                      </label>
-                    ) : null}
-                    <label className="grid min-w-0 gap-2.5">
-                      <span className="text-sm font-semibold text-foreground/75">Карточка</span>
-                      <SingleSelectPicker
-                        options={targetEmployeeOptions}
-                        value={scenarioSettingsForm.target_employee_id}
-                        placeholder="Любая"
-                        onChange={(nextValue) => onScenarioSettingsFormChange((prev) => (prev ? { ...prev, target_employee_id: nextValue } : prev))}
-                      />
-                    </label>
-                  </div>
-                  {scenarioSettingsState.message ? (
-                    <p className={`mt-4 text-sm ${scenarioSettingsState.error ? "text-destructive" : "text-muted-foreground"}`}>
-                      {scenarioSettingsState.message}
-                    </p>
-                  ) : null}
-                </PopoverContent>
-              </Popover>
             ) : null}
             <Button variant="secondary" size="sm" onClick={onAddRootStep}>
               <Plus data-icon="inline-start" />

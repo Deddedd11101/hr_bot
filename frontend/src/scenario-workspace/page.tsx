@@ -21,6 +21,7 @@ import {
   supportsTargetField,
 } from "./model";
 import {
+  ScenarioSettingsDialog,
   WorkspaceCanvasSection,
   WorkspaceDetailSection,
   WorkspaceFlashNotice,
@@ -39,6 +40,10 @@ import type {
 } from "./types";
 
 const rootElement = document.getElementById("react-scenario-workspace-v2-root");
+
+function hasScenarioRouteParam() {
+  return new URL(window.location.href).searchParams.has("scenario_id");
+}
 
 function normalizeStepNotificationRules(rules: WorkspaceStepSendNotificationRule[] = []) {
   return rules
@@ -95,6 +100,9 @@ export function ScenarioWorkspacePage() {
   const [error, setError] = React.useState("");
   const [payload, setPayload] = React.useState<WorkspacePayload | null>(null);
   const [selectedScenarioId, setSelectedScenarioId] = React.useState<number | null>(initialScenarioId);
+  const [workspaceRouteMode, setWorkspaceRouteMode] = React.useState<"catalog" | "editor">(
+    initialScenarioId && hasScenarioRouteParam() ? "editor" : "catalog",
+  );
   const [search, setSearch] = React.useState("");
   const [audienceFilter, setAudienceFilter] = React.useState<"all" | "employees" | "candidates">("all");
   const [sortMode, setSortMode] = React.useState<"updated_desc" | "created_desc" | "created_asc" | "title_asc">("updated_desc");
@@ -138,6 +146,7 @@ export function ScenarioWorkspacePage() {
     isSurveyWorkspace && payload?.workspace?.scenario?.id ? `/surveys/${payload.workspace.scenario.id}/export` : "";
 
   const currentContainer = stack[stack.length - 1] || null;
+  const isCatalogRoute = !isSurveyWorkspace && workspaceRouteMode === "catalog";
   const currentItems = currentContainer?.items || [];
   const selectedItem = currentItems.find((item) => itemKey(item) === selectedItemKey) || currentItems[0] || null;
   const detailTarget = detailTargetFromItem(selectedItem);
@@ -270,9 +279,63 @@ export function ScenarioWorkspacePage() {
     [],
   );
 
+  const replaceRouteScenario = React.useCallback((scenarioId: number | null, mode: "catalog" | "editor") => {
+    const nextUrl = new URL(window.location.href);
+    if (scenarioId && mode === "editor") {
+      nextUrl.searchParams.set("scenario_id", String(scenarioId));
+    } else {
+      nextUrl.searchParams.delete("scenario_id");
+    }
+    window.history.pushState({ scenarioWorkspaceMode: mode, scenarioId }, "", nextUrl);
+    setWorkspaceRouteMode(mode);
+  }, []);
+
+  const openScenarioEditor = React.useCallback(
+    (scenarioId: number) => {
+      replaceRouteScenario(scenarioId, "editor");
+      setSelectedScenarioId(scenarioId);
+    },
+    [replaceRouteScenario],
+  );
+
+  const openScenarioCatalog = React.useCallback(() => {
+    replaceRouteScenario(null, "catalog");
+    setSelectedScenarioId(null);
+    setStack([]);
+    setSelectedItemKey("");
+    setScenarioSettingsOpen(false);
+  }, [replaceRouteScenario]);
+
+  const openScenarioSettings = React.useCallback((scenarioId: number) => {
+    if (payload?.workspace?.scenario?.id !== scenarioId) {
+      setScenarioSettingsForm(null);
+      setSelectedScenarioId(scenarioId);
+    }
+    setScenarioSettingsOpen(true);
+  }, [payload?.workspace?.scenario?.id]);
+
+  React.useEffect(() => {
+    const handlePopState = () => {
+      const params = new URL(window.location.href).searchParams;
+      const scenarioId = Number(params.get("scenario_id") || 0) || null;
+      setWorkspaceRouteMode(scenarioId ? "editor" : "catalog");
+      if (scenarioId) {
+        setSelectedScenarioId(scenarioId);
+      } else {
+        setSelectedScenarioId(null);
+        setStack([]);
+        setSelectedItemKey("");
+      }
+      setScenarioSettingsOpen(false);
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
+
   React.useEffect(() => {
     const params = new URLSearchParams();
     params.set("kind", workspaceKind);
+    const cleanCatalogRequest = !isSurveyWorkspace && workspaceRouteMode === "catalog" && !scenarioSettingsOpen;
     if (selectedScenarioId) {
       params.set("scenario_id", String(selectedScenarioId));
     }
@@ -286,6 +349,13 @@ export function ScenarioWorkspacePage() {
         return response.json() as Promise<WorkspacePayload>;
       })
       .then((nextPayload) => {
+        if (cleanCatalogRequest) {
+          setPayload(nextPayload);
+          setSelectedScenarioId(null);
+          setStack([]);
+          setSelectedItemKey("");
+          return;
+        }
         if (nextPayload.workspace && selectedScenarioId === nextPayload.selected_scenario_id && stackRef.current.length) {
           applyPayload(nextPayload);
         } else if (nextPayload.workspace) {
@@ -307,7 +377,7 @@ export function ScenarioWorkspacePage() {
       .finally(() => {
         setLoading(false);
       });
-  }, [apiUrl, itemLabel, selectedScenarioId, workspaceKind]);
+  }, [apiUrl, applyPayload, isSurveyWorkspace, itemLabel, scenarioSettingsOpen, selectedScenarioId, workspaceKind, workspaceRouteMode]);
 
   const scenarios = React.useMemo(() => {
     const items = payload?.scenarios || [];
@@ -502,6 +572,10 @@ export function ScenarioWorkspacePage() {
         setCreatingScenario(false);
         setNewScenarioTitle("");
         applyPayload(result.payload);
+        if (result.scenario_id) {
+          replaceRouteScenario(result.scenario_id, "editor");
+          setSelectedScenarioId(result.scenario_id);
+        }
       })
       .catch((createError: Error) => {
         setSidebarState({ message: createError.message || `Не удалось создать ${itemLabel}`, error: true });
@@ -793,6 +867,122 @@ export function ScenarioWorkspacePage() {
     [payload?.workspace],
   );
 
+  const renderScenarioListSection = (
+    variant: "sidebar" | "catalog",
+    onSelectScenario: (scenarioId: number) => void,
+    onOpenScenarioSettings?: (scenarioId: number) => void,
+  ) => (
+    <WorkspaceSidebarSection
+      variant={variant}
+      sidebarTitle={sidebarTitle}
+      isSurveyWorkspace={isSurveyWorkspace}
+      createItemLabel={createItemLabel}
+      itemNamePlaceholder={itemNamePlaceholder}
+      creatingScenario={creatingScenario}
+      newScenarioTitle={newScenarioTitle}
+      search={search}
+      audienceFilter={audienceFilter}
+      sortMode={sortMode}
+      scenarios={scenarios}
+      selectedScenarioId={selectedScenarioId}
+      selectedScenarioIds={selectedScenarioIds}
+      dragScenarioId={dragScenarioId}
+      sidebarState={sidebarState}
+      onNewScenarioTitleChange={setNewScenarioTitle}
+      onCreateScenario={handleCreateScenario}
+      onOpenCreateScenario={() => setCreatingScenario(true)}
+      onCancelCreateScenario={() => {
+        setCreatingScenario(false);
+        setNewScenarioTitle("");
+      }}
+      onSearchChange={setSearch}
+      onAudienceFilterChange={setAudienceFilter}
+      onSortModeChange={setSortMode}
+      onToggleSelectAllVisibleScenarios={toggleSelectAllVisibleScenarios}
+      onBulkScenarioAction={handleBulkScenarioAction}
+      onSelectScenario={onSelectScenario}
+      onScenarioDragStart={setDragScenarioId}
+      onScenarioDrop={handleScenarioDrop}
+      onScenarioDragEnd={() => setDragScenarioId(null)}
+      onToggleScenarioSelection={toggleScenarioSelection}
+      onOpenScenarioSettings={onOpenScenarioSettings}
+    />
+  );
+
+  const renderCanvasSection = () => (
+    <WorkspaceCanvasSection
+      stack={stack}
+      currentContainer={currentContainer}
+      currentItems={currentItems}
+      selectedItemKey={selectedItemKey}
+      selectedStepId={selectedStepId}
+      viewMode={viewMode}
+      stepTitle={stepTitle}
+      isSurveyWorkspace={isSurveyWorkspace}
+      graph={payload?.workspace?.graph}
+      payloadWorkspace={payload?.workspace}
+      exportUrl={exportUrl}
+      dragStepId={dragStepId}
+      onBreadcrumbClick={(index) => {
+        const next = stack.slice(0, index + 1);
+        setStack(next);
+        setSelectedItemKey(itemKey(next[next.length - 1]?.items?.[0]));
+      }}
+      onAddRootStep={handleAddRootStep}
+      onAddChainStep={handleAddChainStep}
+      onSelectItem={setSelectedItemKey}
+      onViewModeChange={setViewMode}
+      onSelectGraphStep={handleSelectGraphStep}
+      onDragStepStart={setDragStepId}
+      onDragStepDrop={handleRootStepDrop}
+      onDragStepEnd={() => setDragStepId(null)}
+      onOpenItem={(item) => {
+        const nextContainer = buildChildContainer(item);
+        if (!nextContainer) return;
+        setStack((prev) => prev.concat(nextContainer));
+        setSelectedItemKey(itemKey(nextContainer.items[0]));
+      }}
+    />
+  );
+
+  const renderDetailSection = () => (
+    <WorkspaceDetailSection>
+      <WorkspaceStepDetailPane
+        selectedItem={selectedItem}
+        detailTarget={detailTarget}
+        stepLabel={stepLabel}
+        form={form}
+        textRef={textRef}
+        fileInputRef={fileInputRef}
+        payloadWorkspace={payload?.workspace}
+        attachmentState={attachmentState}
+        saveState={saveState}
+        openLabel={openLabel}
+        isSurveyWorkspace={isSurveyWorkspace}
+        responseTypePickerOptions={responseTypePickerOptions}
+        sendModeOptions={sendModeOptions}
+        targetFieldOptions={targetFieldOptions}
+        launchScenarioOptions={launchScenarioOptions}
+        rootStepOptions={rootStepOptions}
+        onInsertIntoText={insertIntoText}
+        onFormChange={setForm}
+        onCreateBranch={handleCreateBranch}
+        onAttachmentSelected={handleAttachmentSelected}
+        onDeleteAttachment={handleDeleteAttachment}
+        onDeleteCurrent={handleDeleteCurrent}
+        onOpenCurrentChild={() => {
+          const nextContainer = buildChildContainer(selectedItem);
+          if (!nextContainer) return;
+          setStack((prev) => prev.concat(nextContainer));
+          setSelectedItemKey(itemKey(nextContainer.items[0]));
+        }}
+        onSave={handleSave}
+        supportsButtonOptions={supportsButtonOptions}
+        supportsTargetField={supportsTargetField}
+      />
+    </WorkspaceDetailSection>
+  );
+
   if (loading && !payload) {
     return <Card className="border border-border bg-card p-8 shadow-none ring-0">Собираю новый workspace…</Card>;
   }
@@ -813,6 +1003,23 @@ export function ScenarioWorkspacePage() {
   return (
     <div className="flex h-full min-h-0 flex-col gap-4">
       <WorkspaceFlashNotice message={flashState.message} error={flashState.error} />
+      <ScenarioSettingsDialog
+        open={scenarioSettingsOpen}
+        itemLabel={itemLabel}
+        scenarioTitle={payload?.workspace?.scenario?.title || ""}
+        isSurveyWorkspace={isSurveyWorkspace}
+        scenarioSettingsForm={scenarioSettingsForm}
+        scenarioSettingsState={scenarioSettingsState}
+        roleScopeOptions={roleScopeOptions}
+        employeeScopeOptions={employeeScopeOptions}
+        recipientModeOptions={recipientModeOptions}
+        triggerModeOptions={triggerModeOptions}
+        candidateWorkStageOptions={candidateWorkStageOptions}
+        targetEmployeeOptions={targetEmployeeOptions}
+        onOpenChange={setScenarioSettingsOpen}
+        onSave={handleSaveScenarioSettings}
+        onFormChange={setScenarioSettingsForm}
+      />
       <div
         className="relative min-h-0 flex-1 overflow-hidden"
       >
@@ -823,126 +1030,35 @@ export function ScenarioWorkspacePage() {
             </div>
           </div>
         ) : null}
-        <div
-          className={`grid h-full grid-cols-[392px_minmax(0,1fr)_488px] gap-4 transition-opacity max-[1400px]:grid-cols-[320px_minmax(0,1fr)_400px] ${loading ? "opacity-80" : "opacity-100"}`}
-        >
-          <WorkspaceSidebarSection
-            sidebarTitle={sidebarTitle}
-            isSurveyWorkspace={isSurveyWorkspace}
-            createItemLabel={createItemLabel}
-            itemNamePlaceholder={itemNamePlaceholder}
-            creatingScenario={creatingScenario}
-            newScenarioTitle={newScenarioTitle}
-            search={search}
-            audienceFilter={audienceFilter}
-            sortMode={sortMode}
-            scenarios={scenarios}
-            selectedScenarioId={selectedScenarioId}
-            selectedScenarioIds={selectedScenarioIds}
-            dragScenarioId={dragScenarioId}
-            sidebarState={sidebarState}
-            onNewScenarioTitleChange={setNewScenarioTitle}
-            onCreateScenario={handleCreateScenario}
-            onOpenCreateScenario={() => setCreatingScenario(true)}
-            onCancelCreateScenario={() => {
-              setCreatingScenario(false);
-              setNewScenarioTitle("");
-            }}
-            onSearchChange={setSearch}
-            onAudienceFilterChange={setAudienceFilter}
-            onSortModeChange={setSortMode}
-            onToggleSelectAllVisibleScenarios={toggleSelectAllVisibleScenarios}
-            onBulkScenarioAction={handleBulkScenarioAction}
-            onSelectScenario={setSelectedScenarioId}
-            onScenarioDragStart={setDragScenarioId}
-            onScenarioDrop={handleScenarioDrop}
-            onScenarioDragEnd={() => setDragScenarioId(null)}
-            onToggleScenarioSelection={toggleScenarioSelection}
-          />
-
-          <WorkspaceCanvasSection
-            stack={stack}
-            currentContainer={currentContainer}
-            currentItems={currentItems}
-            selectedItemKey={selectedItemKey}
-            selectedStepId={selectedStepId}
-            viewMode={viewMode}
-            stepTitle={stepTitle}
-            itemLabel={itemLabel}
-            isSurveyWorkspace={isSurveyWorkspace}
-            graph={payload?.workspace?.graph}
-            payloadWorkspace={payload?.workspace}
-            exportUrl={exportUrl}
-            scenarioSettingsForm={scenarioSettingsForm}
-            scenarioSettingsOpen={scenarioSettingsOpen}
-            scenarioSettingsState={scenarioSettingsState}
-            roleScopeOptions={roleScopeOptions}
-            employeeScopeOptions={employeeScopeOptions}
-            recipientModeOptions={recipientModeOptions}
-            triggerModeOptions={triggerModeOptions}
-            candidateWorkStageOptions={candidateWorkStageOptions}
-            targetEmployeeOptions={targetEmployeeOptions}
-            dragStepId={dragStepId}
-            onBreadcrumbClick={(index) => {
-              const next = stack.slice(0, index + 1);
-              setStack(next);
-              setSelectedItemKey(itemKey(next[next.length - 1]?.items?.[0]));
-            }}
-            onScenarioSettingsOpenChange={setScenarioSettingsOpen}
-            onSaveScenarioSettings={handleSaveScenarioSettings}
-            onScenarioSettingsFormChange={setScenarioSettingsForm}
-            onAddRootStep={handleAddRootStep}
-            onAddChainStep={handleAddChainStep}
-            onSelectItem={setSelectedItemKey}
-            onViewModeChange={setViewMode}
-            onSelectGraphStep={handleSelectGraphStep}
-            onDragStepStart={setDragStepId}
-            onDragStepDrop={handleRootStepDrop}
-            onDragStepEnd={() => setDragStepId(null)}
-            onOpenItem={(item) => {
-              const nextContainer = buildChildContainer(item);
-              if (!nextContainer) return;
-              setStack((prev) => prev.concat(nextContainer));
-              setSelectedItemKey(itemKey(nextContainer.items[0]));
-            }}
-          />
-
-          <WorkspaceDetailSection>
-            <WorkspaceStepDetailPane
-              selectedItem={selectedItem}
-              detailTarget={detailTarget}
-              stepLabel={stepLabel}
-              form={form}
-              textRef={textRef}
-              fileInputRef={fileInputRef}
-              payloadWorkspace={payload?.workspace}
-              attachmentState={attachmentState}
-              saveState={saveState}
-              openLabel={openLabel}
-              isSurveyWorkspace={isSurveyWorkspace}
-              responseTypePickerOptions={responseTypePickerOptions}
-              sendModeOptions={sendModeOptions}
-              targetFieldOptions={targetFieldOptions}
-              launchScenarioOptions={launchScenarioOptions}
-              rootStepOptions={rootStepOptions}
-              onInsertIntoText={insertIntoText}
-              onFormChange={setForm}
-              onCreateBranch={handleCreateBranch}
-              onAttachmentSelected={handleAttachmentSelected}
-              onDeleteAttachment={handleDeleteAttachment}
-              onDeleteCurrent={handleDeleteCurrent}
-              onOpenCurrentChild={() => {
-                const nextContainer = buildChildContainer(selectedItem);
-                if (!nextContainer) return;
-                setStack((prev) => prev.concat(nextContainer));
-                setSelectedItemKey(itemKey(nextContainer.items[0]));
-              }}
-              onSave={handleSave}
-              supportsButtonOptions={supportsButtonOptions}
-              supportsTargetField={supportsTargetField}
-            />
-          </WorkspaceDetailSection>
-        </div>
+        {isCatalogRoute ? (
+          renderScenarioListSection("catalog", openScenarioEditor, openScenarioSettings)
+        ) : isSurveyWorkspace ? (
+          <div
+            className={`grid h-full grid-cols-[392px_minmax(0,1fr)_488px] gap-4 transition-opacity max-[1400px]:grid-cols-[320px_minmax(0,1fr)_400px] ${loading ? "opacity-80" : "opacity-100"}`}
+          >
+            {renderScenarioListSection("sidebar", setSelectedScenarioId)}
+            {renderCanvasSection()}
+            {renderDetailSection()}
+          </div>
+        ) : (
+          <div className={`flex h-full min-h-0 flex-col gap-3 transition-opacity ${loading ? "opacity-80" : "opacity-100"}`}>
+            <div className="flex shrink-0 items-center justify-between gap-3 rounded-lg border border-border bg-card px-4 py-3">
+              <div className="min-w-0">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">{sidebarTitle}</p>
+                <h2 className="truncate text-[1.35rem] font-semibold">{payload?.workspace?.scenario?.title || "Без сценария"}</h2>
+              </div>
+              <Button variant="secondary" onClick={openScenarioCatalog}>
+                К списку
+              </Button>
+            </div>
+            <div
+              className="grid min-h-0 flex-1 grid-cols-[minmax(420px,1fr)_minmax(420px,0.72fr)] gap-4 max-[1400px]:grid-cols-[minmax(360px,1fr)_minmax(380px,0.78fr)]"
+            >
+              {renderCanvasSection()}
+              {renderDetailSection()}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
