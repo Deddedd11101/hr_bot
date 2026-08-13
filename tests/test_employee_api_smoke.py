@@ -327,6 +327,34 @@ class EmployeeApiSmokeTests(unittest.TestCase):
             },
             options,
         )
+        self.assertIn(
+            {
+                "token": "manager",
+                "label": "Руководитель",
+                "description": "Руководитель из карточки сотрудника",
+                "kind": "role",
+            },
+            options,
+        )
+        self.assertIn(
+            {
+                "token": "mentor_adaptation",
+                "label": "Наставник адаптации",
+                "description": "Наставник адаптации из карточки сотрудника",
+                "kind": "role",
+            },
+            options,
+        )
+        self.assertIn(
+            {
+                "token": "mentor_ipr",
+                "label": "Наставник ИПР",
+                "description": "Наставник ИПР из карточки сотрудника",
+                "kind": "role",
+            },
+            options,
+        )
+        self.assertFalse(any(str(option.get("token") or "").startswith("employee:") for option in options))
 
     def test_employee_detail_update_supports_staff_selects_and_adaptation_dates(self) -> None:
         now = datetime.now(UTC).replace(tzinfo=None)
@@ -2126,13 +2154,13 @@ class EmployeeApiSmokeTests(unittest.TestCase):
                             {
                                 "rule_index": 0,
                                 "message_text": "Нажали Да",
-                                "recipient_ids": f"employee:{self.employee_id}",
+                                "recipient_ids": "mentor_ipr",
                                 "recipient_scope": "",
                             },
                             {
                                 "rule_index": 1,
                                 "message_text": "Дублирующее уведомление для HR",
-                                "recipient_ids": f"employee:{self.employee_id}",
+                                "recipient_ids": "manager",
                                 "recipient_scope": "",
                             },
                         ],
@@ -2148,7 +2176,7 @@ class EmployeeApiSmokeTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.json()["payload"]["workspace"]["root_steps"][0]
         self.assertEqual(payload["button_notifications"][0]["message_text"], "Нажали Да")
-        self.assertEqual(payload["button_notifications"][0]["recipient_ids"], f"employee:{self.employee_id}")
+        self.assertEqual(payload["button_notifications"][0]["recipient_ids"], "mentor_ipr")
         self.assertEqual(len(payload["button_notifications"][0]["rules"]), 2)
         self.assertEqual(payload["button_notifications"][0]["rules"][1]["message_text"], "Дублирующее уведомление для HR")
 
@@ -2163,9 +2191,11 @@ class EmployeeApiSmokeTests(unittest.TestCase):
             self.assertEqual(notifications[0].option_index, 0)
             self.assertEqual(notifications[0].rule_index, 0)
             self.assertEqual(notifications[0].message_text, "Нажали Да")
-            self.assertEqual(notifications[0].recipient_ids, f"employee:{self.employee_id}")
+            self.assertEqual(notifications[0].recipient_ids, "mentor_ipr")
+            self.assertIsNone(notifications[0].recipient_scope)
             self.assertEqual(notifications[1].rule_index, 1)
             self.assertEqual(notifications[1].message_text, "Дублирующее уведомление для HR")
+            self.assertEqual(notifications[1].recipient_ids, "manager")
 
     def test_workspace_step_api_preserves_buttons_target_field(self) -> None:
         scenario_key = f"codex_button_target_{self.unique_tag}"
@@ -2404,13 +2434,13 @@ class EmployeeApiSmokeTests(unittest.TestCase):
                 "launch_scenario_key": "another_flow",
                 "send_employee_card": True,
                 "notify_on_send_text": "Не должно сохраниться",
-                "notify_on_send_recipient_ids": f"employee:{self.employee_id}",
+                "notify_on_send_recipient_ids": "manager",
                 "notify_on_send_recipient_scope": "manager",
                 "step_send_notifications": [
                     {
                         "rule_index": 0,
                         "message_text": "Тоже не должно сохраниться",
-                        "recipient_ids": f"employee:{self.employee_id}",
+                        "recipient_ids": "mentor_adaptation",
                         "recipient_scope": "",
                     }
                 ],
@@ -2421,7 +2451,7 @@ class EmployeeApiSmokeTests(unittest.TestCase):
                             {
                                 "rule_index": 0,
                                 "message_text": "Лишнее кнопочное уведомление",
-                                "recipient_ids": f"employee:{self.employee_id}",
+                                "recipient_ids": "mentor_ipr",
                                 "recipient_scope": "",
                             }
                         ],
@@ -2518,13 +2548,13 @@ class EmployeeApiSmokeTests(unittest.TestCase):
                     {
                         "rule_index": 0,
                         "message_text": "Шаг отправлен HR",
-                        "recipient_ids": f"employee:{self.employee_id}",
+                        "recipient_ids": "manager",
                         "recipient_scope": "",
                     },
                     {
                         "rule_index": 1,
                         "message_text": "Дубликат уведомления",
-                        "recipient_ids": f"employee:{self.employee_id}",
+                        "recipient_ids": "hr",
                         "recipient_scope": "",
                     },
                 ],
@@ -2535,7 +2565,7 @@ class EmployeeApiSmokeTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.json()["payload"]["workspace"]["root_steps"][0]
         self.assertEqual(payload["step_send_notifications"][0]["message_text"], "Шаг отправлен HR")
-        self.assertEqual(payload["step_send_notifications"][0]["recipient_ids"], f"employee:{self.employee_id}")
+        self.assertEqual(payload["step_send_notifications"][0]["recipient_ids"], "manager")
         self.assertEqual(len(payload["step_send_notifications"]), 2)
         self.assertEqual(payload["step_send_notifications"][1]["message_text"], "Дубликат уведомления")
 
@@ -2549,9 +2579,11 @@ class EmployeeApiSmokeTests(unittest.TestCase):
             self.assertEqual(len(notifications), 2)
             self.assertEqual(notifications[0].rule_index, 0)
             self.assertEqual(notifications[0].message_text, "Шаг отправлен HR")
-            self.assertEqual(notifications[0].recipient_ids, f"employee:{self.employee_id}")
+            self.assertEqual(notifications[0].recipient_ids, "manager")
+            self.assertIsNone(notifications[0].recipient_scope)
             self.assertEqual(notifications[1].rule_index, 1)
             self.assertEqual(notifications[1].message_text, "Дубликат уведомления")
+            self.assertEqual(notifications[1].recipient_ids, "hr")
 
         update_response = self.client.post(
             f"/api/flows/workspace/steps/{step_id}",
@@ -2566,13 +2598,13 @@ class EmployeeApiSmokeTests(unittest.TestCase):
                 "launch_scenario_key": "",
                 "send_employee_card": False,
                 "notify_on_send_text": "Обновлённое уведомление",
-                "notify_on_send_recipient_ids": f"employee:{self.employee_id}",
+                "notify_on_send_recipient_ids": "mentor_adaptation",
                 "notify_on_send_recipient_scope": "",
                 "step_send_notifications": [
                     {
                         "rule_index": 0,
                         "message_text": "Обновлённое уведомление",
-                        "recipient_ids": f"employee:{self.employee_id}",
+                        "recipient_ids": "mentor_adaptation",
                         "recipient_scope": "",
                     },
                 ],
@@ -2589,6 +2621,8 @@ class EmployeeApiSmokeTests(unittest.TestCase):
             notifications = db.query(StepSendNotification).filter(StepSendNotification.step_id == step_id).all()
             self.assertEqual(len(notifications), 1)
             self.assertEqual(notifications[0].message_text, "Обновлённое уведомление")
+            self.assertEqual(notifications[0].recipient_ids, "mentor_adaptation")
+            self.assertIsNone(notifications[0].recipient_scope)
 
     def test_workspace_branch_step_api_persists_return_to_root_step(self) -> None:
         scenario_key = f"codex_branch_return_{self.unique_tag}"
@@ -2783,13 +2817,26 @@ class EmployeeApiSmokeTests(unittest.TestCase):
         self.assertTrue(any(edge["kind"] == "return_to_root" for edge in graph["edges"]))
         self.assertTrue(any(edge["kind"] == "launch_scenario" for edge in graph["edges"]))
 
-    def test_button_response_sends_all_notification_rules(self) -> None:
+    def test_button_notification_to_mentor_ipr_resolves_correctly(self) -> None:
         scenario_key = f"codex_button_runtime_{self.unique_tag}"
         now = datetime.now(UTC).replace(tzinfo=None)
         with SessionLocal() as db:
             employee = db.get(Employee, self.employee_id)
             self.assertIsNotNone(employee)
             set_primary_chat_id(employee, "200001", db=db)
+            mentor_ipr = Employee(
+                full_name=f"Mentor IPR Runtime {self.unique_tag}",
+                telegram_user_id="780001",
+                first_workday=None,
+                created_at=now,
+                is_flow_scheduled=False,
+                employee_stage="staff",
+                is_mentor=True,
+            )
+            db.add(mentor_ipr)
+            db.flush()
+            set_primary_chat_id(mentor_ipr, "210003", db=db)
+            employee.mentor_ipr_employee_id = mentor_ipr.id
             employee.employee_stage = "candidate"
             scenario = ScenarioTemplate(
                 scenario_key=scenario_key,
@@ -2825,25 +2872,15 @@ class EmployeeApiSmokeTests(unittest.TestCase):
                     updated_at=now,
                 )
             )
-            db.add_all(
-                [
-                    StepButtonNotification(
-                        flow_key=scenario_key,
-                        step_id=step.id,
-                        option_index=0,
-                        rule_index=0,
-                        message_text="Правило 1",
-                        recipient_ids=f"employee:{employee.id}",
-                    ),
-                    StepButtonNotification(
-                        flow_key=scenario_key,
-                        step_id=step.id,
-                        option_index=0,
-                        rule_index=1,
-                        message_text="Правило 2",
-                        recipient_ids=f"employee:{employee.id}",
-                    ),
-                ]
+            db.add(
+                StepButtonNotification(
+                    flow_key=scenario_key,
+                    step_id=step.id,
+                    option_index=0,
+                    rule_index=0,
+                    message_text="Правило mentor_ipr",
+                    recipient_ids="mentor_ipr",
+                )
             )
             db.commit()
             messenger = DummyMessenger()
@@ -2851,22 +2888,32 @@ class EmployeeApiSmokeTests(unittest.TestCase):
             handled = asyncio.run(handle_button_response(messenger, db, employee, scenario_key, step.step_key, 0))
 
             self.assertTrue(handled)
-            self.assertEqual(
-                messenger.sent_texts[-2:],
-                [("200001", "Правило 1"), ("200001", "Правило 2")],
-            )
+            self.assertIn(("210003", "Правило mentor_ipr"), messenger.sent_texts)
 
-    def test_send_step_sends_all_step_notification_rules(self) -> None:
-        scenario_key = f"codex_step_runtime_{self.unique_tag}"
+    def test_send_step_notification_to_manager_resolves_correctly(self) -> None:
+        scenario_key = f"codex_step_manager_{self.unique_tag}"
         now = datetime.now(UTC).replace(tzinfo=None)
         with SessionLocal() as db:
             employee = db.get(Employee, self.employee_id)
             self.assertIsNotNone(employee)
             set_primary_chat_id(employee, "200001", db=db)
+            manager = Employee(
+                full_name=f"Manager Runtime {self.unique_tag}",
+                telegram_user_id="780002",
+                first_workday=None,
+                created_at=now,
+                is_flow_scheduled=False,
+                employee_stage="staff",
+                is_manager=True,
+            )
+            db.add(manager)
+            db.flush()
+            set_primary_chat_id(manager, "210001", db=db)
+            employee.manager_employee_id = manager.id
             employee.employee_stage = "candidate"
             scenario = ScenarioTemplate(
                 scenario_key=scenario_key,
-                title=f"codex-step-runtime-{self.unique_tag}",
+                title=f"codex-step-manager-{self.unique_tag}",
                 sort_order=10,
                 scenario_kind="scenario",
                 role_scope="all",
@@ -2886,23 +2933,14 @@ class EmployeeApiSmokeTests(unittest.TestCase):
             )
             db.add(step)
             db.flush()
-            db.add_all(
-                [
-                    StepSendNotification(
-                        flow_key=scenario_key,
-                        step_id=step.id,
-                        rule_index=0,
-                        message_text="Шаг правило 1",
-                        recipient_ids=f"employee:{employee.id}",
-                    ),
-                    StepSendNotification(
-                        flow_key=scenario_key,
-                        step_id=step.id,
-                        rule_index=1,
-                        message_text="Шаг правило 2",
-                        recipient_ids=f"employee:{employee.id}",
-                    ),
-                ]
+            db.add(
+                StepSendNotification(
+                    flow_key=scenario_key,
+                    step_id=step.id,
+                    rule_index=0,
+                    message_text="Шаг правило manager",
+                    recipient_ids="manager",
+                )
             )
             db.commit()
             messenger = DummyMessenger()
@@ -2910,9 +2948,218 @@ class EmployeeApiSmokeTests(unittest.TestCase):
             asyncio.run(send_step(messenger, db, employee, scenario, step))
 
             self.assertEqual(
-                messenger.sent_texts[:3],
-                [("200001", "Текст шага"), ("200001", "Шаг правило 1"), ("200001", "Шаг правило 2")],
+                messenger.sent_texts[:2],
+                [("200001", "Текст шага"), ("210001", "Шаг правило manager")],
             )
+
+    def test_send_step_notification_to_mentor_adaptation_resolves_correctly(self) -> None:
+        scenario_key = f"codex_step_mentor_adapt_{self.unique_tag}"
+        now = datetime.now(UTC).replace(tzinfo=None)
+        with SessionLocal() as db:
+            employee = db.get(Employee, self.employee_id)
+            self.assertIsNotNone(employee)
+            set_primary_chat_id(employee, "200001", db=db)
+            mentor = Employee(
+                full_name=f"Mentor Adapt Runtime {self.unique_tag}",
+                telegram_user_id="780003",
+                first_workday=None,
+                created_at=now,
+                is_flow_scheduled=False,
+                employee_stage="staff",
+                is_mentor=True,
+            )
+            db.add(mentor)
+            db.flush()
+            set_primary_chat_id(mentor, "210002", db=db)
+            employee.mentor_adaptation_employee_id = mentor.id
+            employee.employee_stage = "candidate"
+            scenario = ScenarioTemplate(
+                scenario_key=scenario_key,
+                title=f"codex-step-mentor-adapt-{self.unique_tag}",
+                sort_order=10,
+                scenario_kind="scenario",
+                role_scope="all",
+                employee_scope="all",
+                trigger_mode="manual_only",
+            )
+            db.add(scenario)
+            db.flush()
+            step = FlowStepTemplate(
+                flow_key=scenario_key,
+                step_key=f"{scenario_key}_step_1",
+                step_title="Шаг с уведомлением",
+                sort_order=10,
+                default_text="Текст шага",
+                response_type="none",
+                send_mode="immediate",
+            )
+            db.add(step)
+            db.flush()
+            db.add(
+                StepSendNotification(
+                    flow_key=scenario_key,
+                    step_id=step.id,
+                    rule_index=0,
+                    message_text="Шаг правило mentor_adaptation",
+                    recipient_ids="mentor_adaptation",
+                )
+            )
+            db.commit()
+            messenger = DummyMessenger()
+
+            asyncio.run(send_step(messenger, db, employee, scenario, step))
+
+            self.assertIn(("210002", "Шаг правило mentor_adaptation"), messenger.sent_texts)
+
+    def test_send_step_notification_to_hr_resolves_via_hr_settings(self) -> None:
+        scenario_key = f"codex_step_hr_{self.unique_tag}"
+        now = datetime.now(UTC).replace(tzinfo=None)
+        with SessionLocal() as db:
+            employee = db.get(Employee, self.employee_id)
+            self.assertIsNotNone(employee)
+            set_primary_chat_id(employee, "200001", db=db)
+            hr_settings = db.get(HrSettings, 1)
+            self.assertIsNotNone(hr_settings)
+            hr_settings.telegram_user_id = "210004"
+            scenario = ScenarioTemplate(
+                scenario_key=scenario_key,
+                title=f"codex-step-hr-{self.unique_tag}",
+                sort_order=10,
+                scenario_kind="scenario",
+                role_scope="all",
+                employee_scope="all",
+                trigger_mode="manual_only",
+            )
+            db.add(scenario)
+            db.flush()
+            step = FlowStepTemplate(
+                flow_key=scenario_key,
+                step_key=f"{scenario_key}_step_1",
+                step_title="Шаг с уведомлением",
+                sort_order=10,
+                default_text="Текст шага",
+                response_type="none",
+                send_mode="immediate",
+            )
+            db.add(step)
+            db.flush()
+            db.add(
+                StepSendNotification(
+                    flow_key=scenario_key,
+                    step_id=step.id,
+                    rule_index=0,
+                    message_text="Шаг правило hr",
+                    recipient_ids="hr",
+                )
+            )
+            db.commit()
+            messenger = DummyMessenger()
+
+            asyncio.run(send_step(messenger, db, employee, scenario, step))
+
+            self.assertIn(("210004", "Шаг правило hr"), messenger.sent_texts)
+
+    def test_send_step_notification_skips_missing_manager_without_failing_scenario(self) -> None:
+        scenario_key = f"codex_step_missing_manager_{self.unique_tag}"
+        now = datetime.now(UTC).replace(tzinfo=None)
+        with SessionLocal() as db:
+            employee = db.get(Employee, self.employee_id)
+            self.assertIsNotNone(employee)
+            set_primary_chat_id(employee, "200001", db=db)
+            employee.manager_employee_id = None
+            scenario = ScenarioTemplate(
+                scenario_key=scenario_key,
+                title=f"codex-step-missing-manager-{self.unique_tag}",
+                sort_order=10,
+                scenario_kind="scenario",
+                role_scope="all",
+                employee_scope="all",
+                trigger_mode="manual_only",
+            )
+            db.add(scenario)
+            db.flush()
+            step = FlowStepTemplate(
+                flow_key=scenario_key,
+                step_key=f"{scenario_key}_step_1",
+                step_title="Шаг с уведомлением",
+                sort_order=10,
+                default_text="Текст шага",
+                response_type="none",
+                send_mode="immediate",
+            )
+            db.add(step)
+            db.flush()
+            db.add(
+                StepSendNotification(
+                    flow_key=scenario_key,
+                    step_id=step.id,
+                    rule_index=0,
+                    message_text="Не должно упасть",
+                    recipient_ids="manager",
+                )
+            )
+            db.commit()
+            messenger = DummyMessenger()
+
+            asyncio.run(send_step(messenger, db, employee, scenario, step))
+
+            self.assertEqual(messenger.sent_texts, [("200001", "Текст шага")])
+
+    def test_send_step_notification_keeps_legacy_employee_token_runtime_support(self) -> None:
+        scenario_key = f"codex_step_legacy_recipient_{self.unique_tag}"
+        now = datetime.now(UTC).replace(tzinfo=None)
+        with SessionLocal() as db:
+            employee = db.get(Employee, self.employee_id)
+            self.assertIsNotNone(employee)
+            set_primary_chat_id(employee, "200001", db=db)
+            observer = Employee(
+                full_name=f"Legacy Observer {self.unique_tag}",
+                telegram_user_id="780004",
+                first_workday=None,
+                created_at=now,
+                is_flow_scheduled=False,
+                employee_stage="staff",
+            )
+            db.add(observer)
+            db.flush()
+            set_primary_chat_id(observer, "210005", db=db)
+            scenario = ScenarioTemplate(
+                scenario_key=scenario_key,
+                title=f"codex-step-legacy-recipient-{self.unique_tag}",
+                sort_order=10,
+                scenario_kind="scenario",
+                role_scope="all",
+                employee_scope="all",
+                trigger_mode="manual_only",
+            )
+            db.add(scenario)
+            db.flush()
+            step = FlowStepTemplate(
+                flow_key=scenario_key,
+                step_key=f"{scenario_key}_step_1",
+                step_title="Шаг с уведомлением",
+                sort_order=10,
+                default_text="Текст шага",
+                response_type="none",
+                send_mode="immediate",
+            )
+            db.add(step)
+            db.flush()
+            db.add(
+                StepSendNotification(
+                    flow_key=scenario_key,
+                    step_id=step.id,
+                    rule_index=0,
+                    message_text="Legacy recipient works",
+                    recipient_ids=f"employee:{observer.id}",
+                )
+            )
+            db.commit()
+            messenger = DummyMessenger()
+
+            asyncio.run(send_step(messenger, db, employee, scenario, step))
+
+            self.assertIn(("210005", "Legacy recipient works"), messenger.sent_texts)
 
     def test_survey_option_buttons_work_without_branching_response_type(self) -> None:
         scenario_key = f"codex_survey_buttons_{self.unique_tag}"

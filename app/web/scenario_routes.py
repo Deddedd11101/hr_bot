@@ -35,6 +35,7 @@ from .scenarios import (
     _generate_workspace_scenario_key,
     _get_workspace_scenario_by_flow_key,
     _load_scenario_editor_data,
+    _normalize_notification_recipient_tokens,
     _normalize_workspace_kind,
     _normalize_notification_scope,
     _save_step_attachment,
@@ -1171,10 +1172,11 @@ async def update_scenario(
                 step.send_employee_card = send_employee_card_values[index] == "true"
             if index < len(notify_on_send_text_values):
                 step.notify_on_send_text = notify_on_send_text_values[index].strip() or None
-            if index < len(notify_on_send_recipient_ids_values):
-                step.notify_on_send_recipient_ids = notify_on_send_recipient_ids_values[index].strip() or None
-            if index < len(notify_on_send_recipient_scope_values):
-                step.notify_on_send_recipient_scope = _normalize_notification_scope(notify_on_send_recipient_scope_values[index])
+            step.notify_on_send_recipient_ids = _normalize_notification_recipient_tokens(
+                notify_on_send_recipient_ids_values[index] if index < len(notify_on_send_recipient_ids_values) else "",
+                notify_on_send_recipient_scope_values[index] if index < len(notify_on_send_recipient_scope_values) else "",
+            )
+            step.notify_on_send_recipient_scope = None
             if scenario.scenario_kind == "survey":
                 step.send_mode = "immediate"
                 step.send_time = None
@@ -1393,8 +1395,11 @@ async def update_scenario(
                 branch_step.target_field = None
                 branch_step.send_employee_card = str(payload.get("send_employee_card") or "false").strip() == "true"
                 branch_step.notify_on_send_text = str(payload.get("notify_on_send_text") or "").strip() or None
-                branch_step.notify_on_send_recipient_ids = str(payload.get("notify_on_send_recipient_ids") or "").strip() or None
-                branch_step.notify_on_send_recipient_scope = _normalize_notification_scope(str(payload.get("notify_on_send_recipient_scope") or ""))
+                branch_step.notify_on_send_recipient_ids = _normalize_notification_recipient_tokens(
+                    str(payload.get("notify_on_send_recipient_ids") or ""),
+                    str(payload.get("notify_on_send_recipient_scope") or ""),
+                )
+                branch_step.notify_on_send_recipient_scope = None
                 _sync_button_notification(
                     db,
                     step,
@@ -1472,8 +1477,11 @@ async def update_scenario(
                         chain_step.target_field = chain_target_field_value if chain_target_field_value in TARGET_FIELD_LABELS else None
                         chain_step.send_employee_card = str(chain_payload.get("send_employee_card") or "false").strip() == "true"
                         chain_step.notify_on_send_text = str(chain_payload.get("notify_on_send_text") or "").strip() or None
-                        chain_step.notify_on_send_recipient_ids = str(chain_payload.get("notify_on_send_recipient_ids") or "").strip() or None
-                        chain_step.notify_on_send_recipient_scope = _normalize_notification_scope(str(chain_payload.get("notify_on_send_recipient_scope") or ""))
+                        chain_step.notify_on_send_recipient_ids = _normalize_notification_recipient_tokens(
+                            str(chain_payload.get("notify_on_send_recipient_ids") or ""),
+                            str(chain_payload.get("notify_on_send_recipient_scope") or ""),
+                        )
+                        chain_step.notify_on_send_recipient_scope = None
                         chain_row_ref_value = str(chain_payload.get("row_ref") or "").strip()
                         if chain_row_ref_value:
                             chain_step_id_by_ref[chain_row_ref_value] = chain_step.id
@@ -1636,8 +1644,11 @@ async def update_scenario(
                 branch_step.target_field = None
                 branch_step.send_employee_card = str(payload.get("send_employee_card") or "false").strip() == "true"
                 branch_step.notify_on_send_text = str(payload.get("notify_on_send_text") or "").strip() or None
-                branch_step.notify_on_send_recipient_ids = str(payload.get("notify_on_send_recipient_ids") or "").strip() or None
-                branch_step.notify_on_send_recipient_scope = _normalize_notification_scope(str(payload.get("notify_on_send_recipient_scope") or ""))
+                branch_step.notify_on_send_recipient_ids = _normalize_notification_recipient_tokens(
+                    str(payload.get("notify_on_send_recipient_ids") or ""),
+                    str(payload.get("notify_on_send_recipient_scope") or ""),
+                )
+                branch_step.notify_on_send_recipient_scope = None
                 _sync_button_notification(
                     db,
                     chain_parent_step,
@@ -1716,8 +1727,11 @@ async def update_scenario(
                         child_chain_step.target_field = child_chain_target_field_value if child_chain_target_field_value in TARGET_FIELD_LABELS else None
                         child_chain_step.send_employee_card = str(chain_payload.get("send_employee_card") or "false").strip() == "true"
                         child_chain_step.notify_on_send_text = str(chain_payload.get("notify_on_send_text") or "").strip() or None
-                        child_chain_step.notify_on_send_recipient_ids = str(chain_payload.get("notify_on_send_recipient_ids") or "").strip() or None
-                        child_chain_step.notify_on_send_recipient_scope = _normalize_notification_scope(str(chain_payload.get("notify_on_send_recipient_scope") or ""))
+                        child_chain_step.notify_on_send_recipient_ids = _normalize_notification_recipient_tokens(
+                            str(chain_payload.get("notify_on_send_recipient_ids") or ""),
+                            str(chain_payload.get("notify_on_send_recipient_scope") or ""),
+                        )
+                        child_chain_step.notify_on_send_recipient_scope = None
                         child_chain_row_ref_value = str(chain_payload.get("row_ref") or "").strip()
                         if child_chain_row_ref_value:
                             chain_step_id_by_ref[child_chain_row_ref_value] = child_chain_step.id

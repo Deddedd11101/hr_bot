@@ -57,6 +57,13 @@ NOTIFICATION_SCOPE_TO_EMPLOYEE_FIELD = {
     "mentor_adaptation": ("mentor_adaptation_employee_id", "mentor_adaptation_telegram_id"),
     "mentor_ipr": ("mentor_ipr_employee_id", "mentor_ipr_telegram_id"),
 }
+ROLE_ONLY_NOTIFICATION_TOKENS = (
+    "hr",
+    "manager",
+    "mentor_adaptation",
+    "mentor_ipr",
+)
+ROLE_ONLY_NOTIFICATION_TOKEN_SET = set(ROLE_ONLY_NOTIFICATION_TOKENS)
 RECIPIENT_MODE_SELF = "self"
 RECIPIENT_MODE_MANAGER = "manager"
 RECIPIENT_MODE_MENTOR_ADAPTATION = "mentor_adaptation"
@@ -881,6 +888,8 @@ def _resolve_explicit_notification_recipient(db: Session | None, raw_value: str)
         hr_settings = db.get(HrSettings, 1)
         hr_chat_id = (getattr(hr_settings, "telegram_user_id", None) or "").strip()
         return hr_chat_id or None
+    if normalized in NOTIFICATION_SCOPE_TO_EMPLOYEE_FIELD:
+        return normalized
     if normalized.startswith("employee:") and db is not None:
         employee_id_raw = normalized.split(":", 1)[1].strip()
         if employee_id_raw.isdigit():
@@ -919,6 +928,10 @@ def resolve_notification_recipients(
     recipients: list[str] = []
     for raw_value in _split_notification_recipients(explicit_ids):
         resolved_value = _resolve_explicit_notification_recipient(db, raw_value)
+        if resolved_value in NOTIFICATION_SCOPE_TO_EMPLOYEE_FIELD:
+            employee_fields = NOTIFICATION_SCOPE_TO_EMPLOYEE_FIELD[resolved_value]
+            relation_field, legacy_chat_field = employee_fields
+            resolved_value = _resolve_related_employee_chat_id(db, employee, relation_field, legacy_chat_field)
         if resolved_value and resolved_value not in recipients:
             recipients.append(resolved_value)
     for scope_key in _split_notification_recipients(recipient_scope):

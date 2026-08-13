@@ -30,7 +30,7 @@ from ..models import (
     StepSendNotification,
     SurveyAnswer,
 )
-from ..scenario_engine import resolve_followup_step
+from ..scenario_engine import ROLE_ONLY_NOTIFICATION_TOKEN_SET, resolve_followup_step
 from .employees import OFFER_DOCUMENT_TITLE, _all_employee_options
 from .settings import _get_or_create_hr_settings
 
@@ -134,29 +134,34 @@ def _load_scenario_editor_data(db: Session, scenario: ScenarioTemplate):
     for notification in step_send_notifications:
         step_send_notifications_by_step[notification.step_id].append(notification)
     available_scenarios = db.query(ScenarioTemplate).order_by(ScenarioTemplate.title, ScenarioTemplate.id).all()
-    employee_options = _all_employee_options(db)
     hr_settings = _get_or_create_hr_settings(db)
-    notification_recipient_options = []
-    hr_chat_id = (hr_settings.telegram_user_id or "").strip()
     hr_name = (hr_settings.hr_name or "").strip() or "HR"
-    if hr_chat_id:
-        notification_recipient_options.append(
-            {
-                "token": "hr",
-                "label": hr_name,
-                "description": "HR из системных настроек",
-                "kind": "hr",
-            }
-        )
-    notification_recipient_options.extend(
+    notification_recipient_options = [
         {
-            "token": f"employee:{option['id']}",
-            "label": option["label"],
-            "description": "Кандидат" if option["kind"] == "candidates" else "Сотрудник",
-            "kind": option["kind"],
-        }
-        for option in employee_options
-    )
+            "token": "hr",
+            "label": hr_name,
+            "description": "HR из системных настроек",
+            "kind": "hr",
+        },
+        {
+            "token": "manager",
+            "label": "Руководитель",
+            "description": "Руководитель из карточки сотрудника",
+            "kind": "role",
+        },
+        {
+            "token": "mentor_adaptation",
+            "label": "Наставник адаптации",
+            "description": "Наставник адаптации из карточки сотрудника",
+            "kind": "role",
+        },
+        {
+            "token": "mentor_ipr",
+            "label": "Наставник ИПР",
+            "description": "Наставник ИПР из карточки сотрудника",
+            "kind": "role",
+        },
+    ]
     return {
         "steps": steps,
         "branch_steps_by_parent": dict(branch_steps_by_parent),
@@ -169,7 +174,7 @@ def _load_scenario_editor_data(db: Session, scenario: ScenarioTemplate):
             step_id: list(items) for step_id, items in step_send_notifications_by_step.items()
         },
         "available_scenarios": available_scenarios,
-        "employee_options": employee_options,
+        "employee_options": _all_employee_options(db),
         "notification_recipient_options": notification_recipient_options,
         "document_tag_titles": [OFFER_DOCUMENT_TITLE],
     }
@@ -239,6 +244,26 @@ def _workspace_app_path(kind: str) -> str:
 
 def _workspace_item_label(kind: str) -> str:
     return "опрос" if kind == "survey" else "сценарий"
+
+
+def _normalize_notification_recipient_tokens(
+    recipient_ids: Optional[str],
+    recipient_scope: Optional[str],
+) -> Optional[str]:
+    normalized_tokens: list[str] = []
+    raw_chunks = ",".join(filter(None, [recipient_ids or "", recipient_scope or ""])).replace("\n", ",").split(",")
+    for raw_value in raw_chunks:
+        token = raw_value.strip()
+        if token in ROLE_ONLY_NOTIFICATION_TOKEN_SET and token not in normalized_tokens:
+            normalized_tokens.append(token)
+    return ",".join(normalized_tokens) or None
+
+
+def _serialize_notification_tokens(
+    recipient_ids: Optional[str],
+    recipient_scope: Optional[str],
+) -> str:
+    return _normalize_notification_recipient_tokens(recipient_ids, recipient_scope) or ""
 
 
 def _get_workspace_scenario_by_flow_key(db: Session, flow_key: str) -> Optional[ScenarioTemplate]:
@@ -585,8 +610,8 @@ def _serialize_workspace_step(
         {
             "rule_index": notification.rule_index,
             "message_text": notification.message_text or "",
-            "recipient_ids": notification.recipient_ids or "",
-            "recipient_scope": notification.recipient_scope or "",
+            "recipient_ids": _serialize_notification_tokens(notification.recipient_ids, notification.recipient_scope),
+            "recipient_scope": "",
         }
         for notification in step_send_notifications_by_step.get(step.id, [])
     ]
@@ -595,14 +620,17 @@ def _serialize_workspace_step(
             "option_index": option_index,
             "option_label": label,
             "message_text": getattr((step_button_notifications.get(option_index) or [None])[0], "message_text", None) or "",
-            "recipient_ids": getattr((step_button_notifications.get(option_index) or [None])[0], "recipient_ids", None) or "",
-            "recipient_scope": getattr((step_button_notifications.get(option_index) or [None])[0], "recipient_scope", None) or "",
+            "recipient_ids": _serialize_notification_tokens(
+                getattr((step_button_notifications.get(option_index) or [None])[0], "recipient_ids", None),
+                getattr((step_button_notifications.get(option_index) or [None])[0], "recipient_scope", None),
+            ),
+            "recipient_scope": "",
             "rules": [
                 {
                     "rule_index": notification.rule_index,
                     "message_text": notification.message_text or "",
-                    "recipient_ids": notification.recipient_ids or "",
-                    "recipient_scope": notification.recipient_scope or "",
+                    "recipient_ids": _serialize_notification_tokens(notification.recipient_ids, notification.recipient_scope),
+                    "recipient_scope": "",
                 }
                 for notification in (step_button_notifications.get(option_index) or [])
             ],
@@ -639,8 +667,11 @@ def _serialize_workspace_step(
             or (getattr(step, "notify_on_send_recipient_scope", None) or "").strip()
         ),
         "notify_on_send_text": getattr(step, "notify_on_send_text", None) or "",
-        "notify_on_send_recipient_ids": getattr(step, "notify_on_send_recipient_ids", None) or "",
-        "notify_on_send_recipient_scope": getattr(step, "notify_on_send_recipient_scope", None) or "",
+        "notify_on_send_recipient_ids": _serialize_notification_tokens(
+            getattr(step, "notify_on_send_recipient_ids", None),
+            getattr(step, "notify_on_send_recipient_scope", None),
+        ),
+        "notify_on_send_recipient_scope": "",
         "step_send_notifications": step_send_rules,
         "button_notifications": button_notifications,
         "branch_items": branch_items,
@@ -838,8 +869,11 @@ def _apply_workspace_step_update(db: Session, step: FlowStepTemplate, payload: d
     )
     step.send_employee_card = str(payload.get("send_employee_card") or "").strip().lower() in {"1", "true", "yes", "on"}
     step.notify_on_send_text = str(payload.get("notify_on_send_text") or "").strip() or None
-    step.notify_on_send_recipient_ids = str(payload.get("notify_on_send_recipient_ids") or "").strip() or None
-    step.notify_on_send_recipient_scope = _normalize_notification_scope(str(payload.get("notify_on_send_recipient_scope") or ""))
+    step.notify_on_send_recipient_ids = _normalize_notification_recipient_tokens(
+        str(payload.get("notify_on_send_recipient_ids") or ""),
+        str(payload.get("notify_on_send_recipient_scope") or ""),
+    )
+    step.notify_on_send_recipient_scope = None
 
     if step.response_type not in {"buttons", "branching"}:
         step.button_options = None
@@ -942,9 +976,11 @@ def _sync_workspace_step_send_notifications(db: Session, step: FlowStepTemplate,
     db.query(StepSendNotification).filter(StepSendNotification.step_id == step.id).delete()
     for fallback_rule_index, notification_payload in enumerate(normalized_rules):
         normalized_text = str(notification_payload.get("message_text") or "").strip() or None
-        normalized_recipient_ids = str(notification_payload.get("recipient_ids") or "").strip() or None
-        normalized_scope = _normalize_notification_scope(str(notification_payload.get("recipient_scope") or ""))
-        if not normalized_text and not normalized_recipient_ids and not normalized_scope:
+        normalized_recipient_ids = _normalize_notification_recipient_tokens(
+            str(notification_payload.get("recipient_ids") or ""),
+            str(notification_payload.get("recipient_scope") or ""),
+        )
+        if not normalized_text and not normalized_recipient_ids:
             continue
         db.add(
             StepSendNotification(
@@ -953,7 +989,7 @@ def _sync_workspace_step_send_notifications(db: Session, step: FlowStepTemplate,
                 rule_index=int(notification_payload.get("rule_index") or fallback_rule_index),
                 message_text=normalized_text,
                 recipient_ids=normalized_recipient_ids,
-                recipient_scope=normalized_scope,
+                recipient_scope=None,
             )
         )
 
@@ -962,16 +998,23 @@ def _sync_workspace_step_send_notifications(db: Session, step: FlowStepTemplate,
             rule
             for rule in sorted(normalized_rules, key=lambda item: int(item.get("rule_index") or 0))
             if str(rule.get("message_text") or "").strip()
-            or str(rule.get("recipient_ids") or "").strip()
-            or _normalize_notification_scope(str(rule.get("recipient_scope") or ""))
+            or _normalize_notification_recipient_tokens(
+                str(rule.get("recipient_ids") or ""),
+                str(rule.get("recipient_scope") or ""),
+            )
         ),
         None,
     )
     step.notify_on_send_text = str(first_rule.get("message_text") or "").strip() or None if first_rule else None
-    step.notify_on_send_recipient_ids = str(first_rule.get("recipient_ids") or "").strip() or None if first_rule else None
-    step.notify_on_send_recipient_scope = (
-        _normalize_notification_scope(str(first_rule.get("recipient_scope") or "")) if first_rule else None
+    step.notify_on_send_recipient_ids = (
+        _normalize_notification_recipient_tokens(
+            str(first_rule.get("recipient_ids") or ""),
+            str(first_rule.get("recipient_scope") or ""),
+        )
+        if first_rule
+        else None
     )
+    step.notify_on_send_recipient_scope = None
 
 
 def _delete_step_attachment_file(step: FlowStepTemplate) -> None:
@@ -1028,9 +1071,8 @@ def _sync_button_notification(
         .first()
     )
     normalized_text = message_text.strip() or None
-    normalized_recipient_ids = recipient_ids.strip() or None
-    normalized_scope = _normalize_notification_scope(recipient_scope)
-    if not normalized_text and not normalized_recipient_ids and not normalized_scope:
+    normalized_recipient_ids = _normalize_notification_recipient_tokens(recipient_ids, recipient_scope)
+    if not normalized_text and not normalized_recipient_ids:
         if notification:
             db.delete(notification)
         return
@@ -1048,7 +1090,7 @@ def _sync_button_notification(
     notification.rule_index = rule_index
     notification.message_text = normalized_text
     notification.recipient_ids = normalized_recipient_ids
-    notification.recipient_scope = normalized_scope
+    notification.recipient_scope = None
 
 
 def _copy_step_attachment_file(source_step: FlowStepTemplate, target_step: FlowStepTemplate) -> None:
