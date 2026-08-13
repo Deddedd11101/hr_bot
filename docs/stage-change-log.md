@@ -34,6 +34,41 @@ source_of_truth: true
 
 ## Записи
 
+### 2026-08-13 14:20 MSK - app deploy - GaAnTarasova repair tooling
+
+- Deploy ref: `stage`.
+- Deployed commit: `bb80fbb`.
+- GitHub Actions run: `31694907979` -> success.
+- В stage включено:
+  - one-off repair tool `tools/repair_gaantarasova_identity.py`;
+  - regression tests for the repair tool;
+  - no app runtime change, no schema change, no frontend change, no scenario change.
+- Локальные проверки перед deploy:
+  - `python -m unittest tests.test_repair_gaantarasova_identity -v` -> 4 tests OK;
+  - `python -m compileall tools tests`;
+  - `ruff check --select F821 tools tests` -> passed, with existing unrelated `WPS433` noqa warnings in `tools/check_employee_detail_db.py`;
+  - `git diff --check origin/stage..HEAD`.
+- GitHub Actions preflight:
+  - backend dependencies install;
+  - `compileall`;
+  - `ruff F821`;
+  - backend smoke tests;
+  - frontend build;
+  - smoke imports.
+- Stage safety checks:
+  - verified SQLite backup created before checkout/restart: `backups/hr_bot.before-deploy.20260813-111929.db`;
+  - scenario config snapshot created: `backups/scenarios.before-deploy.20260813-111929.json`;
+  - scenario configuration fingerprint unchanged.
+- Stage smoke checks:
+  - `/app/employees` -> `303`;
+  - `/app/flows/workspace-v2` -> `303`;
+  - Telegram API reachability -> `HTTP/2 302`;
+  - deploy job завершился успешно и вывел `bb80fbb`.
+- Открытые риски:
+  - live DB repair for `@GaAnTarasova` is not applied yet;
+  - local direct SSH returned `Permission denied (publickey,password)`, and no password-capable noninteractive SSH client is available in the local environment;
+  - before `--apply`, run server dry-run and confirm it matches: target employee id `52`, orphan account id `4`, move account to employee `52`, set `telegram_user_id=1950649889`.
+
 ### 2026-08-12 17:57 MSK - app deploy - employee assignment history
 
 - Deploy ref: `stage`.
