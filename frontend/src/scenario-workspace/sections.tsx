@@ -481,15 +481,19 @@ export function WorkspaceSidebarSection(props: {
             return (
               <article
               key={scenario.id}
-              role="button"
-              tabIndex={0}
-              onClick={() => onSelectScenario(scenario.id)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" || event.key === " ") {
-                  event.preventDefault();
-                  onSelectScenario(scenario.id);
-                }
-              }}
+              role={isCatalog ? undefined : "button"}
+              tabIndex={isCatalog ? undefined : 0}
+              onClick={isCatalog ? undefined : () => onSelectScenario(scenario.id)}
+              onKeyDown={
+                isCatalog
+                  ? undefined
+                  : (event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        onSelectScenario(scenario.id);
+                      }
+                    }
+              }
               draggable
               onDragStart={(event) => {
                 event.dataTransfer.effectAllowed = "move";
@@ -517,9 +521,10 @@ export function WorkspaceSidebarSection(props: {
                 onScenarioDragEnd();
               }}
               className={cn(
-                "relative flex w-full min-w-0 cursor-pointer flex-col rounded-lg border text-left transition-[border-color,background-color,opacity,transform,box-shadow]",
+                "relative flex w-full min-w-0 flex-col rounded-lg border text-left transition-[border-color,background-color,opacity,transform,box-shadow]",
                 isCatalog ? "gap-3 p-4" : "gap-2 p-3",
-                scenario.id === selectedScenarioId
+                isCatalog ? "cursor-default" : "cursor-pointer",
+                !isCatalog && scenario.id === selectedScenarioId
                   ? "border-primary/70 bg-muted/50"
                   : "border-border bg-card hover:bg-accent/60",
                 isDragging && "scale-[0.985] border-primary/40 bg-muted/70 opacity-50",
@@ -555,7 +560,7 @@ export function WorkspaceSidebarSection(props: {
                       <MoreHorizontal />
                     </Button>
                   ) : null}
-                  {isCatalog ? <ArrowRight className="size-4 text-muted-foreground" /> : <FileStack className="size-4 text-muted-foreground" />}
+                  {!isCatalog ? <FileStack className="size-4 text-muted-foreground" /> : null}
                 </div>
               </div>
               <p className="text-[0.83rem] leading-5 text-muted-foreground">{scenario.description || "Без описания"}</p>
@@ -566,6 +571,14 @@ export function WorkspaceSidebarSection(props: {
                 <Badge variant="secondary">{scenario.trigger_mode_label}</Badge>
                 <Badge variant="outline">{scenario.steps_count} шагов</Badge>
               </div>
+              {isCatalog ? (
+                <div className="flex justify-end pt-1">
+                  <Button size="sm" variant="secondary" onClick={() => onSelectScenario(scenario.id)}>
+                    Открыть
+                    <ArrowRight data-icon="inline-end" />
+                  </Button>
+                </div>
+              ) : null}
             </article>
             );
           })}

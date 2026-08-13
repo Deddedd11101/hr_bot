@@ -300,6 +300,9 @@ export function ScenarioWorkspacePage() {
 
   const openScenarioCatalog = React.useCallback(() => {
     replaceRouteScenario(null, "catalog");
+    setSelectedScenarioId(null);
+    setStack([]);
+    setSelectedItemKey("");
     setScenarioSettingsOpen(false);
   }, [replaceRouteScenario]);
 
@@ -318,6 +321,10 @@ export function ScenarioWorkspacePage() {
       setWorkspaceRouteMode(scenarioId ? "editor" : "catalog");
       if (scenarioId) {
         setSelectedScenarioId(scenarioId);
+      } else {
+        setSelectedScenarioId(null);
+        setStack([]);
+        setSelectedItemKey("");
       }
       setScenarioSettingsOpen(false);
     };
@@ -328,6 +335,7 @@ export function ScenarioWorkspacePage() {
   React.useEffect(() => {
     const params = new URLSearchParams();
     params.set("kind", workspaceKind);
+    const cleanCatalogRequest = !isSurveyWorkspace && workspaceRouteMode === "catalog" && !scenarioSettingsOpen;
     if (selectedScenarioId) {
       params.set("scenario_id", String(selectedScenarioId));
     }
@@ -341,6 +349,13 @@ export function ScenarioWorkspacePage() {
         return response.json() as Promise<WorkspacePayload>;
       })
       .then((nextPayload) => {
+        if (cleanCatalogRequest) {
+          setPayload(nextPayload);
+          setSelectedScenarioId(null);
+          setStack([]);
+          setSelectedItemKey("");
+          return;
+        }
         if (nextPayload.workspace && selectedScenarioId === nextPayload.selected_scenario_id && stackRef.current.length) {
           applyPayload(nextPayload);
         } else if (nextPayload.workspace) {
@@ -362,7 +377,7 @@ export function ScenarioWorkspacePage() {
       .finally(() => {
         setLoading(false);
       });
-  }, [apiUrl, itemLabel, selectedScenarioId, workspaceKind]);
+  }, [apiUrl, applyPayload, isSurveyWorkspace, itemLabel, scenarioSettingsOpen, selectedScenarioId, workspaceKind, workspaceRouteMode]);
 
   const scenarios = React.useMemo(() => {
     const items = payload?.scenarios || [];
