@@ -34,6 +34,43 @@ source_of_truth: true
 
 ## Записи
 
+### 2026-08-14 00:19 MSK - app deploy - scenario catalog layout fix
+
+- Deploy ref: `stage`.
+- Deployed commit: `561289e`.
+- GitHub Actions run: `31745034667` -> success.
+- В stage включено:
+  - исправлен scroll/layout каталога сценариев после split workspace;
+  - scenario list скроллится внутри контейнера;
+  - header/actions остаются на месте;
+  - нижний border radius карточки каталога не клипается;
+  - scrollbar приведен к shared style;
+  - backend/API/schema/runtime не менялись.
+- Локальные проверки перед deploy:
+  - `D:\HRBot\hr_bot_stage_pipeline\.venv\Scripts\python.exe tools\check_docs_contracts.py`;
+  - `npm ci` in `frontend`;
+  - `npm run build` in `frontend`;
+  - `git diff --check origin/stage..HEAD`.
+- GitHub Actions preflight:
+  - backend dependencies install;
+  - `compileall`;
+  - `ruff F821`;
+  - backend smoke tests -> 131 tests OK;
+  - frontend build;
+  - smoke imports.
+- Stage safety checks:
+  - verified SQLite backup created before checkout/restart: `backups/hr_bot.before-deploy.20260813-211933.db`;
+  - scenario config snapshot created: `backups/scenarios.before-deploy.20260813-211933.json`;
+  - scenario configuration fingerprint unchanged.
+- Stage smoke checks:
+  - `/app/employees` -> `303`;
+  - `/app/flows/workspace-v2` -> `303`;
+  - Telegram API reachability -> `HTTP/2 302`;
+  - deploy job завершился успешно и вывел `561289e`.
+- Открытые риски:
+  - нужен ручной visual smoke на stage: catalog scroll, fixed header/actions, visible bottom radius, open editor, `К списку`, settings dialog, edit/save step and unchanged surveys workspace;
+  - Vite `graph-view` chunk warning остается вне scope.
+
 ### 2026-08-13 23:58 MSK - app deploy - scenario catalog workspace
 
 - Deploy ref: `stage`.
