@@ -339,7 +339,7 @@ HR Bot — приложение в одном репозитории с неск
 1. HR редактирует сценарии в классическом интерфейсе или React workspace.
 2. FastAPI сохраняет `scenario_templates`, `flow_step_templates` и `step_button_notifications`.
 3. Для button-step notifications модель больше не однослотовая: одна кнопка может иметь несколько rules, различаемых по `rule_index`.
-4. React workspace хранит explicit recipients как `employee:{id}` tokens, а runtime уже резолвит их в реальные chat ids при отправке уведомлений.
+4. React workspace хранит только role-tokens `hr`, `manager`, `mentor_adaptation`, `mentor_ipr`; runtime резолвит их в реальные chat ids по `HrSettings` и relation-полям карточки сотрудника. Legacy `employee:{id}` rows допускаются только как runtime compatibility seam для уже сохраненной БД и не должны больше генерироваться UI/API.
 5. Бот и scheduler читают эти таблицы напрямую в runtime.
 
 ### Выполнение сценария

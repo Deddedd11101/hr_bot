@@ -28,7 +28,11 @@ source_of_truth: true
 - Новая множественная модель хранится в `step_send_notifications`.
 - Legacy `notify_on_send_*` поля в `flow_step_templates` остаются compatibility seam, но не должны считаться целевой product-моделью.
 - Уведомление может отправлять текст, когда шаг показан пользователю.
-- Targeting получателей может использовать explicit employee tokens, системного HR и роли, связанные с карточкой сотрудника.
+- Targeting получателей для новых scenario notification rules теперь role-only: `hr`, `manager`, `mentor_adaptation`, `mentor_ipr`.
+- `hr` резолвится через `HrSettings.telegram_user_id`.
+- `manager` / `mentor_adaptation` / `mentor_ipr` резолвятся через relation-поля карточки сотрудника и их primary Telegram chat id.
+- Если роль не может быть резолвлена в chat id, уведомление просто пропускается и не валит отправку шага или кнопочного ответа.
+- Legacy `employee:{id}` допускается только как runtime compatibility seam для уже существующих строк БД; новые UI/API payloads не должны его сохранять.
 
 ### Уведомления на уровне кнопки
 
