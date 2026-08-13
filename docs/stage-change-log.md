@@ -34,6 +34,45 @@ source_of_truth: true
 
 ## Записи
 
+### 2026-08-13 23:58 MSK - app deploy - scenario catalog workspace
+
+- Deploy ref: `stage`.
+- Deployed commit: `75c5c0f`.
+- GitHub Actions run: `31743309436` -> success.
+- В stage включено:
+  - `/app/flows/workspace-v2` открывается как чистый каталог сценариев без выбранной карточки;
+  - `/app/flows/workspace-v2?scenario_id=<id>` открывает редактор конкретного сценария;
+  - в редакторе сценария убрана колонка всех сценариев, остались steps/graph и detail pane;
+  - настройки сценария вынесены в dialog из карточки каталога через меню действий;
+  - `/app/surveys/workspace` сохранен в прежнем 3-column layout;
+  - backend/API/schema/runtime не менялись.
+- Локальные проверки перед deploy:
+  - `D:\HRBot\hr_bot_stage_pipeline\.venv\Scripts\python.exe tools\check_docs_contracts.py`;
+  - `D:\HRBot\hr_bot_stage_pipeline\.venv\Scripts\python.exe -m compileall app tests tools`;
+  - `D:\HRBot\hr_bot_stage_pipeline\.venv\Scripts\python.exe -m ruff check --select F821 app tests tools`;
+  - `npm ci` in `frontend`;
+  - `npm run build` in `frontend`;
+  - `git diff --check origin/stage..HEAD`.
+- GitHub Actions preflight:
+  - backend dependencies install;
+  - `compileall`;
+  - `ruff F821`;
+  - backend smoke tests -> 131 tests OK;
+  - frontend build;
+  - smoke imports.
+- Stage safety checks:
+  - verified SQLite backup created before checkout/restart: `backups/hr_bot.before-deploy.20260813-205725.db`;
+  - scenario config snapshot created: `backups/scenarios.before-deploy.20260813-205725.json`;
+  - scenario configuration fingerprint unchanged.
+- Stage smoke checks:
+  - `/app/employees` -> `303`;
+  - `/app/flows/workspace-v2` -> `303`;
+  - Telegram API reachability -> `HTTP/2 302`;
+  - deploy job завершился успешно.
+- Открытые риски:
+  - это крупная перестройка scenario workspace UI, поэтому нужен ручной visual smoke на stage: каталог, открытие сценария, возврат к списку, dialog настроек, редактирование шага, notifications, branching/buttons controls и `/app/surveys/workspace`;
+  - Vite `graph-view` chunk warning остается вне scope.
+
 ### 2026-08-13 22:12 MSK - app deploy - manual Telegram messages
 
 - Deploy ref: `stage`.
