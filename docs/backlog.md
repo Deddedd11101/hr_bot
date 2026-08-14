@@ -75,7 +75,7 @@ Deploy safety: `Deploy Stage` создаёт проверенный SQLite backu
 - Для `HRB-P1-07` любые новые admin UI правки обязаны идти через shadcn workflow gate: `npx shadcn@latest info --json`, `npx shadcn@latest docs <component>`, проверка локальных `frontend/src/components/ui/*`, при необходимости `search`/`add --dry-run`/`--diff`, затем сначала internal `/app/design-system#patterns`, потом live page. `/app/design-system` больше не показывается в operator sidebar, чтобы не торчать на тестовом стенде как обычная админская страница.
 - React scenario workspace снова сохраняет `response_type=buttons` как самостоятельный тип ответа и не маскирует его под `branching`; и `buttons`, и `branching` шаги с вариантами ответа могут сохранять `target_field`, включая `salary_expectation`.
 - `/app/bot-menu` button editor больше не выглядит как три независимые цели одной кнопки: сценарий, переход к набору и документ теперь показаны как взаимоисключающие target-поля с disabled неактуальными селектами.
-- `/app/bot-menu` root-menu contract теперь явный: общий fallback, отдельный главный набор для сотрудников и отдельный главный набор для кандидатов; runtime `/start` и broadcast выбирают root по аудитории пользователя. Если подходящего меню нет, `/start` оставляет только приветствие без системного fallback-текста.
+- `/app/bot-menu` root-menu contract теперь явный: общий fallback, отдельный главный набор для сотрудников и отдельный главный набор для кандидатов; runtime `/start` и broadcast выбирают root по аудитории пользователя. Если registration-сценарий не стартует и подходящего меню нет, `/start` не отправляет технический fallback-текст.
 
 ## Исследования
 

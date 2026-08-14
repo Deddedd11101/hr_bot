@@ -3984,6 +3984,7 @@ class EmployeeApiSmokeTests(unittest.TestCase):
             db.refresh(employee)
             self.assertEqual(employee.current_menu_set_id, root_menu.id)
             self.assertEqual(employee.current_menu_path, str(root_menu.id))
+            self.assertEqual(messenger.sent_texts, [])
             self.assertTrue(messenger.sent_menus)
             self.assertEqual(messenger.sent_menus[-1][2], [root_button.label])
 
@@ -4007,7 +4008,7 @@ class EmployeeApiSmokeTests(unittest.TestCase):
 
             asyncio.run(handle_start_command(messenger, db, chat_id, employee.telegram_username))
 
-            self.assertEqual(messenger.sent_texts, [(chat_id, "Привет! Я HR-бот.")])
+            self.assertEqual(messenger.sent_texts, [])
             self.assertEqual(messenger.sent_menus, [])
 
     def test_bot_start_launches_registration_scenario_on_new_telegram_link(self) -> None:
@@ -4049,8 +4050,7 @@ class EmployeeApiSmokeTests(unittest.TestCase):
 
             db.refresh(employee)
             self.assertEqual(get_primary_chat_id(employee, db=db), chat_id)
-            self.assertIn((chat_id, "Привет! Я HR-бот."), messenger.sent_texts)
-            self.assertIn((chat_id, registration_text), messenger.sent_texts)
+            self.assertEqual(messenger.sent_texts, [(chat_id, registration_text)])
             self.assertEqual(messenger.sent_menus, [])
 
             messenger.sent_texts.clear()
@@ -4097,8 +4097,7 @@ class EmployeeApiSmokeTests(unittest.TestCase):
             self.assertEqual(created_employee.employee_stage, "candidate")
             self.assertEqual(created_employee.candidate_work_stage, self._initial_candidate_stage_key())
             self.assertEqual(created_employee.telegram_username, username)
-            self.assertIn((chat_id, "Привет! Я HR-бот."), messenger.sent_texts)
-            self.assertIn((chat_id, registration_text), messenger.sent_texts)
+            self.assertEqual(messenger.sent_texts, [(chat_id, registration_text)])
 
             before_repeat_count = db.query(Employee).filter(Employee.telegram_user_id == chat_id).count()
             messenger.sent_texts.clear()
@@ -4132,7 +4131,8 @@ class EmployeeApiSmokeTests(unittest.TestCase):
             self.assertEqual(created_employee.employee_stage, "candidate")
             self.assertEqual(created_employee.candidate_work_stage, self._initial_candidate_stage_key())
             self.assertIsNone(created_employee.telegram_username)
-            self.assertIn((chat_id, "Привет! Я HR-бот."), messenger.sent_texts)
+            self.assertNotIn((chat_id, "Привет! Я HR-бот."), messenger.sent_texts)
+            self.assertTrue(messenger.sent_texts)
 
             if created_employee_id is not None:
                 db.query(EmployeeMessengerAccount).filter(EmployeeMessengerAccount.employee_id == created_employee_id).delete(
@@ -4182,7 +4182,7 @@ class EmployeeApiSmokeTests(unittest.TestCase):
 
             db.refresh(employee)
             self.assertEqual(get_primary_chat_id(employee, db=db), chat_id)
-            self.assertIn((chat_id, "Привет! Я HR-бот."), messenger.sent_texts)
+            self.assertEqual(messenger.sent_texts, [])
             self.assertNotIn((chat_id, registration_text), messenger.sent_texts)
 
     def test_bot_start_keeps_blocked_matched_user_blocked(self) -> None:
