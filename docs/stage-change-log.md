@@ -34,6 +34,43 @@ source_of_truth: true
 
 ## Записи
 
+### 2026-08-14 14:52 MSK - app deploy - start without technical greeting
+
+- Deploy ref: `stage`.
+- Deployed commit: `44df125`.
+- GitHub Actions run: `31797912164` -> success.
+- В stage включено:
+  - `/start` больше не отправляет отдельное техническое приветствие перед первым шагом registration-сценария;
+  - новый кандидат должен получать сразу сценарное сообщение регистрации, без дубля;
+  - существующий сотрудник продолжает получать штатный employee menu flow;
+  - blocked matched user остается blocked и не relink-ится;
+  - frontend/API/schema/deploy workflow не менялись.
+- Локальные проверки перед deploy:
+  - `D:\HRBot\hr_bot_stage_pipeline\.venv\Scripts\python.exe -m compileall app tests tools`;
+  - `D:\HRBot\hr_bot_stage_pipeline\.venv\Scripts\python.exe -m ruff check --select F821 app tests tools`;
+  - `D:\HRBot\hr_bot_stage_pipeline\.venv\Scripts\python.exe -m unittest tests.test_scenario_engine_smoke tests.test_messaging_identity tests.test_employee_api_smoke -v` -> 131 tests OK;
+  - `D:\HRBot\hr_bot_stage_pipeline\.venv\Scripts\python.exe tools\check_docs_contracts.py`;
+  - `git diff --check origin/stage..HEAD`.
+- GitHub Actions preflight:
+  - backend dependencies install;
+  - `compileall`;
+  - `ruff F821`;
+  - backend smoke tests -> 131 tests OK;
+  - frontend build;
+  - smoke imports.
+- Stage safety checks:
+  - verified SQLite backup created before checkout/restart: `backups/hr_bot.before-deploy.20260814-115235.db`;
+  - scenario config snapshot created: `backups/scenarios.before-deploy.20260814-115235.json`;
+  - scenario configuration fingerprint unchanged.
+- Stage smoke checks:
+  - `/app/employees` -> `303`;
+  - `/app/flows/workspace-v2` -> `303`;
+  - Telegram API reachability -> `HTTP/2 302`;
+  - deploy job завершился успешно и вывел `44df125`.
+- Открытые риски:
+  - нужен ручной Telegram smoke на stage: `/start` новым кандидатом, `/start` существующим сотрудником и `/start` blocked matched user;
+  - если registration-сценарий не стартует и меню не найдено, отдельного fallback greeting теперь нет, это осознанное поведение.
+
 ### 2026-08-14 00:19 MSK - app deploy - scenario catalog layout fix
 
 - Deploy ref: `stage`.
