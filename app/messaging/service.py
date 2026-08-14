@@ -9,15 +9,16 @@ from ..models import BotMenuButton, BotMenuSet, DocumentLibraryItem, Employee, E
 from ..notifications import notify_hr_test_task_received
 from ..positions import position_matches_scope
 from ..scenario_engine import (
-    SCENARIO_BACK_BUTTON_TEXT,
     DATE_CALLBACK_PREFIX,
-    get_waiting_progress,
+    SCENARIO_BACK_BUTTON_TEXT,
+    WAITING_PROGRESS_CONFLICT_TEXT,
     handle_back_response,
     handle_button_response_by_step_id,
     handle_date_response_by_step_id,
     handle_file_response,
     handle_text_response,
     matches_role_scope,
+    resolve_waiting_progress,
     start_scenario,
 )
 from ..time_utils import utc_now
@@ -488,12 +489,20 @@ async def save_incoming_file(
     file_size: Optional[int],
     external_file_id: Optional[str] = None,
     external_unique_id: Optional[str] = None,
-) -> tuple[Optional[Employee], Optional[EmployeeFile], Literal["saved", "unknown", "blocked"]]:
+) -> tuple[Optional[Employee], Optional[EmployeeFile], Literal["saved", "unknown", "blocked", "conflict"]]:
     access = resolve_inbound_access(db, chat_user_id, username)
     if access.state != "ok" or access.employee is None:
         return None, None, access.state
     employee = access.employee
-    progress = get_waiting_progress(db, employee.id)
+    waiting_resolution = resolve_waiting_progress(db, employee.id)
+    if waiting_resolution.conflict:
+        now = utc_now()
+        for progress in waiting_resolution.progresses:
+            progress.last_delivery_error = "Multiple active waiting progress entries for recipient."
+            progress.updated_at = now
+        db.commit()
+        return employee, None, "conflict"
+    progress = waiting_resolution.progress
     context_employee = db.get(Employee, progress.employee_id) if progress and progress.employee_id else employee
 
     db_file = EmployeeFile(

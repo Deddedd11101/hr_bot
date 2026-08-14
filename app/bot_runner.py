@@ -18,6 +18,7 @@ from .messaging.service import (
     BLOCKED_USER_TEXT,
     DATE_CALLBACK_PREFIX,
     UNKNOWN_USER_TEXT,
+    WAITING_PROGRESS_CONFLICT_TEXT,
     detect_category_from_caption,
     handle_back_event,
     handle_button_event,
@@ -90,6 +91,8 @@ async def on_document(message: Message, bot: Bot) -> None:
             external_unique_id=document.file_unique_id,
         )
         if save_state != "saved" or employee is None or db_file is None:
+            if save_state == "conflict" and employee is not None:
+                await messenger.send_text(chat_id=str(user.id), text=WAITING_PROGRESS_CONFLICT_TEXT)
             await messenger.close()
             return
         handled = await handle_saved_document(messenger, db, employee, db_file)
@@ -138,6 +141,8 @@ async def on_photo(message: Message, bot: Bot) -> None:
             external_unique_id=photo.file_unique_id,
         )
         if save_state != "saved" or employee is None or db_file is None:
+            if save_state == "conflict" and employee is not None:
+                await messenger.send_text(chat_id=str(user.id), text=WAITING_PROGRESS_CONFLICT_TEXT)
             await messenger.close()
             return
         await handle_saved_document(messenger, db, employee, db_file)

@@ -615,6 +615,36 @@ def _ensure_sqlite_schema() -> None:
             conn.execute(text("ALTER TABLE flow_launch_requests ADD COLUMN skip_step_key TEXT"))
         if flow_launch_columns and "launch_type" not in flow_launch_columns:
             conn.execute(text("ALTER TABLE flow_launch_requests ADD COLUMN launch_type TEXT NOT NULL DEFAULT 'manual'"))
+        flow_launch_required = {
+            "processing_status": "TEXT NOT NULL DEFAULT 'pending'",
+            "processing_attempts": "INTEGER NOT NULL DEFAULT 0",
+            "claimed_at": "DATETIME",
+            "completed_at": "DATETIME",
+            "failed_at": "DATETIME",
+            "last_error": "TEXT",
+        }
+        for col, ddl in flow_launch_required.items():
+            if flow_launch_columns and col not in flow_launch_columns:
+                conn.execute(text(f"ALTER TABLE flow_launch_requests ADD COLUMN {col} {ddl}"))
+        if flow_launch_columns:
+            conn.execute(
+                text(
+                    """
+                    UPDATE flow_launch_requests
+                    SET processing_status = CASE
+                        WHEN processed_at IS NOT NULL THEN 'processed'
+                        ELSE 'pending'
+                    END
+                    WHERE processing_status IS NULL OR processing_status = ''
+                    """
+                )
+            )
+            conn.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS ix_flow_launch_requests_processing_status "
+                    "ON flow_launch_requests (processing_status)"
+                )
+            )
 
         hr_settings_columns = {
             row[1] for row in conn.execute(text("PRAGMA table_info(hr_settings)")).fetchall()

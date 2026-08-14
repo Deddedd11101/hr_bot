@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Optional
 
 from aiogram.exceptions import TelegramBadRequest
+from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -355,6 +356,10 @@ def _enqueue_manager_assignment_trigger(
             FlowLaunchRequest.employee_id == subject_employee.id,
             FlowLaunchRequest.flow_key == scenario.scenario_key,
             FlowLaunchRequest.processed_at.is_(None),
+            or_(
+                FlowLaunchRequest.processing_status.is_(None),
+                FlowLaunchRequest.processing_status == "pending",
+            ),
             FlowLaunchRequest.launch_type == "trigger",
         )
         .first()
@@ -541,6 +546,10 @@ def _build_employee_views(list_kind: str, db: Session) -> list[dict]:
             .filter(
                 FlowLaunchRequest.employee_id.in_(employee_ids),
                 FlowLaunchRequest.processed_at.is_(None),
+                or_(
+                    FlowLaunchRequest.processing_status.is_(None),
+                    FlowLaunchRequest.processing_status == "pending",
+                ),
             )
             .order_by(FlowLaunchRequest.requested_at.desc(), FlowLaunchRequest.id.desc())
             .all()
@@ -1092,6 +1101,10 @@ def _reset_employee_bot_linkage(db: Session, employee: Employee) -> Employee:
     db.query(FlowLaunchRequest).filter(
         FlowLaunchRequest.employee_id == employee.id,
         FlowLaunchRequest.processed_at.is_(None),
+        or_(
+            FlowLaunchRequest.processing_status.is_(None),
+            FlowLaunchRequest.processing_status == "pending",
+        ),
     ).delete(synchronize_session=False)
 
     employee.telegram_user_id = None
@@ -1340,6 +1353,10 @@ def _build_employee_detail_payload(db: Session, employee: Employee) -> dict:
             FlowLaunchRequest.employee_id == employee.id,
             FlowLaunchRequest.launch_type == "scheduled",
             FlowLaunchRequest.processed_at.is_(None),
+            or_(
+                FlowLaunchRequest.processing_status.is_(None),
+                FlowLaunchRequest.processing_status == "pending",
+            ),
         )
         .order_by(FlowLaunchRequest.requested_at.asc(), FlowLaunchRequest.id.asc())
         .all()

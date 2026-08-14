@@ -6,9 +6,11 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 from app.database import SessionLocal, init_db
-from app.models import Employee, EmployeeDocumentLink, EmployeeFile, FlowStepTemplate, ScenarioProgress, ScenarioTemplate
+from app.messaging.identity import set_primary_chat_id
+from app.models import Employee, EmployeeDocumentLink, EmployeeFile, EmployeeMessengerAccount, FlowStepTemplate, ScenarioProgress, ScenarioTemplate
 from app.scenario_engine import (
     SCENARIO_BACK_BUTTON_TEXT,
+    WAITING_PROGRESS_CONFLICT_TEXT,
     handle_button_response,
     handle_back_response,
     handle_date_response_by_step_id,
@@ -1259,6 +1261,132 @@ class ScenarioEngineSmokeTests(unittest.IsolatedAsyncioTestCase):
             self.assertIn("Локальная ветка", sent_texts)
             self.assertIn("Общий поток после ветки", sent_texts)
             self.assertNotIn("Сюда не должны попасть", sent_texts)
+
+    async def test_text_response_conflict_fails_closed_when_multiple_progresses_wait(self) -> None:
+        init_db()
+        now = datetime.now(UTC).replace(tzinfo=None)
+        unique_suffix = str(int(datetime.now(UTC).timestamp() * 1000000))
+        scenario_key_a = f"waiting_conflict_a_{unique_suffix}"
+        scenario_key_b = f"waiting_conflict_b_{unique_suffix}"
+        chat_id = f"99{unique_suffix[-10:]}"
+        messenger = FakeMessenger()
+        employee_id: int | None = None
+        try:
+            with SessionLocal() as db:
+                employee = Employee(
+                    full_name="Waiting Conflict User",
+                    telegram_user_id=chat_id,
+                    telegram_username=None,
+                    first_workday=None,
+                    created_at=now,
+                    is_flow_scheduled=False,
+                    candidate_status="new",
+                    employee_stage="candidate",
+                )
+                scenario_a = ScenarioTemplate(
+                    scenario_key=scenario_key_a,
+                    title="Waiting conflict A",
+                    role_scope="all",
+                    employee_scope="candidates",
+                    scenario_kind="scenario",
+                    sort_order=0,
+                    trigger_mode="manual_only",
+                )
+                scenario_b = ScenarioTemplate(
+                    scenario_key=scenario_key_b,
+                    title="Waiting conflict B",
+                    role_scope="all",
+                    employee_scope="candidates",
+                    scenario_kind="scenario",
+                    sort_order=0,
+                    trigger_mode="manual_only",
+                )
+                db.add_all([employee, scenario_a, scenario_b])
+                db.flush()
+                employee_id = employee.id
+                set_primary_chat_id(employee, chat_id, db=db)
+                db.add_all(
+                    [
+                        FlowStepTemplate(
+                            flow_key=scenario_key_a,
+                            step_key="salary_a",
+                            step_title="Salary A",
+                            sort_order=10,
+                            default_text="Salary A?",
+                            response_type="text",
+                            target_field="salary_expectation",
+                        ),
+                        FlowStepTemplate(
+                            flow_key=scenario_key_b,
+                            step_key="salary_b",
+                            step_title="Salary B",
+                            sort_order=10,
+                            default_text="Salary B?",
+                            response_type="text",
+                            target_field="salary_expectation",
+                        ),
+                        ScenarioProgress(
+                            employee_id=employee.id,
+                            scenario_key=scenario_key_a,
+                            recipient_mode="self",
+                            recipient_employee_id=employee.id,
+                            recipient_chat_id=chat_id,
+                            current_step_key="salary_a",
+                            waiting_for_response=True,
+                            is_completed=False,
+                            started_at=now,
+                            updated_at=now,
+                        ),
+                        ScenarioProgress(
+                            employee_id=employee.id,
+                            scenario_key=scenario_key_b,
+                            recipient_mode="self",
+                            recipient_employee_id=employee.id,
+                            recipient_chat_id=chat_id,
+                            current_step_key="salary_b",
+                            waiting_for_response=True,
+                            is_completed=False,
+                            started_at=now,
+                            updated_at=now,
+                        ),
+                    ]
+                )
+                db.commit()
+
+            with SessionLocal() as db:
+                employee = db.get(Employee, employee_id)
+                assert employee is not None
+                handled = await handle_text_response(
+                    messenger,
+                    db,
+                    employee,
+                    SimpleNamespace(text="100000"),
+                )
+
+                self.assertTrue(handled)
+                self.assertIsNone(employee.salary_expectation)
+                progress_errors = [
+                    row.last_delivery_error
+                    for row in db.query(ScenarioProgress)
+                    .filter(ScenarioProgress.employee_id == employee_id)
+                    .order_by(ScenarioProgress.scenario_key.asc())
+                    .all()
+                ]
+
+            self.assertEqual([item["text"] for item in messenger.texts], [WAITING_PROGRESS_CONFLICT_TEXT])
+            self.assertTrue(all("Multiple active waiting progress" in (error or "") for error in progress_errors))
+        finally:
+            if employee_id is not None:
+                with SessionLocal() as db:
+                    db.query(ScenarioProgress).filter(ScenarioProgress.employee_id == employee_id).delete(synchronize_session=False)
+                    db.query(EmployeeFile).filter(EmployeeFile.employee_id == employee_id).delete(synchronize_session=False)
+                    db.query(EmployeeMessengerAccount).filter(EmployeeMessengerAccount.employee_id == employee_id).delete(synchronize_session=False)
+                    employee = db.get(Employee, employee_id)
+                    if employee is not None:
+                        db.delete(employee)
+                    db.query(FlowStepTemplate).filter(FlowStepTemplate.flow_key.in_([scenario_key_a, scenario_key_b])).delete(synchronize_session=False)
+                    db.query(ScenarioTemplate).filter(ScenarioTemplate.scenario_key.in_([scenario_key_a, scenario_key_b])).delete(synchronize_session=False)
+                    db.commit()
 
 
 if __name__ == "__main__":

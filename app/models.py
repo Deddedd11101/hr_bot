@@ -314,6 +314,18 @@ class FlowLaunchRequest(Base):
     )
     requested_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     processed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    processing_status: Mapped[str] = mapped_column(
+        String(32),
+        nullable=False,
+        default="pending",
+        index=True,
+        doc="pending | processing | processed | failed.",
+    )
+    processing_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    claimed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    failed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    last_error: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)
     launch_type: Mapped[str] = mapped_column(
         String(32),
         nullable=False,

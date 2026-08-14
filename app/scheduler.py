@@ -6,6 +6,7 @@ from typing import Optional
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from pytz import timezone as tz_get
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from .config import settings
@@ -54,10 +55,48 @@ def _load_pending_flow_requests(db: Session) -> list[FlowLaunchRequest]:
         db.query(FlowLaunchRequest)
         .filter(
             FlowLaunchRequest.processed_at.is_(None),
+            or_(
+                FlowLaunchRequest.processing_status.is_(None),
+                FlowLaunchRequest.processing_status == "pending",
+            ),
             FlowLaunchRequest.requested_at <= now,
         )
         .all()
     )
+
+
+def _claim_flow_request(db: Session, request: FlowLaunchRequest) -> bool:
+    db.refresh(request)
+    if request.processed_at is not None:
+        return False
+    if (request.processing_status or "pending") != "pending":
+        return False
+    now = utc_now()
+    request.processing_status = "processing"
+    request.processing_attempts = (request.processing_attempts or 0) + 1
+    request.claimed_at = now
+    request.last_error = None
+    db.commit()
+    db.refresh(request)
+    return True
+
+
+def _mark_flow_request_processed(db: Session, request: FlowLaunchRequest) -> None:
+    now = utc_now()
+    request.processing_status = "processed"
+    request.processed_at = now
+    request.completed_at = now
+    request.failed_at = None
+    request.last_error = None
+    db.commit()
+
+
+def _mark_flow_request_failed(db: Session, request: FlowLaunchRequest, error: BaseException | str) -> None:
+    now = utc_now()
+    request.processing_status = "failed"
+    request.failed_at = now
+    request.last_error = str(error)[:1024]
+    db.commit()
 
 
 def _load_pending_mass_scenario_actions(db: Session) -> list[MassScenarioAction]:
@@ -339,50 +378,60 @@ async def schedule_all_employees(scheduler: AsyncIOScheduler, bot) -> None:
 
         pending_requests = _load_pending_flow_requests(db)
         for request in pending_requests:
-            employee = db.get(Employee, request.employee_id)
-            scenario = db.query(ScenarioTemplate).filter(ScenarioTemplate.scenario_key == request.flow_key).first()
-            if not employee or not scenario:
-                request.processed_at = utc_now()
+            if not _claim_flow_request(db, request):
                 continue
-            if employee.is_bot_blocked:
-                request.processed_at = utc_now()
+            try:
+                employee = db.get(Employee, request.employee_id)
+                scenario = db.query(ScenarioTemplate).filter(ScenarioTemplate.scenario_key == request.flow_key).first()
+                if not employee or not scenario:
+                    _mark_flow_request_processed(db, request)
+                    continue
+                if employee.is_bot_blocked:
+                    _mark_flow_request_processed(db, request)
+                    continue
+                if not matches_role_scope(employee, scenario):
+                    _mark_flow_request_processed(db, request)
+                    continue
+                if (
+                    scenario.trigger_mode not in IMMEDIATE_TRIGGER_MODES
+                    and not scenario_anchor_date(employee, scenario)
+                ):
+                    _mark_flow_request_processed(db, request)
+                    continue
+                if request.skip_step_key and request.skip_step_key.startswith(SINGLE_STEP_REQUEST_PREFIX):
+                    step_key = request.skip_step_key[len(SINGLE_STEP_REQUEST_PREFIX):]
+                    step = get_step_by_key(db, scenario.scenario_key, step_key)
+                    if step:
+                        await send_step(bot, db, employee, scenario, step, scheduled_at=request.requested_at)
+                    _mark_flow_request_processed(db, request)
+                    continue
+                if request.launch_type == "status_transition":
+                    await start_scenario(bot, db, employee, scenario.scenario_key)
+                    _mark_flow_request_processed(db, request)
+                    continue
+                if request.launch_type == "manual" and request.skip_step_key:
+                    await _continue_after_manual_step(bot, db, employee, scenario, request.skip_step_key)
+                    _mark_flow_request_processed(db, request)
+                    continue
+                sent_keys = _load_sent_event_keys(db, employee.id)
+                schedule_employee_scenario(
+                    db,
+                    scheduler,
+                    bot,
+                    employee,
+                    scenario,
+                    sent_keys,
+                    manual=True,
+                    skip_step_key=request.skip_step_key,
+                )
+                _mark_flow_request_processed(db, request)
+            except Exception as exc:
+                request_id = request.id
+                db.rollback()
+                failed_request = db.get(FlowLaunchRequest, request_id)
+                if failed_request is not None:
+                    _mark_flow_request_failed(db, failed_request, exc)
                 continue
-            if not matches_role_scope(employee, scenario):
-                request.processed_at = utc_now()
-                continue
-            if (
-                scenario.trigger_mode not in IMMEDIATE_TRIGGER_MODES
-                and not scenario_anchor_date(employee, scenario)
-            ):
-                request.processed_at = utc_now()
-                continue
-            if request.skip_step_key and request.skip_step_key.startswith(SINGLE_STEP_REQUEST_PREFIX):
-                step_key = request.skip_step_key[len(SINGLE_STEP_REQUEST_PREFIX):]
-                step = get_step_by_key(db, scenario.scenario_key, step_key)
-                if step:
-                    await send_step(bot, db, employee, scenario, step, scheduled_at=request.requested_at)
-                request.processed_at = utc_now()
-                continue
-            if request.launch_type == "status_transition":
-                await start_scenario(bot, db, employee, scenario.scenario_key)
-                request.processed_at = utc_now()
-                continue
-            if request.launch_type == "manual" and request.skip_step_key:
-                await _continue_after_manual_step(bot, db, employee, scenario, request.skip_step_key)
-                request.processed_at = utc_now()
-                continue
-            sent_keys = _load_sent_event_keys(db, employee.id)
-            schedule_employee_scenario(
-                db,
-                scheduler,
-                bot,
-                employee,
-                scenario,
-                sent_keys,
-                manual=True,
-                skip_step_key=request.skip_step_key,
-            )
-            request.processed_at = utc_now()
 
         if employees or pending_requests:
             db.commit()

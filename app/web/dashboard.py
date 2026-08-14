@@ -1,5 +1,6 @@
 from datetime import timedelta
 
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from ..messaging.identity import get_primary_chat_id
@@ -205,6 +206,10 @@ def _upcoming_events(db: Session, now, until) -> list[dict]:
         .join(Employee, Employee.id == FlowLaunchRequest.employee_id)
         .filter(
             FlowLaunchRequest.processed_at.is_(None),
+            or_(
+                FlowLaunchRequest.processing_status.is_(None),
+                FlowLaunchRequest.processing_status == "pending",
+            ),
             FlowLaunchRequest.launch_type == "scheduled",
             FlowLaunchRequest.requested_at >= now,
             FlowLaunchRequest.requested_at <= until,
@@ -342,6 +347,10 @@ def _count_scheduled(db: Session, now, until) -> int:
         .filter(
             FlowLaunchRequest.launch_type == "scheduled",
             FlowLaunchRequest.processed_at.is_(None),
+            or_(
+                FlowLaunchRequest.processing_status.is_(None),
+                FlowLaunchRequest.processing_status == "pending",
+            ),
             FlowLaunchRequest.requested_at >= now,
             FlowLaunchRequest.requested_at <= until,
         )

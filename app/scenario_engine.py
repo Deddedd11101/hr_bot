@@ -37,6 +37,11 @@ PROBATION_SCENARIO_KEYS = {"mid_probation", "end_probation"}
 DOCUMENT_TAG_RE = re.compile(r"\{doc:([^}]+)\}")
 SINGLE_STEP_REQUEST_PREFIX = "__single_step__:"
 INTERACTIVE_RESPONSE_TYPES = {"text", "date", "file", "buttons", "branching"}
+WAITING_PROGRESS_CONFLICT_TEXT = (
+    "Сейчас у вас несколько активных сценариев, ожидающих ответ. "
+    "Я не могу безопасно понять, к какому сценарию относится сообщение. "
+    "Обратитесь к HR или попросите перезапустить нужный сценарий."
+)
 DATE_WEEKDAY_LABELS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
 DATE_MONTH_LABELS = [
     "Январь",
@@ -82,6 +87,12 @@ class DateCallbackResult(NamedTuple):
     handled: bool
     action: Literal["noop", "updated", "selected"]
     reply_markup: InlineKeyboardMarkup | None = None
+
+
+class WaitingProgressResolution(NamedTuple):
+    progress: ScenarioProgress | None
+    conflict: bool
+    progresses: list[ScenarioProgress]
 
 
 class ScenarioRecipientResolution(NamedTuple):
@@ -388,9 +399,10 @@ def reset_progress(db: Session, employee_id: int, scenario_key: str) -> Scenario
     return progress
 
 
-def get_waiting_progress(db: Session, employee_id: int) -> Optional[ScenarioProgress]:
+def list_waiting_progresses(db: Session, employee_id: int) -> list[ScenarioProgress]:
     return (
         db.query(ScenarioProgress)
+        .join(ScenarioTemplate, ScenarioTemplate.scenario_key == ScenarioProgress.scenario_key)
         .filter(
             or_(
                 ScenarioProgress.recipient_employee_id == employee_id,
@@ -403,8 +415,38 @@ def get_waiting_progress(db: Session, employee_id: int) -> Optional[ScenarioProg
             ScenarioProgress.is_completed.is_(False),
         )
         .order_by(ScenarioProgress.updated_at.desc())
-        .first()
+        .all()
     )
+
+
+def resolve_waiting_progress(db: Session, employee_id: int) -> WaitingProgressResolution:
+    progresses = list_waiting_progresses(db, employee_id)
+    if len(progresses) == 1:
+        return WaitingProgressResolution(progresses[0], False, progresses)
+    if len(progresses) > 1:
+        return WaitingProgressResolution(None, True, progresses)
+    return WaitingProgressResolution(None, False, [])
+
+
+def get_waiting_progress(db: Session, employee_id: int) -> Optional[ScenarioProgress]:
+    return resolve_waiting_progress(db, employee_id).progress
+
+
+async def notify_waiting_progress_conflict(
+    messenger_or_bot: Any,
+    db: Session,
+    employee: Employee,
+    progresses: list[ScenarioProgress],
+) -> None:
+    messenger = as_messenger(messenger_or_bot)
+    now = utc_now()
+    for progress in progresses:
+        progress.last_delivery_error = "Multiple active waiting progress entries for recipient."
+        progress.updated_at = now
+    db.commit()
+    chat_id = get_primary_chat_id(employee, db=db)
+    if chat_id:
+        await messenger.send_text(chat_id=chat_id, text=WAITING_PROGRESS_CONFLICT_TEXT)
 
 
 def get_waiting_progress_for_step(
@@ -1256,14 +1298,32 @@ def queue_followup_step(db: Session, employee: Employee, scenario: ScenarioTempl
     run_at = _compute_followup_run_at(step)
     if not run_at:
         return False
+    skip_step_key = f"{SINGLE_STEP_REQUEST_PREFIX}{step.step_key}"
+    existing_request = (
+        db.query(FlowLaunchRequest)
+        .filter(
+            FlowLaunchRequest.employee_id == employee.id,
+            FlowLaunchRequest.flow_key == scenario.scenario_key,
+            FlowLaunchRequest.skip_step_key == skip_step_key,
+            FlowLaunchRequest.processed_at.is_(None),
+            or_(
+                FlowLaunchRequest.processing_status.is_(None),
+                FlowLaunchRequest.processing_status.in_(("pending", "processing")),
+            ),
+        )
+        .first()
+    )
+    if existing_request:
+        return False
     db.add(
         FlowLaunchRequest(
             employee_id=employee.id,
             flow_key=scenario.scenario_key,
             requested_at=run_at,
             processed_at=None,
+            processing_status="pending",
             launch_type="scheduled",
-            skip_step_key=f"{SINGLE_STEP_REQUEST_PREFIX}{step.step_key}",
+            skip_step_key=skip_step_key,
         )
     )
     db.commit()
@@ -1444,7 +1504,11 @@ async def advance_after_response(
 async def handle_text_response(messenger_or_bot: Any, db: Session, employee: Employee, message: Message) -> bool:
     if employee.is_bot_blocked:
         return False
-    progress = get_waiting_progress(db, employee.id)
+    waiting_resolution = resolve_waiting_progress(db, employee.id)
+    if waiting_resolution.conflict:
+        await notify_waiting_progress_conflict(messenger_or_bot, db, employee, waiting_resolution.progresses)
+        return True
+    progress = waiting_resolution.progress
     if not progress or not progress.current_step_key:
         return False
     context_employee = _load_progress_context_employee(db, progress)
@@ -1617,7 +1681,11 @@ async def handle_file_response(
 ) -> bool:
     if employee.is_bot_blocked:
         return False
-    progress = get_waiting_progress(db, employee.id)
+    waiting_resolution = resolve_waiting_progress(db, employee.id)
+    if waiting_resolution.conflict:
+        await notify_waiting_progress_conflict(messenger_or_bot, db, employee, waiting_resolution.progresses)
+        return True
+    progress = waiting_resolution.progress
     if not progress or not progress.current_step_key:
         return False
     context_employee = _load_progress_context_employee(db, progress)
@@ -1649,7 +1717,11 @@ async def handle_back_response(messenger_or_bot: Any, db: Session, employee: Emp
     if employee.is_bot_blocked:
         return False
     messenger = as_messenger(messenger_or_bot)
-    progress = get_waiting_progress(db, employee.id)
+    waiting_resolution = resolve_waiting_progress(db, employee.id)
+    if waiting_resolution.conflict:
+        await notify_waiting_progress_conflict(messenger, db, employee, waiting_resolution.progresses)
+        return True
+    progress = waiting_resolution.progress
     if not progress or not progress.current_step_key:
         return False
     context_employee = _load_progress_context_employee(db, progress)

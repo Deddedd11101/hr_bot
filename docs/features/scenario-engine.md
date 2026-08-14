@@ -94,6 +94,13 @@ Scenario engine превращает scenario templates плюс employee state 
 - Если продукту когда-нибудь понадобится жесткий snapshot “кому именно должно было уйти на момент события”, это уже другая модель:
   - отдельные recipient snapshot fields в launch queue или отдельная delivery/outbox table;
   - сейчас такую модель не вводим без отдельного согласования.
+- Delivery lifecycle:
+  - `processing_status=pending` — request ждет due-time;
+  - scheduler переводит request в `processing`, увеличивает `processing_attempts`, ставит `claimed_at` и коммитит claim до Telegram side effects;
+  - успешная обработка ставит `processing_status=processed`, `processed_at` и `completed_at`;
+  - exception во время обработки ставит `processing_status=failed`, `failed_at` и `last_error`.
+- `failed` сейчас terminal для автоматического scheduler loop: такой request не подхватывается повторно, чтобы не дублировать уже потенциально отправленное сообщение после частичного сбоя.
+- `queue_followup_step()` не создает второй active request для той же пары `employee_id + flow_key + skip_step_key`; это защищает timed follow-up от размножения при повторном проходе engine.
 
 ## Delivery failure behavior
 
@@ -101,11 +108,24 @@ Scenario engine превращает scenario templates плюс employee state 
 - В этом случае:
   - `ScenarioProgress.last_delivery_error` получает причину;
   - worker/web logs пишут warning;
-  - pending `FlowLaunchRequest` все равно считается обработанным, если уже прошел через scheduler queue.
+  - `FlowLaunchRequest` получает `processed`, если runtime корректно дошел до контролируемого delivery failure внутри scenario engine;
+  - `FlowLaunchRequest` получает `failed`, если сам scheduler request упал exception-ом до корректного завершения обработки.
 - Автоматического retry после исправления карточки сейчас нет.
 - Текущая operational модель:
   - после исправления менеджера/наставника/Telegram binding нужен manual relaunch;
   - либо в будущем нужна отдельная retry-модель с явной семантикой повторной доставки.
+
+## Incoming answer routing
+
+- Текст, файл и команда `Назад` резолвятся по effective recipient:
+  - сначала `ScenarioProgress.recipient_employee_id`;
+  - legacy/self progress без recipient хранит ожидание на `ScenarioProgress.employee_id`.
+- Если для одного recipient есть ровно один active `waiting_for_response`, ответ применяется к нему.
+- Если active waiting progress больше одного, runtime fail-closed:
+  - не выбирает newest progress молча;
+  - не применяет ответ к карточке;
+  - проставляет `last_delivery_error` на конфликтующих progress;
+  - отправляет пользователю сообщение, что бот не может безопасно определить сценарий и нужно обратиться к HR или перезапустить нужный сценарий.
 
 Для time-based сценариев есть дополнительное правило:
 

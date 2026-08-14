@@ -1,5 +1,5 @@
 import unittest
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from unittest.mock import patch
 from uuid import uuid4
 
@@ -8,7 +8,7 @@ from app.database import SessionLocal, init_db
 from app.messaging.identity import set_primary_chat_id
 from app.models import Employee, EmployeeMessengerAccount, FlowLaunchRequest, FlowStepTemplate, OnboardingEvent, ScenarioProgress, ScenarioTemplate
 from app.scheduler import run_scheduled_step, schedule_all_employees, schedule_employee_scenario
-from app.scenario_engine import send_step
+from app.scenario_engine import queue_followup_step, send_step
 
 
 class _FakeScheduler:
@@ -49,6 +49,16 @@ class _FakeMessenger:
 
     async def send_document_path(self, chat_id: str, path, filename=None) -> None:
         return None
+
+
+class _FailingMessenger(_FakeMessenger):
+    def __init__(self) -> None:
+        super().__init__()
+        self.send_attempts = 0
+
+    async def send_text(self, chat_id: str, text: str, reply_markup=None) -> None:
+        self.send_attempts += 1
+        raise RuntimeError("telegram send failed")
 
 
 class SchedulerSmokeTests(unittest.IsolatedAsyncioTestCase):
@@ -360,3 +370,79 @@ class SchedulerSmokeTests(unittest.IsolatedAsyncioTestCase):
             self.assertIn("не назначен", progress.last_delivery_error or "")
 
         self.assertEqual(messenger.sent_texts, [])
+
+    async def test_queue_followup_step_deduplicates_pending_request(self) -> None:
+        employee, scenario = self._create_scenario_with_employee()
+
+        with SessionLocal() as db:
+            db_employee = db.get(Employee, employee.id)
+            db_scenario = db.get(ScenarioTemplate, scenario.id)
+            step = (
+                db.query(FlowStepTemplate)
+                .filter(
+                    FlowStepTemplate.flow_key == self.scenario_key,
+                    FlowStepTemplate.step_key == "second_step",
+                )
+                .first()
+            )
+            assert db_employee is not None
+            assert db_scenario is not None
+            assert step is not None
+            step.send_time = (datetime.now() + timedelta(hours=1)).strftime("%H:%M")
+
+            first_result = queue_followup_step(db, db_employee, db_scenario, step)
+            second_result = queue_followup_step(db, db_employee, db_scenario, step)
+            launch_requests = (
+                db.query(FlowLaunchRequest)
+                .filter(
+                    FlowLaunchRequest.employee_id == db_employee.id,
+                    FlowLaunchRequest.flow_key == db_scenario.scenario_key,
+                    FlowLaunchRequest.skip_step_key == "__single_step__:second_step",
+                    FlowLaunchRequest.processed_at.is_(None),
+                )
+                .all()
+            )
+
+        self.assertTrue(first_result)
+        self.assertFalse(second_result)
+        self.assertEqual(len(launch_requests), 1)
+
+    async def test_failed_claimed_flow_request_is_not_retried(self) -> None:
+        employee, scenario = self._create_scenario_with_employee()
+        scheduler = _FakeScheduler()
+        messenger = _FailingMessenger()
+        now = datetime.now(UTC).replace(tzinfo=None)
+
+        with SessionLocal() as db:
+            db.add(
+                FlowLaunchRequest(
+                    employee_id=employee.id,
+                    flow_key=scenario.scenario_key,
+                    requested_at=now,
+                    processed_at=None,
+                    launch_type="scheduled",
+                    skip_step_key="__single_step__:first_step",
+                )
+            )
+            db.commit()
+
+        await schedule_all_employees(scheduler, messenger)
+        await schedule_all_employees(scheduler, messenger)
+
+        with SessionLocal() as db:
+            request_row = (
+                db.query(FlowLaunchRequest)
+                .filter(
+                    FlowLaunchRequest.employee_id == employee.id,
+                    FlowLaunchRequest.flow_key == scenario.scenario_key,
+                    FlowLaunchRequest.skip_step_key == "__single_step__:first_step",
+                )
+                .first()
+            )
+            assert request_row is not None
+            self.assertEqual(request_row.processing_status, "failed")
+            self.assertEqual(request_row.processing_attempts, 1)
+            self.assertIsNone(request_row.processed_at)
+            self.assertIn("telegram send failed", request_row.last_error or "")
+
+        self.assertEqual(messenger.send_attempts, 1)
