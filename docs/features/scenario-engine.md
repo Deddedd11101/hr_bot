@@ -96,10 +96,13 @@ Scenario engine превращает scenario templates плюс employee state 
   - сейчас такую модель не вводим без отдельного согласования.
 - Delivery lifecycle:
   - `processing_status=pending` — request ждет due-time;
-  - scheduler переводит request в `processing`, увеличивает `processing_attempts`, ставит `claimed_at` и коммитит claim до Telegram side effects;
+  - scheduler claim-ит request через conditional `UPDATE ... WHERE processed_at IS NULL AND processing_status = 'pending'`;
+  - успешный claim переводит request в `processing`, увеличивает `processing_attempts`, ставит `claimed_at` и коммитит claim до Telegram side effects;
   - успешная обработка ставит `processing_status=processed`, `processed_at` и `completed_at`;
   - exception во время обработки ставит `processing_status=failed`, `failed_at` и `last_error`.
+- Перед polling pending queue scheduler переводит stale `processing` requests старше 15 минут в terminal `failed` с `last_error=Stale processing request expired before completion`; это закрывает crash-after-claim-before-side-effects, когда request иначе завис бы в `processing` навсегда.
 - `failed` сейчас terminal для автоматического scheduler loop: такой request не подхватывается повторно, чтобы не дублировать уже потенциально отправленное сообщение после частичного сбоя.
+- Failed/stale requests остаются диагностически видимыми в employee detail API как `failed_launch_history`; это read-only audit surface, не обычная pending queue.
 - `queue_followup_step()` не создает второй active request для той же пары `employee_id + flow_key + skip_step_key`; это защищает timed follow-up от размножения при повторном проходе engine.
 
 ## Delivery failure behavior

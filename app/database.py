@@ -645,6 +645,18 @@ def _ensure_sqlite_schema() -> None:
                     "ON flow_launch_requests (processing_status)"
                 )
             )
+            conn.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS ix_flow_launch_requests_status_requested "
+                    "ON flow_launch_requests (processing_status, requested_at)"
+                )
+            )
+            conn.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS ix_flow_launch_requests_followup_dedup "
+                    "ON flow_launch_requests (employee_id, flow_key, skip_step_key, processing_status)"
+                )
+            )
 
         hr_settings_columns = {
             row[1] for row in conn.execute(text("PRAGMA table_info(hr_settings)")).fetchall()

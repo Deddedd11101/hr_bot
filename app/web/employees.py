@@ -904,8 +904,11 @@ def _serialize_launch_request(
         "flow_key": launch_request.flow_key,
         "scenario_title": scenario.title if scenario else launch_request.flow_key,
         "scenario_url": f"/flows/{scenario.id}" if scenario else None,
+        "processing_status": launch_request.processing_status or "",
         "requested_at_label": launch_request.requested_at.strftime("%d.%m.%Y %H:%M") if launch_request.requested_at else "—",
         "processed_at_label": launch_request.processed_at.strftime("%d.%m.%Y %H:%M") if launch_request.processed_at else "—",
+        "failed_at_label": launch_request.failed_at.strftime("%d.%m.%Y %H:%M") if launch_request.failed_at else "—",
+        "last_error": launch_request.last_error or "",
         "delete_url": f"/employees/{employee_id}/schedule/{launch_request.id}/delete",
     }
 
@@ -1376,6 +1379,15 @@ def _build_employee_detail_payload(db: Session, employee: Employee) -> dict:
         .order_by(FlowLaunchRequest.processed_at.desc(), FlowLaunchRequest.id.desc())
         .all()
     )
+    failed_launch_history = (
+        db.query(FlowLaunchRequest)
+        .filter(
+            FlowLaunchRequest.employee_id == employee.id,
+            FlowLaunchRequest.processing_status == "failed",
+        )
+        .order_by(FlowLaunchRequest.failed_at.desc(), FlowLaunchRequest.id.desc())
+        .all()
+    )
     employee_role_values = employee_position_values(db, current_value=employee.desired_position or "")
 
     today = datetime.now().date()
@@ -1465,6 +1477,10 @@ def _build_employee_detail_payload(db: Session, employee: Employee) -> dict:
         "manual_launch_history": [
             _serialize_launch_request(launch_request, scenario_by_key, employee.id)
             for launch_request in manual_launch_history
+        ],
+        "failed_launch_history": [
+            _serialize_launch_request(launch_request, scenario_by_key, employee.id)
+            for launch_request in failed_launch_history
         ],
         "assignment_history": _serialize_assignment_history(db, employee.id),
         "manual_bot_message_history": _serialize_manual_bot_message_history(db, employee.id),

@@ -1012,6 +1012,70 @@ class EmployeeApiSmokeTests(unittest.TestCase):
         self.assertEqual(launch_item["scenario_title"], f"Manual launch {self.unique_tag}")
         self.assertEqual(launch_item["processed_at_label"], "01.06.2026 09:45")
 
+    def test_employee_detail_api_includes_failed_launch_history(self) -> None:
+        scenario_key = f"codex_failed_launch_{self.unique_tag}"
+        failed_at = datetime(2026, 6, 1, 10, 15)
+        with SessionLocal() as db:
+            scenario = ScenarioTemplate(
+                scenario_key=scenario_key,
+                scenario_kind="scenario",
+                title=f"Failed launch {self.unique_tag}",
+                sort_order=10,
+                role_scope="all",
+                employee_scope="all",
+                trigger_mode="manual_only",
+                description="failed launch history smoke",
+            )
+            db.add(scenario)
+            db.flush()
+            db.add(
+                FlowLaunchRequest(
+                    employee_id=self.employee_id,
+                    flow_key=scenario_key,
+                    requested_at=datetime(2026, 6, 1, 10, 0),
+                    processed_at=None,
+                    processing_status="failed",
+                    processing_attempts=1,
+                    failed_at=failed_at,
+                    last_error="Stale processing request expired before completion",
+                    launch_type="scheduled",
+                )
+            )
+            db.commit()
+
+        response = self.client.get(f"/api/employees/{self.employee_id}")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(len(payload["failed_launch_history"]), 1)
+        launch_item = payload["failed_launch_history"][0]
+        self.assertEqual(launch_item["flow_key"], scenario_key)
+        self.assertEqual(launch_item["scenario_title"], f"Failed launch {self.unique_tag}")
+        self.assertEqual(launch_item["processing_status"], "failed")
+        self.assertEqual(launch_item["failed_at_label"], "01.06.2026 10:15")
+        self.assertEqual(launch_item["last_error"], "Stale processing request expired before completion")
+
+    def test_delete_scheduled_flow_api_rejects_failed_request(self) -> None:
+        with SessionLocal() as db:
+            launch_request = FlowLaunchRequest(
+                employee_id=self.employee_id,
+                flow_key="first_day",
+                requested_at=datetime(2026, 6, 1, 10, 0),
+                processed_at=None,
+                processing_status="failed",
+                processing_attempts=1,
+                failed_at=datetime(2026, 6, 1, 10, 15),
+                last_error="Stale processing request expired before completion",
+                launch_type="scheduled",
+            )
+            db.add(launch_request)
+            db.commit()
+            launch_request_id = launch_request.id
+
+        response = self.client.delete(f"/api/employees/{self.employee_id}/schedule/{launch_request_id}")
+
+        self.assertEqual(response.status_code, 404)
+
     def test_manual_bot_message_send_logs_sent_history(self) -> None:
         with SessionLocal() as db:
             employee = db.get(Employee, self.employee_id)

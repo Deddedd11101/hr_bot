@@ -7,7 +7,13 @@ from app.config import settings
 from app.database import SessionLocal, init_db
 from app.messaging.identity import set_primary_chat_id
 from app.models import Employee, EmployeeMessengerAccount, FlowLaunchRequest, FlowStepTemplate, OnboardingEvent, ScenarioProgress, ScenarioTemplate
-from app.scheduler import run_scheduled_step, schedule_all_employees, schedule_employee_scenario
+from app.scheduler import (
+    STALE_FLOW_REQUEST_ERROR,
+    STALE_FLOW_REQUEST_PROCESSING_MINUTES,
+    run_scheduled_step,
+    schedule_all_employees,
+    schedule_employee_scenario,
+)
 from app.scenario_engine import queue_followup_step, send_step
 
 
@@ -446,3 +452,47 @@ class SchedulerSmokeTests(unittest.IsolatedAsyncioTestCase):
             self.assertIn("telegram send failed", request_row.last_error or "")
 
         self.assertEqual(messenger.send_attempts, 1)
+
+    async def test_stale_processing_flow_request_is_marked_failed_before_polling(self) -> None:
+        employee, scenario = self._create_scenario_with_employee()
+        scheduler = _FakeScheduler()
+        messenger = _FakeMessenger()
+        now = datetime.now(UTC).replace(tzinfo=None)
+        stale_claimed_at = now - timedelta(minutes=STALE_FLOW_REQUEST_PROCESSING_MINUTES + 1)
+
+        with SessionLocal() as db:
+            db.add(
+                FlowLaunchRequest(
+                    employee_id=employee.id,
+                    flow_key=scenario.scenario_key,
+                    requested_at=now,
+                    processed_at=None,
+                    processing_status="processing",
+                    processing_attempts=1,
+                    claimed_at=stale_claimed_at,
+                    launch_type="scheduled",
+                    skip_step_key="__single_step__:first_step",
+                )
+            )
+            db.commit()
+
+        await schedule_all_employees(scheduler, messenger)
+
+        with SessionLocal() as db:
+            request_row = (
+                db.query(FlowLaunchRequest)
+                .filter(
+                    FlowLaunchRequest.employee_id == employee.id,
+                    FlowLaunchRequest.flow_key == scenario.scenario_key,
+                    FlowLaunchRequest.skip_step_key == "__single_step__:first_step",
+                )
+                .first()
+            )
+            assert request_row is not None
+            self.assertEqual(request_row.processing_status, "failed")
+            self.assertEqual(request_row.processing_attempts, 1)
+            self.assertIsNone(request_row.processed_at)
+            self.assertIsNotNone(request_row.failed_at)
+            self.assertEqual(request_row.last_error, STALE_FLOW_REQUEST_ERROR)
+
+        self.assertEqual(messenger.sent_texts, [])

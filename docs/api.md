@@ -125,6 +125,8 @@ source_of_truth: true
   - pending scheduled flow requests
 - `manual_launch_history`
   - processed manual launches
+- `failed_launch_history`
+  - read-only diagnostic history для terminal failed/stale flow launch requests; содержит `processing_status`, `failed_at_label`, `last_error`
 - `manual_bot_message_history`
   - read-only история ручных Telegram-сообщений из карточки сотрудника
 

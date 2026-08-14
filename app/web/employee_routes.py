@@ -378,6 +378,7 @@ def delete_scheduled_flow(
         or launch_request.employee_id != employee_id
         or launch_request.launch_type != "scheduled"
         or launch_request.processed_at is not None
+        or launch_request.processing_status != "pending"
     ):
         return _employee_edit_redirect(employee_id, "Запланированный сценарий не найден.", "error")
     db.delete(launch_request)
@@ -773,6 +774,7 @@ def delete_scheduled_flow_api(
         or launch_request.employee_id != employee_id
         or launch_request.launch_type != "scheduled"
         or launch_request.processed_at is not None
+        or launch_request.processing_status != "pending"
     ):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Запланированный сценарий не найден")
     db.delete(launch_request)

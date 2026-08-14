@@ -6,7 +6,7 @@ from typing import Optional
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from pytz import timezone as tz_get
-from sqlalchemy import or_
+from sqlalchemy import func, or_, update
 from sqlalchemy.orm import Session
 
 from .config import settings
@@ -39,6 +39,8 @@ IMMEDIATE_TRIGGER_MODES = {
     "scenario_transition",
     "manager_assigned_adaptation",
 }
+STALE_FLOW_REQUEST_PROCESSING_MINUTES = 15
+STALE_FLOW_REQUEST_ERROR = "Stale processing request expired before completion"
 
 
 def _get_tz():
@@ -65,18 +67,48 @@ def _load_pending_flow_requests(db: Session) -> list[FlowLaunchRequest]:
     )
 
 
-def _claim_flow_request(db: Session, request: FlowLaunchRequest) -> bool:
-    db.refresh(request)
-    if request.processed_at is not None:
-        return False
-    if (request.processing_status or "pending") != "pending":
-        return False
+def _expire_stale_processing_flow_requests(db: Session) -> int:
+    cutoff = utc_now() - timedelta(minutes=STALE_FLOW_REQUEST_PROCESSING_MINUTES)
     now = utc_now()
-    request.processing_status = "processing"
-    request.processing_attempts = (request.processing_attempts or 0) + 1
-    request.claimed_at = now
-    request.last_error = None
+    result = db.execute(
+        update(FlowLaunchRequest)
+        .where(
+            FlowLaunchRequest.processed_at.is_(None),
+            FlowLaunchRequest.processing_status == "processing",
+            or_(
+                FlowLaunchRequest.claimed_at.is_(None),
+                FlowLaunchRequest.claimed_at <= cutoff,
+            ),
+        )
+        .values(
+            processing_status="failed",
+            failed_at=now,
+            last_error=STALE_FLOW_REQUEST_ERROR,
+        )
+    )
     db.commit()
+    return int(result.rowcount or 0)
+
+
+def _claim_flow_request(db: Session, request: FlowLaunchRequest) -> bool:
+    now = utc_now()
+    result = db.execute(
+        update(FlowLaunchRequest)
+        .where(
+            FlowLaunchRequest.id == request.id,
+            FlowLaunchRequest.processed_at.is_(None),
+            FlowLaunchRequest.processing_status == "pending",
+        )
+        .values(
+            processing_status="processing",
+            claimed_at=now,
+            processing_attempts=func.coalesce(FlowLaunchRequest.processing_attempts, 0) + 1,
+            last_error=None,
+        )
+    )
+    db.commit()
+    if result.rowcount != 1:
+        return False
     db.refresh(request)
     return True
 
@@ -376,6 +408,7 @@ async def schedule_all_employees(scheduler: AsyncIOScheduler, bot) -> None:
             action.recipient_count = sent_count
             action.processed_at = utc_now()
 
+        _expire_stale_processing_flow_requests(db)
         pending_requests = _load_pending_flow_requests(db)
         for request in pending_requests:
             if not _claim_flow_request(db, request):
