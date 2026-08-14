@@ -36,6 +36,7 @@ source_of_truth: true
 6. Если employee record есть, но `is_bot_blocked = true`, запретить все bot interaction с коротким отказом и не перепривязывать Telegram identity.
 7. Candidate registration scenario запускается только при первом candidate-linking/create event и только для сценария, который реально матчится по `employee_scope=candidates`.
 8. Повторный `/start` не создает дубль, не перезапускает registration-сценарий и работает как возврат к root menu.
+9. `/start` не отправляет отдельное техническое приветствие. Если стартует registration-сценарий, пользователь получает первый шаг сценария; если сценарий не стартует, runtime пытается показать доступное root menu.
 
 ## Что изменилось в P0
 
@@ -43,6 +44,7 @@ source_of_truth: true
 - Unknown users по-прежнему не могут создавать `employee_files` и не открывают runtime access через stray text/file input, но `/start` теперь является осознанной candidate-entry точкой и может создать новую candidate-карточку.
 - Known users все еще могут быть linked по сохраненному public username, если пишут с нового Telegram ID.
 - Registration-сценарий привязан к факту нового candidate-linking/create event, а не к scheduler interval или каждому повторному `/start`.
+- Сервисный текст `Привет! Я HR-бот.` не является частью `/start` contract: приветствие должно жить в registration-сценарии или в тексте меню.
 - Blocked users не могут открывать menu flows, отвечать на scenario steps, upload files или получать new launches через scheduler/manual start.
 - Known stray text вне expected scenario response игнорируется без service noise.
 

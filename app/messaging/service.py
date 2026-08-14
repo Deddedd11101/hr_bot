@@ -465,10 +465,6 @@ async def handle_start_command(messenger: MessengerClient, db: Session, chat_use
         return
 
     employee = access.employee
-    await messenger.send_text(
-        chat_id=chat_user_id,
-        text="Привет! Я HR-бот.",
-    )
     if access.newly_linked and _candidate_registration_allowed(employee):
         scenario = _registration_scenario(db, employee)
         if scenario and await start_scenario(messenger, db, employee, scenario.scenario_key):
