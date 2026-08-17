@@ -111,8 +111,8 @@ export function ScenarioSettingsDialog(props: {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[min(760px,calc(100vh-40px))] w-[min(560px,calc(100vw-32px))] overflow-hidden p-0">
-        <DialogHeader className="border-b border-border px-5 py-4">
+      <DialogContent className="max-h-[min(760px,calc(100vh-40px))] w-[min(560px,calc(100vw-32px))] overflow-hidden p-0 [display:flex] flex-col gap-0">
+        <DialogHeader className="shrink-0 border-b border-border px-5 py-4">
           <DialogTitle>Настройки {itemLabel}</DialogTitle>
           <DialogDescription>{scenarioTitle || "Загружаю данные"}</DialogDescription>
         </DialogHeader>
@@ -120,7 +120,7 @@ export function ScenarioSettingsDialog(props: {
           <div className="px-5 py-8 text-sm font-medium text-muted-foreground">Загружаю настройки…</div>
         ) : (
           <>
-            <ScrollArea className="max-h-[calc(100vh-210px)]">
+            <ScrollArea className="min-h-0 flex-1 rounded-none">
               <div className="grid gap-4 px-5 py-4">
                 <label className="grid min-w-0 gap-2.5">
                   <span className="text-sm font-semibold text-foreground/75">Название</span>
@@ -240,7 +240,7 @@ export function ScenarioSettingsDialog(props: {
                 ) : null}
               </div>
             </ScrollArea>
-            <DialogFooter className="border-t border-border px-5 py-4">
+            <DialogFooter className="shrink-0 border-t border-border px-5 py-4 [margin-bottom:0] [margin-inline:0]">
               <Button variant="secondary" onClick={() => onOpenChange(false)}>
                 Закрыть
               </Button>
