@@ -34,6 +34,41 @@ source_of_truth: true
 
 ## Записи
 
+### 2026-08-17 16:10 MSK - app deploy - bounded scenario settings dialog
+
+- Deploy ref: `stage`.
+- Deployed commit: `5ed33a9`.
+- GitHub Actions run: `32033540263` -> success.
+- В stage включено:
+  - `DialogContent` настроек сценария получил bounded height `h-[min(760px,calc(100vh-40px))]`;
+  - header/footer остаются зафиксированными;
+  - середина dialog скроллится;
+  - footer больше не уезжает вниз и не наследует отрицательные margins от общего `DialogFooter`;
+  - backend/API/schema/runtime не менялись.
+- Локальные проверки перед deploy:
+  - `npm ci` in `frontend`;
+  - `npm run build` in `frontend`;
+  - `git diff --check origin/stage..HEAD`.
+- GitHub Actions preflight:
+  - backend dependencies install;
+  - `compileall`;
+  - `ruff F821`;
+  - backend smoke tests -> 131 tests OK;
+  - frontend build;
+  - smoke imports.
+- Stage safety checks:
+  - verified SQLite backup created before checkout/restart: `backups/hr_bot.before-deploy.20260817-131024.db`;
+  - scenario config snapshot created: `backups/scenarios.before-deploy.20260817-131024.json`;
+  - scenario configuration fingerprint unchanged.
+- Stage smoke checks:
+  - `/app/employees` -> `303`;
+  - `/app/flows/workspace-v2` -> `303`;
+  - Telegram API reachability -> `HTTP/2 302`;
+  - deploy job завершился успешно и вывел `5ed33a9`.
+- Открытые риски:
+  - нужен ручной UI smoke на stage: открыть dialog настроек сценария с длинным содержимым и проверить bounded height, fixed header/footer, внутренний scroll и доступность `Сохранить`;
+  - existing `npm audit` warnings and Vite `graph-view` chunk warning remain outside this deployment scope.
+
 ### 2026-08-17 16:03 MSK - app deploy - scenario settings dialog scroll
 
 - Deploy ref: `stage`.
