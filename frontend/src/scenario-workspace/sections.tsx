@@ -111,7 +111,7 @@ export function ScenarioSettingsDialog(props: {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[min(760px,calc(100vh-40px))] w-[min(560px,calc(100vw-32px))] overflow-hidden p-0 [display:flex] flex-col gap-0">
+      <DialogContent className="flex h-[min(760px,calc(100vh-40px))] w-[min(560px,calc(100vw-32px))] flex-col gap-0 overflow-hidden p-0">
         <DialogHeader className="shrink-0 border-b border-border px-5 py-4">
           <DialogTitle>Настройки {itemLabel}</DialogTitle>
           <DialogDescription>{scenarioTitle || "Загружаю данные"}</DialogDescription>
@@ -240,7 +240,7 @@ export function ScenarioSettingsDialog(props: {
                 ) : null}
               </div>
             </ScrollArea>
-            <DialogFooter className="shrink-0 border-t border-border px-5 py-4 [margin-bottom:0] [margin-inline:0]">
+            <DialogFooter className="!m-0 shrink-0 border-t border-border px-5 py-4">
               <Button variant="secondary" onClick={() => onOpenChange(false)}>
                 Закрыть
               </Button>
