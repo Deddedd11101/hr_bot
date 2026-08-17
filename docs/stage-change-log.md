@@ -34,6 +34,41 @@ source_of_truth: true
 
 ## Записи
 
+### 2026-08-17 16:03 MSK - app deploy - scenario settings dialog scroll
+
+- Deploy ref: `stage`.
+- Deployed commit: `58fe3ac`.
+- GitHub Actions run: `32032892877` -> success.
+- В stage включено:
+  - dialog настроек сценария стал flex-контейнером;
+  - header/footer остаются доступными;
+  - середина dialog скроллится через existing `ScrollArea`;
+  - кнопка `Сохранить` остается доступной внизу;
+  - backend/API/schema/runtime не менялись.
+- Локальные проверки перед deploy:
+  - `npm ci` in `frontend`;
+  - `npm run build` in `frontend`;
+  - `git diff --check origin/stage..HEAD`.
+- GitHub Actions preflight:
+  - backend dependencies install;
+  - `compileall`;
+  - `ruff F821`;
+  - backend smoke tests -> 131 tests OK;
+  - frontend build;
+  - smoke imports.
+- Stage safety checks:
+  - verified SQLite backup created before checkout/restart: `backups/hr_bot.before-deploy.20260817-130326.db`;
+  - scenario config snapshot created: `backups/scenarios.before-deploy.20260817-130326.json`;
+  - scenario configuration fingerprint unchanged.
+- Stage smoke checks:
+  - `/app/employees` -> `303`;
+  - `/app/flows/workspace-v2` -> `303`;
+  - Telegram API reachability -> `HTTP/2 302`;
+  - deploy job завершился успешно и вывел `58fe3ac`.
+- Открытые риски:
+  - нужен ручной UI smoke на stage: открыть dialog настроек сценария с длинным содержимым и проверить, что середина скроллится, а `Сохранить` остается видимым;
+  - existing `npm audit` warnings and Vite `graph-view` chunk warning remain outside this deployment scope.
+
 ### 2026-08-14 14:52 MSK - app deploy - start without technical greeting
 
 - Deploy ref: `stage`.
