@@ -21,6 +21,7 @@ from ..flow_templates import (
     SEND_MODE_LABELS,
     TARGET_FIELD_LABELS,
     TRIGGER_MODE_LABELS,
+    normalize_candidate_work_stage,
 )
 from ..models import Employee, FlowStepTemplate, ScenarioTemplate, StepButtonNotification, SurveyAnswer
 from ..positions import ROLE_SCOPE_ALL, build_role_scope_labels, resolve_scope_slug
@@ -202,7 +203,7 @@ def update_workspace_scenario_api(
     employee_scope = str(payload.get("employee_scope") or "").strip()
     recipient_mode = str(payload.get("recipient_mode") or "").strip()
     trigger_mode = str(payload.get("trigger_mode") or "").strip()
-    candidate_work_stage_trigger = str(payload.get("candidate_work_stage_trigger") or "").strip()
+    candidate_work_stage_trigger = normalize_candidate_work_stage(payload.get("candidate_work_stage_trigger"))
     target_employee_id = str(payload.get("target_employee_id") or "").strip()
 
     scenario.title = title[:120] or scenario.title or "Без названия"
@@ -213,7 +214,7 @@ def update_workspace_scenario_api(
     scenario.trigger_mode = trigger_mode if trigger_mode in TRIGGER_MODE_LABELS else "manual_only"
     scenario.candidate_work_stage_trigger = (
         candidate_work_stage_trigger
-        if scenario.trigger_mode == "candidate_hr_stage" and candidate_work_stage_trigger in CANDIDATE_WORK_STAGE_LABELS
+        if scenario.trigger_mode == "candidate_hr_stage" and candidate_work_stage_trigger
         else None
     ) or None
     scenario.target_employee_id = int(target_employee_id) if target_employee_id.isdigit() else None

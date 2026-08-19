@@ -39,6 +39,33 @@ CANDIDATE_WORK_STAGE_LABELS = {
     "contract": "Заключение договора",
 }
 
+CANDIDATE_WORK_STAGE_ALIASES = {
+    "hr": "hr_interview",
+    "собеседование hr": "hr_interview",
+    "руководитель": "manager_interview",
+    "тест": "testing",
+    "оффер": "offer",
+    "pre-onboarding": "preonboarding",
+    "pre_onboarding": "preonboarding",
+    "пре-онбординг": "preonboarding",
+    "преонбординг": "preonboarding",
+}
+
+
+def normalize_candidate_work_stage(value: object) -> str | None:
+    normalized = str(value or "").strip()
+    if not normalized:
+        return None
+    if normalized in CANDIDATE_WORK_STAGE_LABELS:
+        return normalized
+    lowered = normalized.casefold()
+    if lowered in CANDIDATE_WORK_STAGE_ALIASES:
+        return CANDIDATE_WORK_STAGE_ALIASES[lowered]
+    for stage_key, label in CANDIDATE_WORK_STAGE_LABELS.items():
+        if lowered == label.casefold():
+            return stage_key
+    return None
+
 TRIGGER_MODE_LABELS = {
     "manual_only": "Только вручную",
     "bot_registration": "Сразу после регистрации в боте",

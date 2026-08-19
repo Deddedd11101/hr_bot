@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from .config import settings
 from .database import SessionLocal
+from .flow_templates import normalize_candidate_work_stage
 from .mass_targeting import (
     deserialize_target_values,
     mass_target_employee_query,
@@ -37,6 +38,7 @@ IMMEDIATE_TRIGGER_MODES = {
     "bot_registration",
     "scenario_transition",
     "manager_assigned_adaptation",
+    "candidate_hr_stage",
 }
 
 
@@ -364,6 +366,11 @@ async def schedule_all_employees(scheduler: AsyncIOScheduler, bot) -> None:
                 request.processed_at = utc_now()
                 continue
             if request.launch_type == "status_transition":
+                if normalize_candidate_work_stage(scenario.candidate_work_stage_trigger) != normalize_candidate_work_stage(
+                    employee.candidate_work_stage
+                ):
+                    request.processed_at = utc_now()
+                    continue
                 await start_scenario(bot, db, employee, scenario.scenario_key)
                 request.processed_at = utc_now()
                 continue

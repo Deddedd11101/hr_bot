@@ -1936,6 +1936,45 @@ class EmployeeApiSmokeTests(unittest.TestCase):
             self.assertEqual(employee.notes, "candidate-notes")
             self.assertFalse(employee.is_bot_blocked)
 
+    def test_update_employee_api_clears_first_workday_with_empty_value(self) -> None:
+        with SessionLocal() as db:
+            employee = db.get(Employee, self.employee_id)
+            self.assertIsNotNone(employee)
+            employee.first_workday = datetime(2026, 5, 20).date()
+            db.commit()
+
+        response = self.client.post(
+            f"/api/employees/{self.employee_id}",
+            json={
+                "full_name": "Кандидат без даты",
+                "chat_id": "",
+                "chat_handle": "",
+                "first_workday": "",
+                "desired_position": "Аналитик",
+                "birth_date": "",
+                "work_email": "",
+                "work_hours": "",
+                "manager_chat_id": "",
+                "mentor_adaptation_chat_id": "",
+                "mentor_ipr_chat_id": "",
+                "employee_stage": "candidate",
+                "candidate_work_stage": "testing",
+                "salary_expectation": "",
+                "personal_data_consent": False,
+                "employee_data_consent": False,
+                "is_bot_blocked": False,
+                "test_task_due_at": "",
+                "notes": "",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["employee"]["first_workday"], "")
+        with SessionLocal() as db:
+            employee = db.get(Employee, self.employee_id)
+            self.assertIsNotNone(employee)
+            self.assertIsNone(employee.first_workday)
+
     def test_update_employee_api_persists_shared_fields_for_employee(self) -> None:
         with SessionLocal() as db:
             employee = db.get(Employee, self.employee_id)
@@ -2223,6 +2262,172 @@ class EmployeeApiSmokeTests(unittest.TestCase):
             )
             self.assertEqual(len(queued_requests), 1)
             self.assertIsNone(queued_requests[0].processed_at)
+
+    def test_candidate_stage_update_queues_expected_hr_status_triggers(self) -> None:
+        expected_stage_triggers = [
+            ("company_decline", "Наш отказ кандидату"),
+            ("hr_interview", "Собеседование с HR"),
+            ("testing", "Тестирование"),
+            ("offer", "Оффер"),
+            ("preonboarding", "Преонбординг"),
+        ]
+        scenario_keys = []
+        with SessionLocal() as db:
+            employee = db.get(Employee, self.employee_id)
+            self.assertIsNotNone(employee)
+            employee.employee_stage = "candidate"
+            employee.candidate_work_stage = None
+            employee.desired_position = "Аналитик"
+            for stage_key, title in expected_stage_triggers:
+                scenario_key = f"codex_{stage_key}_{self.unique_tag}"
+                scenario_keys.append(scenario_key)
+                db.add(
+                    ScenarioTemplate(
+                        scenario_key=scenario_key,
+                        title=f"codex-{title}-{self.unique_tag}",
+                        sort_order=15,
+                        scenario_kind="scenario",
+                        role_scope="all",
+                        employee_scope="candidates",
+                        trigger_mode="candidate_hr_stage",
+                        candidate_work_stage_trigger=stage_key,
+                        target_employee_id=None,
+                    )
+                )
+            db.commit()
+
+        for stage_key, _title in expected_stage_triggers:
+            response = self.client.post(
+                f"/api/employees/{self.employee_id}",
+                json={
+                    "full_name": "API Smoke Employee",
+                    "chat_id": "",
+                    "chat_handle": "",
+                    "first_workday": "",
+                    "desired_position": "Аналитик",
+                    "birth_date": "",
+                    "work_email": "",
+                    "work_hours": "",
+                    "manager_employee_id": "",
+                    "mentor_adaptation_employee_id": "",
+                    "mentor_ipr_employee_id": "",
+                    "adaptation_tasks_url": "",
+                    "adaptation_feedback_url": "",
+                    "adaptation_midpoint": "",
+                    "adaptation_end": "",
+                    "employee_stage": "candidate",
+                    "candidate_work_stage": stage_key,
+                    "salary_expectation": "",
+                    "personal_data_consent": False,
+                    "employee_data_consent": False,
+                    "is_bot_blocked": False,
+                    "test_task_due_at": "",
+                    "notes": "",
+                },
+            )
+            self.assertEqual(response.status_code, 200)
+            with SessionLocal() as db:
+                employee = db.get(Employee, self.employee_id)
+                self.assertIsNotNone(employee)
+                employee.candidate_work_stage = None
+                db.commit()
+
+        with SessionLocal() as db:
+            queued_flow_keys = {
+                row.flow_key
+                for row in db.query(FlowLaunchRequest)
+                .filter(
+                    FlowLaunchRequest.employee_id == self.employee_id,
+                    FlowLaunchRequest.flow_key.in_(scenario_keys),
+                    FlowLaunchRequest.launch_type == "status_transition",
+                    FlowLaunchRequest.processed_at.is_(None),
+                )
+                .all()
+            }
+
+        self.assertEqual(queued_flow_keys, set(scenario_keys))
+
+    def test_candidate_stage_trigger_settings_accept_stage_label_and_match_key(self) -> None:
+        scenario_key = f"codex_label_stage_{self.unique_tag}"
+        with SessionLocal() as db:
+            employee = db.get(Employee, self.employee_id)
+            self.assertIsNotNone(employee)
+            employee.employee_stage = "candidate"
+            employee.candidate_work_stage = "hr_interview"
+            scenario = ScenarioTemplate(
+                scenario_key=scenario_key,
+                title=f"codex-label-stage-{self.unique_tag}",
+                sort_order=15,
+                scenario_kind="scenario",
+                role_scope="all",
+                employee_scope="candidates",
+                trigger_mode="candidate_hr_stage",
+                candidate_work_stage_trigger="manual",
+                target_employee_id=None,
+            )
+            db.add(scenario)
+            db.commit()
+            db.refresh(scenario)
+            scenario_id = scenario.id
+
+        settings_response = self.client.post(
+            f"/api/flows/workspace/scenarios/{scenario_id}/settings",
+            json={
+                "title": f"codex-label-stage-{self.unique_tag}",
+                "description": "",
+                "role_scope": "all",
+                "employee_scope": "candidates",
+                "trigger_mode": "candidate_hr_stage",
+                "candidate_work_stage_trigger": "Оффер",
+                "target_employee_id": "",
+            },
+        )
+
+        self.assertEqual(settings_response.status_code, 200)
+        self.assertEqual(settings_response.json()["payload"]["workspace"]["scenario"]["candidate_work_stage_trigger"], "offer")
+
+        update_response = self.client.post(
+            f"/api/employees/{self.employee_id}",
+            json={
+                "full_name": "API Smoke Employee",
+                "chat_id": "",
+                "chat_handle": "",
+                "first_workday": "",
+                "desired_position": "Аналитик",
+                "birth_date": "",
+                "work_email": "",
+                "work_hours": "",
+                "manager_employee_id": "",
+                "mentor_adaptation_employee_id": "",
+                "mentor_ipr_employee_id": "",
+                "adaptation_tasks_url": "",
+                "adaptation_feedback_url": "",
+                "adaptation_midpoint": "",
+                "adaptation_end": "",
+                "employee_stage": "candidate",
+                "candidate_work_stage": "offer",
+                "salary_expectation": "",
+                "personal_data_consent": False,
+                "employee_data_consent": False,
+                "is_bot_blocked": False,
+                "test_task_due_at": "",
+                "notes": "",
+            },
+        )
+
+        self.assertEqual(update_response.status_code, 200)
+        with SessionLocal() as db:
+            queued = (
+                db.query(FlowLaunchRequest)
+                .filter(
+                    FlowLaunchRequest.employee_id == self.employee_id,
+                    FlowLaunchRequest.flow_key == scenario_key,
+                    FlowLaunchRequest.launch_type == "status_transition",
+                    FlowLaunchRequest.processed_at.is_(None),
+                )
+                .one_or_none()
+            )
+            self.assertIsNotNone(queued)
 
     def test_employee_apis_hide_internal_followup_launch_requests(self) -> None:
         visible_flow_key = f"codex_visible_launch_{self.unique_tag}"

@@ -360,3 +360,131 @@ class SchedulerSmokeTests(unittest.IsolatedAsyncioTestCase):
             self.assertIn("не назначен", progress.last_delivery_error or "")
 
         self.assertEqual(messenger.sent_texts, [])
+
+    async def test_pending_candidate_hr_stage_request_starts_without_first_workday(self) -> None:
+        now = datetime.now(UTC).replace(tzinfo=None)
+        scheduler = _FakeScheduler()
+        messenger = _FakeMessenger()
+
+        with SessionLocal() as db:
+            employee = Employee(
+                full_name=f"Candidate Trigger {self.unique_tag}",
+                telegram_user_id=None,
+                telegram_username=None,
+                first_workday=None,
+                created_at=now,
+                is_flow_scheduled=False,
+                candidate_status="new",
+                employee_stage="candidate",
+                candidate_work_stage="offer",
+            )
+            scenario = ScenarioTemplate(
+                scenario_key=self.scenario_key,
+                title=f"Scheduler smoke {self.unique_tag}",
+                role_scope="all",
+                employee_scope="candidates",
+                scenario_kind="scenario",
+                sort_order=0,
+                trigger_mode="candidate_hr_stage",
+                candidate_work_stage_trigger="offer",
+            )
+            step = FlowStepTemplate(
+                flow_key=self.scenario_key,
+                step_key="first_step",
+                step_title="Первый шаг",
+                sort_order=10,
+                default_text="Оффер",
+                response_type="none",
+                send_mode="immediate",
+                day_offset_workdays=0,
+            )
+            db.add_all([employee, scenario, step])
+            db.flush()
+            self.employee_id = employee.id
+            set_primary_chat_id(employee, "800002", db=db)
+            db.add(
+                FlowLaunchRequest(
+                    employee_id=employee.id,
+                    flow_key=self.scenario_key,
+                    requested_at=now,
+                    processed_at=None,
+                    launch_type="status_transition",
+                    skip_step_key=None,
+                )
+            )
+            db.commit()
+
+        with patch("app.scheduler.start_scenario", return_value=True) as mocked_start:
+            await schedule_all_employees(scheduler, messenger)
+
+        mocked_start.assert_awaited_once()
+        with SessionLocal() as db:
+            request_row = (
+                db.query(FlowLaunchRequest)
+                .filter(
+                    FlowLaunchRequest.employee_id == self.employee_id,
+                    FlowLaunchRequest.flow_key == self.scenario_key,
+                    FlowLaunchRequest.launch_type == "status_transition",
+                )
+                .one()
+            )
+            self.assertIsNotNone(request_row.processed_at)
+
+    async def test_pending_candidate_hr_stage_request_skips_stale_status(self) -> None:
+        now = datetime.now(UTC).replace(tzinfo=None)
+        scheduler = _FakeScheduler()
+        messenger = _FakeMessenger()
+
+        with SessionLocal() as db:
+            employee = Employee(
+                full_name=f"Candidate Trigger {self.unique_tag}",
+                telegram_user_id=None,
+                telegram_username=None,
+                first_workday=None,
+                created_at=now,
+                is_flow_scheduled=False,
+                candidate_status="new",
+                employee_stage="candidate",
+                candidate_work_stage="testing",
+            )
+            scenario = ScenarioTemplate(
+                scenario_key=self.scenario_key,
+                title=f"Scheduler smoke {self.unique_tag}",
+                role_scope="all",
+                employee_scope="candidates",
+                scenario_kind="scenario",
+                sort_order=0,
+                trigger_mode="candidate_hr_stage",
+                candidate_work_stage_trigger="offer",
+            )
+            db.add_all([employee, scenario])
+            db.flush()
+            self.employee_id = employee.id
+            set_primary_chat_id(employee, "800003", db=db)
+            db.add(
+                FlowLaunchRequest(
+                    employee_id=employee.id,
+                    flow_key=self.scenario_key,
+                    requested_at=now,
+                    processed_at=None,
+                    launch_type="status_transition",
+                    skip_step_key=None,
+                )
+            )
+            db.commit()
+
+        with patch("app.scheduler.start_scenario", return_value=True) as mocked_start:
+            await schedule_all_employees(scheduler, messenger)
+
+        mocked_start.assert_not_awaited()
+        with SessionLocal() as db:
+            request_row = (
+                db.query(FlowLaunchRequest)
+                .filter(
+                    FlowLaunchRequest.employee_id == self.employee_id,
+                    FlowLaunchRequest.flow_key == self.scenario_key,
+                    FlowLaunchRequest.launch_type == "status_transition",
+                )
+                .one()
+            )
+            self.assertIsNotNone(request_row.processed_at)

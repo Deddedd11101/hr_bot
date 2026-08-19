@@ -86,6 +86,10 @@ Scenario engine превращает scenario templates плюс employee state 
 - Сознательное текущее правило:
   - request хранит только subject employee и `flow_key`;
   - recipient вычисляется заново в момент фактической обработки и отправки шага.
+- Для `trigger_mode=candidate_hr_stage` карточка кандидата ставит `launch_type=status_transition` только при реальном изменении `candidate_work_stage`; повторное сохранение того же статуса не создает новый pending request.
+- `candidate_hr_stage` является immediate trigger: обработка `status_transition` не требует `first_workday` и не проходит через date-anchor guard.
+- Перед запуском `status_transition` worker заново сверяет текущий `candidate_work_stage` карточки с `scenario_templates.candidate_work_stage_trigger`; stale request после последующей смены статуса помечается обработанным без отправки.
+- Backend нормализует ключи и человекочитаемые labels HR-статусов кандидата для сохранения и matching trigger settings, но каноническое значение в БД остается stage key (`offer`, `testing`, `preonboarding` и т.д.).
 - Практический смысл:
   - если после события HR сменил руководителя или наставника до обработки очереди, сообщение уйдет уже актуальному назначенному адресату.
 - Это особенно важно для `manager_assigned_adaptation`:
