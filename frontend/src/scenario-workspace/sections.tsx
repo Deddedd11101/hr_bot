@@ -32,6 +32,7 @@ import {
   crumbIcon,
   itemKey,
   normalizeNotificationRecipientIds,
+  openActionLabel,
   parseRecipientIds,
   responseTypeWaitState,
   ROLE_NOTIFICATION_RECIPIENT_LABELS,
@@ -719,7 +720,7 @@ export function WorkspaceCanvasSection(props: {
         <ScrollArea className="min-h-0 flex-1">
           <div className="grid gap-2 pr-3">
             {currentItems.map((item, index) => {
-              const canOpen = !!buildChildContainer(item);
+              const openChildLabel = openActionLabel(item);
               const active = itemKey(item) === selectedItemKey;
               const isDragging = dragStepId === item.id;
               const isDropTarget = dropTargetId === item.id && !isDragging;
@@ -785,7 +786,7 @@ export function WorkspaceCanvasSection(props: {
                         </Badge>
                       ) : null}
                     </div>
-                    {canOpen ? (
+                    {openChildLabel ? (
                       <Button
                         variant="ghost"
                         size="sm"
@@ -794,8 +795,12 @@ export function WorkspaceCanvasSection(props: {
                           onOpenItem(item);
                         }}
                       >
-                        <PanelLeft data-icon="inline-start" />
-                        Открыть
+                        {openChildLabel.startsWith("Создать") ? (
+                          <Plus data-icon="inline-start" />
+                        ) : (
+                          <PanelLeft data-icon="inline-start" />
+                        )}
+                        {openChildLabel}
                       </Button>
                     ) : null}
                   </div>
@@ -1103,14 +1108,14 @@ export function WorkspaceStepDetailPane(props: {
                 <div className="flex flex-col gap-1">
                   <h4 className="text-base font-semibold">{selectedItem.label}</h4>
                   <p className="text-sm leading-6 text-muted-foreground">
-                    Для этой кнопки ветка пока не создана. Создай её, и после этого можно будет настроить тип ответа,
-                    цепочку шагов и дальнейшую логику.
+                    Для этой кнопки пока нет шага ветки. Добавь первый шаг, и после этого можно будет настроить ответ,
+                    цепочку и дальнейшую логику.
                   </p>
                 </div>
                 <div className="flex items-center gap-3">
                   <Button onClick={onCreateBranch}>
                     <Plus data-icon="inline-start" />
-                    Создать ветку
+                    Добавить шаг ветки
                   </Button>
                 </div>
               </div>

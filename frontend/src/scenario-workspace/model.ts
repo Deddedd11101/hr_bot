@@ -210,7 +210,13 @@ export function normalizeNotificationRecipientIds(value: string) {
 export function openActionLabel(item: WorkspaceItem | null) {
   const container = buildChildContainer(item);
   if (!container) return "";
-  return container.type === "branches" ? "Открыть ветки" : "Открыть цепочку";
+  if (container.type === "branches") {
+    const hasCreatedBranches = container.items.some(
+      (branchItem) => branchItem.kind === "branch_slot" && branchItem.step,
+    );
+    return hasCreatedBranches ? "Открыть ветки" : "Создать ветки";
+  }
+  return "Открыть цепочку";
 }
 
 export function moveItemById<T extends { id: number }>(items: T[], sourceId: number, targetId: number) {
