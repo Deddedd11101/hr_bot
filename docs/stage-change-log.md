@@ -34,6 +34,49 @@ source_of_truth: true
 
 ## Записи
 
+### 2026-08-19 16:11 MSK - app deploy - candidate status triggers and branch UX
+
+- Deploy ref: `stage`.
+- Deployed commit: `7a9c7e6`.
+- GitHub Actions run: `32256555914` -> success.
+- В stage включено:
+  - запуск сценариев по смене HR-статуса кандидата через `candidate_hr_stage` / `status_transition`;
+  - защита от повторного enqueue при сохранении того же статуса;
+  - API очистки `first_workday`: `""` и `null` сохраняют пустое значение;
+  - UX кнопок веток в scenario workspace: CTA labels/states `Создать ветки` / `Открыть ветки`;
+  - generated `scenario-workspace.js`;
+  - schema/storage/deploy workflow не менялись.
+- Локальные проверки перед deploy:
+  - `D:\HRBot\hr_bot_stage_pipeline\.venv\Scripts\python.exe -m compileall app tests tools`;
+  - `D:\HRBot\hr_bot_stage_pipeline\.venv\Scripts\python.exe -m ruff check --select F821 app tests tools`;
+  - `D:\HRBot\hr_bot_stage_pipeline\.venv\Scripts\python.exe -m unittest tests.test_scenario_engine_smoke tests.test_messaging_identity tests.test_employee_api_smoke -v` -> 134 tests OK;
+  - `D:\HRBot\hr_bot_stage_pipeline\.venv\Scripts\python.exe -m unittest tests.test_scheduler_smoke -v` -> 7 tests OK;
+  - `D:\HRBot\hr_bot_stage_pipeline\.venv\Scripts\python.exe tools\check_docs_contracts.py`;
+  - `npm ci` in `frontend`;
+  - `npm run build` in `frontend`;
+  - `git diff --check origin/stage..HEAD`.
+- GitHub Actions preflight:
+  - backend dependencies install;
+  - `compileall`;
+  - `ruff F821`;
+  - backend smoke tests -> 134 tests OK;
+  - frontend build;
+  - smoke imports.
+- Stage safety checks:
+  - verified SQLite backup created before checkout/restart: `backups/hr_bot.before-deploy.20260819-131110.db`;
+  - scenario config snapshot created: `backups/scenarios.before-deploy.20260819-131110.json`;
+  - scenario configuration fingerprint unchanged.
+- Stage smoke checks:
+  - `/app/employees` -> `303`;
+  - `/app/flows/workspace-v2` -> `303`;
+  - Telegram API reachability -> `HTTP/2 302`;
+  - deploy job завершился успешно и вывел `7a9c7e6`.
+- Открытые риски:
+  - нужен ручной stage smoke: сменить статус тестового кандидата на `Собеседование с HR` и `Тестирование`, проверить запуск нужных сценариев и отсутствие повторного запуска при повторном сохранении;
+  - вручную проверить очистку `first_workday` через backspace/delete и сохранение пустого значения;
+  - вручную проверить CTA `Создать ветки` / `Открыть ветки` в scenario workspace;
+  - status trigger зависит от корректной настройки сценария: trigger `candidate_hr_stage` и нужный candidate status/stage.
+
 ### 2026-08-17 16:10 MSK - app deploy - bounded scenario settings dialog
 
 - Deploy ref: `stage`.
