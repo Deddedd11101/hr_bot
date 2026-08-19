@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from ..config import settings
 from ..file_storage import build_employee_file_path
-from ..flow_templates import CANDIDATE_WORK_STAGE_LABELS
+from ..flow_templates import CANDIDATE_WORK_STAGE_LABELS, normalize_candidate_work_stage
 from ..messaging import create_telegram_messenger
 from ..messaging.identity import (
     EmployeeIdentityConflictError,
@@ -635,7 +635,8 @@ def _candidate_stage_transition_scenarios(
     employee: Employee,
     next_candidate_stage: str,
 ) -> list[ScenarioTemplate]:
-    if not next_candidate_stage:
+    normalized_next_candidate_stage = normalize_candidate_work_stage(next_candidate_stage)
+    if not normalized_next_candidate_stage:
         return []
     return [
         scenario
@@ -643,11 +644,12 @@ def _candidate_stage_transition_scenarios(
         .filter(
             ScenarioTemplate.scenario_kind == "scenario",
             ScenarioTemplate.trigger_mode == "candidate_hr_stage",
-            ScenarioTemplate.candidate_work_stage_trigger == next_candidate_stage,
         )
         .order_by(ScenarioTemplate.sort_order.asc(), ScenarioTemplate.id.asc())
         .all()
-        if _scenario_matches_employee_role(scenario, employee)
+        if normalize_candidate_work_stage(getattr(scenario, "candidate_work_stage_trigger", None))
+        == normalized_next_candidate_stage
+        and _scenario_matches_employee_role(scenario, employee)
     ]
 
 
@@ -657,8 +659,8 @@ def _queue_candidate_stage_transition_launches(
     previous_candidate_stage: str | None,
     next_candidate_stage: str | None,
 ) -> None:
-    previous_value = (previous_candidate_stage or "").strip()
-    next_value = (next_candidate_stage or "").strip()
+    previous_value = normalize_candidate_work_stage(previous_candidate_stage) or ""
+    next_value = normalize_candidate_work_stage(next_candidate_stage) or ""
     if previous_value == next_value or not next_value:
         return
     if _employee_list_kind(employee) != "candidates":
@@ -668,6 +670,18 @@ def _queue_candidate_stage_transition_launches(
         return
     requested_at = utc_now()
     for scenario in scenarios:
+        existing_request = (
+            db.query(FlowLaunchRequest)
+            .filter(
+                FlowLaunchRequest.employee_id == employee.id,
+                FlowLaunchRequest.flow_key == scenario.scenario_key,
+                FlowLaunchRequest.launch_type == "status_transition",
+                FlowLaunchRequest.processed_at.is_(None),
+            )
+            .first()
+        )
+        if existing_request:
+            continue
         db.add(
             FlowLaunchRequest(
                 employee_id=employee.id,
@@ -692,7 +706,7 @@ def _create_employee_record(
     list_kind: str,
 ) -> Employee:
     first_day = datetime.strptime(first_workday, "%Y-%m-%d").date() if first_workday else None
-    normalized_candidate_stage = (candidate_work_stage or "").strip()
+    normalized_candidate_stage = normalize_candidate_work_stage(candidate_work_stage)
     employee = Employee(
         full_name=full_name.strip() or None,
         telegram_user_id=None,
@@ -703,7 +717,7 @@ def _create_employee_record(
         employee_stage=_parse_employee_stage_for_create(employee_stage, list_kind),
         candidate_work_stage=(
             normalized_candidate_stage
-            if list_kind == "candidates" and normalized_candidate_stage in CANDIDATE_WORK_STAGE_VALUES
+            if list_kind == "candidates" and normalized_candidate_stage
             else ("testing" if list_kind == "candidates" else None)
         ),
     )
@@ -775,12 +789,7 @@ def _apply_employee_update(
     employee.is_bot_blocked = is_bot_blocked
 
     if is_candidate:
-        normalized_candidate_work_stage = candidate_work_stage.strip()
-        employee.candidate_work_stage = (
-            normalized_candidate_work_stage
-            if normalized_candidate_work_stage in CANDIDATE_WORK_STAGE_VALUES
-            else None
-        )
+        employee.candidate_work_stage = normalize_candidate_work_stage(candidate_work_stage)
         employee.personal_data_consent = personal_data_consent
         employee.test_task_due_at = (
             datetime.strptime(test_task_due_at, "%Y-%m-%dT%H:%M")
