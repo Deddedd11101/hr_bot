@@ -329,6 +329,19 @@ class EmployeeApiSmokeTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         payload = response.json()
+        step_tags = payload["workspace"]["step_template_tags"]
+        notification_tags = payload["workspace"]["notification_template_tags"]
+        self.assertIn({"label": "ФИО", "template": "{employee_full_name}", "description": "ФИО сотрудника или кандидата из карточки."}, step_tags)
+        self.assertIn({"label": "Должность", "template": "{position}", "description": "Должность из карточки сотрудника или кандидата."}, step_tags)
+        self.assertIn(
+            {
+                "label": "Дата первого рабочего дня",
+                "template": "{first_workday}",
+                "description": "Фактическая или плановая дата первого рабочего дня из карточки.",
+            },
+            step_tags,
+        )
+        self.assertIn({"label": "Резюме", "template": "{resume}", "description": "Имя последнего файла категории resume из карточки."}, notification_tags)
         options = payload["workspace"]["notification_recipient_options"]
         self.assertIn(
             {

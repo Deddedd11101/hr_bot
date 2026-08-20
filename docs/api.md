@@ -141,6 +141,8 @@ source_of_truth: true
   - `root_steps`
   - `stats`
   - label dictionaries для UI rendering
+  - `step_template_tags`: stable keys для текста шагов (`{employee_full_name}`, `{position}`, `{first_workday}`) с русскими labels
+  - `notification_template_tags`: stable keys для уведомлений (`{employee_full_name}`, `{position}`, `{resume}`) с русскими labels
   - `employee_options`
   - `available_scenarios`
 
