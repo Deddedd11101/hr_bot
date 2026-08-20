@@ -34,6 +34,52 @@ source_of_truth: true
 
 ## Записи
 
+### 2026-08-21 02:02 MSK - app deploy - scenario library attachments
+
+- Deploy ref: `stage`.
+- Deployed commit: `1e381c3`.
+- GitHub Actions run: `32426844147` -> success.
+- В stage включено:
+  - `flow_step_templates.attachment_document_item_id` как additive SQLite column;
+  - index `ix_flow_step_templates_attachment_document_item_id`;
+  - workspace API отдает `document_library_options`;
+  - save step принимает и сохраняет `attachment_document_item_id`;
+  - runtime отправляет выбранный shared document library item первым, old uploaded attachment остается fallback;
+  - поддержаны file-backed и link-backed shared documents;
+  - broken/missing/inactive library attachment не silent no-op: причина пишется в `scenario_progress.last_delivery_error`;
+  - scenario portability переносит file-backed library attachments только при SHA-256 checksum match, иначе очищает link и пишет warning;
+  - scenario workspace получил selector `Документ из хранилища` в деталях шага, с clear action и явным приоритетом над uploaded attachment.
+- Локальные проверки перед deploy:
+  - `D:\HRBot\hr_bot_stage_pipeline\.venv\Scripts\python.exe -m compileall app tests tools`;
+  - `D:\HRBot\hr_bot_stage_pipeline\.venv\Scripts\python.exe -m ruff check --select F821 app tests tools`;
+  - `D:\HRBot\hr_bot_stage_pipeline\.venv\Scripts\python.exe -m unittest tests.test_scenario_engine_smoke tests.test_messaging_identity tests.test_employee_api_smoke -v` -> 151 tests OK;
+  - `D:\HRBot\hr_bot_stage_pipeline\.venv\Scripts\python.exe -m unittest tests.test_scenario_portability -v` -> 8 tests OK;
+  - `D:\HRBot\hr_bot_stage_pipeline\.venv\Scripts\python.exe tools\check_docs_contracts.py`;
+  - `npm ci` in `frontend`;
+  - `npm run build` in `frontend`;
+  - `git diff --check origin/stage..HEAD`.
+- GitHub Actions preflight:
+  - backend dependencies install;
+  - `compileall`;
+  - `ruff F821`;
+  - backend smoke tests -> 151 tests OK;
+  - frontend build;
+  - smoke imports.
+- Stage safety checks:
+  - verified SQLite backup created before checkout/restart: `backups/hr_bot.before-deploy.20260820-230***7.db`;
+  - scenario config snapshot created: `backups/scenarios.before-deploy.20260820-230***7.json`;
+  - GitHub log masked part of the timestamp in backup/snapshot filenames, but both creation and verification steps passed;
+  - scenario configuration fingerprint unchanged.
+- Stage smoke checks:
+  - `/app/employees` -> `303`;
+  - `/app/flows/workspace-v2` -> `303`;
+  - Telegram API reachability -> `HTTP/2 302`;
+  - deploy job завершился успешно и вывел `1e381c3`.
+- Открытые риски:
+  - stage DB может содержать dangling/inactive shared document library items; нужен ручной read-only audit, если появятся delivery errors по вложениям;
+  - если library item удален/битый и нет uploaded fallback, шаг не отправит вложение и запишет `last_delivery_error`;
+  - нужен ручной stage smoke: выбрать file/link document из `/app/documents` в шаге сценария, сохранить/переоткрыть, запустить сценарий, проверить old attachment fallback и `/app/surveys/workspace`.
+
 ### 2026-08-21 01:15 MSK - app deploy - employee resume document slot
 
 - Deploy ref: `stage`.
