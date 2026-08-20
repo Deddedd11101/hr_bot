@@ -34,6 +34,47 @@ source_of_truth: true
 
 ## Записи
 
+### 2026-08-21 00:30 MSK - app deploy - scenario message template tags
+
+- Deploy ref: `stage`.
+- Deployed commit: `d47443d`.
+- GitHub Actions run: `32419644921` -> success.
+- В stage включено:
+  - backend formatter поддерживает `{employee_full_name}`, `{position}`, `{first_workday}` и `{resume}`;
+  - `{resume}` подставляет human-readable имя последнего `EmployeeFile` с `category=resume` без локального storage path;
+  - existing `{doc:...}` document-slot behavior сохранен;
+  - workspace API отдает `step_template_tags` и `notification_template_tags`;
+  - scenario workspace показывает кнопки тегов в тексте шага и в step/button notification editor;
+  - surveys workspace остается без строки тегов;
+  - вставка тега идет в позицию курсора textarea.
+- Локальные проверки перед deploy:
+  - `D:\HRBot\hr_bot_stage_pipeline\.venv\Scripts\python.exe -m compileall app tests tools`;
+  - `D:\HRBot\hr_bot_stage_pipeline\.venv\Scripts\python.exe -m ruff check --select F821 app tests tools`;
+  - `D:\HRBot\hr_bot_stage_pipeline\.venv\Scripts\python.exe -m unittest tests.test_scenario_engine_smoke tests.test_messaging_identity tests.test_employee_api_smoke -v` -> 141 tests OK;
+  - `D:\HRBot\hr_bot_stage_pipeline\.venv\Scripts\python.exe tools\check_docs_contracts.py`;
+  - `npm ci` in `frontend`;
+  - `npm run build` in `frontend`;
+  - `git diff --check origin/stage..HEAD`.
+- GitHub Actions preflight:
+  - backend dependencies install;
+  - `compileall`;
+  - `ruff F821`;
+  - backend smoke tests -> 141 tests OK;
+  - frontend build;
+  - smoke imports.
+- Stage safety checks:
+  - verified SQLite backup created before checkout/restart: `backups/hr_bot.before-deploy.20260820-213030.db`;
+  - scenario config snapshot created: `backups/scenarios.before-deploy.20260820-213030.json`;
+  - scenario configuration fingerprint unchanged.
+- Stage smoke checks:
+  - `/app/employees` -> `303`;
+  - `/app/flows/workspace-v2` -> `303`;
+  - Telegram API reachability -> `HTTP/2 302`;
+  - deploy job завершился успешно и вывел `d47443d`.
+- Открытые риски:
+  - `{resume}` пока не отдельный durable document slot, а fallback на последний `EmployeeFile category=resume`;
+  - нужен ручной stage smoke: вставить теги в текст шага и уведомления, сохранить/переоткрыть, запустить тестовый сценарий, проверить подстановку и убедиться, что `{doc:...}` не сломан.
+
 ### 2026-08-20 18:44 MSK - app deploy - scenario multi-position layout hotfix
 
 - Deploy ref: `stage`.
