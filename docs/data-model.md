@@ -103,6 +103,8 @@ source_of_truth: true
 - `employee_document_links.slot_key=resume` — единственная актуальная связь резюме в карточке кандидата/сотрудника.
 - Replace/upload резюме создает новый `employee_files.category=resume` и переносит `resume` slot на новый файл.
 - Очистка resume slot удаляет только связь в `employee_document_links`; старые `employee_files.category=resume` и физические файлы остаются для аудита/legacy fallback.
+- `resume` slot не должен попадать в generic `document_links` payload, чтобы UI не показывал destructive generic delete рядом с резюме.
+- Даже если старый клиент напрямую вызовет generic document-link delete для `slot_key=resume`, backend удаляет только link row и сохраняет `EmployeeFile` плюс физический файл.
 - Если `resume` slot пустой, runtime/API может использовать последний `employee_files.category=resume` как совместимый fallback.
 
 ### `employees`

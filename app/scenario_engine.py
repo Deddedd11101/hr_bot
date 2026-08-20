@@ -88,7 +88,7 @@ SCENARIO_NOTIFICATION_TEMPLATE_TAGS = [
     {
         "label": "Резюме",
         "template": "{resume}",
-        "description": "Имя последнего файла категории resume из карточки.",
+        "description": "Имя актуального resume slot из карточки; если slot пустой, fallback на последний файл категории resume.",
     },
 ]
 RECIPIENT_MODE_SELF = "self"

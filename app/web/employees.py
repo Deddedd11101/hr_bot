@@ -1142,8 +1142,9 @@ def _clear_resume_document_slot(db: Session, employee_id: int) -> None:
 
 def _delete_employee_document_link(db: Session, link_row: EmployeeDocumentLink) -> None:
     employee_file_id = getattr(link_row, "employee_file_id", None)
+    is_resume_slot = (getattr(link_row, "slot_key", None) or "").strip() == RESUME_DOCUMENT_SLOT
     db.delete(link_row)
-    if employee_file_id:
+    if employee_file_id and not is_resume_slot:
         employee_file = db.get(EmployeeFile, employee_file_id)
         if employee_file:
             file_path = Path(employee_file.stored_path)
@@ -1447,6 +1448,7 @@ def _build_employee_detail_payload(db: Session, employee: Employee) -> dict:
         db.query(EmployeeDocumentLink)
         .filter(
             EmployeeDocumentLink.employee_id == employee.id,
+            (EmployeeDocumentLink.slot_key.is_(None)) | (EmployeeDocumentLink.slot_key != RESUME_DOCUMENT_SLOT),
         )
         .order_by(EmployeeDocumentLink.created_at.desc(), EmployeeDocumentLink.id.desc())
         .all()

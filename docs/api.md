@@ -120,7 +120,7 @@ source_of_truth: true
 - `files`
   - список файлов сотрудника с download/send URLs и `category`
 - `document_links`
-  - текущие персональные document slot/link entries
+  - текущие персональные document slot/link entries без `slot_key=resume`; resume доступен через отдельный `resume_document`
 - `offer_document`
   - актуальный slot оффера, если задан
 - `resume_document`
@@ -223,7 +223,7 @@ source_of_truth: true
 | `POST` | `/api/employees/{employee_id}/bot-link/reset` | Сбросить Telegram/runtime-привязку карточки для повторного тестового linking. | Path: `employee_id` | Employee detail payload | Очищает Telegram identity/menu/progress и pending launch requests для карточки | `401`, `404` |
 | `POST` | `/api/employees/{employee_id}/document-slots/offer/file` | Загрузить file-backed offer slot. | Multipart: `upload`, optional title/category | Employee detail payload | Создает `employee_files` и `employee_document_links` со `slot_key=offer`, `item_kind=file` | `401`, `404`, `400` |
 | `POST` | `/api/employees/{employee_id}/document-slots/resume/file` | Загрузить или заменить актуальный resume slot. | Multipart: `upload` | `{ item, payload }` | Создает новый `employee_files.category=resume` и upsert `employee_document_links.slot_key=resume`; старые resume-файлы не удаляет | `401`, `404`, `400` |
-| `DELETE` | `/api/employees/{employee_id}/document-slots/resume` | Очистить актуальную связь resume slot. | Path: `employee_id` | Employee detail payload | Удаляет только `employee_document_links.slot_key=resume`; физические файлы и legacy `employee_files.category=resume` остаются | `401`, `404` |
+| `DELETE` | `/api/employees/{employee_id}/document-slots/resume` | Очистить актуальную связь resume slot. | Path: `employee_id` | Employee detail payload | Удаляет только `employee_document_links.slot_key=resume`; физические файлы и legacy `employee_files.category=resume` остаются. Generic document-link delete для resume slot тоже не удаляет файл | `401`, `404` |
 
 ## API scenario/survey workspace
 
