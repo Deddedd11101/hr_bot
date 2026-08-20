@@ -675,6 +675,20 @@ class ScenarioEngineSmokeTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertTrue(matches_role_scope(employee, scenario))
 
+    def test_matches_role_scope_supports_multiple_position_slugs(self) -> None:
+        analyst = SimpleNamespace(id=2, employee_stage="staff", desired_position="Аналитик")
+        designer = SimpleNamespace(id=3, employee_stage="staff", desired_position="Дизайнер")
+        pm = SimpleNamespace(id=4, employee_stage="staff", desired_position="Project manager")
+        scenario = SimpleNamespace(
+            employee_scope="employees",
+            target_employee_id=None,
+            role_scope="designer, analyst",
+        )
+
+        self.assertTrue(matches_role_scope(analyst, scenario))
+        self.assertTrue(matches_role_scope(designer, scenario))
+        self.assertFalse(matches_role_scope(pm, scenario))
+
     async def test_handle_button_response_persists_target_field_value(self) -> None:
         init_db()
         now = datetime.now(UTC).replace(tzinfo=None)

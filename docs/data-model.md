@@ -69,7 +69,7 @@ source_of_truth: true
 
 | Таблица | Назначение | Ключевые поля | Связи и примечания |
 | --- | --- | --- | --- |
-| `scenario_templates` | Metadata сценариев и опросов | `scenario_key`, `title`, `scenario_kind`, `role_scope`, `employee_scope`, `recipient_mode`, `trigger_mode`, `target_employee_id`, `description`, `sort_order` | Parent entity для steps и runtime launches; `recipient_mode` отделяет context employee от фактического Telegram-получателя |
+| `scenario_templates` | Metadata сценариев и опросов | `scenario_key`, `title`, `scenario_kind`, `role_scope`, `employee_scope`, `recipient_mode`, `trigger_mode`, `target_employee_id`, `description`, `sort_order` | Parent entity для steps и runtime launches; `role_scope` хранит `all` или CSV position slug'ов для multi-position targeting; `recipient_mode` отделяет context employee от фактического Telegram-получателя |
 | `flow_step_templates` | Step definitions | `flow_key`, `step_key`, `parent_step_id`, `branch_option_index`, `response_type`, `button_options`, scheduling fields, target field, attachment fields, notification fields | Root steps имеют `parent_step_id = NULL`; branches и chains вложены через `parent_step_id` |
 | `step_button_notifications` | Notification overrides для button options | `flow_key`, `step_id`, `option_index`, `message_text`, recipient fields | Дополнительная notification model для конкретной button option |
 | `step_send_notifications` | Notification rules при показе шага | `flow_key`, `step_id`, `rule_index`, `message_text`, recipient fields | Новая множественная модель step-level notifications; legacy `notify_on_send_*` остается compatibility seam |
@@ -157,6 +157,10 @@ source_of_truth: true
 ### `scenario_templates` и `flow_step_templates`
 
 - Scenario authoring table-driven.
+- `role_scope` остается одним storage field для обратной совместимости:
+  - `all` или пустой normalized набор означает все должности;
+  - одиночный legacy slug остается валидным;
+  - несколько должностей хранятся как CSV slug'ов, например `designer,analyst`.
 - У scenario теперь есть отдельный recipient layer:
   - `employee_id` в launch/progress остается subject/context employee;
   - `recipient_mode` определяет фактического получателя шага;

@@ -561,10 +561,10 @@ class ScenarioTemplate(Base):
         doc="scenario | survey",
     )
     role_scope: Mapped[str] = mapped_column(
-        String(64),
+        String(1024),
         nullable=False,
         default="all",
-        doc="designer | project_manager | analyst | all",
+        doc="CSV position slugs or all.",
     )
     employee_scope: Mapped[str] = mapped_column(
         String(64),
