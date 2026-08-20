@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import shutil
 import sqlite3
@@ -161,6 +162,20 @@ def _load_notifications(connection: sqlite3.Connection, flow_key: str) -> list[d
     ).fetchall()
 
 
+def _sha256_file(path_value: str | None) -> str | None:
+    normalized_path = (path_value or "").strip()
+    if not normalized_path:
+        return None
+    path = Path(normalized_path)
+    if not path.exists() or not path.is_file():
+        return None
+    digest = hashlib.sha256()
+    with path.open("rb") as file_obj:
+        for chunk in iter(lambda: file_obj.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def _load_document_library_metadata(connection: sqlite3.Connection, item_id: int | None) -> dict[str, Any] | None:
     if not item_id or not _table_exists(connection, "document_library_items"):
         return None
@@ -174,12 +189,13 @@ def _load_document_library_metadata(connection: sqlite3.Connection, item_id: int
     ).fetchone()
     if not row:
         return None
-    return {
+    item_kind = (row.get("item_kind") or "").strip()
+    metadata = {
         "source_id": row.get("id"),
         "title": row.get("title"),
         "description": row.get("description"),
         "category": row.get("category"),
-        "item_kind": row.get("item_kind"),
+        "item_kind": item_kind,
         "external_url": row.get("external_url"),
         "original_filename": row.get("original_filename"),
         "stored_path": row.get("stored_path"),
@@ -187,6 +203,9 @@ def _load_document_library_metadata(connection: sqlite3.Connection, item_id: int
         "file_size": row.get("file_size"),
         "is_active": bool(row.get("is_active")),
     }
+    if item_kind == "file":
+        metadata["content_sha256"] = _sha256_file(row.get("stored_path"))
+    return metadata
 
 
 def _resolve_import_attachment_document_item_id(connection: sqlite3.Connection, step: dict[str, Any]) -> int | None:
@@ -221,10 +240,16 @@ def _resolve_import_attachment_document_item_id(connection: sqlite3.Connection, 
             """,
             (item_kind, title, metadata.get("external_url")),
         ).fetchall()
-    else:
-        rows = connection.execute(
+    elif item_kind == "file":
+        source_checksum = metadata.get("content_sha256")
+        if not source_checksum:
+            print(
+                f"WARNING: cleared attachment_document_item_id for step '{step_label}': source file checksum is unavailable.",
+            )
+            return None
+        candidates = connection.execute(
             """
-            SELECT id
+            SELECT id, stored_path
             FROM document_library_items
             WHERE is_active = 1
               AND item_kind = ?
@@ -242,6 +267,21 @@ def _resolve_import_attachment_document_item_id(connection: sqlite3.Connection, 
                 metadata.get("file_size"),
             ),
         ).fetchall()
+        rows = [
+            row
+            for row in candidates
+            if _sha256_file(row.get("stored_path")) == source_checksum
+        ]
+        if candidates and not rows:
+            print(
+                f"WARNING: cleared attachment_document_item_id for step '{step_label}': target file checksum mismatch or unavailable.",
+            )
+            return None
+    else:
+        print(
+            f"WARNING: cleared attachment_document_item_id for step '{step_label}': unsupported document item_kind '{item_kind}'.",
+        )
+        return None
 
     if len(rows) == 1:
         return int(rows[0]["id"])

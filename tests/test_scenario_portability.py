@@ -146,6 +146,67 @@ def _insert_target_document(db_path: Path, *, document_id: int, external_url: st
         connection.close()
 
 
+def _insert_file_scenario_with_library_attachment(
+    db_path: Path,
+    *,
+    document_id: int,
+    stored_path: Path,
+    file_size: int,
+) -> None:
+    connection = sqlite3.connect(str(db_path))
+    try:
+        connection.execute(
+            """
+            INSERT INTO scenario_templates (
+                scenario_key, title, sort_order, scenario_kind, role_scope, employee_scope, recipient_mode, trigger_mode, target_employee_id, description
+            ) VALUES ('scenario_file_docs', 'File docs scenario', 10, 'scenario', 'all', 'employees', 'self', 'manual_only', NULL, 'docs')
+            """
+        )
+        connection.execute(
+            """
+            INSERT INTO document_library_items (
+                id, title, description, category, item_kind, external_url, original_filename, stored_path, mime_type, file_size, is_active, sort_order
+            ) VALUES (?, 'Policy PDF', 'Read file', 'Docs', 'file', NULL, 'policy.pdf', ?, 'application/pdf', ?, 1, 10)
+            """,
+            (document_id, str(stored_path), file_size),
+        )
+        connection.execute(
+            """
+            INSERT INTO flow_step_templates (
+                flow_key, step_key, parent_step_id, branch_option_index, step_title, sort_order, default_text, custom_text, response_type, button_options,
+                send_mode, send_time, day_offset_workdays, target_field, launch_scenario_key, attachment_document_item_id, attachment_path, attachment_filename,
+                send_employee_card, notify_on_send_text, notify_on_send_recipient_ids, notify_on_send_recipient_scope
+            ) VALUES ('scenario_file_docs', 'step_one', NULL, NULL, 'Step one', 10, 'Read file', NULL, 'none', NULL, 'immediate', NULL, 0, NULL, NULL, ?, NULL, NULL, 0, NULL, NULL, NULL)
+            """,
+            (document_id,),
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+
+def _insert_target_file_document(
+    db_path: Path,
+    *,
+    document_id: int,
+    stored_path: Path,
+    file_size: int,
+) -> None:
+    connection = sqlite3.connect(str(db_path))
+    try:
+        connection.execute(
+            """
+            INSERT INTO document_library_items (
+                id, title, description, category, item_kind, external_url, original_filename, stored_path, mime_type, file_size, is_active, sort_order
+            ) VALUES (?, 'Policy PDF', 'Read file', 'Docs', 'file', NULL, 'policy.pdf', ?, 'application/pdf', ?, 1, 10)
+            """,
+            (document_id, str(stored_path), file_size),
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+
 class ScenarioPortabilityTests(unittest.TestCase):
     def test_export_import_round_trip_preserves_recipient_mode(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -296,7 +357,7 @@ class ScenarioPortabilityTests(unittest.TestCase):
             self.assertIsNone(row[0])
             self.assertIn("WARNING: cleared attachment_document_item_id", output.getvalue())
 
-    def test_import_preserves_library_attachment_for_exact_validated_match(self) -> None:
+    def test_import_preserves_link_library_attachment_for_exact_url_match(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)
             source_db = root / "source.db"
@@ -326,6 +387,152 @@ class ScenarioPortabilityTests(unittest.TestCase):
 
             self.assertEqual(row[0], 7)
             self.assertNotIn("WARNING: cleared attachment_document_item_id", output.getvalue())
+
+    def test_import_clears_file_library_attachment_when_same_metadata_has_different_checksum(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            source_db = root / "source.db"
+            target_db = root / "target.db"
+            export_dir = root / "package"
+            storage_root = root / "storage"
+            source_file = root / "source-policy.pdf"
+            target_file = root / "target-policy.pdf"
+            source_file.write_bytes(b"aaaa")
+            target_file.write_bytes(b"bbbb")
+
+            _create_portability_schema(source_db)
+            _create_portability_schema(target_db)
+            _add_attachment_document_schema(source_db)
+            _add_attachment_document_schema(target_db)
+            _insert_file_scenario_with_library_attachment(source_db, document_id=1, stored_path=source_file, file_size=4)
+            _insert_target_file_document(target_db, document_id=1, stored_path=target_file, file_size=4)
+
+            export_scenarios(source_db, export_dir, ["scenario_file_docs"])
+            output = StringIO()
+            with redirect_stdout(output):
+                import_scenarios(target_db, export_dir, storage_root)
+
+            target = sqlite3.connect(str(target_db))
+            try:
+                row = target.execute(
+                    "SELECT attachment_document_item_id FROM flow_step_templates WHERE flow_key = 'scenario_file_docs'"
+                ).fetchone()
+            finally:
+                target.close()
+
+            self.assertIsNone(row[0])
+            self.assertIn("target file checksum mismatch or unavailable", output.getvalue())
+
+    def test_import_preserves_file_library_attachment_for_exact_checksum_match(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            source_db = root / "source.db"
+            target_db = root / "target.db"
+            export_dir = root / "package"
+            storage_root = root / "storage"
+            source_file = root / "source-policy.pdf"
+            target_file = root / "target-policy.pdf"
+            source_file.write_bytes(b"same")
+            target_file.write_bytes(b"same")
+
+            _create_portability_schema(source_db)
+            _create_portability_schema(target_db)
+            _add_attachment_document_schema(source_db)
+            _add_attachment_document_schema(target_db)
+            _insert_file_scenario_with_library_attachment(source_db, document_id=1, stored_path=source_file, file_size=4)
+            _insert_target_file_document(target_db, document_id=7, stored_path=target_file, file_size=4)
+
+            export_scenarios(source_db, export_dir, ["scenario_file_docs"])
+            manifest = json.loads((export_dir / "manifest.json").read_text(encoding="utf-8"))
+            metadata = manifest["scenarios"][0]["steps"][0]["attachment_document_item"]
+            self.assertEqual(
+                metadata["content_sha256"],
+                "0967115f2813a3541eaef77de9d9d5773f1c0c04314b0bbfe4ff3b3b1c55b5d5",
+            )
+            output = StringIO()
+            with redirect_stdout(output):
+                import_scenarios(target_db, export_dir, storage_root)
+
+            target = sqlite3.connect(str(target_db))
+            try:
+                row = target.execute(
+                    "SELECT attachment_document_item_id FROM flow_step_templates WHERE flow_key = 'scenario_file_docs'"
+                ).fetchone()
+            finally:
+                target.close()
+
+            self.assertEqual(row[0], 7)
+            self.assertNotIn("WARNING: cleared attachment_document_item_id", output.getvalue())
+
+    def test_import_clears_file_library_attachment_when_source_checksum_is_unavailable(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            source_db = root / "source.db"
+            target_db = root / "target.db"
+            export_dir = root / "package"
+            storage_root = root / "storage"
+            missing_source_file = root / "missing-source-policy.pdf"
+            target_file = root / "target-policy.pdf"
+            target_file.write_bytes(b"same")
+
+            _create_portability_schema(source_db)
+            _create_portability_schema(target_db)
+            _add_attachment_document_schema(source_db)
+            _add_attachment_document_schema(target_db)
+            _insert_file_scenario_with_library_attachment(source_db, document_id=1, stored_path=missing_source_file, file_size=4)
+            _insert_target_file_document(target_db, document_id=7, stored_path=target_file, file_size=4)
+
+            export_scenarios(source_db, export_dir, ["scenario_file_docs"])
+            manifest = json.loads((export_dir / "manifest.json").read_text(encoding="utf-8"))
+            self.assertIsNone(manifest["scenarios"][0]["steps"][0]["attachment_document_item"]["content_sha256"])
+            output = StringIO()
+            with redirect_stdout(output):
+                import_scenarios(target_db, export_dir, storage_root)
+
+            target = sqlite3.connect(str(target_db))
+            try:
+                row = target.execute(
+                    "SELECT attachment_document_item_id FROM flow_step_templates WHERE flow_key = 'scenario_file_docs'"
+                ).fetchone()
+            finally:
+                target.close()
+
+            self.assertIsNone(row[0])
+            self.assertIn("source file checksum is unavailable", output.getvalue())
+
+    def test_import_clears_file_library_attachment_when_target_file_is_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            source_db = root / "source.db"
+            target_db = root / "target.db"
+            export_dir = root / "package"
+            storage_root = root / "storage"
+            source_file = root / "source-policy.pdf"
+            missing_target_file = root / "missing-target-policy.pdf"
+            source_file.write_bytes(b"same")
+
+            _create_portability_schema(source_db)
+            _create_portability_schema(target_db)
+            _add_attachment_document_schema(source_db)
+            _add_attachment_document_schema(target_db)
+            _insert_file_scenario_with_library_attachment(source_db, document_id=1, stored_path=source_file, file_size=4)
+            _insert_target_file_document(target_db, document_id=7, stored_path=missing_target_file, file_size=4)
+
+            export_scenarios(source_db, export_dir, ["scenario_file_docs"])
+            output = StringIO()
+            with redirect_stdout(output):
+                import_scenarios(target_db, export_dir, storage_root)
+
+            target = sqlite3.connect(str(target_db))
+            try:
+                row = target.execute(
+                    "SELECT attachment_document_item_id FROM flow_step_templates WHERE flow_key = 'scenario_file_docs'"
+                ).fetchone()
+            finally:
+                target.close()
+
+            self.assertIsNone(row[0])
+            self.assertIn("target file checksum mismatch or unavailable", output.getvalue())
 
 
 if __name__ == "__main__":
