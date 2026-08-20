@@ -34,6 +34,45 @@ source_of_truth: true
 
 ## Записи
 
+### 2026-08-20 18:44 MSK - app deploy - scenario multi-position layout hotfix
+
+- Deploy ref: `stage`.
+- Deployed commit: `e68de83`.
+- GitHub Actions run: `32387761936` -> success.
+- В stage включено:
+  - UI-hotfix настройки сценария для мультивыбора должностей;
+  - trigger показывает `Все должности` или `Выбрано: N`;
+  - выбранные должности выводятся в bounded summary block с internal scroll;
+  - модалка настроек сценария не должна растягиваться из-за длинного списка выбранных должностей;
+  - generated frontend assets обновлены воспроизводимым Vite build.
+- Локальные проверки перед deploy:
+  - `D:\HRBot\hr_bot_stage_pipeline\.venv\Scripts\python.exe -m compileall app tests tools`;
+  - `D:\HRBot\hr_bot_stage_pipeline\.venv\Scripts\python.exe -m ruff check --select F821 app tests tools`;
+  - `D:\HRBot\hr_bot_stage_pipeline\.venv\Scripts\python.exe -m unittest tests.test_scenario_engine_smoke tests.test_messaging_identity tests.test_employee_api_smoke -v` -> 136 tests OK;
+  - `D:\HRBot\hr_bot_stage_pipeline\.venv\Scripts\python.exe -m unittest tests.test_scheduler_smoke -v` -> 7 tests OK;
+  - `D:\HRBot\hr_bot_stage_pipeline\.venv\Scripts\python.exe tools\check_docs_contracts.py`;
+  - `npm ci` in `frontend`;
+  - `npm run build` in `frontend`;
+  - `git diff --check origin/stage..HEAD`.
+- GitHub Actions preflight:
+  - backend dependencies install;
+  - `compileall`;
+  - `ruff F821`;
+  - backend smoke tests -> 136 tests OK;
+  - frontend build;
+  - smoke imports.
+- Stage safety checks:
+  - verified SQLite backup created before checkout/restart: `backups/hr_bot.before-deploy.20260820-154356.db`;
+  - scenario config snapshot created: `backups/scenarios.before-deploy.20260820-154356.json`;
+  - scenario configuration fingerprint unchanged.
+- Stage smoke checks:
+  - `/app/employees` -> `303`;
+  - `/app/flows/workspace-v2` -> `303`;
+  - Telegram API reachability -> `HTTP/2 302`;
+  - deploy job завершился успешно и вывел `e68de83`.
+- Открытые риски:
+  - нужен ручной stage smoke: выбрать несколько должностей, убедиться, что selected summary скроллится внутри блока, сохранить, переоткрыть, проверить `Все должности`, candidate status trigger для included/excluded position и `/app/surveys/workspace`.
+
 ### 2026-08-20 17:47 MSK - app deploy - scenario multi-position scopes
 
 - Deploy ref: `stage`.
