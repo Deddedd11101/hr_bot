@@ -57,7 +57,7 @@ source_of_truth: true
 | `GET` | `/candidates` | Redirect route | Legacy operator entrypoint; теперь ведет на `/app/employees?list_kind=candidates` |
 | `GET` | `/employees` | Redirect route | Legacy operator entrypoint; теперь ведет на `/app/employees` |
 | `GET` | `/app/employees` | React bootstrap page | Default employee/candidate list; поддерживает query `list_kind=candidates` |
-| `GET` | `/app/employees/{employee_id}` | React bootstrap page | Новый employee detail screen |
+| `GET` | `/app/employees/{employee_id}` | React bootstrap page | Новый employee detail screen; показывает отдельные document slots для оффера и актуального резюме, отдельно от generic files |
 | `GET` | `/employees/{employee_id}/edit` | Redirect route | Legacy employee entrypoint; теперь ведет на React detail `/app/employees/{employee_id}` |
 | `POST` | `/employees` | Form action | Создать employee/candidate из classic UI |
 | `POST` | `/employees/{employee_id}` | Form action | Обновить employee/candidate из classic UI |

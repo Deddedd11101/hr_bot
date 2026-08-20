@@ -917,6 +917,9 @@ export function EmployeeOperationsSection(props: any) {
         offerFile,
         setOfferFile,
         offerDocumentItem,
+        resumeFile,
+        setResumeFile,
+        resumeDocumentItem,
         payload,
         form,
         scheduleForm,
@@ -928,6 +931,7 @@ export function EmployeeOperationsSection(props: any) {
         handleOfferSubmit,
         handleOfferFileSubmit,
         handleOfferDelete,
+        handleResumeFileSubmit,
         handleScheduleSubmit,
         handleLaunchSubmit,
         handleFileSubmit,
@@ -1198,6 +1202,45 @@ export function EmployeeOperationsSection(props: any) {
                         </FieldGroup>
                     </form>
                 </div>
+            </DocumentList>
+
+            <DocumentList
+                title="Резюме"
+                items={resumeDocumentItem ? [resumeDocumentItem] : []}
+                emptyTitle="Резюме пока не загружено"
+            >
+                <form className="employee-inline-form" onSubmit={handleResumeFileSubmit}>
+                    <FieldGroup>
+                        <Field>
+                            <FieldLabel>{resumeDocumentItem ? "Заменить резюме" : "Загрузить резюме"}</FieldLabel>
+                            <Input
+                                id="react-resume-file-input"
+                                className="employee-file-native"
+                                type="file"
+                                onChange={function (event) {
+                                    const file = event.target.files && event.target.files[0] ? event.target.files[0] : null;
+                                    setResumeFile(file);
+                                }}
+                            />
+                            <div className="employee-file-picker">
+                                <label
+                                    htmlFor="react-resume-file-input"
+                                    className={buttonVariants({ variant: "outline", size: "sm" })}
+                                >
+                                    <Upload data-icon="inline-start" />
+                                    Выбрать файл
+                                </label>
+                                <span>{resumeFile ? resumeFile.name : "Файл не выбран"}</span>
+                            </div>
+                        </Field>
+                        <div className="employee-action-row">
+                            <Button type="submit" variant="secondary">
+                                <Upload data-icon="inline-start" />
+                                {resumeDocumentItem ? "Заменить" : "Загрузить"}
+                            </Button>
+                        </div>
+                    </FieldGroup>
+                </form>
             </DocumentList>
 
             <DetailCard>
