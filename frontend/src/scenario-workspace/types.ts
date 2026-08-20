@@ -117,6 +117,12 @@ export type WorkspaceGraph = {
   };
 };
 
+export type WorkspaceTemplateTag = {
+  label: string;
+  template: string;
+  description: string;
+};
+
 export type WorkspaceData = {
   scenario: {
     id: number;
@@ -150,6 +156,8 @@ export type WorkspaceData = {
   target_field_labels: Record<string, string>;
   send_mode_labels: Record<string, string>;
   notification_recipient_scope_labels: Record<string, string>;
+  step_template_tags: WorkspaceTemplateTag[];
+  notification_template_tags: WorkspaceTemplateTag[];
   document_tag_titles: string[];
   employee_options: Array<{ id: number; label: string; kind: string }>;
   notification_recipient_options: Array<{ token: string; label: string; description: string; kind: string }>;

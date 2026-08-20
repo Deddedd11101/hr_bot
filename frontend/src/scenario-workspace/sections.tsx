@@ -53,6 +53,7 @@ import type {
   WorkspaceRootStepOption,
   WorkspaceStep,
   WorkspaceStepSendNotificationRule,
+  WorkspaceTemplateTag,
 } from "./types";
 
 const ScenarioGraphView = React.lazy(() => import("./graph-view").then((module) => ({ default: module.ScenarioGraphView })));
@@ -841,6 +842,61 @@ export function WorkspaceDetailSection({
   );
 }
 
+function TemplateTagButtons({
+  tags,
+  onInsert,
+  includeDocumentTags = false,
+  documentTagTitles = [],
+}: {
+  tags: WorkspaceTemplateTag[];
+  onInsert: (template: string) => void;
+  includeDocumentTags?: boolean;
+  documentTagTitles?: string[];
+}) {
+  const normalizedDocumentTitles = React.useMemo(() => {
+    if (!includeDocumentTags) return [];
+    const titles = documentTagTitles.map((title) => title.trim()).filter(Boolean);
+    return titles.length ? titles : ["Оффер"];
+  }, [documentTagTitles, includeDocumentTags]);
+
+  if (!tags.length && !normalizedDocumentTitles.length) {
+    return null;
+  }
+
+  return (
+    <div className="rounded-lg border border-border/70 bg-muted/35 p-2">
+      <div className="flex flex-wrap items-center gap-1.5">
+        {tags.map((tag) => (
+          <Button
+            key={tag.template}
+            type="button"
+            variant="outline"
+            size="xs"
+            title={tag.description || tag.template}
+            onClick={() => onInsert(tag.template)}
+          >
+            {tag.label}
+          </Button>
+        ))}
+        {includeDocumentTags
+          ? normalizedDocumentTitles.map((title) => (
+              <Button
+                key={`doc-${title}`}
+                type="button"
+                variant="outline"
+                size="xs"
+                title={`Вставить документ: ${title}`}
+                onClick={() => onInsert(`{doc:${title}}`)}
+              >
+                Документ: {title}
+              </Button>
+            ))
+          : null}
+      </div>
+    </div>
+  );
+}
+
 export function WorkspaceStepDetailPane(props: {
   selectedItem: WorkspaceItem | null;
   detailTarget: WorkspaceStep | null;
@@ -961,6 +1017,8 @@ export function WorkspaceStepDetailPane(props: {
     message_text: string;
     recipient_ids: string;
   }>(null);
+  const notificationTextRef = React.useRef<HTMLTextAreaElement | null>(null);
+  const stepNotificationTextRef = React.useRef<HTMLTextAreaElement | null>(null);
 
   React.useEffect(() => {
     setNotificationRuleEditor(null);
@@ -974,6 +1032,44 @@ export function WorkspaceStepDetailPane(props: {
     () => responseTypeWaitState(form?.response_type || detailTarget?.response_type || "none"),
     [detailTarget?.response_type, form?.response_type],
   );
+
+  const insertIntoNotificationRuleText = React.useCallback((snippet: string) => {
+    setNotificationRuleEditor((prev) => {
+      if (!prev) return prev;
+      const textarea = notificationTextRef.current;
+      if (!textarea) {
+        return { ...prev, message_text: `${prev.message_text || ""}${snippet}` };
+      }
+      const start = textarea.selectionStart ?? prev.message_text.length;
+      const end = textarea.selectionEnd ?? prev.message_text.length;
+      const nextText = `${prev.message_text.slice(0, start)}${snippet}${prev.message_text.slice(end)}`;
+      requestAnimationFrame(() => {
+        textarea.focus();
+        const nextCursor = start + snippet.length;
+        textarea.setSelectionRange(nextCursor, nextCursor);
+      });
+      return { ...prev, message_text: nextText };
+    });
+  }, []);
+
+  const insertIntoStepNotificationRuleText = React.useCallback((snippet: string) => {
+    setStepNotificationRuleEditor((prev) => {
+      if (!prev) return prev;
+      const textarea = stepNotificationTextRef.current;
+      if (!textarea) {
+        return { ...prev, message_text: `${prev.message_text || ""}${snippet}` };
+      }
+      const start = textarea.selectionStart ?? prev.message_text.length;
+      const end = textarea.selectionEnd ?? prev.message_text.length;
+      const nextText = `${prev.message_text.slice(0, start)}${snippet}${prev.message_text.slice(end)}`;
+      requestAnimationFrame(() => {
+        textarea.focus();
+        const nextCursor = start + snippet.length;
+        textarea.setSelectionRange(nextCursor, nextCursor);
+      });
+      return { ...prev, message_text: nextText };
+    });
+  }, []);
 
   const saveNotificationRule = () => {
     if (!notificationRuleEditor) return;
@@ -1167,7 +1263,7 @@ export function WorkspaceStepDetailPane(props: {
                     </label>
 
                     <label className="grid gap-2">
-                      <span className="text-sm font-semibold text-foreground/75">Текст</span>
+                      <span className="text-sm font-semibold text-foreground/75">Текст сообщения</span>
                       <div className="relative">
                         <Textarea
                           ref={textRef}
@@ -1184,12 +1280,17 @@ export function WorkspaceStepDetailPane(props: {
                   </>
                 )}
 
-                <div className="flex flex-wrap items-center gap-2 text-[0.72rem]">
-                  <span className="text-muted-foreground">Теги:</span>
-                  <Button type="button" variant="outline" size="xs" onClick={() => onInsertIntoText("{name}")}>{`{name}`}</Button>
-                  <Button type="button" variant="outline" size="xs" onClick={() => onInsertIntoText("{full_name}")}>{`{full_name}`}</Button>
-                  <Button type="button" variant="outline" size="xs" onClick={() => onInsertIntoText("{doc:Оффер}")}>{`{doc:Оффер}`}</Button>
-                </div>
+                {!isSurveyWorkspace ? (
+                  <div className="grid gap-1.5">
+                    <span className="text-xs font-medium text-muted-foreground">Теги сообщения</span>
+                    <TemplateTagButtons
+                      tags={payloadWorkspace?.step_template_tags || []}
+                      includeDocumentTags
+                      documentTagTitles={payloadWorkspace?.document_tag_titles || []}
+                      onInsert={onInsertIntoText}
+                    />
+                  </div>
+                ) : null}
 
                 <div className="grid gap-2">
                   <div className="flex items-center justify-between gap-3">
@@ -1610,12 +1711,17 @@ export function WorkspaceStepDetailPane(props: {
             <label className="grid gap-2">
               <span className="text-sm font-semibold text-foreground/75">Текст уведомления</span>
               <Textarea
+                ref={notificationTextRef}
                 className="min-h-[120px] text-sm"
                 value={notificationRuleEditor?.message_text || ""}
                 onChange={(event) =>
                   setNotificationRuleEditor((prev) => (prev ? { ...prev, message_text: event.target.value } : prev))
                 }
                 placeholder="Например: Пользователь нажал кнопку."
+              />
+              <TemplateTagButtons
+                tags={payloadWorkspace?.notification_template_tags || []}
+                onInsert={insertIntoNotificationRuleText}
               />
             </label>
           </div>
@@ -1657,12 +1763,17 @@ export function WorkspaceStepDetailPane(props: {
             <label className="grid gap-2">
               <span className="text-sm font-semibold text-foreground/75">Текст уведомления</span>
               <Textarea
+                ref={stepNotificationTextRef}
                 className="min-h-[120px] text-sm"
                 value={stepNotificationRuleEditor?.message_text || ""}
                 onChange={(event) =>
                   setStepNotificationRuleEditor((prev) => (prev ? { ...prev, message_text: event.target.value } : prev))
                 }
                 placeholder="Например: Пользователю отправлен шаг."
+              />
+              <TemplateTagButtons
+                tags={payloadWorkspace?.notification_template_tags || []}
+                onInsert={insertIntoStepNotificationRuleText}
               />
             </label>
           </div>
