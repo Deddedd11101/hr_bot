@@ -30,7 +30,12 @@ from ..models import (
     StepSendNotification,
     SurveyAnswer,
 )
-from ..scenario_engine import ROLE_ONLY_NOTIFICATION_TOKEN_SET, resolve_followup_step
+from ..scenario_engine import (
+    ROLE_ONLY_NOTIFICATION_TOKEN_SET,
+    SCENARIO_NOTIFICATION_TEMPLATE_TAGS,
+    SCENARIO_STEP_TEMPLATE_TAGS,
+    resolve_followup_step,
+)
 from .employees import OFFER_DOCUMENT_TITLE, _all_employee_options
 from .settings import _get_or_create_hr_settings
 
@@ -792,6 +797,8 @@ def _build_scenario_workspace_payload(
             "target_field_labels": TARGET_FIELD_LABELS,
             "send_mode_labels": SEND_MODE_LABELS,
             "notification_recipient_scope_labels": NOTIFICATION_RECIPIENT_SCOPE_LABELS,
+            "step_template_tags": SCENARIO_STEP_TEMPLATE_TAGS,
+            "notification_template_tags": SCENARIO_NOTIFICATION_TEMPLATE_TAGS,
             "document_tag_titles": editor_data["document_tag_titles"],
             "employee_options": editor_data["employee_options"],
             "notification_recipient_options": editor_data["notification_recipient_options"],

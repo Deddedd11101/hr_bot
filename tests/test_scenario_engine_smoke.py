@@ -6,9 +6,19 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 from app.database import SessionLocal, init_db
-from app.models import Employee, EmployeeDocumentLink, EmployeeFile, FlowStepTemplate, ScenarioProgress, ScenarioTemplate
+from app.models import (
+    Employee,
+    EmployeeDocumentLink,
+    EmployeeFile,
+    FlowStepTemplate,
+    ScenarioProgress,
+    ScenarioTemplate,
+    StepButtonNotification,
+    StepSendNotification,
+)
 from app.scenario_engine import (
     SCENARIO_BACK_BUTTON_TEXT,
+    format_message,
     handle_button_response,
     handle_back_response,
     handle_date_response_by_step_id,
@@ -104,6 +114,235 @@ class FakeMessenger:
 
 
 class ScenarioEngineSmokeTests(unittest.IsolatedAsyncioTestCase):
+    def test_format_message_supports_employee_template_tags(self) -> None:
+        init_db()
+        now = datetime.now(UTC).replace(tzinfo=None)
+        with SessionLocal() as db:
+            employee = Employee(
+                full_name="Антон Востриков",
+                desired_position="Аналитик",
+                telegram_user_id="100001",
+                first_workday=datetime(2026, 9, 1).date(),
+                created_at=now,
+                is_flow_scheduled=False,
+                employee_stage="candidate",
+            )
+            db.add(employee)
+            db.commit()
+            db.refresh(employee)
+
+            message = format_message(
+                db,
+                "ФИО: {employee_full_name}; должность: {position}; первый день: {first_workday}",
+                employee,
+                datetime(2026, 9, 1).date(),
+                None,
+            )
+
+            self.assertEqual(
+                message,
+                "ФИО: Антон Востриков; должность: Аналитик; первый день: 01.09.2026",
+            )
+
+    def test_format_message_uses_safe_fallbacks_for_empty_employee_tags(self) -> None:
+        init_db()
+        now = datetime.now(UTC).replace(tzinfo=None)
+        with SessionLocal() as db:
+            employee = Employee(
+                full_name="",
+                desired_position="",
+                telegram_user_id="100002",
+                first_workday=None,
+                created_at=now,
+                is_flow_scheduled=False,
+                employee_stage="candidate",
+            )
+            db.add(employee)
+            db.commit()
+            db.refresh(employee)
+
+            message = format_message(
+                db,
+                "{employee_full_name} / {position} / {first_workday} / {resume}",
+                employee,
+                datetime(2026, 9, 1).date(),
+                None,
+            )
+
+            self.assertEqual(
+                message,
+                f"Employee #{employee.id} / не указана / не указана / резюме не загружено",
+            )
+
+    def test_format_message_keeps_document_tags_working(self) -> None:
+        init_db()
+        now = datetime.now(UTC).replace(tzinfo=None)
+        with SessionLocal() as db:
+            employee = Employee(
+                full_name="Doc Candidate",
+                telegram_user_id="100004",
+                first_workday=None,
+                created_at=now,
+                is_flow_scheduled=False,
+                employee_stage="candidate",
+            )
+            db.add(employee)
+            db.commit()
+            db.refresh(employee)
+            db.add(
+                EmployeeDocumentLink(
+                    employee_id=employee.id,
+                    slot_key="offer",
+                    title="Оффер",
+                    url="https://example.com/offer.pdf",
+                    item_kind="link",
+                    employee_file_id=None,
+                    created_at=now,
+                )
+            )
+            db.commit()
+
+            message = format_message(db, "Лови {doc:Оффер}", employee, datetime(2026, 9, 1).date(), None)
+
+            self.assertEqual(message, 'Лови <a href="https://example.com/offer.pdf">Оффер</a>')
+
+    async def test_step_send_notification_formats_employee_and_resume_tags(self) -> None:
+        init_db()
+        now = datetime.now(UTC).replace(tzinfo=None)
+        scenario_key = f"test_notification_tags_{int(datetime.now(UTC).timestamp() * 1000000)}"
+        with SessionLocal() as db:
+            scenario = ScenarioTemplate(
+                scenario_key=scenario_key,
+                title="Notification tags",
+                role_scope="all",
+                scenario_kind="scenario",
+                sort_order=0,
+                trigger_mode="manual_only",
+            )
+            step = FlowStepTemplate(
+                flow_key=scenario_key,
+                step_key="step_one",
+                step_title="Step one",
+                sort_order=10,
+                default_text="Шаг для {employee_full_name}",
+                response_type="none",
+                send_mode="immediate",
+                day_offset_workdays=0,
+            )
+            employee = Employee(
+                full_name="Ирина Смирнова",
+                desired_position="Дизайнер",
+                telegram_user_id="100003",
+                first_workday=datetime(2026, 9, 2).date(),
+                created_at=now,
+                is_flow_scheduled=False,
+                employee_stage="candidate",
+            )
+            db.add_all([scenario, step, employee])
+            db.commit()
+            db.refresh(step)
+            db.refresh(employee)
+            db.add(
+                EmployeeFile(
+                    employee_id=employee.id,
+                    direction="inbound",
+                    category="resume",
+                    telegram_file_id=None,
+                    telegram_file_unique_id=None,
+                    original_filename="irina_resume.pdf",
+                    stored_path="D:/tmp/irina_resume.pdf",
+                    mime_type="application/pdf",
+                    file_size=20,
+                    created_at=now,
+                )
+            )
+            db.add(
+                StepSendNotification(
+                    flow_key=scenario_key,
+                    step_id=step.id,
+                    rule_index=0,
+                    message_text="{employee_full_name} / {position} / {resume}",
+                    recipient_ids="999003",
+                    recipient_scope="",
+                )
+            )
+            db.commit()
+
+            messenger = FakeMessenger()
+            await send_step(messenger, db, employee, scenario, step)
+
+            self.assertEqual(messenger.texts[0]["text"], "Шаг для Ирина Смирнова")
+            self.assertEqual(messenger.texts[1]["chat_id"], "999003")
+            self.assertEqual(messenger.texts[1]["text"], "Ирина Смирнова / Дизайнер / irina_resume.pdf")
+
+    async def test_button_notification_formats_employee_tags(self) -> None:
+        init_db()
+        now = datetime.now(UTC).replace(tzinfo=None)
+        scenario_key = f"test_button_notification_tags_{int(datetime.now(UTC).timestamp() * 1000000)}"
+        with SessionLocal() as db:
+            scenario = ScenarioTemplate(
+                scenario_key=scenario_key,
+                title="Button notification tags",
+                role_scope="all",
+                scenario_kind="scenario",
+                sort_order=0,
+                trigger_mode="manual_only",
+            )
+            step = FlowStepTemplate(
+                flow_key=scenario_key,
+                step_key="step_one",
+                step_title="Step one",
+                sort_order=10,
+                default_text="Выберите",
+                response_type="buttons",
+                button_options="Да\nНет",
+                send_mode="immediate",
+                day_offset_workdays=0,
+            )
+            employee = Employee(
+                full_name="Петр Иванов",
+                desired_position="Project manager",
+                telegram_user_id="100005",
+                first_workday=datetime(2026, 9, 3).date(),
+                created_at=now,
+                is_flow_scheduled=False,
+                employee_stage="candidate",
+            )
+            db.add_all([scenario, step, employee])
+            db.commit()
+            db.refresh(step)
+            db.refresh(employee)
+            db.add(
+                ScenarioProgress(
+                    employee_id=employee.id,
+                    scenario_key=scenario_key,
+                    current_step_key=step.step_key,
+                    waiting_for_response=True,
+                    is_completed=False,
+                    started_at=now,
+                    updated_at=now,
+                )
+            )
+            db.add(
+                StepButtonNotification(
+                    flow_key=scenario_key,
+                    step_id=step.id,
+                    option_index=0,
+                    rule_index=0,
+                    message_text="{employee_full_name} выбрал кнопку, должность: {position}",
+                    recipient_ids="999005",
+                    recipient_scope="",
+                )
+            )
+            db.commit()
+
+            messenger = FakeMessenger()
+            handled = await handle_button_response(messenger, db, employee, scenario_key, step.step_key, 0)
+
+            self.assertTrue(handled)
+            self.assertEqual(messenger.texts[0]["chat_id"], "999005")
+            self.assertEqual(messenger.texts[0]["text"], "Петр Иванов выбрал кнопку, должность: Project manager")
+
     def test_resolve_tagged_employee_documents_returns_file_backed_offer_slot(self) -> None:
         init_db()
         now = datetime.now(UTC).replace(tzinfo=None)

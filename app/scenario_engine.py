@@ -64,6 +64,31 @@ ROLE_ONLY_NOTIFICATION_TOKENS = (
     "mentor_ipr",
 )
 ROLE_ONLY_NOTIFICATION_TOKEN_SET = set(ROLE_ONLY_NOTIFICATION_TOKENS)
+SCENARIO_STEP_TEMPLATE_TAGS = [
+    {
+        "label": "ФИО",
+        "template": "{employee_full_name}",
+        "description": "ФИО сотрудника или кандидата из карточки.",
+    },
+    {
+        "label": "Должность",
+        "template": "{position}",
+        "description": "Должность из карточки сотрудника или кандидата.",
+    },
+    {
+        "label": "Дата первого рабочего дня",
+        "template": "{first_workday}",
+        "description": "Фактическая или плановая дата первого рабочего дня из карточки.",
+    },
+]
+SCENARIO_NOTIFICATION_TEMPLATE_TAGS = [
+    *SCENARIO_STEP_TEMPLATE_TAGS[:2],
+    {
+        "label": "Резюме",
+        "template": "{resume}",
+        "description": "Имя последнего файла категории resume из карточки.",
+    },
+]
 RECIPIENT_MODE_SELF = "self"
 RECIPIENT_MODE_MANAGER = "manager"
 RECIPIENT_MODE_MENTOR_ADAPTATION = "mentor_adaptation"
@@ -833,6 +858,10 @@ def format_message(db: Session, template: str, employee: Employee, anchor_date: 
     else:
         name = "коллега"
     full_name = (employee.full_name or "").strip() or "коллега"
+    employee_full_name = (employee.full_name or "").strip() or (f"Employee #{employee.id}" if getattr(employee, "id", None) else "не указано")
+    position = (getattr(employee, "desired_position", None) or "").strip() or "не указана"
+    first_workday = employee.first_workday.strftime("%d.%m.%Y") if getattr(employee, "first_workday", None) else "не указана"
+    resume = resolve_employee_resume_label(db, employee)
     time_text = step_time or "10:00"
     links = (
         db.query(EmployeeDocumentLink)
@@ -862,6 +891,10 @@ def format_message(db: Session, template: str, employee: Employee, anchor_date: 
     return rendered_template.format(
         name=name,
         full_name=full_name,
+        employee_full_name=employee_full_name,
+        position=position,
+        first_workday=first_workday,
+        resume=resume,
         date=anchor_date.strftime("%d.%m.%Y"),
         time=time_text,
         test_url=settings.TEST_URL,
@@ -869,6 +902,21 @@ def format_message(db: Session, template: str, employee: Employee, anchor_date: 
         tasks_url=settings.TASKS_URL,
         feedback_url=settings.FEEDBACK_URL,
     )
+
+
+def resolve_employee_resume_label(db: Session, employee: Employee) -> str:
+    resume_file = (
+        db.query(EmployeeFile)
+        .filter(
+            EmployeeFile.employee_id == employee.id,
+            EmployeeFile.category == "resume",
+        )
+        .order_by(EmployeeFile.created_at.desc(), EmployeeFile.id.desc())
+        .first()
+    )
+    if resume_file and (resume_file.original_filename or "").strip():
+        return resume_file.original_filename.strip()
+    return "резюме не загружено"
 
 
 def _split_notification_recipients(value: Optional[str]) -> list[str]:

@@ -69,6 +69,18 @@ Scenario engine превращает scenario templates плюс employee state 
 7. Если response нужен, ждать text/file/button input от resolved recipient и применить result к employee state context employee.
 8. Для активного интерактивного шага runtime поддерживает default `Назад`: для text/file это reply button, для button/branching — inline button. Откат возвращает только на предыдущий интерактивный шаг в рамках текущего незавершенного сценария.
 
+## Message template tags
+
+- Тексты шагов сценария и scenario notifications проходят через общий formatter.
+- Stable template keys для UI-кнопок тегов:
+  - `{employee_full_name}` — ФИО из карточки; fallback `Employee #id`, если ФИО пустое.
+  - `{position}` — должность из карточки; fallback `не указана`.
+  - `{first_workday}` — дата первого рабочего дня в формате `ДД.ММ.ГГГГ`; fallback `не указана`.
+  - `{resume}` — имя последнего файла `employee_files.category=resume`; fallback `резюме не загружено`.
+- В UI эти теги могут называться по-русски: `ФИО`, `Должность`, `Дата первого рабочего дня`, `Резюме`.
+- `{resume}` сейчас намеренно возвращает только human-readable имя файла, а не локальный storage path и не временную ссылку. Отправка/скачивание файла резюме остается отдельным file delivery contract.
+- Персональные document tags вида `{doc:Оффер}` остаются отдельной механикой: link-backed slot подставляется как ссылка, file-backed slot дополнительно отправляется файлом.
+
 ## Recipient model
 
 - `scenario_templates.recipient_mode` определяет, кому доставлять шаги:
