@@ -80,6 +80,14 @@ function normalizeButtonNotifications(items: WorkspaceButtonNotification[] = [])
   });
 }
 
+function normalizeScenarioRoleScopes(roleScopes: string[] | undefined, legacyRoleScope: string) {
+  const normalized = (roleScopes?.length ? roleScopes : legacyRoleScope.split(","))
+    .map((item) => item.trim())
+    .filter(Boolean);
+  const concreteScopes = normalized.filter((item) => item !== "all");
+  return concreteScopes.length ? Array.from(new Set(concreteScopes)) : ["all"];
+}
+
 export function ScenarioWorkspacePage() {
   const apiUrl = rootElement?.getAttribute("data-api-url") || "/api/flows/workspace";
   const initialScenarioId = Number(rootElement?.getAttribute("data-selected-scenario-id") || 0) || null;
@@ -454,6 +462,7 @@ export function ScenarioWorkspacePage() {
       title: scenario.title || "",
       description: scenario.description || "",
       role_scope: scenario.role_scope || "all",
+      role_scopes: normalizeScenarioRoleScopes(scenario.role_scopes, scenario.role_scope || "all"),
       employee_scope: scenario.employee_scope || "all",
       recipient_mode: scenario.recipient_mode || "self",
       trigger_mode: scenario.trigger_mode || "manual_only",
@@ -514,6 +523,10 @@ export function ScenarioWorkspacePage() {
     if (!scenarioId || !scenarioSettingsForm) return;
     const settingsPayload = {
       ...scenarioSettingsForm,
+      role_scopes: normalizeScenarioRoleScopes(scenarioSettingsForm.role_scopes, scenarioSettingsForm.role_scope),
+      role_scope: normalizeScenarioRoleScopes(scenarioSettingsForm.role_scopes, scenarioSettingsForm.role_scope)
+        .filter((item) => item && item !== "all")
+        .join(",") || "all",
       trigger_mode: isSurveyWorkspace ? "manual_only" : scenarioSettingsForm.trigger_mode,
     };
     setScenarioSettingsState({ saving: true, message: "", error: false });
