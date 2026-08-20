@@ -174,6 +174,63 @@ class ScenarioEngineSmokeTests(unittest.IsolatedAsyncioTestCase):
                 f"Employee #{employee.id} / не указана / не указана / резюме не загружено",
             )
 
+    def test_format_message_prefers_resume_slot_over_legacy_resume_file(self) -> None:
+        init_db()
+        now = datetime.now(UTC).replace(tzinfo=None)
+        with SessionLocal() as db:
+            employee = Employee(
+                full_name="Resume Slot Tester",
+                desired_position="Project manager",
+                telegram_user_id="777112",
+                created_at=now,
+            )
+            db.add(employee)
+            db.commit()
+            db.refresh(employee)
+            legacy_file = EmployeeFile(
+                employee_id=employee.id,
+                direction="inbound",
+                category="resume",
+                telegram_file_id=None,
+                telegram_file_unique_id=None,
+                original_filename="legacy_resume.pdf",
+                stored_path="D:/tmp/legacy_resume.pdf",
+                mime_type="application/pdf",
+                file_size=10,
+                created_at=now,
+            )
+            slot_file = EmployeeFile(
+                employee_id=employee.id,
+                direction="inbound",
+                category="resume",
+                telegram_file_id=None,
+                telegram_file_unique_id=None,
+                original_filename="actual_resume.pdf",
+                stored_path="D:/tmp/actual_resume.pdf",
+                mime_type="application/pdf",
+                file_size=12,
+                created_at=now,
+            )
+            db.add_all([legacy_file, slot_file])
+            db.commit()
+            db.refresh(slot_file)
+            db.add(
+                EmployeeDocumentLink(
+                    employee_id=employee.id,
+                    slot_key="resume",
+                    title="Резюме",
+                    url="",
+                    item_kind="file",
+                    employee_file_id=slot_file.id,
+                    created_at=now,
+                )
+            )
+            db.commit()
+
+            message = format_message(db, "Резюме: {resume}", employee, datetime(2026, 9, 1).date(), None)
+
+            self.assertEqual(message, "Резюме: actual_resume.pdf")
+
     def test_format_message_keeps_document_tags_working(self) -> None:
         init_db()
         now = datetime.now(UTC).replace(tzinfo=None)
@@ -1188,13 +1245,37 @@ class ScenarioEngineSmokeTests(unittest.IsolatedAsyncioTestCase):
 
             self.assertTrue(handled)
             self.assertTrue(stored_path.exists())
-            self.assertIsNotNone(db.get(EmployeeFile, db_file.id))
+            saved_file = db.get(EmployeeFile, db_file.id)
+            self.assertIsNotNone(saved_file)
+            if saved_file is not None:
+                self.assertEqual(saved_file.category, "resume")
+            resume_slot = (
+                db.query(EmployeeDocumentLink)
+                .filter(
+                    EmployeeDocumentLink.employee_id == employee.id,
+                    EmployeeDocumentLink.slot_key == "resume",
+                )
+                .first()
+            )
+            self.assertIsNotNone(resume_slot)
+            if resume_slot is not None:
+                self.assertEqual(resume_slot.title, "Резюме")
+                self.assertEqual(resume_slot.employee_file_id, db_file.id)
+            self.assertEqual(format_message(db, "{resume}", employee, datetime(2026, 9, 1).date(), None), "resume.pdf")
 
             handled_back = await handle_back_response(messenger, db, employee)
 
             self.assertTrue(handled_back)
             self.assertFalse(stored_path.exists())
             self.assertIsNone(db.get(EmployeeFile, db_file.id))
+            self.assertIsNone(
+                db.query(EmployeeDocumentLink)
+                .filter(
+                    EmployeeDocumentLink.employee_id == employee.id,
+                    EmployeeDocumentLink.slot_key == "resume",
+                )
+                .first()
+            )
             progress = db.query(ScenarioProgress).filter_by(employee_id=employee.id, scenario_key=scenario_key).first()
             self.assertIsNotNone(progress)
             self.assertEqual(progress.current_step_key, "step_one")

@@ -118,9 +118,13 @@ source_of_truth: true
 - `options`
   - роли, stages, доступные сценарии
 - `files`
-  - список файлов сотрудника с download/send URLs
+  - список файлов сотрудника с download/send URLs и `category`
 - `document_links`
-  - текущие offer link entries
+  - текущие персональные document slot/link entries
+- `offer_document`
+  - актуальный slot оффера, если задан
+- `resume_document`
+  - актуальный slot резюме, если задан; если slot пустой, возвращается fallback на последний `files[].category=resume`
 - `scheduled_launches`
   - pending scheduled flow requests
 - `manual_launch_history`
@@ -218,6 +222,8 @@ source_of_truth: true
 | `DELETE` | `/api/employees/{employee_id}` | Удалить карточку сотрудника или кандидата. | Path: `employee_id` | `{ "redirect_url": "/employees" | "/candidates" }` | Удаляет employee row, files, offer links и employee storage directory | `401`, `404` |
 | `POST` | `/api/employees/{employee_id}/bot-link/reset` | Сбросить Telegram/runtime-привязку карточки для повторного тестового linking. | Path: `employee_id` | Employee detail payload | Очищает Telegram identity/menu/progress и pending launch requests для карточки | `401`, `404` |
 | `POST` | `/api/employees/{employee_id}/document-slots/offer/file` | Загрузить file-backed offer slot. | Multipart: `upload`, optional title/category | Employee detail payload | Создает `employee_files` и `employee_document_links` со `slot_key=offer`, `item_kind=file` | `401`, `404`, `400` |
+| `POST` | `/api/employees/{employee_id}/document-slots/resume/file` | Загрузить или заменить актуальный resume slot. | Multipart: `upload` | `{ item, payload }` | Создает новый `employee_files.category=resume` и upsert `employee_document_links.slot_key=resume`; старые resume-файлы не удаляет | `401`, `404`, `400` |
+| `DELETE` | `/api/employees/{employee_id}/document-slots/resume` | Очистить актуальную связь resume slot. | Path: `employee_id` | Employee detail payload | Удаляет только `employee_document_links.slot_key=resume`; физические файлы и legacy `employee_files.category=resume` остаются | `401`, `404` |
 
 ## API scenario/survey workspace
 

@@ -93,10 +93,17 @@ source_of_truth: true
 | Таблица | Назначение | Ключевые поля | Связи и примечания |
 | --- | --- | --- | --- |
 | `employee_files` | Inbound и outbound employee files | `employee_id`, `direction`, `category`, Telegram file ids, `stored_path`, `mime_type`, `file_size` | Backed by local filesystem storage |
-| `employee_document_links` | Per-employee document slots/links | `employee_id`, `slot_key`, `title`, `url`, `item_kind`, `employee_file_id` | Offer slot может быть link-backed или file-backed через `employee_files` |
+| `employee_document_links` | Per-employee document slots/links | `employee_id`, `slot_key`, `title`, `url`, `item_kind`, `employee_file_id` | Offer slot может быть link-backed или file-backed через `employee_files`; resume slot хранит одно актуальное резюме как `slot_key=resume`, обычно file-backed |
 | `document_library_items` | Shared library documents for bot menu | `title`, `description`, `category`, `item_kind`, `external_url`, stored file metadata, `is_active`, `sort_order` | Общие материалы для `/app/documents` и `send_document` menu buttons |
 
 ## Важные runtime rules
+
+### Employee document slots
+
+- `employee_document_links.slot_key=resume` — единственная актуальная связь резюме в карточке кандидата/сотрудника.
+- Replace/upload резюме создает новый `employee_files.category=resume` и переносит `resume` slot на новый файл.
+- Очистка resume slot удаляет только связь в `employee_document_links`; старые `employee_files.category=resume` и физические файлы остаются для аудита/legacy fallback.
+- Если `resume` slot пустой, runtime/API может использовать последний `employee_files.category=resume` как совместимый fallback.
 
 ### `employees`
 

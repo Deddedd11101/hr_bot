@@ -22,6 +22,7 @@ from .employees import (
     _apply_employee_update,
     _build_employee_detail_payload,
     _build_employee_views,
+    _clear_resume_document_slot,
     _create_employee_record,
     _delete_employee_document_link,
     _delete_employee_record,
@@ -36,6 +37,7 @@ from .employees import (
     _reset_employee_bot_linkage,
     _save_offer_document_file,
     _save_offer_document_link,
+    _save_resume_document_file,
     _schedule_employee_flow_request,
     _send_file_to_telegram,
     _send_manual_bot_message,
@@ -714,6 +716,49 @@ async def upload_offer_document_file_api(
         "item": _serialize_document_link(link_row, employee_id),
         "payload": _build_employee_detail_payload(db, employee),
     }
+
+
+@router.post("/api/employees/{employee_id}/document-slots/resume/file")
+async def upload_resume_document_file_api(
+    request: Request,
+    employee_id: int,
+    upload: UploadFile = File(...),
+    db: Session = Depends(get_db),
+):
+    require_api_auth(request)
+    employee = db.get(Employee, employee_id)
+    if not employee:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Сотрудник не найден")
+    filename = (upload.filename or "").strip() or "resume.bin"
+    content = await upload.read()
+    if not content:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Выберите файл резюме.")
+    link_row = _save_resume_document_file(
+        db,
+        employee,
+        filename=filename,
+        content=content,
+        mime_type=upload.content_type,
+    )
+    payload = _build_employee_detail_payload(db, employee)
+    return {
+        "item": payload.get("resume_document") or _serialize_document_link(link_row, employee_id),
+        "payload": payload,
+    }
+
+
+@router.delete("/api/employees/{employee_id}/document-slots/resume")
+def clear_resume_document_slot_api(
+    request: Request,
+    employee_id: int,
+    db: Session = Depends(get_db),
+):
+    require_api_auth(request)
+    employee = db.get(Employee, employee_id)
+    if not employee:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Сотрудник не найден")
+    _clear_resume_document_slot(db, employee_id)
+    return _build_employee_detail_payload(db, employee)
 
 
 @router.delete("/api/employees/{employee_id}/document-links/{link_id}")
