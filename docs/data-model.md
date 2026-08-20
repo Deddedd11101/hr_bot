@@ -189,6 +189,7 @@ source_of_truth: true
   - `item_kind=file` отправляется как файл или фото из `storage/document_library`;
   - `item_kind=link` отправляется как текст со ссылкой.
 - Если shared document отсутствует, неактивен или не может быть отправлен, старый uploaded attachment остается fallback, поэтому существующие шаги с `attachment_path` не ломаются.
+- Если broken shared document был единственным содержимым шага, delivery failure виден через `scenario_progress.last_delivery_error`.
 
 ## Что добавляет или нормализует `_ensure_sqlite_schema()`
 
@@ -201,7 +202,7 @@ SQLite schema guard делает больше, чем “создать табл
   - `scenario_progress.recipient_employee_id`;
   - `scenario_progress.recipient_chat_id`;
   - `scenario_progress.last_delivery_error`;
-- добавляет `flow_step_templates.attachment_document_item_id` для reusable вложений из shared document library;
+- добавляет `flow_step_templates.attachment_document_item_id` и index `ix_flow_step_templates_attachment_document_item_id` для reusable вложений из shared document library;
 - создает целые таблицы, если они отсутствуют:
   - `employee_assignment_history`;
   - `employee_manual_bot_messages`;

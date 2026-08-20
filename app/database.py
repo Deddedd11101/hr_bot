@@ -363,6 +363,12 @@ def _ensure_sqlite_schema() -> None:
         for col, ddl in scenario_required.items():
             if col not in scenario_columns:
                 conn.execute(text(f"ALTER TABLE flow_step_templates ADD COLUMN {col} {ddl}"))
+        conn.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_flow_step_templates_attachment_document_item_id "
+                "ON flow_step_templates (attachment_document_item_id)"
+            )
+        )
 
         button_notification_columns = conn.execute(text("PRAGMA table_info(step_button_notifications)")).fetchall()
         if not button_notification_columns:

@@ -78,6 +78,7 @@ Scenario engine превращает scenario templates плюс employee state 
 - Для `document_library_items.item_kind=file` runtime отправляет файл или фото из `storage/document_library`.
 - Для `document_library_items.item_kind=link` runtime отправляет отдельное текстовое сообщение с названием, описанием и ссылкой.
 - Если выбранный shared document неактивен, удален или не содержит пригодный file/link payload, runtime пробует старый uploaded attachment и не ломает старые шаги.
+- Если shared document attachment был единственным отправляемым содержимым шага и не может быть доставлен, `send_step` возвращает `False`, пишет warning log и сохраняет причину в `ScenarioProgress.last_delivery_error`.
 - Bot menu `send_document` использует тот же shared document library, но это отдельная action model; выбор вложения шага не меняет menu sets/buttons.
 
 ## Message template tags
