@@ -34,6 +34,50 @@ source_of_truth: true
 
 ## Записи
 
+### 2026-08-21 01:15 MSK - app deploy - employee resume document slot
+
+- Deploy ref: `stage`.
+- Deployed commit: `36c6ef5`.
+- GitHub Actions run: `32423318562` -> success.
+- В stage включено:
+  - resume теперь отдельный product slot на existing `employee_document_links.slot_key=resume`;
+  - employee detail payload отдает `resume_document` отдельно от generic `document_links`;
+  - добавлены API endpoints `POST /api/employees/{id}/document-slots/resume/file` и `DELETE /api/employees/{id}/document-slots/resume`;
+  - `{resume}` в scenario formatter сначала читает актуальный resume slot, затем fallback на legacy `EmployeeFile category=resume`;
+  - resume slot исключен из generic document links payload;
+  - generic delete для resume slot не удаляет `EmployeeFile` и физический файл;
+  - React employee/candidate detail получил отдельный блок `Резюме` с upload/replace/clear/open/download states;
+  - offer и generic documents flow не менялись.
+- Локальные проверки перед deploy:
+  - `D:\HRBot\hr_bot_stage_pipeline\.venv\Scripts\python.exe -m compileall app tests tools`;
+  - `D:\HRBot\hr_bot_stage_pipeline\.venv\Scripts\python.exe -m ruff check --select F821 app tests tools`;
+  - `D:\HRBot\hr_bot_stage_pipeline\.venv\Scripts\python.exe -m unittest tests.test_scenario_engine_smoke tests.test_messaging_identity tests.test_employee_api_smoke -v` -> 146 tests OK;
+  - `D:\HRBot\hr_bot_stage_pipeline\.venv\Scripts\python.exe tools\check_docs_contracts.py`;
+  - `npm ci` in `frontend`;
+  - `npm run build` in `frontend`;
+  - `git diff --check origin/stage..HEAD`.
+- GitHub Actions preflight:
+  - backend dependencies install;
+  - `compileall`;
+  - `ruff F821`;
+  - backend smoke tests -> 146 tests OK;
+  - frontend build;
+  - smoke imports.
+- Stage safety checks:
+  - verified SQLite backup created before checkout/restart: `backups/hr_bot.before-deploy.20260820-***1515.db`;
+  - scenario config snapshot created: `backups/scenarios.before-deploy.20260820-***1515.json`;
+  - GitHub log masked part of the timestamp in backup/snapshot filenames, but both creation and verification steps passed;
+  - scenario configuration fingerprint unchanged.
+- Stage smoke checks:
+  - `/app/employees` -> `303`;
+  - `/app/flows/workspace-v2` -> `303`;
+  - Telegram API reachability -> `HTTP/2 302`;
+  - deploy job завершился успешно и вывел `36c6ef5`.
+- Открытые риски:
+  - старые `employee_files.category=resume` остаются как fallback, backfill не делался;
+  - физические файлы при clear не удаляются осознанно;
+  - нужен ручной stage smoke: загрузить/заменить/очистить резюме в карточке кандидата, проверить generic documents/offer, проверить `{resume}` в сценарии или уведомлении.
+
 ### 2026-08-21 00:30 MSK - app deploy - scenario message template tags
 
 - Deploy ref: `stage`.
