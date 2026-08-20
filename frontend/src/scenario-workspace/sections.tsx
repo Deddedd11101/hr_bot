@@ -39,7 +39,7 @@ import {
   summarizeItem,
   workspaceItemTitle,
 } from "./model";
-import { NotificationRecipientsPicker, SingleSelectPicker } from "./pickers";
+import { NotificationRecipientsPicker, RoleScopesPicker, SingleSelectPicker } from "./pickers";
 import type {
   Container,
   ScenarioSettingsForm,
@@ -154,11 +154,20 @@ export function ScenarioSettingsDialog(props: {
                 </label>
                 <label className="grid min-w-0 gap-2.5">
                   <span className="text-sm font-semibold text-foreground/75">Должность</span>
-                  <SingleSelectPicker
+                  <RoleScopesPicker
                     options={roleScopeOptions}
-                    value={scenarioSettingsForm.role_scope}
-                    placeholder="Должность"
-                    onChange={(nextValue) => onFormChange((prev) => (prev ? { ...prev, role_scope: nextValue } : prev))}
+                    value={scenarioSettingsForm.role_scopes}
+                    onChange={(nextValue) =>
+                      onFormChange((prev) =>
+                        prev
+                          ? {
+                              ...prev,
+                              role_scopes: nextValue,
+                              role_scope: nextValue.filter((item) => item && item !== "all").join(",") || "all",
+                            }
+                          : prev,
+                      )
+                    }
                   />
                 </label>
                 <label className="grid min-w-0 gap-2.5">

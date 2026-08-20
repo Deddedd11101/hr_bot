@@ -124,6 +124,7 @@ export type WorkspaceData = {
     title: string;
     description: string;
     role_scope: string;
+    role_scopes?: string[];
     role_scope_label: string;
     employee_scope: string;
     employee_scope_label: string;
@@ -201,6 +202,7 @@ export type ScenarioSettingsForm = {
   title: string;
   description: string;
   role_scope: string;
+  role_scopes: string[];
   employee_scope: string;
   recipient_mode: string;
   trigger_mode: string;
