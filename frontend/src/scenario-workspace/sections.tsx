@@ -943,6 +943,7 @@ export function WorkspaceStepDetailPane(props: {
         target_field: string;
         launch_scenario_key: string;
         return_to_step_key: string;
+        attachment_document_item_id: string;
         send_employee_card: boolean;
         notify_on_send_text: string;
         notify_on_send_recipient_ids: string;
@@ -960,6 +961,7 @@ export function WorkspaceStepDetailPane(props: {
       target_field: string;
       launch_scenario_key: string;
       return_to_step_key: string;
+      attachment_document_item_id: string;
       send_employee_card: boolean;
       notify_on_send_text: string;
       notify_on_send_recipient_ids: string;
@@ -1032,6 +1034,36 @@ export function WorkspaceStepDetailPane(props: {
     () => responseTypeWaitState(form?.response_type || detailTarget?.response_type || "none"),
     [detailTarget?.response_type, form?.response_type],
   );
+  const documentLibraryOptions = React.useMemo<SingleOption[]>(() => {
+    const options = payloadWorkspace?.document_library_options || [];
+    return [{ value: "", label: "Без документа" }].concat(
+      options.map((item) => {
+        const kindLabel = item.item_kind_label || (item.item_kind === "link" ? "Ссылка" : "Файл");
+        const categoryLabel = item.category ? ` · ${item.category}` : "";
+        return {
+          value: String(item.id),
+          label: `${item.title || "Документ"} · ${kindLabel}${categoryLabel}`,
+        };
+      }),
+    );
+  }, [payloadWorkspace?.document_library_options]);
+  const selectedLibraryDocument = React.useMemo(() => {
+    const selectedId = String(form?.attachment_document_item_id || "");
+    if (!selectedId) {
+      return null;
+    }
+    const options = payloadWorkspace?.document_library_options || [];
+    const selectedOption = options.find((item) => String(item.id) === selectedId);
+    if (selectedOption) {
+      return selectedOption;
+    }
+    const stepDocument = detailTarget?.attachment_document_item;
+    return stepDocument && String(stepDocument.id) === selectedId ? stepDocument : null;
+  }, [detailTarget?.attachment_document_item, form?.attachment_document_item_id, payloadWorkspace?.document_library_options]);
+  const selectedLibraryDocumentLink = selectedLibraryDocument
+    ? selectedLibraryDocument.download_url || selectedLibraryDocument.external_url || ""
+    : "";
+  const uploadedAttachmentFilename = detailTarget?.attachment_filename || "";
 
   const insertIntoNotificationRuleText = React.useCallback((snippet: string) => {
     setNotificationRuleEditor((prev) => {
@@ -1304,10 +1336,10 @@ export function WorkspaceStepDetailPane(props: {
                       disabled={attachmentState.uploading}
                     >
                       <Paperclip data-icon="inline-start" />
-                      {detailTarget?.has_attachment ? "Заменить файл" : "Добавить файл"}
+                      {uploadedAttachmentFilename ? "Заменить файл" : "Добавить файл"}
                     </Button>
                   </div>
-                  {detailTarget?.has_attachment ? (
+                  {uploadedAttachmentFilename ? (
                     <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-muted/50 px-3 py-2">
                       <a
                         href={`/flows/steps/${detailTarget.id}/attachment`}
@@ -1325,6 +1357,64 @@ export function WorkspaceStepDetailPane(props: {
                           Удалить
                         </Button>
                       </ConfirmAction>
+                    </div>
+                  ) : null}
+                  {!isSurveyWorkspace ? (
+                    <div className="grid gap-2 rounded-lg border border-border/80 bg-card/70 p-3">
+                      <div className="grid gap-1.5">
+                        <span className="text-xs font-medium text-muted-foreground">Документ из хранилища</span>
+                        <SingleSelectPicker
+                          options={documentLibraryOptions}
+                          value={form?.attachment_document_item_id || ""}
+                          onChange={(nextValue) =>
+                            onFormChange((prev) => (prev ? { ...prev, attachment_document_item_id: nextValue } : prev))
+                          }
+                          placeholder="Выбери документ"
+                          disabled={attachmentState.uploading}
+                        />
+                      </div>
+                      {selectedLibraryDocument ? (
+                        <div className="grid gap-1.5 rounded-lg border border-amber-300/50 bg-amber-50/70 px-3 py-2 text-sm dark:border-amber-500/25 dark:bg-amber-500/10">
+                          <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+                            <div className="flex min-w-0 flex-wrap items-center gap-2">
+                              <Badge variant="outline">
+                                {selectedLibraryDocument.item_kind_label || (selectedLibraryDocument.item_kind === "link" ? "Ссылка" : "Файл")}
+                              </Badge>
+                              <span className="min-w-0 truncate font-medium text-foreground">
+                                {selectedLibraryDocument.title || "Документ"}
+                              </span>
+                            </div>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => onFormChange((prev) => (prev ? { ...prev, attachment_document_item_id: "" } : prev))}
+                              disabled={attachmentState.uploading}
+                            >
+                              Очистить
+                            </Button>
+                          </div>
+                          <p className="text-xs leading-5 text-muted-foreground">
+                            Будет использован первым. Загруженный файл останется fallback.
+                          </p>
+                          {selectedLibraryDocument.original_filename || selectedLibraryDocument.category || selectedLibraryDocumentLink ? (
+                            <div className="flex min-w-0 flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                              {selectedLibraryDocument.category ? <span>{selectedLibraryDocument.category}</span> : null}
+                              {selectedLibraryDocument.original_filename ? <span>{selectedLibraryDocument.original_filename}</span> : null}
+                              {selectedLibraryDocumentLink ? (
+                                <a
+                                  href={selectedLibraryDocumentLink}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="truncate font-medium text-foreground underline-offset-4 hover:underline"
+                                >
+                                  Открыть
+                                </a>
+                              ) : null}
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : null}
                     </div>
                   ) : null}
                   <p className={`text-sm ${attachmentState.error ? "text-destructive" : "text-muted-foreground"}`}>
