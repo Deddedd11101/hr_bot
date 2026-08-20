@@ -24,7 +24,7 @@ from ..flow_templates import (
     normalize_candidate_work_stage,
 )
 from ..models import Employee, FlowStepTemplate, ScenarioTemplate, StepButtonNotification, SurveyAnswer
-from ..positions import ROLE_SCOPE_ALL, build_role_scope_labels, resolve_scope_slug
+from ..positions import build_role_scope_labels, serialize_role_scopes
 from ..time_utils import utc_now
 from .scenarios import (
     _apply_workspace_step_update,
@@ -199,6 +199,7 @@ def update_workspace_scenario_api(
 
     title = str(payload.get("title") or "").strip()
     description = str(payload.get("description") or "").strip()
+    role_scopes_payload = payload.get("role_scopes")
     role_scope = str(payload.get("role_scope") or "").strip()
     employee_scope = str(payload.get("employee_scope") or "").strip()
     recipient_mode = str(payload.get("recipient_mode") or "").strip()
@@ -208,7 +209,7 @@ def update_workspace_scenario_api(
 
     scenario.title = title[:120] or scenario.title or "Без названия"
     scenario.description = description[:50] or None
-    scenario.role_scope = resolve_scope_slug(role_scope or "") or ROLE_SCOPE_ALL
+    scenario.role_scope = serialize_role_scopes(role_scopes_payload if role_scopes_payload is not None else role_scope)
     scenario.employee_scope = employee_scope if employee_scope in EMPLOYEE_SCOPE_LABELS else "all"
     scenario.recipient_mode = recipient_mode if recipient_mode in RECIPIENT_MODE_LABELS else "self"
     scenario.trigger_mode = trigger_mode if trigger_mode in TRIGGER_MODE_LABELS else "manual_only"
@@ -829,7 +830,7 @@ def _create_template_entity(
         scenario_kind=kind,
         title=title.strip() or meta["new_title"],
         sort_order=(last_scenario.sort_order + 10) if last_scenario else 10,
-        role_scope=resolve_scope_slug(role_scope or "") or ROLE_SCOPE_ALL,
+        role_scope=serialize_role_scopes(role_scope),
         employee_scope=employee_scope if employee_scope in EMPLOYEE_SCOPE_LABELS else "all",
         recipient_mode=recipient_mode if recipient_mode in RECIPIENT_MODE_LABELS else "self",
         target_employee_id=int(target_employee_id) if (target_employee_id or "").strip().isdigit() else None,
@@ -1068,7 +1069,7 @@ async def update_scenario(
 
         target_step_id_int = int(target_step_id) if (target_step_id or "").strip().isdigit() else None
         scenario.title = title.strip() or scenario.title
-        scenario.role_scope = resolve_scope_slug(role_scope or "") or ROLE_SCOPE_ALL
+        scenario.role_scope = serialize_role_scopes(role_scope)
         scenario.employee_scope = employee_scope if employee_scope in EMPLOYEE_SCOPE_LABELS else "all"
         scenario.recipient_mode = recipient_mode if recipient_mode in RECIPIENT_MODE_LABELS else "self"
         scenario.target_employee_id = int(target_employee_id) if (target_employee_id or "").strip().isdigit() else None

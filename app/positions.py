@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 from datetime import datetime
-from typing import Optional
+from typing import Iterable, Optional
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -113,6 +113,38 @@ def build_role_scope_labels(db: Session, *, include_inactive: bool = False) -> d
     return labels
 
 
+def parse_role_scopes(value: str | Iterable[str] | None) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        raw_items = re.split(r"[,\n;]+", value)
+    else:
+        raw_items = [str(item) for item in value]
+    scopes: list[str] = []
+    seen: set[str] = set()
+    for item in raw_items:
+        normalized = resolve_scope_slug(item)
+        if normalized == ROLE_SCOPE_ALL:
+            continue
+        if normalized and normalized not in seen:
+            seen.add(normalized)
+            scopes.append(normalized)
+    return scopes
+
+
+def serialize_role_scopes(value: str | Iterable[str] | None) -> str:
+    scopes = parse_role_scopes(value)
+    return ",".join(scopes) if scopes else ROLE_SCOPE_ALL
+
+
+def role_scope_label(db: Session, value: str | Iterable[str] | None, *, include_inactive: bool = True) -> str:
+    scopes = parse_role_scopes(value)
+    if not scopes:
+        return build_role_scope_labels(db, include_inactive=include_inactive)[ROLE_SCOPE_ALL]
+    labels = build_role_scope_labels(db, include_inactive=include_inactive)
+    return ", ".join(labels.get(scope, canonical_position_title(scope) or scope) for scope in scopes)
+
+
 def position_options(db: Session, *, include_inactive: bool = False) -> list[Position]:
     query = db.query(Position)
     if not include_inactive:
@@ -129,14 +161,15 @@ def employee_position_values(db: Session, *, current_value: str = "") -> list[st
 
 
 def position_titles_for_scope(db: Session, role_scope: str) -> list[str]:
-    normalized_scope = resolve_scope_slug(role_scope)
-    if normalized_scope == ROLE_SCOPE_ALL:
+    normalized_scopes = parse_role_scopes(role_scope)
+    if not normalized_scopes:
         return []
-    positions = db.query(Position).filter(Position.slug == normalized_scope).all()
+    positions = db.query(Position).filter(Position.slug.in_(normalized_scopes)).all()
     titles = [position.title for position in positions if (position.title or "").strip()]
-    legacy_title = canonical_position_title(normalized_scope)
-    if legacy_title and legacy_title not in titles:
-        titles.append(legacy_title)
+    for normalized_scope in normalized_scopes:
+        legacy_title = canonical_position_title(normalized_scope)
+        if legacy_title and legacy_title not in titles:
+            titles.append(legacy_title)
     return titles
 
 
@@ -146,11 +179,11 @@ def resolve_scope_slug(value: str) -> str:
 
 
 def position_matches_scope(employee_position: Optional[str], role_scope: Optional[str]) -> bool:
-    normalized_scope = resolve_scope_slug(role_scope or "")
-    if normalized_scope == ROLE_SCOPE_ALL:
+    normalized_scopes = parse_role_scopes(role_scope or "")
+    if not normalized_scopes:
         return True
     normalized_employee_scope = normalize_position_slug(employee_position or "")
-    return bool(normalized_employee_scope) and normalized_employee_scope == normalized_scope
+    return bool(normalized_employee_scope) and normalized_employee_scope in set(normalized_scopes)
 
 
 def ensure_position_exists(

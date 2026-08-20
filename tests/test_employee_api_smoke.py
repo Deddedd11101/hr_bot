@@ -2167,6 +2167,7 @@ class EmployeeApiSmokeTests(unittest.TestCase):
             self.assertEqual(scenario_payload["title"], "Новый заголовок сценария")
             self.assertEqual(scenario_payload["description"], "x" * 50)
             self.assertEqual(scenario_payload["role_scope"], "analyst")
+            self.assertEqual(scenario_payload["role_scopes"], ["analyst"])
             self.assertEqual(scenario_payload["employee_scope"], "employees")
             self.assertEqual(scenario_payload["trigger_mode"], "candidate_hr_stage")
             self.assertEqual(scenario_payload["candidate_work_stage_trigger"], "offer")
@@ -2182,6 +2183,63 @@ class EmployeeApiSmokeTests(unittest.TestCase):
                 response.json()["payload"]["workspace"]["candidate_work_stage_labels"]["manager_interview"],
                 "Собеседование с руководителем",
             )
+        finally:
+            with SessionLocal() as db:
+                scenario = db.get(ScenarioTemplate, scenario_id)
+                if scenario is not None:
+                    db.delete(scenario)
+                db.commit()
+
+    def test_workspace_scenario_settings_api_supports_multiple_role_scopes(self) -> None:
+        scenario_key = f"codex_multi_scope_{uuid4().hex[:12]}"
+        with SessionLocal() as db:
+            scenario = ScenarioTemplate(
+                scenario_key=scenario_key,
+                title="Workspace Multi Scope Smoke",
+                sort_order=999999,
+                scenario_kind="scenario",
+                role_scope="all",
+                employee_scope="all",
+                trigger_mode="manual_only",
+                target_employee_id=None,
+                description=None,
+            )
+            db.add(scenario)
+            db.commit()
+            db.refresh(scenario)
+            scenario_id = scenario.id
+
+        try:
+            response = self.client.post(
+                f"/api/flows/workspace/scenarios/{scenario_id}/settings",
+                json={
+                    "title": "Multi scope scenario",
+                    "description": "multi positions",
+                    "role_scopes": ["designer", "analyst"],
+                    "employee_scope": "employees",
+                    "trigger_mode": "manual_only",
+                    "candidate_work_stage_trigger": "offer",
+                    "target_employee_id": "",
+                },
+            )
+
+            self.assertEqual(response.status_code, 200)
+            scenario_payload = response.json()["payload"]["workspace"]["scenario"]
+            self.assertEqual(scenario_payload["role_scope"], "designer,analyst")
+            self.assertEqual(scenario_payload["role_scopes"], ["designer", "analyst"])
+            self.assertEqual(scenario_payload["role_scope_label"], "Дизайнер, Аналитик")
+            self.assertEqual(scenario_payload["candidate_work_stage_trigger"], "")
+            scenario_summary = next(
+                item for item in response.json()["payload"]["scenarios"] if item["id"] == scenario_id
+            )
+            self.assertEqual(scenario_summary["role_scope"], "designer,analyst")
+            self.assertEqual(scenario_summary["role_scopes"], ["designer", "analyst"])
+            self.assertEqual(scenario_summary["role_scope_label"], "Дизайнер, Аналитик")
+
+            with SessionLocal() as db:
+                scenario = db.get(ScenarioTemplate, scenario_id)
+                self.assertIsNotNone(scenario)
+                self.assertEqual(scenario.role_scope, "designer,analyst")
         finally:
             with SessionLocal() as db:
                 scenario = db.get(ScenarioTemplate, scenario_id)

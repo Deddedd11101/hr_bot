@@ -39,6 +39,9 @@ Scenario engine превращает scenario templates плюс employee state 
 - `role_scope` теперь допускает не одну должность, а нормализованный набор ролей в одном поле `scenario_templates.role_scope`.
 - Для MVP набор хранится как CSV (`designer,analyst`), но API workspace отдает и raw `role_scope`, и нормализованный массив `role_scopes`.
 - Значение `all` остается взаимоисключающим shorthand: если выбрано оно, остальные роли игнорируются.
+- Runtime matching трактует CSV как OR: сценарий подходит, если нормализованная должность сотрудника или кандидата входит в выбранный набор.
+- Legacy одиночные значения (`designer`, `analyst` и т.д.) остаются валидными и парсятся как набор из одного элемента.
+- `trigger_mode=candidate_hr_stage` / `status_transition` не меняет эту семантику: trigger сначала должен совпасть по HR-статусу кандидата, а затем пройти обычные `employee_scope` и `role_scope` фильтры.
 
 ## Текущие типы шагов
 
