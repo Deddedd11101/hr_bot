@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, patch
 
 from app.database import SessionLocal, init_db
 from app.models import (
+    DocumentLibraryItem,
     Employee,
     EmployeeDocumentLink,
     EmployeeFile,
@@ -575,6 +576,84 @@ class ScenarioEngineSmokeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(bot.calls), 1)
         self.assertEqual(bot.calls[0][0], "document")
         self.assertEqual(bot.calls[0][1]["chat_id"], "employee-chat")
+
+    async def test_send_step_attachment_prefers_library_file_over_upload_attachment(self) -> None:
+        init_db()
+        now = datetime.now(UTC).replace(tzinfo=None)
+        with tempfile.TemporaryDirectory() as tmp_dir, SessionLocal() as db:
+            old_attachment_path = Path(tmp_dir) / "old-guide.pdf"
+            old_attachment_path.write_bytes(b"old")
+            library_path = Path(tmp_dir) / "library-guide.pdf"
+            library_path.write_bytes(b"library")
+            item = DocumentLibraryItem(
+                title="Library guide",
+                description="",
+                category="Tests",
+                item_kind="file",
+                external_url=None,
+                original_filename="library-guide.pdf",
+                stored_path=str(library_path),
+                mime_type="application/pdf",
+                file_size=7,
+                is_active=True,
+                sort_order=10,
+                created_at=now,
+                updated_at=now,
+            )
+            db.add(item)
+            db.commit()
+            db.refresh(item)
+            step = SimpleNamespace(
+                attachment_document_item_id=item.id,
+                attachment_path=str(old_attachment_path),
+                attachment_filename="old-guide.pdf",
+            )
+            messenger = FakeMessenger()
+
+            handled = await send_step_attachment(messenger, "employee-chat", step, db=db)
+
+            self.assertTrue(handled)
+            self.assertEqual(len(messenger.documents), 1)
+            self.assertEqual(messenger.documents[0]["path"], str(library_path))
+            self.assertEqual(messenger.documents[0]["filename"], "library-guide.pdf")
+
+    async def test_send_step_attachment_sends_library_link_as_text(self) -> None:
+        init_db()
+        now = datetime.now(UTC).replace(tzinfo=None)
+        with SessionLocal() as db:
+            item = DocumentLibraryItem(
+                title="Company policy",
+                description="Read before start",
+                category="Tests",
+                item_kind="link",
+                external_url="https://example.com/policy",
+                original_filename=None,
+                stored_path=None,
+                mime_type=None,
+                file_size=None,
+                is_active=True,
+                sort_order=10,
+                created_at=now,
+                updated_at=now,
+            )
+            db.add(item)
+            db.commit()
+            db.refresh(item)
+            step = SimpleNamespace(
+                attachment_document_item_id=item.id,
+                attachment_path="",
+                attachment_filename="",
+            )
+            messenger = FakeMessenger()
+
+            handled = await send_step_attachment(messenger, "employee-chat", step, db=db)
+
+            self.assertTrue(handled)
+            self.assertEqual(len(messenger.texts), 1)
+            self.assertEqual(
+                messenger.texts[0]["text"],
+                "Company policy\n\nRead before start\n\nhttps://example.com/policy",
+            )
 
     async def test_start_scenario_defaults_recipient_to_subject_employee(self) -> None:
         init_db()

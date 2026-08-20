@@ -70,7 +70,7 @@ source_of_truth: true
 | Таблица | Назначение | Ключевые поля | Связи и примечания |
 | --- | --- | --- | --- |
 | `scenario_templates` | Metadata сценариев и опросов | `scenario_key`, `title`, `scenario_kind`, `role_scope`, `employee_scope`, `recipient_mode`, `trigger_mode`, `target_employee_id`, `description`, `sort_order` | Parent entity для steps и runtime launches; `role_scope` хранит `all` или CSV position slug'ов для multi-position targeting; `recipient_mode` отделяет context employee от фактического Telegram-получателя |
-| `flow_step_templates` | Step definitions | `flow_key`, `step_key`, `parent_step_id`, `branch_option_index`, `response_type`, `button_options`, scheduling fields, target field, attachment fields, notification fields | Root steps имеют `parent_step_id = NULL`; branches и chains вложены через `parent_step_id` |
+| `flow_step_templates` | Step definitions | `flow_key`, `step_key`, `parent_step_id`, `branch_option_index`, `response_type`, `button_options`, scheduling fields, target field, `attachment_path`, `attachment_filename`, `attachment_document_item_id`, notification fields | Root steps имеют `parent_step_id = NULL`; branches и chains вложены через `parent_step_id`; `attachment_document_item_id` ссылается на shared `document_library_items` |
 | `step_button_notifications` | Notification overrides для button options | `flow_key`, `step_id`, `option_index`, `message_text`, recipient fields | Дополнительная notification model для конкретной button option |
 | `step_send_notifications` | Notification rules при показе шага | `flow_key`, `step_id`, `rule_index`, `message_text`, recipient fields | Новая множественная модель step-level notifications; legacy `notify_on_send_*` остается compatibility seam |
 | `scenario_progress` | Runtime position сценария по context employee | `employee_id`, `scenario_key`, `recipient_mode`, `recipient_employee_id`, `recipient_chat_id`, `current_step_key`, `waiting_for_response`, `is_completed`, `last_delivery_error`, timestamps | Tracks active/completed scenario state и отдельно хранит resolved recipient для reply-flow и audit |
@@ -94,7 +94,7 @@ source_of_truth: true
 | --- | --- | --- | --- |
 | `employee_files` | Inbound и outbound employee files | `employee_id`, `direction`, `category`, Telegram file ids, `stored_path`, `mime_type`, `file_size` | Backed by local filesystem storage |
 | `employee_document_links` | Per-employee document slots/links | `employee_id`, `slot_key`, `title`, `url`, `item_kind`, `employee_file_id` | Offer slot может быть link-backed или file-backed через `employee_files`; resume slot хранит одно актуальное резюме как `slot_key=resume`, обычно file-backed |
-| `document_library_items` | Shared library documents for bot menu | `title`, `description`, `category`, `item_kind`, `external_url`, stored file metadata, `is_active`, `sort_order` | Общие материалы для `/app/documents` и `send_document` menu buttons |
+| `document_library_items` | Shared library documents for bot menu and scenario steps | `title`, `description`, `category`, `item_kind`, `external_url`, stored file metadata, `is_active`, `sort_order` | Общие материалы для `/app/documents`, `send_document` menu buttons и reusable вложений шагов сценария |
 
 ## Важные runtime rules
 
@@ -182,6 +182,13 @@ source_of_truth: true
   - chain nodes;
   - launch-another-scenario nodes.
 - Nested structure кодируется через `parent_step_id` и `branch_option_index`, а не через отдельную graph model.
+- Вложения шага имеют два совместимых источника:
+  - legacy uploaded file через `attachment_path` / `attachment_filename`;
+  - reusable shared document через nullable `attachment_document_item_id`.
+- Runtime сначала пытается отправить active `document_library_items` из `attachment_document_item_id`:
+  - `item_kind=file` отправляется как файл или фото из `storage/document_library`;
+  - `item_kind=link` отправляется как текст со ссылкой.
+- Если shared document отсутствует, неактивен или не может быть отправлен, старый uploaded attachment остается fallback, поэтому существующие шаги с `attachment_path` не ломаются.
 
 ## Что добавляет или нормализует `_ensure_sqlite_schema()`
 
@@ -194,6 +201,7 @@ SQLite schema guard делает больше, чем “создать табл
   - `scenario_progress.recipient_employee_id`;
   - `scenario_progress.recipient_chat_id`;
   - `scenario_progress.last_delivery_error`;
+- добавляет `flow_step_templates.attachment_document_item_id` для reusable вложений из shared document library;
 - создает целые таблицы, если они отсутствуют:
   - `employee_assignment_history`;
   - `employee_manual_bot_messages`;

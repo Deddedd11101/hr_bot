@@ -40,6 +40,7 @@ source_of_truth: true
 - импортировать пакет обратно в SQLite-базу;
 - переносить шаги, branch/chain-структуру и уведомления кнопок;
 - копировать вложения шагов в пакет `assets/` и восстанавливать их при импорте.
+- сохранять `attachment_document_item_id` как ссылку на shared document library item, если шаг использует reusable документ.
 
 Ключевая привязка переноса:
 
@@ -71,6 +72,9 @@ source_of_truth: true
 - parent/child связи шагов через `parent_step_key`;
 - button notifications;
 - сведения о вложениях шагов.
+- ссылку `attachment_document_item_id`, если шаг привязан к shared document library.
+
+Важно: portability не упаковывает сами `document_library_items` и файлы из `storage/document_library`. Ссылка на reusable документ переносится как ID reference. При импорте в другую базу этот ID должен соответствовать существующему shared document item, иначе runtime безопасно откатится на legacy uploaded attachment, если он есть, или отправит шаг без reusable вложения.
 
 ## Экспорт сценариев
 

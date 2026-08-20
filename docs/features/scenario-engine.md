@@ -32,6 +32,7 @@ Scenario engine превращает scenario templates плюс employee state 
 - `employees` — personalization и field updates.
 - `flow_launch_requests` — delayed или manual launches.
 - `employee_document_links` / `employee_files` — персональные document slots для тегов вида `{doc:...}` и актуального resume slot.
+- `document_library_items` — shared documents из `/app/documents`, которые можно переиспользовать как вложение шага.
 
 ## Audience targeting
 
@@ -61,13 +62,23 @@ Scenario engine превращает scenario templates плюс employee state 
    - `context employee` / `subject employee` — по чьей карточке идет процесс;
    - `recipient employee` — кто реально получает шаг в Telegram.
 4. Отправить text, optional employee card, optional attachment и optional buttons уже по resolved recipient.
-4. Если в тексте есть `{doc:...}`, runtime резолвит персональный document slot сотрудника:
+5. Если в тексте есть `{doc:...}`, runtime резолвит персональный document slot сотрудника:
    - для link-based slot подставляет кликабельную ссылку в текст;
    - для file-based slot оставляет human-readable title в тексте и дополнительно отправляет сам файл в чат.
-5. Сохранить progress в `scenario_progress`, включая короткую историю предыдущих интерактивных шагов и resolved recipient (`recipient_mode`, `recipient_employee_id`, `recipient_chat_id`).
-6. Если user response не нужен, auto-advance к следующему step или schedule follow-up delivery.
-7. Если response нужен, ждать text/file/button input от resolved recipient и применить result к employee state context employee.
-8. Для активного интерактивного шага runtime поддерживает default `Назад`: для text/file это reply button, для button/branching — inline button. Откат возвращает только на предыдущий интерактивный шаг в рамках текущего незавершенного сценария.
+6. Сохранить progress в `scenario_progress`, включая короткую историю предыдущих интерактивных шагов и resolved recipient (`recipient_mode`, `recipient_employee_id`, `recipient_chat_id`).
+7. Если user response не нужен, auto-advance к следующему step или schedule follow-up delivery.
+8. Если response нужен, ждать text/file/button input от resolved recipient и применить result к employee state context employee.
+9. Для активного интерактивного шага runtime поддерживает default `Назад`: для text/file это reply button, для button/branching — inline button. Откат возвращает только на предыдущий интерактивный шаг в рамках текущего незавершенного сценария.
+
+## Step attachments
+
+- Шаг может использовать legacy uploaded attachment (`attachment_path` / `attachment_filename`) как раньше.
+- Дополнительно шаг может ссылаться на shared document library через `flow_step_templates.attachment_document_item_id`.
+- Если указаны оба источника, shared document library item имеет приоритет, а uploaded attachment остается fallback.
+- Для `document_library_items.item_kind=file` runtime отправляет файл или фото из `storage/document_library`.
+- Для `document_library_items.item_kind=link` runtime отправляет отдельное текстовое сообщение с названием, описанием и ссылкой.
+- Если выбранный shared document неактивен, удален или не содержит пригодный file/link payload, runtime пробует старый uploaded attachment и не ломает старые шаги.
+- Bot menu `send_document` использует тот же shared document library, но это отдельная action model; выбор вложения шага не меняет menu sets/buttons.
 
 ## Message template tags
 

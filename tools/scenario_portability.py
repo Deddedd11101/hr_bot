@@ -34,6 +34,7 @@ FLOW_STEP_FIELDS = [
     "day_offset_workdays",
     "target_field",
     "launch_scenario_key",
+    "attachment_document_item_id",
     "attachment_filename",
     "send_employee_card",
     "notify_on_send_text",
@@ -57,6 +58,16 @@ def _connect(db_path: Path) -> sqlite3.Connection:
     connection = sqlite3.connect(str(db_path))
     connection.row_factory = _dict_factory
     return connection
+
+
+def _table_columns(connection: sqlite3.Connection, table_name: str) -> set[str]:
+    rows = connection.execute(f"PRAGMA table_info({table_name})").fetchall()
+    return {str(row["name"]) for row in rows}
+
+
+def _ensure_flow_step_attachment_document_column(connection: sqlite3.Connection) -> None:
+    if "attachment_document_item_id" not in _table_columns(connection, "flow_step_templates"):
+        connection.execute("ALTER TABLE flow_step_templates ADD COLUMN attachment_document_item_id INTEGER")
 
 
 def _normalize_scenario_keys(raw_values: list[str]) -> list[str]:
@@ -84,8 +95,13 @@ def _load_scenario_row(connection: sqlite3.Connection, scenario_key: str) -> dic
 
 
 def _load_step_rows(connection: sqlite3.Connection, scenario_key: str) -> list[dict[str, Any]]:
+    attachment_document_item_column = (
+        "attachment_document_item_id"
+        if "attachment_document_item_id" in _table_columns(connection, "flow_step_templates")
+        else "NULL AS attachment_document_item_id"
+    )
     return connection.execute(
-        """
+        f"""
         SELECT
             id,
             flow_key,
@@ -103,6 +119,7 @@ def _load_step_rows(connection: sqlite3.Connection, scenario_key: str) -> list[d
             day_offset_workdays,
             target_field,
             launch_scenario_key,
+            {attachment_document_item_column},
             attachment_path,
             attachment_filename,
             send_employee_card,
@@ -320,6 +337,7 @@ def import_scenarios(db_path: Path, input_dir: Path, storage_root: Path) -> None
 
     connection = _connect(db_path)
     try:
+        _ensure_flow_step_attachment_document_column(connection)
         for scenario_item in payload.get("scenarios", []):
             template = scenario_item["template"]
             scenario_key = template["scenario_key"]
@@ -362,13 +380,14 @@ def import_scenarios(db_path: Path, input_dir: Path, storage_root: Path) -> None
                             day_offset_workdays,
                             target_field,
                             launch_scenario_key,
+                            attachment_document_item_id,
                             attachment_path,
                             attachment_filename,
                             send_employee_card,
                             notify_on_send_text,
                             notify_on_send_recipient_ids,
                             notify_on_send_recipient_scope
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                         (
                             scenario_key,
@@ -386,6 +405,7 @@ def import_scenarios(db_path: Path, input_dir: Path, storage_root: Path) -> None
                             step.get("day_offset_workdays"),
                             step.get("target_field"),
                             step.get("launch_scenario_key"),
+                            step.get("attachment_document_item_id"),
                             attachment_path,
                             attachment_filename,
                             int(bool(step.get("send_employee_card"))),

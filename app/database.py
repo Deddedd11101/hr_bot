@@ -354,6 +354,7 @@ def _ensure_sqlite_schema() -> None:
             "return_to_step_key": "TEXT",
             "attachment_path": "TEXT",
             "attachment_filename": "TEXT",
+            "attachment_document_item_id": "INTEGER",
             "send_employee_card": "BOOLEAN NOT NULL DEFAULT 0",
             "notify_on_send_text": "TEXT",
             "notify_on_send_recipient_ids": "TEXT",
