@@ -27,6 +27,9 @@ export type WorkspaceStep = {
   button_options: string[];
   has_attachment: boolean;
   attachment_filename: string;
+  attachment_document_item_id: number | null;
+  attachment_document_item: WorkspaceDocumentLibraryItem | null;
+  attachment_source: string;
   send_employee_card: boolean;
   send_mode: string;
   send_mode_label: string;
@@ -123,6 +126,24 @@ export type WorkspaceTemplateTag = {
   description: string;
 };
 
+export type WorkspaceDocumentLibraryItem = {
+  id: number;
+  title: string;
+  description: string;
+  category: string;
+  item_kind: "file" | "link" | string;
+  item_kind_label: string;
+  external_url: string;
+  original_filename: string;
+  mime_type: string;
+  file_size: number | null;
+  is_active: boolean;
+  sort_order: number;
+  download_url: string;
+  created_at_label: string;
+  updated_at_label: string;
+};
+
 export type WorkspaceData = {
   scenario: {
     id: number;
@@ -159,6 +180,7 @@ export type WorkspaceData = {
   step_template_tags: WorkspaceTemplateTag[];
   notification_template_tags: WorkspaceTemplateTag[];
   document_tag_titles: string[];
+  document_library_options: WorkspaceDocumentLibraryItem[];
   employee_options: Array<{ id: number; label: string; kind: string }>;
   notification_recipient_options: Array<{ token: string; label: string; description: string; kind: string }>;
   available_scenarios: Array<{ value: string; label: string }>;
