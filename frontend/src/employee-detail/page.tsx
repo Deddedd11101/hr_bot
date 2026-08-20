@@ -58,6 +58,7 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
         upload: null as File | null,
     });
     const [offerFile, setOfferFile] = React.useState<File | null>(null);
+    const [resumeFile, setResumeFile] = React.useState<File | null>(null);
     const [manualBotMessageText, setManualBotMessageText] = React.useState("");
     const [manualBotMessageState, setManualBotMessageState] = React.useState({
         sending: false,
@@ -309,6 +310,71 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
             })
             .catch(function (error) {
                 setOperationMessage(error.message || "Не удалось загрузить оффер", true);
+            });
+    }
+
+    function handleResumeFileSubmit(event: React.FormEvent<HTMLFormElement>) {
+        event.preventDefault();
+        if (!resumeFile) {
+            setOperationMessage("Выбери файл резюме", true);
+            return;
+        }
+        setOpsState({ message: "", error: false, working: true });
+        const formData = new FormData();
+        formData.append("upload", resumeFile);
+        fetch(apiUrl + "/document-slots/resume/file", {
+            method: "POST",
+            credentials: "same-origin",
+            body: formData,
+        })
+            .then(function (response) {
+                if (!response.ok) {
+                    return response.json().catch(function () { return {}; }).then(function (payload) {
+                        throw new Error(payload.detail || "Не удалось загрузить резюме");
+                    });
+                }
+                return response.json();
+            })
+            .then(function (payload) {
+                updatePayloadState(setState, setForm, payload.payload);
+                setResumeFile(null);
+                const fileInput = document.getElementById("react-resume-file-input") as HTMLInputElement | null;
+                if (fileInput) {
+                    fileInput.value = "";
+                }
+                setOperationMessage("Резюме загружено", false);
+            })
+            .catch(function (error) {
+                setOperationMessage(error.message || "Не удалось загрузить резюме", true);
+            });
+    }
+
+    function handleResumeClear() {
+        setOpsState({ message: "", error: false, working: true });
+        fetch(apiUrl + "/document-slots/resume", {
+            method: "DELETE",
+            credentials: "same-origin",
+            headers: { Accept: "application/json" },
+        })
+            .then(function (response) {
+                if (!response.ok) {
+                    return response.json().catch(function () { return {}; }).then(function (payload) {
+                        throw new Error(payload.detail || "Не удалось очистить резюме");
+                    });
+                }
+                return response.json();
+            })
+            .then(function (payload) {
+                updatePayloadState(setState, setForm, payload);
+                setResumeFile(null);
+                const fileInput = document.getElementById("react-resume-file-input") as HTMLInputElement | null;
+                if (fileInput) {
+                    fileInput.value = "";
+                }
+                setOperationMessage("Резюме очищено из карточки", false);
+            })
+            .catch(function (error) {
+                setOperationMessage(error.message || "Не удалось очистить резюме", true);
             });
     }
 
@@ -667,6 +733,33 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
         }
         : null;
 
+    const resumeDocument = payload.resume_document;
+    const resumeMetaParts = resumeDocument
+        ? [
+            resumeDocument.created_at_label || resumeDocument.created_at || resumeDocument.updated_at || "",
+            resumeDocument.file_size_label || resumeDocument.size_label || (
+                resumeDocument.file_size || resumeDocument.size
+                    ? String(resumeDocument.file_size || resumeDocument.size)
+                    : ""
+            ),
+            resumeDocument.source === "legacy_file" ? "legacy-файл резюме" : "",
+        ].filter(Boolean)
+        : [];
+    const resumeDocumentItem = resumeDocument
+        ? {
+            id: resumeDocument.id || resumeDocument.employee_file_id || "resume",
+            title: resumeDocument.original_filename || resumeDocument.filename || resumeDocument.title || "Резюме",
+            subtitle: resumeMetaParts.length ? resumeMetaParts.join(" · ") : "Актуальное резюме",
+            link: resumeDocument.download_url || resumeDocument.url,
+            linkLabel: "Скачать",
+            deleteAction: handleResumeClear,
+            deleteActionLabel: "Очистить резюме",
+            deleteConfirmTitle: "Очистить резюме?",
+            deleteConfirmDescription: "Актуальное резюме будет убрано из карточки. Физический файл не удаляется.",
+            deleteConfirmLabel: "Очистить",
+        }
+        : null;
+
     const launchItems = payload.scheduled_launches.map(function (item: any) {
         return {
             id: "scheduled-" + item.id,
@@ -734,6 +827,9 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
                     offerFile={offerFile}
                     setOfferFile={setOfferFile}
                     offerDocumentItem={offerDocumentItem}
+                    resumeFile={resumeFile}
+                    setResumeFile={setResumeFile}
+                    resumeDocumentItem={resumeDocumentItem}
                     payload={payload}
                     form={form}
                     scheduleForm={scheduleForm}
@@ -745,6 +841,7 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
                     handleOfferSubmit={handleOfferSubmit}
                     handleOfferFileSubmit={handleOfferFileSubmit}
                     handleOfferDelete={handleOfferDelete}
+                    handleResumeFileSubmit={handleResumeFileSubmit}
                     handleScheduleSubmit={handleScheduleSubmit}
                     handleLaunchSubmit={handleLaunchSubmit}
                     handleFileSubmit={handleFileSubmit}
