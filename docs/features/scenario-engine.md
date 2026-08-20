@@ -31,7 +31,7 @@ Scenario engine превращает scenario templates плюс employee state 
 - `scenario_progress` — runtime state.
 - `employees` — personalization и field updates.
 - `flow_launch_requests` — delayed или manual launches.
-- `employee_document_links` / `employee_files` — персональные document slots для тегов вида `{doc:...}`.
+- `employee_document_links` / `employee_files` — персональные document slots для тегов вида `{doc:...}` и актуального resume slot.
 
 ## Audience targeting
 
@@ -76,9 +76,10 @@ Scenario engine превращает scenario templates плюс employee state 
   - `{employee_full_name}` — ФИО из карточки; fallback `Employee #id`, если ФИО пустое.
   - `{position}` — должность из карточки; fallback `не указана`.
   - `{first_workday}` — дата первого рабочего дня в формате `ДД.ММ.ГГГГ`; fallback `не указана`.
-  - `{resume}` — имя последнего файла `employee_files.category=resume`; fallback `резюме не загружено`.
+  - `{resume}` — имя файла из актуального `employee_document_links.slot_key=resume`; если slot пустой, fallback на последний `employee_files.category=resume`; если данных нет, fallback `резюме не загружено`.
 - В UI эти теги могут называться по-русски: `ФИО`, `Должность`, `Дата первого рабочего дня`, `Резюме`.
-- `{resume}` сейчас намеренно возвращает только human-readable имя файла, а не локальный storage path и не временную ссылку. Отправка/скачивание файла резюме остается отдельным file delivery contract.
+- `{resume}` сейчас намеренно возвращает только human-readable имя файла или текстовый fallback, а не локальный storage path и не временную ссылку. Отправка/скачивание файла резюме остается отдельным file delivery contract.
+- File-response step с `target_field=resume` делает загруженный файл новым актуальным resume slot; кнопка `Назад` откатывает этот slot вместе с file record, созданным последним ответом.
 - Персональные document tags вида `{doc:Оффер}` остаются отдельной механикой: link-backed slot подставляется как ссылка, file-backed slot дополнительно отправляется файлом.
 
 ## Recipient model

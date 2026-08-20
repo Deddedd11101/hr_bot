@@ -25,6 +25,7 @@ from app.messaging.service import (
     handle_text_event,
 )
 from app.scenario_engine import SINGLE_STEP_REQUEST_PREFIX, handle_button_response, send_step
+from app.web.settings import _get_or_create_hr_settings
 from app.models import (
     AdminAccount,
     BotMenuButton,
@@ -232,6 +233,9 @@ class EmployeeApiSmokeTests(unittest.TestCase):
             db.query(EmployeeManualBotMessage).filter(EmployeeManualBotMessage.employee_id == self.employee_id).delete(
                 synchronize_session=False
             )
+            db.query(EmployeeDocumentLink).filter(EmployeeDocumentLink.employee_id == self.employee_id).delete(
+                synchronize_session=False
+            )
             db.query(EmployeeFile).filter(EmployeeFile.employee_id == self.employee_id).delete(synchronize_session=False)
             db.query(EmployeeMessengerAccount).filter(EmployeeMessengerAccount.employee_id == self.employee_id).delete()
             extra_employees = db.query(Employee).filter(Employee.full_name.like(f"%{self.unique_tag}%")).all()
@@ -242,6 +246,9 @@ class EmployeeApiSmokeTests(unittest.TestCase):
                 db.query(EmployeeManualBotMessage).filter(
                     EmployeeManualBotMessage.employee_id == extra_employee.id
                 ).delete(synchronize_session=False)
+                db.query(EmployeeDocumentLink).filter(EmployeeDocumentLink.employee_id == extra_employee.id).delete(
+                    synchronize_session=False
+                )
                 db.query(EmployeeFile).filter(EmployeeFile.employee_id == extra_employee.id).delete(synchronize_session=False)
                 db.query(EmployeeMessengerAccount).filter(EmployeeMessengerAccount.employee_id == extra_employee.id).delete()
                 db.query(EmployeeAssignmentHistory).filter(
@@ -302,10 +309,146 @@ class EmployeeApiSmokeTests(unittest.TestCase):
                 self.assertEqual(link_row.item_kind, "file")
                 self.assertIsNotNone(link_row.employee_file_id)
 
+    def test_employee_resume_document_file_api_persists_slot_without_deleting_old_files(self) -> None:
+        now = datetime.now(UTC).replace(tzinfo=None)
+        with SessionLocal() as db:
+            old_file = EmployeeFile(
+                employee_id=self.employee_id,
+                direction="inbound",
+                category="resume",
+                telegram_file_id=None,
+                telegram_file_unique_id=None,
+                original_filename="old-resume.pdf",
+                stored_path=str((Path("storage") / "employee_files" / f"old-resume-{self.unique_tag}.pdf").resolve()),
+                mime_type="application/pdf",
+                file_size=3,
+                created_at=now,
+            )
+            db.add(old_file)
+            db.commit()
+            db.refresh(old_file)
+            old_file_id = old_file.id
+
+        response = self.client.post(
+            f"/api/employees/{self.employee_id}/document-slots/resume/file",
+            files={"upload": ("actual-resume.pdf", b"fake-resume-pdf", "application/pdf")},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["item"]["slot_key"], "resume")
+        self.assertEqual(payload["item"]["item_kind"], "file")
+        self.assertEqual(payload["item"]["title"], "Резюме")
+        self.assertEqual(payload["item"]["original_filename"], "actual-resume.pdf")
+        self.assertIn(f"/employees/{self.employee_id}/files/", payload["item"]["url"])
+        self.assertEqual(payload["payload"]["resume_document"]["slot_key"], "resume")
+        self.assertEqual(payload["payload"]["resume_document"]["source"], "slot")
+        self.assertEqual(payload["payload"]["resume_document"]["original_filename"], "actual-resume.pdf")
+        self.assertFalse(any(link.get("slot_key") == "resume" for link in payload["payload"]["document_links"]))
+
+        with SessionLocal() as db:
+            self.assertIsNotNone(db.get(EmployeeFile, old_file_id))
+            link_row = (
+                db.query(EmployeeDocumentLink)
+                .filter(
+                    EmployeeDocumentLink.employee_id == self.employee_id,
+                    EmployeeDocumentLink.slot_key == "resume",
+                )
+                .first()
+            )
+            self.assertIsNotNone(link_row)
+            if link_row is not None:
+                self.assertEqual(link_row.item_kind, "file")
+                self.assertNotEqual(link_row.employee_file_id, old_file_id)
+
+    def test_employee_detail_payload_uses_legacy_resume_file_fallback(self) -> None:
+        with SessionLocal() as db:
+            legacy_file = EmployeeFile(
+                employee_id=self.employee_id,
+                direction="inbound",
+                category="resume",
+                telegram_file_id=None,
+                telegram_file_unique_id=None,
+                original_filename="legacy-resume.pdf",
+                stored_path=str((Path("storage") / "employee_files" / f"legacy-resume-{self.unique_tag}.pdf").resolve()),
+                mime_type="application/pdf",
+                file_size=3,
+                created_at=datetime.now(UTC).replace(tzinfo=None),
+            )
+            db.add(legacy_file)
+            db.commit()
+            db.refresh(legacy_file)
+            legacy_file_id = legacy_file.id
+
+        response = self.client.get(f"/api/employees/{self.employee_id}")
+
+        self.assertEqual(response.status_code, 200)
+        resume_document = response.json()["resume_document"]
+        self.assertEqual(resume_document["slot_key"], "resume")
+        self.assertEqual(resume_document["source"], "legacy_file")
+        self.assertEqual(resume_document["employee_file_id"], legacy_file_id)
+        self.assertEqual(resume_document["original_filename"], "legacy-resume.pdf")
+
+    def test_clear_resume_document_slot_keeps_resume_files(self) -> None:
+        response = self.client.post(
+            f"/api/employees/{self.employee_id}/document-slots/resume/file",
+            files={"upload": ("clearable-resume.pdf", b"fake-resume-pdf", "application/pdf")},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        uploaded_file_id = response.json()["item"]["employee_file_id"]
+
+        clear_response = self.client.delete(f"/api/employees/{self.employee_id}/document-slots/resume")
+
+        self.assertEqual(clear_response.status_code, 200)
+        resume_document = clear_response.json()["resume_document"]
+        self.assertEqual(resume_document["source"], "legacy_file")
+        self.assertEqual(resume_document["employee_file_id"], uploaded_file_id)
+        with SessionLocal() as db:
+            self.assertIsNone(
+                db.query(EmployeeDocumentLink)
+                .filter(
+                    EmployeeDocumentLink.employee_id == self.employee_id,
+                    EmployeeDocumentLink.slot_key == "resume",
+                )
+                .first()
+            )
+            self.assertIsNotNone(db.get(EmployeeFile, uploaded_file_id))
+
+    def test_generic_document_link_delete_keeps_resume_slot_file(self) -> None:
+        response = self.client.post(
+            f"/api/employees/{self.employee_id}/document-slots/resume/file",
+            files={"upload": ("generic-delete-resume.pdf", b"fake-resume-pdf", "application/pdf")},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        item = response.json()["item"]
+        link_id = item["id"]
+        uploaded_file_id = item["employee_file_id"]
+        with SessionLocal() as db:
+            uploaded_file = db.get(EmployeeFile, uploaded_file_id)
+            self.assertIsNotNone(uploaded_file)
+            uploaded_path = Path(uploaded_file.stored_path) if uploaded_file is not None else None
+
+        delete_response = self.client.delete(f"/api/employees/{self.employee_id}/document-links/{link_id}")
+
+        self.assertEqual(delete_response.status_code, 200)
+        resume_document = delete_response.json()["resume_document"]
+        self.assertEqual(resume_document["source"], "legacy_file")
+        self.assertEqual(resume_document["employee_file_id"], uploaded_file_id)
+        with SessionLocal() as db:
+            self.assertIsNone(db.get(EmployeeDocumentLink, link_id))
+            db_file = db.get(EmployeeFile, uploaded_file_id)
+            self.assertIsNotNone(db_file)
+            if db_file is not None:
+                self.assertEqual(db_file.category, "resume")
+        self.assertIsNotNone(uploaded_path)
+        if uploaded_path is not None:
+            self.assertTrue(uploaded_path.exists())
+
     def test_workspace_payload_exposes_hr_notification_recipient(self) -> None:
         with SessionLocal() as db:
-            hr_settings = db.get(HrSettings, 1)
-            self.assertIsNotNone(hr_settings)
+            hr_settings = _get_or_create_hr_settings(db)
             hr_settings.hr_name = f"HR {self.unique_tag}"
             hr_settings.telegram_user_id = "770001"
             db.commit()
@@ -341,7 +484,14 @@ class EmployeeApiSmokeTests(unittest.TestCase):
             },
             step_tags,
         )
-        self.assertIn({"label": "Резюме", "template": "{resume}", "description": "Имя последнего файла категории resume из карточки."}, notification_tags)
+        self.assertIn(
+            {
+                "label": "Резюме",
+                "template": "{resume}",
+                "description": "Имя актуального resume slot из карточки; если slot пустой, fallback на последний файл категории resume.",
+            },
+            notification_tags,
+        )
         options = payload["workspace"]["notification_recipient_options"]
         self.assertIn(
             {

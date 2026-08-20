@@ -37,6 +37,8 @@ from ..time_utils import utc_now
 
 OFFER_DOCUMENT_TITLE = "Оффер"
 OFFER_DOCUMENT_SLOT = "offer"
+RESUME_DOCUMENT_TITLE = "Резюме"
+RESUME_DOCUMENT_SLOT = "resume"
 MANAGER_ASSIGNMENT_TRIGGER_MODE = "manager_assigned_adaptation"
 ASSIGNMENT_ROLE_MANAGER = "manager"
 ASSIGNMENT_ROLE_MENTOR_ADAPTATION = "mentor_adaptation"
@@ -865,12 +867,28 @@ def _serialize_employee_file(file_row: EmployeeFile, employee_id: int, can_send_
     return {
         "id": file_row.id,
         "direction": file_row.direction,
+        "category": file_row.category or "",
         "original_filename": file_row.original_filename or "",
         "created_at_label": file_row.created_at.strftime("%d.%m.%Y %H:%M") if file_row.created_at else "—",
         "download_url": f"/employees/{employee_id}/files/{file_row.id}/download",
         "send_url": f"/employees/{employee_id}/files/{file_row.id}/send",
         "delete_url": f"/api/employees/{employee_id}/files/{file_row.id}",
         "can_send_to_channel": can_send_to_channel,
+    }
+
+
+def _serialize_resume_file_fallback(file_row: EmployeeFile, employee_id: int) -> dict:
+    return {
+        "id": None,
+        "slot_key": RESUME_DOCUMENT_SLOT,
+        "title": RESUME_DOCUMENT_TITLE,
+        "url": f"/employees/{employee_id}/files/{file_row.id}/download",
+        "item_kind": "file",
+        "employee_file_id": file_row.id,
+        "original_filename": file_row.original_filename or "",
+        "source": "legacy_file",
+        "download_url": f"/employees/{employee_id}/files/{file_row.id}/download",
+        "created_at_label": file_row.created_at.strftime("%d.%m.%Y %H:%M") if file_row.created_at else "—",
     }
 
 
@@ -888,6 +906,8 @@ def _serialize_document_link(link_row: EmployeeDocumentLink, employee_id: int) -
         "url": effective_url,
         "item_kind": getattr(link_row, "item_kind", "link") or "link",
         "employee_file_id": getattr(link_row, "employee_file_id", None),
+        "source": "slot",
+        "download_url": file_download_url,
         "scenario_tag": f"{{doc:{link_row.title}}}",
         "delete_url": f"/employees/{employee_id}/document-links/{link_row.id}/delete",
     }
@@ -922,9 +942,41 @@ def _get_employee_document_slot(
             (EmployeeDocumentLink.slot_key == slot_key)
             | (EmployeeDocumentLink.title == OFFER_DOCUMENT_TITLE)
         )
+    elif slot_key == RESUME_DOCUMENT_SLOT:
+        query = query.filter(
+            (EmployeeDocumentLink.slot_key == slot_key)
+            | (EmployeeDocumentLink.title == RESUME_DOCUMENT_TITLE)
+        )
     else:
         query = query.filter(EmployeeDocumentLink.slot_key == slot_key)
     return query.order_by(EmployeeDocumentLink.id.asc()).first()
+
+
+def _get_latest_resume_file(db: Session, employee_id: int) -> Optional[EmployeeFile]:
+    return (
+        db.query(EmployeeFile)
+        .filter(
+            EmployeeFile.employee_id == employee_id,
+            EmployeeFile.category == RESUME_DOCUMENT_SLOT,
+        )
+        .order_by(EmployeeFile.created_at.desc(), EmployeeFile.id.desc())
+        .first()
+    )
+
+
+def _get_employee_resume_document_payload(db: Session, employee_id: int) -> Optional[dict]:
+    resume_slot = _get_employee_document_slot(db, employee_id, slot_key=RESUME_DOCUMENT_SLOT)
+    if resume_slot:
+        payload = _serialize_document_link(resume_slot, employee_id)
+        if resume_slot.employee_file_id:
+            file_row = db.get(EmployeeFile, resume_slot.employee_file_id)
+            if file_row:
+                payload["original_filename"] = file_row.original_filename or ""
+        return payload
+    latest_resume_file = _get_latest_resume_file(db, employee_id)
+    if latest_resume_file:
+        return _serialize_resume_file_fallback(latest_resume_file, employee_id)
+    return None
 
 
 def _save_offer_document_link(db: Session, employee_id: int, url: str) -> tuple[Optional[EmployeeDocumentLink], Optional[str]]:
@@ -1029,10 +1081,70 @@ def _save_offer_document_file(
     return link_row
 
 
+def _upsert_resume_document_slot(db: Session, employee_id: int, employee_file_id: int) -> EmployeeDocumentLink:
+    link_row = _get_employee_document_slot(db, employee_id, slot_key=RESUME_DOCUMENT_SLOT)
+    if link_row:
+        link_row.slot_key = RESUME_DOCUMENT_SLOT
+        link_row.title = RESUME_DOCUMENT_TITLE
+        link_row.url = ""
+        link_row.item_kind = "file"
+        link_row.employee_file_id = employee_file_id
+    else:
+        link_row = EmployeeDocumentLink(
+            employee_id=employee_id,
+            slot_key=RESUME_DOCUMENT_SLOT,
+            title=RESUME_DOCUMENT_TITLE,
+            url="",
+            item_kind="file",
+            employee_file_id=employee_file_id,
+            created_at=utc_now(),
+        )
+        db.add(link_row)
+    return link_row
+
+
+def _save_resume_document_file(
+    db: Session,
+    employee: Employee,
+    *,
+    filename: str,
+    content: bytes,
+    mime_type: Optional[str],
+) -> EmployeeDocumentLink:
+    destination = build_employee_file_path(employee.id, filename)
+    destination.write_bytes(content)
+    db_file = EmployeeFile(
+        employee_id=employee.id,
+        direction="inbound",
+        category=RESUME_DOCUMENT_SLOT,
+        telegram_file_id=None,
+        telegram_file_unique_id=None,
+        original_filename=filename,
+        stored_path=str(destination),
+        mime_type=mime_type,
+        file_size=len(content),
+        created_at=utc_now(),
+    )
+    db.add(db_file)
+    db.flush()
+    link_row = _upsert_resume_document_slot(db, employee.id, db_file.id)
+    db.commit()
+    db.refresh(link_row)
+    return link_row
+
+
+def _clear_resume_document_slot(db: Session, employee_id: int) -> None:
+    link_row = _get_employee_document_slot(db, employee_id, slot_key=RESUME_DOCUMENT_SLOT)
+    if link_row:
+        db.delete(link_row)
+        db.commit()
+
+
 def _delete_employee_document_link(db: Session, link_row: EmployeeDocumentLink) -> None:
     employee_file_id = getattr(link_row, "employee_file_id", None)
+    is_resume_slot = (getattr(link_row, "slot_key", None) or "").strip() == RESUME_DOCUMENT_SLOT
     db.delete(link_row)
-    if employee_file_id:
+    if employee_file_id and not is_resume_slot:
         employee_file = db.get(EmployeeFile, employee_file_id)
         if employee_file:
             file_path = Path(employee_file.stored_path)
@@ -1336,11 +1448,13 @@ def _build_employee_detail_payload(db: Session, employee: Employee) -> dict:
         db.query(EmployeeDocumentLink)
         .filter(
             EmployeeDocumentLink.employee_id == employee.id,
+            (EmployeeDocumentLink.slot_key.is_(None)) | (EmployeeDocumentLink.slot_key != RESUME_DOCUMENT_SLOT),
         )
         .order_by(EmployeeDocumentLink.created_at.desc(), EmployeeDocumentLink.id.desc())
         .all()
     )
     offer_document_link = _get_employee_document_slot(db, employee.id, slot_key=OFFER_DOCUMENT_SLOT)
+    resume_document = _get_employee_resume_document_payload(db, employee.id)
     scenarios = _available_scenarios_for_employee(db, employee)
     scenario_by_key = {scenario.scenario_key: scenario for scenario in db.query(ScenarioTemplate).all()}
     pending_scheduled_launches = (
@@ -1450,6 +1564,7 @@ def _build_employee_detail_payload(db: Session, employee: Employee) -> dict:
         "files": [_serialize_employee_file(file_row, employee.id, bool(primary_chat_id)) for file_row in employee_files],
         "document_links": [_serialize_document_link(link_row, employee.id) for link_row in employee_document_links],
         "offer_document": _serialize_document_link(offer_document_link, employee.id) if offer_document_link else None,
+        "resume_document": resume_document,
         "scheduled_launches": [
             _serialize_launch_request(launch_request, scenario_by_key, employee.id)
             for launch_request in pending_scheduled_launches

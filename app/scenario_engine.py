@@ -35,6 +35,8 @@ RECRUITMENT_SCENARIO_KEY = "recruitment_hiring"
 FIRST_DAY_SCENARIO_KEY = "first_day"
 PROBATION_SCENARIO_KEYS = {"mid_probation", "end_probation"}
 DOCUMENT_TAG_RE = re.compile(r"\{doc:([^}]+)\}")
+RESUME_DOCUMENT_TITLE = "Резюме"
+RESUME_DOCUMENT_SLOT = "resume"
 SINGLE_STEP_REQUEST_PREFIX = "__single_step__:"
 INTERACTIVE_RESPONSE_TYPES = {"text", "date", "file", "buttons", "branching"}
 DATE_WEEKDAY_LABELS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
@@ -86,7 +88,7 @@ SCENARIO_NOTIFICATION_TEMPLATE_TAGS = [
     {
         "label": "Резюме",
         "template": "{resume}",
-        "description": "Имя последнего файла категории resume из карточки.",
+        "description": "Имя актуального resume slot из карточки; если slot пустой, fallback на последний файл категории resume.",
     },
 ]
 RECIPIENT_MODE_SELF = "self"
@@ -646,6 +648,22 @@ def _capture_response_undo_snapshot(
             "id": uploaded_file.id,
             "stored_path": uploaded_file.stored_path,
         }
+        if step.target_field == RESUME_DOCUMENT_SLOT:
+            resume_slot = _get_employee_resume_slot(db, employee.id)
+            file_before["resume_slot_before"] = (
+                {
+                    "existed": True,
+                    "id": resume_slot.id,
+                    "slot_key": resume_slot.slot_key,
+                    "title": resume_slot.title,
+                    "url": resume_slot.url,
+                    "item_kind": resume_slot.item_kind,
+                    "employee_file_id": resume_slot.employee_file_id,
+                    "created_at": resume_slot.created_at.isoformat() if resume_slot.created_at else None,
+                }
+                if resume_slot
+                else {"existed": False}
+            )
     return {
         "step_key": step.step_key,
         "employee_before": employee_before,
@@ -681,6 +699,28 @@ def _restore_response_undo_snapshot(
 
     file_before = snapshot.get("file_before")
     if isinstance(file_before, dict):
+        resume_slot_before = file_before.get("resume_slot_before")
+        if isinstance(resume_slot_before, dict):
+            current_resume_slot = _get_employee_resume_slot(db, employee.id)
+            if not resume_slot_before.get("existed"):
+                if current_resume_slot is not None:
+                    db.delete(current_resume_slot)
+            else:
+                created_at_raw = resume_slot_before.get("created_at")
+                created_at = (
+                    datetime.fromisoformat(created_at_raw)
+                    if isinstance(created_at_raw, str) and created_at_raw.strip()
+                    else utc_now()
+                )
+                target_slot = current_resume_slot
+                if target_slot is None:
+                    target_slot = EmployeeDocumentLink(employee_id=employee.id, created_at=created_at)
+                    db.add(target_slot)
+                target_slot.slot_key = resume_slot_before.get("slot_key") or RESUME_DOCUMENT_SLOT
+                target_slot.title = resume_slot_before.get("title") or RESUME_DOCUMENT_TITLE
+                target_slot.url = resume_slot_before.get("url") or ""
+                target_slot.item_kind = resume_slot_before.get("item_kind") or "file"
+                target_slot.employee_file_id = resume_slot_before.get("employee_file_id")
         file_id = file_before.get("id")
         db_file = db.get(EmployeeFile, file_id) if file_id is not None else None
         if db_file is not None:
@@ -905,11 +945,19 @@ def format_message(db: Session, template: str, employee: Employee, anchor_date: 
 
 
 def resolve_employee_resume_label(db: Session, employee: Employee) -> str:
+    resume_slot = _get_employee_resume_slot(db, employee.id)
+    if resume_slot:
+        if getattr(resume_slot, "employee_file_id", None):
+            resume_file = db.get(EmployeeFile, resume_slot.employee_file_id)
+            if resume_file and (resume_file.original_filename or "").strip():
+                return resume_file.original_filename.strip()
+        if (resume_slot.url or "").strip():
+            return (resume_slot.title or "").strip() or resume_slot.url.strip()
     resume_file = (
         db.query(EmployeeFile)
         .filter(
             EmployeeFile.employee_id == employee.id,
-            EmployeeFile.category == "resume",
+            EmployeeFile.category == RESUME_DOCUMENT_SLOT,
         )
         .order_by(EmployeeFile.created_at.desc(), EmployeeFile.id.desc())
         .first()
@@ -917,6 +965,41 @@ def resolve_employee_resume_label(db: Session, employee: Employee) -> str:
     if resume_file and (resume_file.original_filename or "").strip():
         return resume_file.original_filename.strip()
     return "резюме не загружено"
+
+
+def _get_employee_resume_slot(db: Session, employee_id: int) -> EmployeeDocumentLink | None:
+    return (
+        db.query(EmployeeDocumentLink)
+        .filter(
+            EmployeeDocumentLink.employee_id == employee_id,
+            (EmployeeDocumentLink.slot_key == RESUME_DOCUMENT_SLOT)
+            | (EmployeeDocumentLink.title == RESUME_DOCUMENT_TITLE),
+        )
+        .order_by(EmployeeDocumentLink.id.asc())
+        .first()
+    )
+
+
+def _mark_employee_file_as_resume_slot(db: Session, employee: Employee, employee_file: EmployeeFile) -> None:
+    link_row = _get_employee_resume_slot(db, employee.id)
+    if link_row:
+        link_row.slot_key = RESUME_DOCUMENT_SLOT
+        link_row.title = RESUME_DOCUMENT_TITLE
+        link_row.url = ""
+        link_row.item_kind = "file"
+        link_row.employee_file_id = employee_file.id
+        return
+    db.add(
+        EmployeeDocumentLink(
+            employee_id=employee.id,
+            slot_key=RESUME_DOCUMENT_SLOT,
+            title=RESUME_DOCUMENT_TITLE,
+            url="",
+            item_kind="file",
+            employee_file_id=employee_file.id,
+            created_at=utc_now(),
+        )
+    )
 
 
 def _split_notification_recipients(value: Optional[str]) -> list[str]:
@@ -1682,7 +1765,8 @@ async def handle_file_response(
     undo_snapshot = _capture_response_undo_snapshot(db, context_employee, scenario, step, uploaded_file)
     store_survey_answer(db, context_employee, scenario, step, uploaded_file.original_filename, uploaded_file.original_filename)
     if step.target_field == "resume":
-        uploaded_file.category = "resume"
+        uploaded_file.category = RESUME_DOCUMENT_SLOT
+        _mark_employee_file_as_resume_slot(db, context_employee, uploaded_file)
     if not apply_response_to_employee(db, context_employee, step, uploaded_file.original_filename, uploaded_file):
         _restore_response_undo_snapshot(db, context_employee, scenario, step, undo_snapshot)
         return False
