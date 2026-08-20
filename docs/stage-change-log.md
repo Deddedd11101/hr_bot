@@ -34,6 +34,49 @@ source_of_truth: true
 
 ## Записи
 
+### 2026-08-20 17:47 MSK - app deploy - scenario multi-position scopes
+
+- Deploy ref: `stage`.
+- Deployed commit: `c7b844c`.
+- GitHub Actions run: `32381893475` -> success.
+- В stage включено:
+  - API/settings принимает `role_scopes[]`;
+  - `scenario_templates.role_scope` хранит `all` или CSV slug'ов должностей;
+  - legacy single `role_scope` остается совместимым;
+  - runtime matching запускает сценарий, если должность сотрудника/кандидата входит в выбранный список;
+  - в настройках сценария поле `Должность` стало multiselect с чекбоксами;
+  - `Все должности` взаимоисключается с конкретными должностями;
+  - generated frontend assets обновлены полным Vite build.
+- Локальные проверки перед deploy:
+  - `D:\HRBot\hr_bot_stage_pipeline\.venv\Scripts\python.exe -m compileall app tests tools`;
+  - `D:\HRBot\hr_bot_stage_pipeline\.venv\Scripts\python.exe -m ruff check --select F821 app tests tools`;
+  - `D:\HRBot\hr_bot_stage_pipeline\.venv\Scripts\python.exe -m unittest tests.test_scenario_engine_smoke tests.test_messaging_identity tests.test_employee_api_smoke -v` -> 136 tests OK;
+  - `D:\HRBot\hr_bot_stage_pipeline\.venv\Scripts\python.exe -m unittest tests.test_scheduler_smoke -v` -> 7 tests OK;
+  - `D:\HRBot\hr_bot_stage_pipeline\.venv\Scripts\python.exe tools\check_docs_contracts.py`;
+  - `npm ci` in `frontend`;
+  - `npm run build` in `frontend`;
+  - `git diff --check origin/stage..HEAD`.
+- GitHub Actions preflight:
+  - backend dependencies install;
+  - `compileall`;
+  - `ruff F821`;
+  - backend smoke tests -> 136 tests OK;
+  - frontend build;
+  - smoke imports.
+- Stage safety checks:
+  - verified SQLite backup created before checkout/restart: `backups/hr_bot.before-deploy.20260820-144536.db`;
+  - scenario config snapshot created: `backups/scenarios.before-deploy.20260820-144536.json`;
+  - scenario configuration fingerprint unchanged.
+- Stage smoke checks:
+  - `/app/employees` -> `303`;
+  - `/app/flows/workspace-v2` -> `303`;
+  - Telegram API reachability -> `HTTP/2 302`;
+  - deploy job завершился успешно и вывел `c7b844c`.
+- Открытые риски:
+  - `role_scope` as CSV остается осознанным SQLite/MVP technical debt;
+  - неизвестные slug'и могут сохраняться и просто не будут матчить сотрудников/кандидатов;
+  - нужен ручной stage smoke: выбрать несколько должностей в settings, сохранить, переоткрыть, проверить `Все должности`, candidate status trigger для included/excluded position и `/app/surveys/workspace`.
+
 ### 2026-08-19 16:11 MSK - app deploy - candidate status triggers and branch UX
 
 - Deploy ref: `stage`.
