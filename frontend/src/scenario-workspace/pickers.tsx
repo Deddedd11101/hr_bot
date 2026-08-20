@@ -156,10 +156,10 @@ export function RoleScopesPicker({
     return concreteValues.length ? concreteValues : ["all"];
   }, [value]);
   const selectedConcreteValues = selectedValues.filter((item) => item !== "all");
-  const selectedLabels = concreteOptions
-    .filter((option) => selectedConcreteValues.includes(option.value))
-    .map((option) => option.label);
-  const summary = selectedConcreteValues.length ? selectedLabels.join(", ") : allLabel;
+  const optionLabels = React.useMemo(() => new Map(concreteOptions.map((option) => [option.value, option.label])), [concreteOptions]);
+  const selectedLabels = selectedConcreteValues.map((item) => optionLabels.get(item) || item);
+  const summary = selectedConcreteValues.length ? `Выбрано: ${selectedConcreteValues.length}` : allLabel;
+  const summaryItems = selectedConcreteValues.length ? selectedLabels : [allLabel];
 
   const selectAll = () => {
     onChange(["all"]);
@@ -173,37 +173,51 @@ export function RoleScopesPicker({
   };
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger render={<Button variant="secondary" className="w-full justify-between" />}>
-        <span className="truncate text-left">{summary}</span>
-        <ChevronsUpDown className="opacity-60" />
-      </PopoverTrigger>
-      <PopoverContent className="w-[min(360px,calc(100vw-48px))] p-2" align="start">
-        <div className="flex flex-col gap-1">
-          <button
-            type="button"
-            onClick={selectAll}
-            className="flex items-center justify-between gap-3 rounded-lg px-3 py-2 text-left transition-colors hover:bg-muted"
-          >
-            <span className="min-w-0 truncate text-sm font-medium">{allLabel}</span>
-            <Checkbox checked={!selectedConcreteValues.length} aria-label={`Выбрать ${allLabel}`} />
-          </button>
-          {concreteOptions.map((option) => {
-            const checked = selectedConcreteValues.includes(option.value);
-            return (
-              <button
-                key={option.value}
-                type="button"
-                onClick={() => toggleConcrete(option.value)}
-                className="flex items-center justify-between gap-3 rounded-lg px-3 py-2 text-left transition-colors hover:bg-muted"
-              >
-                <span className="min-w-0 truncate text-sm font-medium">{option.label}</span>
-                <Checkbox checked={checked} aria-label={`Выбрать ${option.label}`} />
-              </button>
-            );
-          })}
+    <div className="grid min-w-0 gap-2">
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger render={<Button variant="secondary" className="w-full min-w-0 justify-between overflow-hidden" />}>
+          <span className="min-w-0 truncate text-left">{summary}</span>
+          <ChevronsUpDown className="shrink-0 opacity-60" />
+        </PopoverTrigger>
+        <PopoverContent className="w-[var(--anchor-width)] max-w-[min(360px,calc(100vw-48px))] p-2" align="start">
+          <div className="flex max-h-72 min-w-0 flex-col gap-1 overflow-y-auto">
+            <button
+              type="button"
+              onClick={selectAll}
+              className="flex min-w-0 items-center justify-between gap-3 rounded-lg px-3 py-2 text-left transition-colors hover:bg-muted"
+            >
+              <span className="min-w-0 truncate text-sm font-medium">{allLabel}</span>
+              <Checkbox checked={!selectedConcreteValues.length} aria-label={`Выбрать ${allLabel}`} />
+            </button>
+            {concreteOptions.map((option) => {
+              const checked = selectedConcreteValues.includes(option.value);
+              return (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => toggleConcrete(option.value)}
+                  className="flex min-w-0 items-center justify-between gap-3 rounded-lg px-3 py-2 text-left transition-colors hover:bg-muted"
+                >
+                  <span className="min-w-0 truncate text-sm font-medium">{option.label}</span>
+                  <Checkbox checked={checked} aria-label={`Выбрать ${option.label}`} />
+                </button>
+              );
+            })}
+          </div>
+        </PopoverContent>
+      </Popover>
+      <div className="max-h-28 min-w-0 overflow-y-auto rounded-lg border border-amber-300/50 bg-amber-50/70 p-2 dark:border-amber-500/25 dark:bg-amber-500/10">
+        <div className="grid min-w-0 gap-1.5">
+          {summaryItems.map((item) => (
+            <span
+              key={item}
+              className="min-w-0 break-words rounded-md bg-background/75 px-2 py-1 text-xs font-medium leading-5 text-foreground shadow-xs"
+            >
+              {item}
+            </span>
+          ))}
         </div>
-      </PopoverContent>
-    </Popover>
+      </div>
+    </div>
   );
 }
