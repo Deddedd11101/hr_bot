@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, patch
 
 from app.database import SessionLocal, init_db
 from app.models import (
+    DocumentLibraryItem,
     Employee,
     EmployeeDocumentLink,
     EmployeeFile,
@@ -575,6 +576,189 @@ class ScenarioEngineSmokeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(bot.calls), 1)
         self.assertEqual(bot.calls[0][0], "document")
         self.assertEqual(bot.calls[0][1]["chat_id"], "employee-chat")
+
+    async def test_send_step_attachment_prefers_library_file_over_upload_attachment(self) -> None:
+        init_db()
+        now = datetime.now(UTC).replace(tzinfo=None)
+        with tempfile.TemporaryDirectory() as tmp_dir, SessionLocal() as db:
+            old_attachment_path = Path(tmp_dir) / "old-guide.pdf"
+            old_attachment_path.write_bytes(b"old")
+            library_path = Path(tmp_dir) / "library-guide.pdf"
+            library_path.write_bytes(b"library")
+            item = DocumentLibraryItem(
+                title="Library guide",
+                description="",
+                category="Tests",
+                item_kind="file",
+                external_url=None,
+                original_filename="library-guide.pdf",
+                stored_path=str(library_path),
+                mime_type="application/pdf",
+                file_size=7,
+                is_active=True,
+                sort_order=10,
+                created_at=now,
+                updated_at=now,
+            )
+            db.add(item)
+            db.commit()
+            db.refresh(item)
+            step = SimpleNamespace(
+                attachment_document_item_id=item.id,
+                attachment_path=str(old_attachment_path),
+                attachment_filename="old-guide.pdf",
+            )
+            messenger = FakeMessenger()
+
+            handled = await send_step_attachment(messenger, "employee-chat", step, db=db)
+
+            self.assertTrue(handled)
+            self.assertEqual(len(messenger.documents), 1)
+            self.assertEqual(messenger.documents[0]["path"], str(library_path))
+            self.assertEqual(messenger.documents[0]["filename"], "library-guide.pdf")
+
+    async def test_send_step_attachment_sends_library_link_as_text(self) -> None:
+        init_db()
+        now = datetime.now(UTC).replace(tzinfo=None)
+        with SessionLocal() as db:
+            item = DocumentLibraryItem(
+                title="Company policy",
+                description="Read before start",
+                category="Tests",
+                item_kind="link",
+                external_url="https://example.com/policy",
+                original_filename=None,
+                stored_path=None,
+                mime_type=None,
+                file_size=None,
+                is_active=True,
+                sort_order=10,
+                created_at=now,
+                updated_at=now,
+            )
+            db.add(item)
+            db.commit()
+            db.refresh(item)
+            step = SimpleNamespace(
+                attachment_document_item_id=item.id,
+                attachment_path="",
+                attachment_filename="",
+            )
+            messenger = FakeMessenger()
+
+            handled = await send_step_attachment(messenger, "employee-chat", step, db=db)
+
+            self.assertTrue(handled)
+            self.assertEqual(len(messenger.texts), 1)
+            self.assertEqual(
+                messenger.texts[0]["text"],
+                "Company policy\n\nRead before start\n\nhttps://example.com/policy",
+            )
+
+    async def test_send_step_attachment_falls_back_to_upload_when_library_file_is_broken(self) -> None:
+        init_db()
+        now = datetime.now(UTC).replace(tzinfo=None)
+        with tempfile.TemporaryDirectory() as tmp_dir, SessionLocal() as db:
+            old_attachment_path = Path(tmp_dir) / "fallback-guide.pdf"
+            old_attachment_path.write_bytes(b"fallback")
+            item = DocumentLibraryItem(
+                title="Broken library guide",
+                description="",
+                category="Tests",
+                item_kind="file",
+                external_url=None,
+                original_filename="missing-guide.pdf",
+                stored_path=str(Path(tmp_dir) / "missing-guide.pdf"),
+                mime_type="application/pdf",
+                file_size=7,
+                is_active=True,
+                sort_order=10,
+                created_at=now,
+                updated_at=now,
+            )
+            db.add(item)
+            db.commit()
+            db.refresh(item)
+            step = SimpleNamespace(
+                attachment_document_item_id=item.id,
+                attachment_path=str(old_attachment_path),
+                attachment_filename="fallback-guide.pdf",
+            )
+            messenger = FakeMessenger()
+
+            handled = await send_step_attachment(messenger, "employee-chat", step, db=db)
+
+            self.assertTrue(handled)
+            self.assertEqual(len(messenger.documents), 1)
+            self.assertEqual(messenger.documents[0]["path"], str(old_attachment_path))
+
+    async def test_send_step_records_error_when_library_attachment_is_only_content_and_broken(self) -> None:
+        init_db()
+        now = datetime.now(UTC).replace(tzinfo=None)
+        with tempfile.TemporaryDirectory() as tmp_dir, SessionLocal() as db:
+            employee = Employee(
+                full_name="Library Attachment User",
+                telegram_user_id="900001",
+                created_at=now,
+                is_flow_scheduled=False,
+                employee_stage="candidate",
+            )
+            scenario = ScenarioTemplate(
+                scenario_key="library_attachment_failure",
+                title="Library attachment failure",
+                sort_order=10,
+                scenario_kind="scenario",
+                role_scope="all",
+                employee_scope="all",
+                recipient_mode="self",
+                trigger_mode="manual_only",
+            )
+            item = DocumentLibraryItem(
+                title="Broken only content",
+                description="",
+                category="Tests",
+                item_kind="file",
+                external_url=None,
+                original_filename="missing-guide.pdf",
+                stored_path=str(Path(tmp_dir) / "missing-guide.pdf"),
+                mime_type="application/pdf",
+                file_size=7,
+                is_active=True,
+                sort_order=10,
+                created_at=now,
+                updated_at=now,
+            )
+            db.add_all([employee, scenario, item])
+            db.flush()
+            step = FlowStepTemplate(
+                flow_key=scenario.scenario_key,
+                step_key="step_one",
+                step_title="Broken file",
+                sort_order=10,
+                default_text="",
+                response_type="none",
+                send_mode="immediate",
+                day_offset_workdays=0,
+                attachment_document_item_id=item.id,
+            )
+            db.add(step)
+            db.commit()
+            messenger = FakeMessenger()
+
+            sent = await send_step(messenger, db, employee, scenario, step)
+
+            self.assertFalse(sent)
+            self.assertEqual(messenger.texts, [])
+            self.assertEqual(messenger.documents, [])
+            progress = (
+                db.query(ScenarioProgress)
+                .filter(
+                    ScenarioProgress.employee_id == employee.id,
+                    ScenarioProgress.scenario_key == scenario.scenario_key,
+                )
+                .one()
+            )
+            self.assertIn("missing on disk", progress.last_delivery_error or "")
 
     async def test_start_scenario_defaults_recipient_to_subject_employee(self) -> None:
         init_db()

@@ -22,6 +22,7 @@ from ..flow_templates import (
 )
 from ..positions import build_role_scope_labels, parse_role_scopes, role_scope_label
 from ..models import (
+    DocumentLibraryItem,
     FlowLaunchRequest,
     FlowStepTemplate,
     ScenarioProgress,
@@ -37,6 +38,7 @@ from ..scenario_engine import (
     resolve_followup_step,
 )
 from .employees import OFFER_DOCUMENT_TITLE, _all_employee_options
+from .documents import _serialize_document_item
 from .settings import _get_or_create_hr_settings
 
 
@@ -567,6 +569,7 @@ def _serialize_workspace_step(
     chain_steps_by_parent: dict[int, list[FlowStepTemplate]],
     button_notifications_by_step: dict[int, dict[int, list[StepButtonNotification]]],
     step_send_notifications_by_step: dict[int, list[StepSendNotification]],
+    document_items_by_id: Optional[dict[int, DocumentLibraryItem]] = None,
 ):
     button_options = [item.strip() for item in (step.button_options or "").splitlines() if item.strip()]
     branch_items = []
@@ -592,6 +595,7 @@ def _serialize_workspace_step(
                         chain_steps_by_parent,
                         button_notifications_by_step,
                         step_send_notifications_by_step,
+                        document_items_by_id,
                     ) if branch_step else None,
                 }
             )
@@ -606,6 +610,7 @@ def _serialize_workspace_step(
                 chain_steps_by_parent,
                 button_notifications_by_step,
                 step_send_notifications_by_step,
+                document_items_by_id,
             )
             for child in chain_steps_by_parent.get(step.id, [])
         ]
@@ -642,6 +647,12 @@ def _serialize_workspace_step(
         }
         for option_index, label in enumerate(button_options)
     ]
+    attachment_document_item_id = getattr(step, "attachment_document_item_id", None)
+    attachment_document_item = (
+        (document_items_by_id or {}).get(int(attachment_document_item_id))
+        if attachment_document_item_id
+        else None
+    )
 
     return {
         "id": step.id,
@@ -653,8 +664,11 @@ def _serialize_workspace_step(
         "response_type": step.response_type or "none",
         "response_label": _workspace_response_label(step, scenario_kind),
         "button_options": button_options,
-        "has_attachment": bool(step.attachment_filename),
+        "has_attachment": bool(step.attachment_filename or attachment_document_item),
         "attachment_filename": step.attachment_filename or "",
+        "attachment_document_item_id": attachment_document_item_id,
+        "attachment_document_item": _serialize_document_item(attachment_document_item) if attachment_document_item else None,
+        "attachment_source": "library" if attachment_document_item else ("upload" if step.attachment_filename else ""),
         "send_employee_card": bool(getattr(step, "send_employee_card", False)),
         "send_mode": step.send_mode or "immediate",
         "send_mode_label": SEND_MODE_LABELS.get(step.send_mode or "immediate", step.send_mode or "immediate"),
@@ -746,6 +760,13 @@ def _build_scenario_workspace_payload(
     workspace = None
     if selected_scenario is not None:
         editor_data = _load_scenario_editor_data(db, selected_scenario)
+        document_items = (
+            db.query(DocumentLibraryItem)
+            .filter(DocumentLibraryItem.is_active.is_(True))
+            .order_by(DocumentLibraryItem.category, DocumentLibraryItem.sort_order, DocumentLibraryItem.id)
+            .all()
+        )
+        document_items_by_id = {item.id: item for item in document_items}
         root_steps = [
             _serialize_workspace_step(
                 step,
@@ -754,6 +775,7 @@ def _build_scenario_workspace_payload(
                 editor_data["chain_steps_by_parent"],
                 editor_data["button_notifications_by_step"],
                 editor_data["step_send_notifications_by_step"],
+                document_items_by_id,
             )
             for step in editor_data["steps"]
         ]
@@ -800,6 +822,7 @@ def _build_scenario_workspace_payload(
             "step_template_tags": SCENARIO_STEP_TEMPLATE_TAGS,
             "notification_template_tags": SCENARIO_NOTIFICATION_TEMPLATE_TAGS,
             "document_tag_titles": editor_data["document_tag_titles"],
+            "document_library_options": [_serialize_document_item(item) for item in document_items],
             "employee_options": editor_data["employee_options"],
             "notification_recipient_options": editor_data["notification_recipient_options"],
             "available_scenarios": [
@@ -849,6 +872,7 @@ def _apply_workspace_step_update(db: Session, step: FlowStepTemplate, payload: d
         step.target_field = None
         step.launch_scenario_key = None
         step.return_to_step_key = None
+        step.attachment_document_item_id = None
         step.send_employee_card = False
         step.notify_on_send_text = None
         step.notify_on_send_recipient_ids = None
@@ -877,6 +901,19 @@ def _apply_workspace_step_update(db: Session, step: FlowStepTemplate, payload: d
         step,
         str(payload.get("return_to_step_key") or ""),
     )
+    raw_attachment_document_item_id = str(payload.get("attachment_document_item_id") or "").strip()
+    attachment_document_item_id = int(raw_attachment_document_item_id) if raw_attachment_document_item_id.isdigit() else None
+    attachment_document_item = (
+        db.query(DocumentLibraryItem)
+        .filter(
+            DocumentLibraryItem.id == attachment_document_item_id,
+            DocumentLibraryItem.is_active.is_(True),
+        )
+        .first()
+        if attachment_document_item_id
+        else None
+    )
+    step.attachment_document_item_id = attachment_document_item.id if attachment_document_item else None
     step.send_employee_card = str(payload.get("send_employee_card") or "").strip().lower() in {"1", "true", "yes", "on"}
     step.notify_on_send_text = str(payload.get("notify_on_send_text") or "").strip() or None
     step.notify_on_send_recipient_ids = _normalize_notification_recipient_tokens(
@@ -1207,6 +1244,7 @@ def _copy_template_entity(db: Session, scenario: ScenarioTemplate) -> ScenarioTe
             target_field=original_step.target_field,
             launch_scenario_key=original_step.launch_scenario_key,
             return_to_step_key=getattr(original_step, "return_to_step_key", None),
+            attachment_document_item_id=getattr(original_step, "attachment_document_item_id", None),
             send_employee_card=getattr(original_step, "send_employee_card", False),
             notify_on_send_text=getattr(original_step, "notify_on_send_text", None),
             notify_on_send_recipient_ids=getattr(original_step, "notify_on_send_recipient_ids", None),

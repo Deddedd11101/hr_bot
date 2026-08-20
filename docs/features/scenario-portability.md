@@ -40,6 +40,7 @@ source_of_truth: true
 - импортировать пакет обратно в SQLite-базу;
 - переносить шаги, branch/chain-структуру и уведомления кнопок;
 - копировать вложения шагов в пакет `assets/` и восстанавливать их при импорте.
+- экспортировать metadata shared document library item, если шаг использует reusable document attachment.
 
 Ключевая привязка переноса:
 
@@ -71,6 +72,24 @@ source_of_truth: true
 - parent/child связи шагов через `parent_step_key`;
 - button notifications;
 - сведения о вложениях шагов.
+- `attachment_document_item` metadata, если шаг привязан к shared document library:
+  - `item_kind`;
+  - `title`;
+  - `external_url`;
+  - `original_filename`;
+  - `mime_type`;
+  - `file_size`;
+  - `content_sha256` для file-backed item, если source file доступен;
+  - source-only `stored_path` для диагностики.
+
+Важно: portability не упаковывает сами `document_library_items` и файлы из `storage/document_library`. Сырой `attachment_document_item_id` из source DB не импортируется вслепую, потому что на другой базе такой ID может указывать на другой документ. Import сохраняет `attachment_document_item_id` только если на target найден один exact validated match.
+
+Validated match:
+
+- link-backed item: `item_kind + title + external_url`;
+- file-backed item: сначала metadata candidate (`item_kind + title + original_filename + mime_type + file_size`), затем обязательный SHA-256 match между source `content_sha256` и target `stored_path`.
+
+Если source checksum нельзя вычислить, target file отсутствует, checksum не совпал, match не найден или match неоднозначен, import очищает ссылку, пишет warning и оставляет legacy uploaded attachment fallback, если он был в пакете.
 
 ## Экспорт сценариев
 

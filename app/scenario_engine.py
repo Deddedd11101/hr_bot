@@ -18,7 +18,7 @@ from .config import settings
 from .employee_card import render_employee_card_png
 from .messaging import as_messenger, find_employee_by_channel_user_id
 from .messaging.identity import get_primary_chat_id
-from .models import Employee, EmployeeDocumentLink, EmployeeFile, FlowLaunchRequest, FlowStepTemplate, HrSettings, OnboardingEvent, ScenarioProgress, ScenarioTemplate, StepButtonNotification, StepSendNotification, SurveyAnswer
+from .models import DocumentLibraryItem, Employee, EmployeeDocumentLink, EmployeeFile, FlowLaunchRequest, FlowStepTemplate, HrSettings, OnboardingEvent, ScenarioProgress, ScenarioTemplate, StepButtonNotification, StepSendNotification, SurveyAnswer
 from .notifications import notify_hr_stage
 from .positions import position_matches_scope
 from .time_utils import utc_now
@@ -1205,10 +1205,102 @@ def step_back_keyboard(step: FlowStepTemplate, include_back: bool = False) -> Op
 def step_has_sendable_content(step: FlowStepTemplate) -> bool:
     return bool(
         resolve_step_message_template(step).strip()
+        or getattr(step, "attachment_document_item_id", None)
         or (getattr(step, "attachment_path", None) or "").strip()
         or bool(getattr(step, "send_employee_card", False))
         or step_reply_markup(step)
     )
+
+
+def _resolve_step_attachment_document_item(db: Session, step: FlowStepTemplate) -> DocumentLibraryItem | None:
+    document_item_id = getattr(step, "attachment_document_item_id", None)
+    if not document_item_id:
+        return None
+    item = db.get(DocumentLibraryItem, document_item_id)
+    if not item or not item.is_active:
+        return None
+    return item
+
+
+def _validate_document_library_item_sendable(item: DocumentLibraryItem) -> str | None:
+    item_kind = (item.item_kind or "").strip()
+    if item_kind == "link":
+        if not (item.external_url or "").strip():
+            return "Shared document library link attachment has empty external_url."
+        return None
+    path_value = (item.stored_path or "").strip()
+    if not path_value:
+        return "Shared document library file attachment has empty stored_path."
+    if not Path(path_value).exists():
+        return "Shared document library file attachment is missing on disk."
+    return None
+
+
+def _resolve_step_attachment_document_item_with_error(
+    db: Session,
+    step: FlowStepTemplate,
+) -> tuple[DocumentLibraryItem | None, str | None]:
+    document_item_id = getattr(step, "attachment_document_item_id", None)
+    if not document_item_id:
+        return None, None
+    item = db.get(DocumentLibraryItem, document_item_id)
+    if not item:
+        return None, "Shared document library attachment not found."
+    if not item.is_active:
+        return None, "Shared document library attachment is inactive."
+    validation_error = _validate_document_library_item_sendable(item)
+    if validation_error:
+        return item, validation_error
+    return item, None
+
+
+async def _send_document_library_item(
+    messenger_or_bot: Any,
+    chat_id: str,
+    item: DocumentLibraryItem,
+    reply_markup: Any | None = None,
+    caption: str | None = None,
+) -> bool:
+    messenger = as_messenger(messenger_or_bot)
+    validation_error = _validate_document_library_item_sendable(item)
+    if validation_error:
+        return False
+    item_kind = (item.item_kind or "").strip()
+    if item_kind == "link":
+        link = (item.external_url or "").strip()
+        if not link:
+            return False
+        message_parts = [(item.title or "").strip() or "Документ"]
+        if (item.description or "").strip():
+            message_parts.append(item.description.strip())
+        message_parts.append(link)
+        await messenger.send_text(chat_id=chat_id, text="\n\n".join(message_parts), reply_markup=reply_markup)
+        return True
+
+    path_value = (item.stored_path or "").strip()
+    if not path_value:
+        return False
+    path = Path(path_value)
+    if not path.exists():
+        return False
+    filename = item.original_filename or path.name
+    if path.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}:
+        await messenger.send_photo_path(
+            chat_id=chat_id,
+            path=path,
+            filename=filename,
+            reply_markup=reply_markup,
+            caption=caption,
+        )
+        return True
+    await messenger.send_document_path(
+        chat_id=chat_id,
+        path=path,
+        filename=filename,
+        reply_markup=reply_markup,
+        caption=caption,
+    )
+    return True
 
 
 def resolve_branch_followup_step(
@@ -1228,10 +1320,22 @@ async def send_step_attachment(
     messenger_or_bot: Any,
     chat_id: str,
     step: FlowStepTemplate,
+    db: Session | None = None,
     reply_markup: Any | None = None,
     caption: str | None = None,
 ) -> bool:
     messenger = as_messenger(messenger_or_bot)
+    if db is not None:
+        document_item, document_error = _resolve_step_attachment_document_item_with_error(db, step)
+        if document_item and not document_error and await _send_document_library_item(
+            messenger,
+            chat_id,
+            document_item,
+            reply_markup=reply_markup,
+            caption=caption,
+        ):
+            return True
+
     attachment_path = (getattr(step, "attachment_path", None) or "").strip()
     if not attachment_path:
         return False
@@ -1441,11 +1545,18 @@ async def send_step(
     anchor_date = scenario_anchor_date(employee, scenario) or datetime.now(_get_tz()).date()
     message_template = resolve_step_message_template(step)
     message_text = format_message(db, message_template, employee, anchor_date, step.send_time)
-    has_attachment = bool((getattr(step, "attachment_path", None) or "").strip())
+    attachment_document_item, attachment_document_error = _resolve_step_attachment_document_item_with_error(db, step)
+    attachment_document_configured = bool(getattr(step, "attachment_document_item_id", None))
+    old_attachment_path = (getattr(step, "attachment_path", None) or "").strip()
+    has_attachment = bool(attachment_document_configured or old_attachment_path)
+    attachment_can_host_inline_buttons = bool(
+        old_attachment_path
+        or (attachment_document_item and (attachment_document_item.item_kind or "").strip() == "file")
+    )
     send_employee_card = bool(getattr(step, "send_employee_card", False))
     reply_markup = step_reply_markup(step, include_back=include_back)
     back_keyboard = step_back_keyboard(step, include_back=include_back)
-    media_can_host_inline_buttons = bool(reply_markup and (has_attachment or send_employee_card))
+    media_can_host_inline_buttons = bool(reply_markup and (attachment_can_host_inline_buttons or send_employee_card))
     needs_fallback_inline_buttons_message = bool(reply_markup and not message_text.strip() and not media_can_host_inline_buttons)
 
     if message_text.strip():
@@ -1463,13 +1574,30 @@ async def send_step(
             employee,
             reply_markup=employee_card_reply_markup,
         )
+    attachment_sent = False
     if has_attachment:
-        await send_step_attachment(
+        attachment_sent = await send_step_attachment(
             messenger,
             chat_id,
             step,
+            db=db,
             reply_markup=media_reply_markup,
         )
+        if attachment_document_configured and not attachment_sent:
+            attachment_error = attachment_document_error or "Shared document library attachment could not be sent."
+            progress.last_delivery_error = attachment_error
+            progress.updated_at = utc_now()
+            db.commit()
+            logger.warning(
+                "Scenario step library attachment skipped: scenario=%s step=%s subject_employee_id=%s document_item_id=%s error=%s",
+                scenario.scenario_key,
+                step.step_key,
+                employee.id,
+                getattr(step, "attachment_document_item_id", None),
+                attachment_error,
+            )
+            if not message_text.strip() and not send_employee_card and not reply_markup and not old_attachment_path:
+                return False
     await send_tagged_employee_documents(messenger, db, chat_id, message_template, employee)
     if needs_fallback_inline_buttons_message:
         await messenger.send_text(

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import shutil
 import sqlite3
@@ -34,6 +35,7 @@ FLOW_STEP_FIELDS = [
     "day_offset_workdays",
     "target_field",
     "launch_scenario_key",
+    "attachment_document_item_id",
     "attachment_filename",
     "send_employee_card",
     "notify_on_send_text",
@@ -57,6 +59,24 @@ def _connect(db_path: Path) -> sqlite3.Connection:
     connection = sqlite3.connect(str(db_path))
     connection.row_factory = _dict_factory
     return connection
+
+
+def _table_columns(connection: sqlite3.Connection, table_name: str) -> set[str]:
+    rows = connection.execute(f"PRAGMA table_info({table_name})").fetchall()
+    return {str(row["name"]) for row in rows}
+
+
+def _table_exists(connection: sqlite3.Connection, table_name: str) -> bool:
+    row = connection.execute(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?",
+        (table_name,),
+    ).fetchone()
+    return row is not None
+
+
+def _ensure_flow_step_attachment_document_column(connection: sqlite3.Connection) -> None:
+    if "attachment_document_item_id" not in _table_columns(connection, "flow_step_templates"):
+        connection.execute("ALTER TABLE flow_step_templates ADD COLUMN attachment_document_item_id INTEGER")
 
 
 def _normalize_scenario_keys(raw_values: list[str]) -> list[str]:
@@ -84,8 +104,13 @@ def _load_scenario_row(connection: sqlite3.Connection, scenario_key: str) -> dic
 
 
 def _load_step_rows(connection: sqlite3.Connection, scenario_key: str) -> list[dict[str, Any]]:
+    attachment_document_item_column = (
+        "attachment_document_item_id"
+        if "attachment_document_item_id" in _table_columns(connection, "flow_step_templates")
+        else "NULL AS attachment_document_item_id"
+    )
     return connection.execute(
-        """
+        f"""
         SELECT
             id,
             flow_key,
@@ -103,6 +128,7 @@ def _load_step_rows(connection: sqlite3.Connection, scenario_key: str) -> list[d
             day_offset_workdays,
             target_field,
             launch_scenario_key,
+            {attachment_document_item_column},
             attachment_path,
             attachment_filename,
             send_employee_card,
@@ -134,6 +160,140 @@ def _load_notifications(connection: sqlite3.Connection, flow_key: str) -> list[d
         """,
         (flow_key,),
     ).fetchall()
+
+
+def _sha256_file(path_value: str | None) -> str | None:
+    normalized_path = (path_value or "").strip()
+    if not normalized_path:
+        return None
+    path = Path(normalized_path)
+    if not path.exists() or not path.is_file():
+        return None
+    digest = hashlib.sha256()
+    with path.open("rb") as file_obj:
+        for chunk in iter(lambda: file_obj.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _load_document_library_metadata(connection: sqlite3.Connection, item_id: int | None) -> dict[str, Any] | None:
+    if not item_id or not _table_exists(connection, "document_library_items"):
+        return None
+    row = connection.execute(
+        """
+        SELECT id, title, description, category, item_kind, external_url, original_filename, stored_path, mime_type, file_size, is_active
+        FROM document_library_items
+        WHERE id = ?
+        """,
+        (item_id,),
+    ).fetchone()
+    if not row:
+        return None
+    item_kind = (row.get("item_kind") or "").strip()
+    metadata = {
+        "source_id": row.get("id"),
+        "title": row.get("title"),
+        "description": row.get("description"),
+        "category": row.get("category"),
+        "item_kind": item_kind,
+        "external_url": row.get("external_url"),
+        "original_filename": row.get("original_filename"),
+        "stored_path": row.get("stored_path"),
+        "mime_type": row.get("mime_type"),
+        "file_size": row.get("file_size"),
+        "is_active": bool(row.get("is_active")),
+    }
+    if item_kind == "file":
+        metadata["content_sha256"] = _sha256_file(row.get("stored_path"))
+    return metadata
+
+
+def _resolve_import_attachment_document_item_id(connection: sqlite3.Connection, step: dict[str, Any]) -> int | None:
+    source_item_id = step.get("attachment_document_item_id")
+    if not source_item_id:
+        return None
+    metadata = step.get("attachment_document_item")
+    step_label = step.get("step_key") or "<unknown>"
+    if not metadata:
+        print(
+            f"WARNING: cleared attachment_document_item_id for step '{step_label}': export has no document metadata.",
+        )
+        return None
+    if not _table_exists(connection, "document_library_items"):
+        print(
+            f"WARNING: cleared attachment_document_item_id for step '{step_label}': target DB has no document_library_items table.",
+        )
+        return None
+
+    item_kind = (metadata.get("item_kind") or "").strip()
+    title = metadata.get("title")
+    if item_kind == "link":
+        rows = connection.execute(
+            """
+            SELECT id
+            FROM document_library_items
+            WHERE is_active = 1
+              AND item_kind = ?
+              AND title = ?
+              AND COALESCE(external_url, '') = COALESCE(?, '')
+            ORDER BY id
+            """,
+            (item_kind, title, metadata.get("external_url")),
+        ).fetchall()
+    elif item_kind == "file":
+        source_checksum = metadata.get("content_sha256")
+        if not source_checksum:
+            print(
+                f"WARNING: cleared attachment_document_item_id for step '{step_label}': source file checksum is unavailable.",
+            )
+            return None
+        candidates = connection.execute(
+            """
+            SELECT id, stored_path
+            FROM document_library_items
+            WHERE is_active = 1
+              AND item_kind = ?
+              AND title = ?
+              AND COALESCE(original_filename, '') = COALESCE(?, '')
+              AND COALESCE(mime_type, '') = COALESCE(?, '')
+              AND COALESCE(file_size, -1) = COALESCE(?, -1)
+            ORDER BY id
+            """,
+            (
+                item_kind,
+                title,
+                metadata.get("original_filename"),
+                metadata.get("mime_type"),
+                metadata.get("file_size"),
+            ),
+        ).fetchall()
+        rows = [
+            row
+            for row in candidates
+            if _sha256_file(row.get("stored_path")) == source_checksum
+        ]
+        if candidates and not rows:
+            print(
+                f"WARNING: cleared attachment_document_item_id for step '{step_label}': target file checksum mismatch or unavailable.",
+            )
+            return None
+    else:
+        print(
+            f"WARNING: cleared attachment_document_item_id for step '{step_label}': unsupported document item_kind '{item_kind}'.",
+        )
+        return None
+
+    if len(rows) == 1:
+        return int(rows[0]["id"])
+    if not rows:
+        print(
+            f"WARNING: cleared attachment_document_item_id for step '{step_label}': no validated document_library_items match.",
+        )
+        return None
+    print(
+        f"WARNING: cleared attachment_document_item_id for step '{step_label}': multiple document_library_items matches.",
+    )
+    return None
 
 
 def _copy_attachment(source_path: str | None, export_assets_dir: Path, flow_key: str, step_key: str) -> dict[str, Any] | None:
@@ -185,6 +345,10 @@ def export_scenarios(db_path: Path, output_dir: Path, scenario_keys: list[str]) 
                 serialized_step = {
                     field: row.get(field) for field in FLOW_STEP_FIELDS
                 }
+                serialized_step["attachment_document_item"] = _load_document_library_metadata(
+                    connection,
+                    row.get("attachment_document_item_id"),
+                )
                 serialized_step["parent_step_key"] = step_key_by_id.get(row.get("parent_step_id"))
                 serialized_step["branch_option_index"] = row.get("branch_option_index")
                 serialized_step["attachment"] = attachment
@@ -320,6 +484,7 @@ def import_scenarios(db_path: Path, input_dir: Path, storage_root: Path) -> None
 
     connection = _connect(db_path)
     try:
+        _ensure_flow_step_attachment_document_column(connection)
         for scenario_item in payload.get("scenarios", []):
             template = scenario_item["template"]
             scenario_key = template["scenario_key"]
@@ -344,6 +509,7 @@ def import_scenarios(db_path: Path, input_dir: Path, storage_root: Path) -> None
                         step["step_key"],
                         step.get("attachment"),
                     )
+                    attachment_document_item_id = _resolve_import_attachment_document_item_id(connection, step)
                     cursor = connection.execute(
                         """
                         INSERT INTO flow_step_templates (
@@ -362,13 +528,14 @@ def import_scenarios(db_path: Path, input_dir: Path, storage_root: Path) -> None
                             day_offset_workdays,
                             target_field,
                             launch_scenario_key,
+                            attachment_document_item_id,
                             attachment_path,
                             attachment_filename,
                             send_employee_card,
                             notify_on_send_text,
                             notify_on_send_recipient_ids,
                             notify_on_send_recipient_scope
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                         (
                             scenario_key,
@@ -386,6 +553,7 @@ def import_scenarios(db_path: Path, input_dir: Path, storage_root: Path) -> None
                             step.get("day_offset_workdays"),
                             step.get("target_field"),
                             step.get("launch_scenario_key"),
+                            attachment_document_item_id,
                             attachment_path,
                             attachment_filename,
                             int(bool(step.get("send_employee_card"))),

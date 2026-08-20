@@ -149,6 +149,11 @@ source_of_truth: true
   - `notification_template_tags`: stable keys для уведомлений (`{employee_full_name}`, `{position}`, `{resume}`) с русскими labels
   - `employee_options`
   - `available_scenarios`
+  - `document_library_options`: active shared documents from `/app/documents` для выбора reusable вложения шага
+  - `root_steps[]`
+    - `attachment_document_item_id`: optional ID выбранного shared document
+    - `attachment_document_item`: serialized shared document, если выбранный item активен
+    - `attachment_source`: `library`, `upload` или пустая строка
 
 ### Payload settings workspace
 
@@ -237,14 +242,14 @@ source_of_truth: true
 | `POST` | `/api/flows/workspace/scenarios/reorder` | Сохранить sidebar order сценариев/опросов. | JSON: `scenario_ids[]`, optional `kind=scenario\|survey` | `{ message, payload }` | Перезаписывает `sort_order` выбранных items внутри kind | `401`, `400` если список пустой |
 | `POST` | `/api/flows/workspace/scenarios/bulk-copy` | Скопировать один или несколько scenarios/surveys. | JSON: `scenario_ids[]`, optional `kind=scenario\|survey` | `{ message, payload }` | Дублирует items и step trees внутри kind | `401`, `400`, `404` |
 | `POST` | `/api/flows/workspace/scenarios/bulk-delete` | Удалить один или несколько scenarios/surveys. | JSON: `scenario_ids[]`, optional `kind=scenario\|survey` | `{ message, payload }` | Удаляет items и dependent step trees внутри kind | `401`, `400`, `404` |
-| `POST` | `/api/flows/workspace/steps/{step_id}` | Обновить один workspace node. | JSON fields: `title`, `text`, `response_type`, `button_options`, `send_mode`, `send_time`, `target_field`, `launch_scenario_key`, `send_employee_card`, `notify_on_send_text`, `notify_on_send_recipient_ids`, `notify_on_send_recipient_scope`, `step_send_notifications[]`, `button_notifications[]`; для notification recipients supported tokens only: `hr`, `manager`, `mentor_adaptation`, `mentor_ipr` | `{ message, payload, step_id }` | Обновляет одну `flow_step_templates` строку и related notification fields; новые сохранения нормализуют recipients в role-only contract, legacy `employee:{id}` допускается только как runtime fallback для старых DB rows | `401`, `404` |
+| `POST` | `/api/flows/workspace/steps/{step_id}` | Обновить один workspace node. | JSON fields: `title`, `text`, `response_type`, `button_options`, `send_mode`, `send_time`, `target_field`, `launch_scenario_key`, `send_employee_card`, `attachment_document_item_id`, `notify_on_send_text`, `notify_on_send_recipient_ids`, `notify_on_send_recipient_scope`, `step_send_notifications[]`, `button_notifications[]`; для notification recipients supported tokens only: `hr`, `manager`, `mentor_adaptation`, `mentor_ipr` | `{ message, payload, step_id }` | Обновляет одну `flow_step_templates` строку и related notification fields; `attachment_document_item_id` сохраняет ссылку на active `document_library_items` и имеет runtime priority над uploaded attachment; новые сохранения нормализуют recipients в role-only contract, legacy `employee:{id}` допускается только как runtime fallback для старых DB rows | `401`, `404` |
 | `POST` | `/api/flows/workspace/scenarios/{scenario_id}/steps` | Создать новый root step. | JSON: optional `title` | `{ message, payload, step_id }` | Inserts root `flow_step_templates` row | `401`, `404` |
 | `POST` | `/api/flows/workspace/scenarios/{scenario_id}/steps/reorder` | Сохранить root-step order. | JSON: `step_ids[]` | `{ message, payload }` | Перезаписывает `sort_order` root steps | `401`, `404`, `400` |
 | `POST` | `/api/flows/workspace/steps/{step_id}/branches` | Создать branch step для branching node. | JSON: `option_index` | `{ message, payload, step_id }` | Inserts branch child step, если его еще нет | `401`, `404`, `400` если parent не branching или option invalid |
 | `POST` | `/api/flows/workspace/steps/{step_id}/chain` | Создать chain step под branch node с response type `chain`. | JSON: optional `title` | `{ message, payload, step_id }` | Inserts chain child step | `401`, `404`, `400` если parent не chain-capable branch node |
 | `POST` | `/api/flows/workspace/steps/{step_id}/delete` | Удалить step subtree. | Path: `step_id` | `{ message, payload, deleted_kind }` | Удаляет выбранный step и descendants | `401`, `404` |
-| `POST` | `/api/flows/workspace/steps/{step_id}/attachment` | Загрузить file attachment для step. | Multipart: `upload` | `{ message, payload, step_id }` | Сохраняет attachment на диск и обновляет `attachment_path` / `attachment_filename` | `401`, `404` |
-| `POST` | `/api/flows/workspace/steps/{step_id}/attachment/delete` | Удалить step attachment. | Path: `step_id` | `{ message, payload, step_id }` | Удаляет attachment file и очищает attachment fields | `401`, `404` |
+| `POST` | `/api/flows/workspace/steps/{step_id}/attachment` | Загрузить file attachment для step. | Multipart: `upload` | `{ message, payload, step_id }` | Сохраняет attachment на диск и обновляет `attachment_path` / `attachment_filename`; если у шага выбран `attachment_document_item_id`, uploaded attachment остается fallback | `401`, `404` |
+| `POST` | `/api/flows/workspace/steps/{step_id}/attachment/delete` | Удалить step attachment. | Path: `step_id` | `{ message, payload, step_id }` | Удаляет только uploaded attachment file и очищает `attachment_path` / `attachment_filename`; shared document selection не трогает | `401`, `404` |
 
 ## API settings workspace
 

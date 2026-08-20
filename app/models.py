@@ -664,6 +664,11 @@ class FlowStepTemplate(Base):
         nullable=True,
         doc="Оригинальное имя прикрепленного к шагу файла.",
     )
+    attachment_document_item_id: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        nullable=True,
+        doc="ID shared document_library_items для переиспользуемого вложения шага.",
+    )
     send_employee_card: Mapped[bool] = mapped_column(
         Boolean,
         nullable=False,

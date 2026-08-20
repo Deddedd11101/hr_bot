@@ -3428,6 +3428,86 @@ class EmployeeApiSmokeTests(unittest.TestCase):
         self.assertTrue(any(edge["kind"] == "return_to_root" for edge in graph["edges"]))
         self.assertTrue(any(edge["kind"] == "launch_scenario" for edge in graph["edges"]))
 
+    def test_workspace_step_api_persists_library_attachment_selection(self) -> None:
+        scenario_key = f"codex_library_attachment_{self.unique_tag}"
+        now = datetime.now(UTC).replace(tzinfo=None)
+        with SessionLocal() as db:
+            scenario = ScenarioTemplate(
+                scenario_key=scenario_key,
+                title=f"codex-library-attachment-{self.unique_tag}",
+                sort_order=10,
+                scenario_kind="scenario",
+                role_scope="all",
+                employee_scope="all",
+                trigger_mode="manual_only",
+            )
+            document = DocumentLibraryItem(
+                title=f"codex-doc-attachment-{self.unique_tag}",
+                description="test task",
+                category="Tests",
+                item_kind="link",
+                external_url="https://example.com/test-task",
+                original_filename=None,
+                stored_path=None,
+                mime_type=None,
+                file_size=None,
+                is_active=True,
+                sort_order=10,
+                created_at=now,
+                updated_at=now,
+            )
+            db.add_all([scenario, document])
+            db.flush()
+            step = FlowStepTemplate(
+                flow_key=scenario_key,
+                step_key=f"{scenario_key}_step",
+                step_title="Шаг с документом",
+                sort_order=10,
+                default_text="Изучи материал",
+                response_type="none",
+                send_mode="immediate",
+                day_offset_workdays=0,
+                send_employee_card=False,
+            )
+            db.add(step)
+            db.commit()
+            scenario_id = scenario.id
+            step_id = step.id
+            document_id = document.id
+
+        workspace_response = self.client.get(f"/api/flows/workspace?scenario_id={scenario_id}")
+
+        self.assertEqual(workspace_response.status_code, 200)
+        workspace = workspace_response.json()["workspace"]
+        self.assertTrue(any(item["id"] == document_id for item in workspace["document_library_options"]))
+        self.assertEqual(workspace["root_steps"][0]["attachment_document_item_id"], None)
+
+        update_response = self.client.post(
+            f"/api/flows/workspace/steps/{step_id}",
+            json={
+                "title": "Шаг с документом",
+                "text": "Изучи материал",
+                "response_type": "none",
+                "button_options": "",
+                "send_mode": "immediate",
+                "target_field": "",
+                "launch_scenario_key": "",
+                "attachment_document_item_id": document_id,
+                "send_employee_card": False,
+            },
+        )
+
+        self.assertEqual(update_response.status_code, 200)
+        root_step = update_response.json()["payload"]["workspace"]["root_steps"][0]
+        self.assertTrue(root_step["has_attachment"])
+        self.assertEqual(root_step["attachment_source"], "library")
+        self.assertEqual(root_step["attachment_document_item_id"], document_id)
+        self.assertEqual(root_step["attachment_document_item"]["id"], document_id)
+        with SessionLocal() as db:
+            saved_step = db.get(FlowStepTemplate, step_id)
+            self.assertIsNotNone(saved_step)
+            self.assertEqual(saved_step.attachment_document_item_id, document_id)
+
     def test_button_notification_to_mentor_ipr_resolves_correctly(self) -> None:
         scenario_key = f"codex_button_runtime_{self.unique_tag}"
         now = datetime.now(UTC).replace(tzinfo=None)
