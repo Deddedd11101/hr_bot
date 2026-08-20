@@ -150,7 +150,7 @@ export function RoleScopesPicker({
 }) {
   const [open, setOpen] = React.useState(false);
   const concreteOptions = React.useMemo(() => options.filter((option) => option.value !== "all"), [options]);
-  const allLabel = options.find((option) => option.value === "all")?.label || "Все должности";
+  const allLabel = "Все должности";
   const selectedValues = React.useMemo(() => {
     const concreteValues = value.filter((item) => item && item !== "all");
     return concreteValues.length ? concreteValues : ["all"];
