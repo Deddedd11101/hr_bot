@@ -34,6 +34,46 @@ source_of_truth: true
 
 ## Записи
 
+### 2026-08-21 12:41 MSK - app deploy - scenario library attachment TypeScript fix
+
+- Deploy ref: `stage`.
+- Deployed commit: `80bf8d8`.
+- GitHub Actions run: `32469014224` -> success.
+- В stage включено:
+  - TypeScript fix для scenario workspace после добавления вложений из document library;
+  - `WorkspaceStepForm` теперь явно включает `attachment_document_item_id`;
+  - исправлены `setForm` / `onFormChange` typings;
+  - добавлен import `WorkspaceStep`;
+  - исправлены nullable refs/detailTarget guards;
+  - `SingleSelectPicker` нормализует nullable value.
+- Локальные проверки перед deploy:
+  - `D:\HRBot\hr_bot_stage_pipeline\.venv\Scripts\python.exe -m compileall app tests tools`;
+  - `D:\HRBot\hr_bot_stage_pipeline\.venv\Scripts\python.exe -m ruff check --select F821 app tests tools`;
+  - `D:\HRBot\hr_bot_stage_pipeline\.venv\Scripts\python.exe tools\check_docs_contracts.py`;
+  - `npm ci` in `frontend`;
+  - `npm run build` in `frontend`;
+  - `npx tsc --noEmit` in `frontend` -> scenario-workspace errors gone, remaining errors are unrelated existing TypeScript debt in `components/ui/calendar.tsx`, `components/ui/date-picker.tsx`, `design-system/page.tsx`, `employee-detail/sections.tsx`, `employees-list/components.tsx`;
+  - `git diff --check origin/stage..HEAD`.
+- GitHub Actions preflight:
+  - backend dependencies install;
+  - `compileall`;
+  - `ruff F821`;
+  - backend smoke tests;
+  - frontend build;
+  - smoke imports.
+- Stage safety checks:
+  - verified SQLite backup created before checkout/restart: `backups/hr_bot.before-deploy.20260821-094136.db`;
+  - scenario config snapshot created: `backups/scenarios.before-deploy.20260821-094136.json`;
+  - scenario configuration fingerprint unchanged.
+- Stage smoke checks:
+  - `/app/employees` -> `303`;
+  - `/app/flows/workspace-v2` -> `303`;
+  - Telegram API reachability -> `HTTP/2 302`;
+  - deploy job завершился успешно и вывел `80bf8d8`.
+- Открытые риски:
+  - full `npx tsc --noEmit` still fails on unrelated existing frontend TypeScript debt outside scenario workspace;
+  - после deploy нужно sync `hrbot-ui` from `hr_bot` stage, чтобы дизайнерская ветка получила этот fix.
+
 ### 2026-08-21 02:02 MSK - app deploy - scenario library attachments
 
 - Deploy ref: `stage`.
