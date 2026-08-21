@@ -223,6 +223,25 @@ export type Container =
 
 export type WorkspaceItem = WorkspaceStep | WorkspaceBranchSlot;
 
+export type WorkspaceStepForm = {
+  title: string;
+  text: string;
+  response_type: string;
+  button_options: string;
+  send_mode: string;
+  send_time: string;
+  target_field: string;
+  launch_scenario_key: string;
+  return_to_step_key: string;
+  attachment_document_item_id: string;
+  send_employee_card: boolean;
+  notify_on_send_text: string;
+  notify_on_send_recipient_ids: string;
+  notify_on_send_recipient_scope: string;
+  step_send_notifications: WorkspaceStepSendNotificationRule[];
+  button_notifications: WorkspaceButtonNotification[];
+};
+
 export type SingleOption = {
   value: string;
   label: string;

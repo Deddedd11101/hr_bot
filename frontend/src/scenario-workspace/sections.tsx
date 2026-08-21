@@ -52,7 +52,7 @@ import type {
   WorkspaceItem,
   WorkspaceRootStepOption,
   WorkspaceStep,
-  WorkspaceStepSendNotificationRule,
+  WorkspaceStepForm,
   WorkspaceTemplateTag,
 } from "./types";
 
@@ -902,25 +902,9 @@ export function WorkspaceStepDetailPane(props: {
   detailTarget: WorkspaceStep | null;
   stepLabel: string;
   isSurveyWorkspace: boolean;
-  form: null | {
-    title: string;
-    text: string;
-    response_type: string;
-    button_options: string;
-    send_mode: string;
-    send_time: string;
-    target_field: string;
-    launch_scenario_key: string;
-    return_to_step_key: string;
-    send_employee_card: boolean;
-    notify_on_send_text: string;
-    notify_on_send_recipient_ids: string;
-    notify_on_send_recipient_scope: string;
-    step_send_notifications: WorkspaceStepSendNotificationRule[];
-    button_notifications: WorkspaceButtonNotification[];
-  };
-  textRef: React.RefObject<HTMLTextAreaElement | null>;
-  fileInputRef: React.RefObject<HTMLInputElement | null>;
+  form: WorkspaceStepForm | null;
+  textRef: React.RefObject<HTMLTextAreaElement>;
+  fileInputRef: React.RefObject<HTMLInputElement>;
   payloadWorkspace: WorkspaceData | null | undefined;
   attachmentState: { uploading: boolean; message: string; error: boolean };
   saveState: { saving: boolean; message: string; error: boolean };
@@ -931,45 +915,7 @@ export function WorkspaceStepDetailPane(props: {
   launchScenarioOptions: SingleOption[];
   rootStepOptions: WorkspaceRootStepOption[];
   onInsertIntoText: (snippet: string) => void;
-  onFormChange: (
-    updater: (
-      prev: {
-        title: string;
-        text: string;
-        response_type: string;
-        button_options: string;
-        send_mode: string;
-        send_time: string;
-        target_field: string;
-        launch_scenario_key: string;
-        return_to_step_key: string;
-        attachment_document_item_id: string;
-        send_employee_card: boolean;
-        notify_on_send_text: string;
-        notify_on_send_recipient_ids: string;
-        notify_on_send_recipient_scope: string;
-        step_send_notifications: WorkspaceStepSendNotificationRule[];
-        button_notifications: WorkspaceButtonNotification[];
-      } | null,
-    ) => {
-      title: string;
-      text: string;
-      response_type: string;
-      button_options: string;
-      send_mode: string;
-      send_time: string;
-      target_field: string;
-      launch_scenario_key: string;
-      return_to_step_key: string;
-      attachment_document_item_id: string;
-      send_employee_card: boolean;
-      notify_on_send_text: string;
-      notify_on_send_recipient_ids: string;
-      notify_on_send_recipient_scope: string;
-      step_send_notifications: WorkspaceStepSendNotificationRule[];
-      button_notifications: WorkspaceButtonNotification[];
-    } | null,
-  ) => void;
+  onFormChange: React.Dispatch<React.SetStateAction<WorkspaceStepForm | null>>;
   onCreateBranch: () => void;
   onAttachmentSelected: (event: React.ChangeEvent<HTMLInputElement>) => void;
   onDeleteAttachment: () => void;
@@ -1339,7 +1285,7 @@ export function WorkspaceStepDetailPane(props: {
                       {uploadedAttachmentFilename ? "Заменить файл" : "Добавить файл"}
                     </Button>
                   </div>
-                  {uploadedAttachmentFilename ? (
+                  {detailTarget && uploadedAttachmentFilename ? (
                     <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-muted/50 px-3 py-2">
                       <a
                         href={`/flows/steps/${detailTarget.id}/attachment`}

@@ -36,6 +36,8 @@ import type {
   WorkspaceButtonNotificationRule,
   WorkspacePayload,
   WorkspaceRootStepOption,
+  WorkspaceStep,
+  WorkspaceStepForm,
   WorkspaceStepSendNotificationRule,
 } from "./types";
 
@@ -117,29 +119,13 @@ export function ScenarioWorkspacePage() {
   const [stack, setStack] = React.useState<Container[]>([]);
   const [selectedItemKey, setSelectedItemKey] = React.useState("");
   const [viewMode, setViewMode] = React.useState<"list" | "graph">("list");
-  const [form, setForm] = React.useState<null | {
-    title: string;
-    text: string;
-    response_type: string;
-    button_options: string;
-    send_mode: string;
-    send_time: string;
-    target_field: string;
-    launch_scenario_key: string;
-    return_to_step_key: string;
-    send_employee_card: boolean;
-    notify_on_send_text: string;
-    notify_on_send_recipient_ids: string;
-    notify_on_send_recipient_scope: string;
-    step_send_notifications: WorkspaceStepSendNotificationRule[];
-    button_notifications: WorkspaceButtonNotification[];
-  }>(null);
+  const [form, setForm] = React.useState<WorkspaceStepForm | null>(null);
   const [saveState, setSaveState] = React.useState({ saving: false, message: "", error: false });
   const [scenarioSettingsForm, setScenarioSettingsForm] = React.useState<ScenarioSettingsForm | null>(null);
   const [scenarioSettingsState, setScenarioSettingsState] = React.useState({ saving: false, message: "", error: false });
   const [scenarioSettingsOpen, setScenarioSettingsOpen] = React.useState(false);
-  const textRef = React.useRef<HTMLTextAreaElement | null>(null);
-  const fileInputRef = React.useRef<HTMLInputElement | null>(null);
+  const textRef = React.useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
   const stackRef = React.useRef<Container[]>([]);
   const selectedKeyRef = React.useRef("");
   const [creatingScenario, setCreatingScenario] = React.useState(false);

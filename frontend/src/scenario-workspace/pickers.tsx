@@ -116,7 +116,10 @@ export function SingleSelectPicker({
     <Select
       items={normalizedOptions}
       value={selectedValue}
-      onValueChange={(nextValue) => onChange(nextValue === emptyValue ? "" : nextValue)}
+      onValueChange={(nextValue) => {
+        const normalizedValue = nextValue || "";
+        onChange(normalizedValue === emptyValue ? "" : normalizedValue);
+      }}
     >
       <SelectTrigger className="w-full" disabled={disabled}>
         <SelectValue placeholder={placeholder} className="truncate text-left" />
