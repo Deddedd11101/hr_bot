@@ -34,6 +34,45 @@ source_of_truth: true
 
 ## Записи
 
+### 2026-08-27 17:52 MSK - app deploy - scenario role-only notifications
+
+- Deploy ref: `stage`.
+- Deployed commit: `513119e`.
+- GitHub Actions run: `33084546981` -> success.
+- В stage включено:
+  - сценарные уведомления приведены к role-only contract;
+  - новые разрешенные получатели уведомлений: `hr`, `manager`, `mentor_adaptation`, `mentor_ipr`;
+  - legacy `employee:{id}` runtime fallback сохранен для старых сценариев;
+  - raw numeric chat ids больше не резолвятся в сценарных уведомлениях;
+  - технические HR-сообщения вида `прошёл этап: scenario_key/step_key` больше не отправляются;
+  - из сценария уходит только настроенный текст уведомления.
+- Локальные проверки перед deploy:
+  - `D:\HRBot\hr_bot_stage_pipeline\.venv\Scripts\python.exe -m compileall app tests tools`;
+  - `D:\HRBot\hr_bot_stage_pipeline\.venv\Scripts\python.exe -m ruff check --select F821 app tests tools`;
+  - `D:\HRBot\hr_bot_stage_pipeline\.venv\Scripts\python.exe -m unittest tests.test_scenario_engine_smoke tests.test_messaging_identity tests.test_employee_api_smoke -v` -> 154 tests OK;
+  - `D:\HRBot\hr_bot_stage_pipeline\.venv\Scripts\python.exe tools\check_docs_contracts.py`;
+  - `git diff --check origin/stage..HEAD`.
+- GitHub Actions preflight:
+  - backend dependencies install;
+  - `compileall`;
+  - `ruff F821`;
+  - backend smoke tests;
+  - frontend build;
+  - smoke imports.
+- Stage safety checks:
+  - verified SQLite backup created before checkout/restart: `backups/hr_bot.before-deploy.20260827-145231.db`;
+  - scenario config snapshot created: `backups/scenarios.before-deploy.20260827-145231.json`;
+  - scenario configuration fingerprint unchanged.
+- Stage smoke checks:
+  - `/app/employees` -> `303`;
+  - `/app/flows/workspace-v2` -> `303`;
+  - Telegram API reachability -> `HTTP/2 302`;
+  - deploy job завершился успешно и вывел `513119e`.
+- Открытые риски:
+  - нужно вручную проверить `/app/settings`, что `HR Telegram ID` заполнен и сохраняется;
+  - нужен ручной smoke сценария с уведомлением на `hr`, чтобы подтвердить: HR получает только настроенный текст, без технического `прошёл этап: ...`;
+  - если на stage остались старые raw numeric chat ids в правилах уведомлений, их нужно заменить на role tokens или legacy `employee:{id}`.
+
 ### 2026-08-21 12:41 MSK - app deploy - scenario library attachment TypeScript fix
 
 - Deploy ref: `stage`.
