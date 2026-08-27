@@ -6,6 +6,7 @@ import json
 import logging
 import re
 from datetime import date, datetime, time, timedelta
+from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any, Literal, NamedTuple, Optional
 
@@ -34,6 +35,7 @@ RECRUITMENT_SCENARIO_KEY = "recruitment_hiring"
 FIRST_DAY_SCENARIO_KEY = "first_day"
 PROBATION_SCENARIO_KEYS = {"mid_probation", "end_probation"}
 DOCUMENT_TAG_RE = re.compile(r"\{doc:([^}]+)\}")
+TEMPLATE_FIELD_RE = re.compile(r"\{([a-zA-Z_][a-zA-Z0-9_]*)\}")
 RESUME_DOCUMENT_TITLE = "Резюме"
 RESUME_DOCUMENT_SLOT = "resume"
 SINGLE_STEP_REQUEST_PREFIX = "__single_step__:"
@@ -65,6 +67,8 @@ ROLE_ONLY_NOTIFICATION_TOKENS = (
     "mentor_ipr",
 )
 ROLE_ONLY_NOTIFICATION_TOKEN_SET = set(ROLE_ONLY_NOTIFICATION_TOKENS)
+TELEGRAM_SAFE_HTML_TAGS = {"b", "strong", "i", "em", "u", "s", "code", "pre", "a"}
+TELEGRAM_SAFE_LINK_SCHEMES = ("http://", "https://", "mailto:")
 SCENARIO_STEP_TEMPLATE_TAGS = [
     {
         "label": "ФИО",
@@ -888,7 +892,81 @@ def matches_role_scope(employee: Employee, scenario: ScenarioTemplate) -> bool:
     return position_matches_scope(employee.desired_position, scenario.role_scope)
 
 
-def format_message(db: Session, template: str, employee: Employee, anchor_date: date, step_time: Optional[str]) -> str:
+class TelegramSafeHTMLParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=False)
+        self.parts: list[str] = []
+        self.open_tags: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        normalized_tag = tag.lower()
+        if normalized_tag not in TELEGRAM_SAFE_HTML_TAGS:
+            return
+        if normalized_tag == "a":
+            href = ""
+            for attr_name, attr_value in attrs:
+                if attr_name.lower() == "href" and attr_value:
+                    href = attr_value.strip()
+                    break
+            if not href.lower().startswith(TELEGRAM_SAFE_LINK_SCHEMES):
+                return
+            self.parts.append(f'<a href="{html.escape(href, quote=True)}">')
+            self.open_tags.append("a")
+            return
+        self.parts.append(f"<{normalized_tag}>")
+        self.open_tags.append(normalized_tag)
+
+    def handle_endtag(self, tag: str) -> None:
+        normalized_tag = tag.lower()
+        if normalized_tag not in self.open_tags:
+            return
+        while self.open_tags:
+            open_tag = self.open_tags.pop()
+            self.parts.append(f"</{open_tag}>")
+            if open_tag == normalized_tag:
+                break
+
+    def handle_data(self, data: str) -> None:
+        self.parts.append(html.escape(data, quote=False))
+
+    def handle_entityref(self, name: str) -> None:
+        self.parts.append(f"&{name};")
+
+    def handle_charref(self, name: str) -> None:
+        self.parts.append(f"&#{name};")
+
+    def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        self.handle_starttag(tag, attrs)
+
+    def rendered(self) -> str:
+        while self.open_tags:
+            self.parts.append(f"</{self.open_tags.pop()}>")
+        return "".join(self.parts)
+
+
+def sanitize_telegram_safe_html(value: str) -> str:
+    parser = TelegramSafeHTMLParser()
+    try:
+        parser.feed(value or "")
+        parser.close()
+    except Exception:
+        return html.escape(value or "", quote=False)
+    return parser.rendered()
+
+
+def _escape_template_value(value: object) -> str:
+    return html.escape(str(value), quote=False)
+
+
+def _replace_template_fields(template: str, values: dict[str, str]) -> str:
+    def replace_field(match: re.Match[str]) -> str:
+        key = match.group(1)
+        return values.get(key, match.group(0))
+
+    return TEMPLATE_FIELD_RE.sub(replace_field, template)
+
+
+def render_telegram_message_html(db: Session, template: str, employee: Employee, anchor_date: date, step_time: Optional[str]) -> str:
     full_name_parts = (employee.full_name or "").strip().split()
     if len(full_name_parts) >= 2:
         name = full_name_parts[1]
@@ -927,20 +1005,28 @@ def format_message(db: Session, template: str, employee: Employee, anchor_date: 
         return f'<a href="{href}">{title}</a>'
 
     rendered_template = DOCUMENT_TAG_RE.sub(replace_document_tag, template)
-    return rendered_template.format(
-        name=name,
-        full_name=full_name,
-        employee_full_name=employee_full_name,
-        position=position,
-        first_workday=first_workday,
-        resume=resume,
-        date=anchor_date.strftime("%d.%m.%Y"),
-        time=time_text,
-        test_url=settings.TEST_URL,
-        practice_url=settings.PRACTICE_URL,
-        tasks_url=settings.TASKS_URL,
-        feedback_url=settings.FEEDBACK_URL,
+    sanitized_template = sanitize_telegram_safe_html(rendered_template)
+    return _replace_template_fields(
+        sanitized_template,
+        {
+            "name": _escape_template_value(name),
+            "full_name": _escape_template_value(full_name),
+            "employee_full_name": _escape_template_value(employee_full_name),
+            "position": _escape_template_value(position),
+            "first_workday": _escape_template_value(first_workday),
+            "resume": _escape_template_value(resume),
+            "date": _escape_template_value(anchor_date.strftime("%d.%m.%Y")),
+            "time": _escape_template_value(time_text),
+            "test_url": _escape_template_value(settings.TEST_URL),
+            "practice_url": _escape_template_value(settings.PRACTICE_URL),
+            "tasks_url": _escape_template_value(settings.TASKS_URL),
+            "feedback_url": _escape_template_value(settings.FEEDBACK_URL),
+        },
     )
+
+
+def format_message(db: Session, template: str, employee: Employee, anchor_date: date, step_time: Optional[str]) -> str:
+    return render_telegram_message_html(db, template, employee, anchor_date, step_time)
 
 
 def resolve_employee_resume_label(db: Session, employee: Employee) -> str:

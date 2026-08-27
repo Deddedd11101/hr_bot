@@ -264,6 +264,128 @@ class ScenarioEngineSmokeTests(unittest.IsolatedAsyncioTestCase):
 
             self.assertEqual(message, 'Лови <a href="https://example.com/offer.pdf">Оффер</a>')
 
+    def test_format_message_sanitizes_telegram_safe_html_subset(self) -> None:
+        init_db()
+        now = datetime.now(UTC).replace(tzinfo=None)
+        with SessionLocal() as db:
+            employee = Employee(
+                full_name="Safe HTML",
+                telegram_user_id="100006",
+                created_at=now,
+                employee_stage="candidate",
+            )
+            db.add(employee)
+            db.commit()
+            db.refresh(employee)
+
+            message = format_message(
+                db,
+                '<b data-x="1">Жирный</b> <span>plain</span> <a href="https://example.com?a=1&b=2">link</a>',
+                employee,
+                datetime(2026, 9, 1).date(),
+                None,
+            )
+
+            self.assertEqual(
+                message,
+                '<b>Жирный</b> plain <a href="https://example.com?a=1&amp;b=2">link</a>',
+            )
+
+    def test_format_message_blocks_unsafe_html_and_hrefs(self) -> None:
+        init_db()
+        now = datetime.now(UTC).replace(tzinfo=None)
+        with SessionLocal() as db:
+            employee = Employee(
+                full_name="Unsafe HTML",
+                telegram_user_id="100007",
+                created_at=now,
+                employee_stage="candidate",
+            )
+            db.add(employee)
+            db.commit()
+            db.refresh(employee)
+
+            message = format_message(
+                db,
+                '<script>alert(1)</script> <a href="javascript:alert(1)" onclick="bad()">click</a> <b>broken',
+                employee,
+                datetime(2026, 9, 1).date(),
+                None,
+            )
+
+            self.assertEqual(message, "alert(1) click <b>broken</b>")
+
+    def test_format_message_allows_http_https_and_mailto_links(self) -> None:
+        init_db()
+        now = datetime.now(UTC).replace(tzinfo=None)
+        with SessionLocal() as db:
+            employee = Employee(
+                full_name="Link Tester",
+                telegram_user_id="100008",
+                created_at=now,
+                employee_stage="candidate",
+            )
+            db.add(employee)
+            db.commit()
+            db.refresh(employee)
+
+            message = format_message(
+                db,
+                '<a href="http://example.com">http</a> <a href="https://example.com">https</a> <a href="mailto:hr@example.com">mail</a>',
+                employee,
+                datetime(2026, 9, 1).date(),
+                None,
+            )
+
+            self.assertEqual(
+                message,
+                '<a href="http://example.com">http</a> <a href="https://example.com">https</a> <a href="mailto:hr@example.com">mail</a>',
+            )
+
+    def test_format_message_escapes_template_values(self) -> None:
+        init_db()
+        now = datetime.now(UTC).replace(tzinfo=None)
+        with SessionLocal() as db:
+            employee = Employee(
+                full_name="<script>A&B</script>",
+                desired_position="<b>PM</b>",
+                telegram_user_id="100009",
+                first_workday=datetime(2026, 9, 1).date(),
+                created_at=now,
+                employee_stage="candidate",
+            )
+            db.add(employee)
+            db.commit()
+            db.refresh(employee)
+
+            message = format_message(
+                db,
+                "<b>{employee_full_name}</b> / {position}",
+                employee,
+                datetime(2026, 9, 1).date(),
+                None,
+            )
+
+            self.assertEqual(message, "<b>&lt;script&gt;A&amp;B&lt;/script&gt;</b> / &lt;b&gt;PM&lt;/b&gt;")
+
+    def test_format_message_keeps_unknown_template_fields_as_text(self) -> None:
+        init_db()
+        now = datetime.now(UTC).replace(tzinfo=None)
+        with SessionLocal() as db:
+            employee = Employee(
+                full_name="Unknown Field",
+                telegram_user_id="100010",
+                created_at=now,
+                employee_stage="candidate",
+            )
+            db.add(employee)
+            db.commit()
+            db.refresh(employee)
+
+            message = format_message(db, "Текст {unknown_tag}", employee, datetime(2026, 9, 1).date(), None)
+
+            self.assertEqual(message, "Текст {unknown_tag}")
+
     async def test_step_send_notification_formats_employee_and_resume_tags(self) -> None:
         init_db()
         now = datetime.now(UTC).replace(tzinfo=None)
@@ -335,6 +457,62 @@ class ScenarioEngineSmokeTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(messenger.texts[1]["chat_id"], "999003")
             self.assertEqual(messenger.texts[1]["text"], "Ирина Смирнова / Дизайнер / irina_resume.pdf")
 
+    async def test_step_send_notification_uses_telegram_safe_html_renderer(self) -> None:
+        init_db()
+        now = datetime.now(UTC).replace(tzinfo=None)
+        scenario_key = f"test_notification_safe_html_{int(datetime.now(UTC).timestamp() * 1000000)}"
+        with SessionLocal() as db:
+            scenario = ScenarioTemplate(
+                scenario_key=scenario_key,
+                title="Notification safe html",
+                role_scope="all",
+                scenario_kind="scenario",
+                sort_order=0,
+                trigger_mode="manual_only",
+            )
+            step = FlowStepTemplate(
+                flow_key=scenario_key,
+                step_key="step_one",
+                step_title="Step one",
+                sort_order=10,
+                default_text="Шаг",
+                response_type="none",
+                send_mode="immediate",
+                day_offset_workdays=0,
+            )
+            employee = Employee(
+                full_name="<script>Ирина</script>",
+                desired_position="Дизайнер",
+                telegram_user_id="100011",
+                created_at=now,
+                employee_stage="candidate",
+            )
+            db.add_all([scenario, step, employee])
+            db.commit()
+            db.refresh(step)
+            db.refresh(employee)
+            hr_settings = _get_or_create_hr_settings(db)
+            hr_settings.telegram_user_id = "999011"
+            db.add(
+                StepSendNotification(
+                    flow_key=scenario_key,
+                    step_id=step.id,
+                    rule_index=0,
+                    message_text='<b>{employee_full_name}</b> <img src=x> <a href="javascript:bad()">bad</a>',
+                    recipient_ids="hr",
+                    recipient_scope="",
+                )
+            )
+            db.commit()
+
+            messenger = FakeMessenger()
+            await send_step(messenger, db, employee, scenario, step)
+
+            self.assertEqual(
+                messenger.texts[1]["text"],
+                "<b>&lt;script&gt;Ирина&lt;/script&gt;</b>  bad",
+            )
+
     async def test_button_notification_formats_employee_tags(self) -> None:
         init_db()
         now = datetime.now(UTC).replace(tzinfo=None)
@@ -404,6 +582,73 @@ class ScenarioEngineSmokeTests(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(handled)
             self.assertEqual(messenger.texts[0]["chat_id"], "999005")
             self.assertEqual(messenger.texts[0]["text"], "Петр Иванов выбрал кнопку, должность: Project manager")
+
+    async def test_button_notification_uses_telegram_safe_html_renderer(self) -> None:
+        init_db()
+        now = datetime.now(UTC).replace(tzinfo=None)
+        scenario_key = f"test_button_notification_safe_html_{int(datetime.now(UTC).timestamp() * 1000000)}"
+        with SessionLocal() as db:
+            scenario = ScenarioTemplate(
+                scenario_key=scenario_key,
+                title="Button notification safe html",
+                role_scope="all",
+                scenario_kind="scenario",
+                sort_order=0,
+                trigger_mode="manual_only",
+            )
+            step = FlowStepTemplate(
+                flow_key=scenario_key,
+                step_key="step_one",
+                step_title="Step one",
+                sort_order=10,
+                default_text="Выберите",
+                response_type="buttons",
+                button_options="Да\nНет",
+                send_mode="immediate",
+                day_offset_workdays=0,
+            )
+            employee = Employee(
+                full_name="Петр & Иванов",
+                desired_position="<PM>",
+                telegram_user_id="100012",
+                created_at=now,
+                employee_stage="candidate",
+            )
+            db.add_all([scenario, step, employee])
+            db.commit()
+            db.refresh(step)
+            db.refresh(employee)
+            hr_settings = _get_or_create_hr_settings(db)
+            hr_settings.telegram_user_id = "999012"
+            db.add(
+                ScenarioProgress(
+                    employee_id=employee.id,
+                    scenario_key=scenario_key,
+                    current_step_key=step.step_key,
+                    waiting_for_response=True,
+                    is_completed=False,
+                    started_at=now,
+                    updated_at=now,
+                )
+            )
+            db.add(
+                StepButtonNotification(
+                    flow_key=scenario_key,
+                    step_id=step.id,
+                    option_index=0,
+                    rule_index=0,
+                    message_text='<u>{employee_full_name}</u> / <code>{position}</code>',
+                    recipient_ids="hr",
+                    recipient_scope="",
+                )
+            )
+            db.commit()
+
+            messenger = FakeMessenger()
+            handled = await handle_button_response(messenger, db, employee, scenario_key, step.step_key, 0)
+
+            self.assertTrue(handled)
+            self.assertEqual(messenger.texts[0]["text"], "<u>Петр &amp; Иванов</u> / <code>&lt;PM&gt;</code>")
 
     def test_resolve_tagged_employee_documents_returns_file_backed_offer_slot(self) -> None:
         init_db()
