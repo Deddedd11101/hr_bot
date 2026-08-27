@@ -102,6 +102,9 @@ Scenario engine превращает scenario templates плюс employee state 
 - В UI эти теги могут называться по-русски: `ФИО`, `Должность`, `Дата первого рабочего дня`, `Резюме`.
 - `{resume}` сейчас намеренно возвращает только human-readable имя файла или текстовый fallback, а не локальный storage path и не временную ссылку. Отправка/скачивание файла резюме остается отдельным file delivery contract.
 - File-response step с `target_field=resume` делает загруженный файл новым актуальным resume slot; кнопка `Назад` откатывает этот slot вместе с file record, созданным последним ответом.
+- File-response step принимает входящие Telegram media как `EmployeeFile`: обычный `document`, `photo`, `video` и `video_note`. Видео, отправленное как Telegram document, тоже проходит через тот же contract.
+- Для `video` runtime сохраняет Telegram `file_id` / `file_unique_id`, filename или fallback `<file_unique_id>.mp4`, mime type и file size; для `video_note` используется fallback filename `<file_unique_id>.mp4` и `video/mp4`.
+- Если caption содержит “тест”, входящий media сохраняется как `category=test_result` и продолжает запускать отдельное HR-уведомление о полученном тестовом задании; без такого caption это обычный `candidate_file`.
 - Персональные document tags вида `{doc:Оффер}` остаются отдельной механикой: link-backed slot подставляется как ссылка, file-backed slot дополнительно отправляется файлом.
 
 ## Recipient model

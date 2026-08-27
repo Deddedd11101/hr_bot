@@ -51,10 +51,26 @@ async def on_start(message: Message) -> None:
         await messenger.close()
 
 
-async def on_document(message: Message, bot: Bot) -> None:
-    document = message.document
+def _media_original_name(media, fallback_extension: str) -> str:
+    file_name = getattr(media, "file_name", None)
+    if isinstance(file_name, str) and file_name.strip():
+        return file_name.strip()
+    file_unique_id = getattr(media, "file_unique_id", None) or getattr(media, "file_id", None) or "telegram_file"
+    return f"{file_unique_id}{fallback_extension}"
+
+
+async def _handle_incoming_file_like(
+    message: Message,
+    bot: Bot,
+    media,
+    *,
+    original_name: str,
+    mime_type: Optional[str],
+    file_size: Optional[int],
+    category_caption: Optional[str],
+) -> None:
     user = message.from_user
-    if not document or not user:
+    if not media or not user:
         return
 
     with SessionLocal() as db:
@@ -73,8 +89,7 @@ async def on_document(message: Message, bot: Bot) -> None:
         if employee is None:
             await messenger.close()
             return
-        file_info = await bot.get_file(document.file_id)
-        original_name = document.file_name or f"{document.file_unique_id}.bin"
+        file_info = await bot.get_file(media.file_id)
         destination = build_employee_file_path(employee.id, original_name)
         await bot.download_file(file_info.file_path, destination=destination)
         employee, db_file, save_state = await save_incoming_file(
@@ -83,65 +98,82 @@ async def on_document(message: Message, bot: Bot) -> None:
             username,
             original_name=original_name,
             stored_path=str(destination),
-            category=detect_category_from_caption(message.caption),
-            mime_type=document.mime_type,
-            file_size=document.file_size,
-            external_file_id=document.file_id,
-            external_unique_id=document.file_unique_id,
-        )
-        if save_state != "saved" or employee is None or db_file is None:
-            await messenger.close()
-            return
-        handled = await handle_saved_document(messenger, db, employee, db_file)
-        await messenger.close()
-        if handled:
-            return
-
-
-async def on_photo(message: Message, bot: Bot) -> None:
-    photos = message.photo or []
-    user = message.from_user
-    if not photos or not user:
-        return
-
-    with SessionLocal() as db:
-        messenger = create_telegram_messenger(settings.TELEGRAM_BOT_TOKEN)
-        username = _telegram_username(user)
-        access = resolve_inbound_access(db, str(user.id), username)
-        if access.state == "unknown":
-            await messenger.send_text(chat_id=str(user.id), text=UNKNOWN_USER_TEXT)
-            await messenger.close()
-            return
-        if access.state == "blocked":
-            await messenger.send_text(chat_id=str(user.id), text=BLOCKED_USER_TEXT)
-            await messenger.close()
-            return
-        employee = access.employee
-        if employee is None:
-            await messenger.close()
-            return
-        photo = photos[-1]
-        file_info = await bot.get_file(photo.file_id)
-        original_name = f"{photo.file_unique_id}.jpg"
-        destination = build_employee_file_path(employee.id, original_name)
-        await bot.download_file(file_info.file_path, destination=destination)
-        employee, db_file, save_state = await save_incoming_file(
-            db,
-            str(user.id),
-            username,
-            original_name=original_name,
-            stored_path=str(destination),
-            category=detect_category_from_caption(message.caption),
-            mime_type="image/jpeg",
-            file_size=photo.file_size,
-            external_file_id=photo.file_id,
-            external_unique_id=photo.file_unique_id,
+            category=detect_category_from_caption(category_caption),
+            mime_type=mime_type,
+            file_size=file_size,
+            external_file_id=media.file_id,
+            external_unique_id=getattr(media, "file_unique_id", None),
         )
         if save_state != "saved" or employee is None or db_file is None:
             await messenger.close()
             return
         await handle_saved_document(messenger, db, employee, db_file)
         await messenger.close()
+
+
+async def on_document(message: Message, bot: Bot) -> None:
+    document = message.document
+    if not document:
+        return
+
+    await _handle_incoming_file_like(
+        message,
+        bot,
+        document,
+        original_name=_media_original_name(document, ".bin"),
+        mime_type=document.mime_type,
+        file_size=document.file_size,
+        category_caption=message.caption,
+    )
+
+
+async def on_photo(message: Message, bot: Bot) -> None:
+    photos = message.photo or []
+    if not photos:
+        return
+
+    photo = photos[-1]
+    await _handle_incoming_file_like(
+        message,
+        bot,
+        photo,
+        original_name=_media_original_name(photo, ".jpg"),
+        mime_type="image/jpeg",
+        file_size=photo.file_size,
+        category_caption=message.caption,
+    )
+
+
+async def on_video(message: Message, bot: Bot) -> None:
+    video = message.video
+    if not video:
+        return
+
+    await _handle_incoming_file_like(
+        message,
+        bot,
+        video,
+        original_name=_media_original_name(video, ".mp4"),
+        mime_type=video.mime_type or "video/mp4",
+        file_size=video.file_size,
+        category_caption=message.caption,
+    )
+
+
+async def on_video_note(message: Message, bot: Bot) -> None:
+    video_note = message.video_note
+    if not video_note:
+        return
+
+    await _handle_incoming_file_like(
+        message,
+        bot,
+        video_note,
+        original_name=_media_original_name(video_note, ".mp4"),
+        mime_type="video/mp4",
+        file_size=video_note.file_size,
+        category_caption=None,
+    )
 
 
 async def on_candidate_text(message: Message) -> None:
@@ -239,6 +271,8 @@ async def main() -> None:
     )
     dp.message.register(on_document, lambda message: message.document is not None)
     dp.message.register(on_photo, lambda message: bool(message.photo))
+    dp.message.register(on_video, lambda message: message.video is not None)
+    dp.message.register(on_video_note, lambda message: message.video_note is not None)
 
     scheduler = AsyncIOScheduler(timezone=settings.TIMEZONE)
     scheduler.start()

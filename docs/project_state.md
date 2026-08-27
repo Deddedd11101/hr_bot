@@ -56,7 +56,7 @@ source_of_truth: true
 - Mass actions, onboarding scheduler и scenario portability tooling уже есть в коде.
 - Unknown Telegram users больше не создают runtime data от stray text/file input, но `/start` снова является осознанной candidate-entry точкой: сначала идет match по numeric Telegram ID и public username, а при отсутствии match создается новая candidate-карточка.
 - Bot access можно заблокировать per employee через `is_bot_blocked`.
-- Incoming Telegram photos обрабатываются как first-class inbound files вместе с documents.
+- Incoming Telegram photos, videos и video notes обрабатываются как first-class inbound files вместе с documents; file-response шаги сценариев засчитывают их как валидный файл, а карточка показывает/скачивает через обычный `EmployeeFile` payload.
 - Mass actions могут target employee stages и candidate stages отдельно.
 - В репозитории теперь есть explicit live docs для JSON API, operator web routes, schema behavior, env/config и текущего stage deploy path.
 - Для новых и существенно обновленных docs зафиксирован frontmatter contract, doc types, LLD/ADR/runbook rules и Obsidian practices.
