@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import logging
+
 from .database import SessionLocal
 from .messaging import as_messenger
 from .models import Employee, HrSettings
 
+
+logger = logging.getLogger(__name__)
 
 NOTIFY_SCENARIO_COMPLETED = "scenario_completed"
 NOTIFY_TEST_TASK_RECEIVED = "test_task_received"
@@ -86,10 +90,10 @@ async def notify_hr_new_employee(messenger_or_bot, employee: Employee) -> None:
 
 
 async def notify_hr_stage(messenger_or_bot, employee: Employee, stage_key: str) -> None:
-    await notify_hr_by_kind(
-        messenger_or_bot,
-        f"Сотрудник {_employee_label(employee)} прошёл этап: {stage_key}.",
-        NOTIFY_SCENARIO_COMPLETED,
+    logger.info(
+        "Suppressed legacy scenario stage notification: employee_id=%s stage_key=%s",
+        employee.id,
+        stage_key,
     )
 
 

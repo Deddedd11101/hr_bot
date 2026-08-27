@@ -300,6 +300,8 @@ class ScenarioEngineSmokeTests(unittest.IsolatedAsyncioTestCase):
             db.commit()
             db.refresh(step)
             db.refresh(employee)
+            hr_settings = _get_or_create_hr_settings(db)
+            hr_settings.telegram_user_id = "999003"
             db.add(
                 EmployeeFile(
                     employee_id=employee.id,
@@ -320,7 +322,7 @@ class ScenarioEngineSmokeTests(unittest.IsolatedAsyncioTestCase):
                     step_id=step.id,
                     rule_index=0,
                     message_text="{employee_full_name} / {position} / {resume}",
-                    recipient_ids="999003",
+                    recipient_ids="hr",
                     recipient_scope="",
                 )
             )
@@ -370,6 +372,8 @@ class ScenarioEngineSmokeTests(unittest.IsolatedAsyncioTestCase):
             db.commit()
             db.refresh(step)
             db.refresh(employee)
+            hr_settings = _get_or_create_hr_settings(db)
+            hr_settings.telegram_user_id = "999005"
             db.add(
                 ScenarioProgress(
                     employee_id=employee.id,
@@ -388,7 +392,7 @@ class ScenarioEngineSmokeTests(unittest.IsolatedAsyncioTestCase):
                     option_index=0,
                     rule_index=0,
                     message_text="{employee_full_name} выбрал кнопку, должность: {position}",
-                    recipient_ids="999005",
+                    recipient_ids="hr",
                     recipient_scope="",
                 )
             )
@@ -1060,7 +1064,7 @@ class ScenarioEngineSmokeTests(unittest.IsolatedAsyncioTestCase):
             recipient_scope="manager,mentor_adaptation,mentor_ipr",
         )
 
-        self.assertEqual(recipients, ["hr-id", "manager-id", "mentor-id"])
+        self.assertEqual(recipients, ["manager-id", "mentor-id"])
 
     def test_scenario_anchor_date_prefers_explicit_adaptation_dates(self) -> None:
         employee = SimpleNamespace(
@@ -1110,10 +1114,26 @@ class ScenarioEngineSmokeTests(unittest.IsolatedAsyncioTestCase):
 
             recipients = resolve_notification_recipients(db, employee, explicit_ids="hr-id", recipient_scope="manager")
 
-            self.assertEqual(recipients, ["hr-id", "123456"])
+            self.assertEqual(recipients, ["123456"])
             db.delete(employee)
             db.delete(manager)
             db.commit()
+
+    def test_resolve_notification_recipients_rejects_raw_chat_ids(self) -> None:
+        init_db()
+        with SessionLocal() as db:
+            employee = SimpleNamespace(
+                manager_employee_id=None,
+                mentor_adaptation_employee_id=None,
+                mentor_ipr_employee_id=None,
+                manager_telegram_id=None,
+                mentor_adaptation_telegram_id=None,
+                mentor_ipr_telegram_id=None,
+            )
+
+            recipients = resolve_notification_recipients(db, employee, explicit_ids="999999, raw-chat", recipient_scope="")
+
+            self.assertEqual(recipients, [])
 
     def test_resolve_notification_recipients_supports_hr_token(self) -> None:
         init_db()

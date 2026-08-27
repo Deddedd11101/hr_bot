@@ -258,7 +258,7 @@ source_of_truth: true
 | Method | Path | Назначение | Основные inputs | Response | Side effects | Частые errors |
 | --- | --- | --- | --- | --- | --- | --- |
 | `GET` | `/api/settings/workspace` | Вернуть HR settings, menu sets/buttons, scenarios и admin accounts для React settings. | Нет | Settings workspace payload | Создает default `hr_settings` row, если его нет | `401` |
-| `POST` | `/api/settings/hr` | Обновить HR notification settings. | JSON: `hr_name`, `telegram_user_id`, `notification_recipient_ids`, `default_menu_set_id`, notification booleans | Settings workspace payload | Обновляет `hr_settings` | `401` |
+| `POST` | `/api/settings/hr` | Обновить HR notification settings. | JSON: `hr_name`, `telegram_user_id`, `notification_recipient_ids`, `default_menu_set_id`, notification booleans | Settings workspace payload | Обновляет `hr_settings`; `telegram_user_id` является основным HR Telegram для scenario token `hr`, а `notification_recipient_ids` остается legacy/additional list только для глобальных HR events | `401` |
 | `POST` | `/api/settings/menu-sets` | Создать menu set. | JSON: `title`, optional `description` | Settings workspace payload | Создает `bot_menu_sets` | `401` |
 | `POST` | `/api/settings/menu-sets/{menu_set_id}` | Обновить menu set. | JSON: `title`, `description` | Settings workspace payload | Обновляет `bot_menu_sets` | `401`, `404` |
 | `DELETE` | `/api/settings/menu-sets/{menu_set_id}` | Удалить menu set. | Path: `menu_set_id` | Settings workspace payload | Удаляет buttons внутри set, отвязывает переходы на set, очищает `employees.current_menu_set_id` и default menu setting | `401`, `404` |
@@ -294,6 +294,16 @@ source_of_truth: true
   - interactive шаги требуют, чтобы этот Telegram уже был связан с `Employee`, иначе runtime фиксирует delivery error и не уходит в “ожидание ответа в пустоту”.
 - Специальный compatibility rule:
   - `trigger_mode=manager_assigned_adaptation` при старом `recipient_mode=self` runtime трактует как `manager`, чтобы старые trigger-сценарии не продолжали ошибочно писать самому адаптируемому сотруднику.
+
+## Scenario notification recipient contract
+
+- Step-level и button-level scenario notifications отправляются только по явно сохраненным правилам уведомлений.
+- Allowed recipient tokens для новых API/UI payloads: `hr`, `manager`, `mentor_adaptation`, `mentor_ipr`.
+- `hr` резолвится только в `HrSettings.telegram_user_id`; если поле пустое, notification пропускается без ошибки сценария.
+- `manager`, `mentor_adaptation`, `mentor_ipr` резолвятся через соответствующие relation fields карточки context employee и primary Telegram chat id назначенного сотрудника.
+- Legacy `employee:{id}` может резолвиться runtime-ом для уже существующих строк БД, но новые save endpoints должны нормализовать recipients к role-only tokens.
+- Raw chat ids и произвольные recipient ids не являются валидным contract для scenario notifications.
+- Legacy global flag `notify_scenario_completed` больше не приводит к Telegram-сообщениям с техническими `scenario_key` / `step_key`; такие ключи допустимы только в logs/audit.
 
 ## API shared documents workspace
 

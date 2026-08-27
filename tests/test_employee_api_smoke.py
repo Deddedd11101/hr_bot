@@ -3712,6 +3712,7 @@ class EmployeeApiSmokeTests(unittest.TestCase):
             hr_settings = db.get(HrSettings, 1)
             self.assertIsNotNone(hr_settings)
             hr_settings.telegram_user_id = "210004"
+            hr_settings.notify_scenario_completed = True
             scenario = ScenarioTemplate(
                 scenario_key=scenario_key,
                 title=f"codex-step-hr-{self.unique_tag}",
@@ -3748,7 +3749,100 @@ class EmployeeApiSmokeTests(unittest.TestCase):
 
             asyncio.run(send_step(messenger, db, employee, scenario, step))
 
-            self.assertIn(("210004", "Шаг правило hr"), messenger.sent_texts)
+            self.assertEqual(
+                messenger.sent_texts,
+                [("200001", "Текст шага"), ("210004", "Шаг правило hr")],
+            )
+            self.assertFalse(any("прошёл этап" in text for _chat_id, text in messenger.sent_texts))
+
+    def test_send_step_notification_skips_missing_hr_without_failing_scenario(self) -> None:
+        scenario_key = f"codex_step_missing_hr_{self.unique_tag}"
+        now = datetime.now(UTC).replace(tzinfo=None)
+        with SessionLocal() as db:
+            employee = db.get(Employee, self.employee_id)
+            self.assertIsNotNone(employee)
+            set_primary_chat_id(employee, "200001", db=db)
+            hr_settings = db.get(HrSettings, 1)
+            self.assertIsNotNone(hr_settings)
+            hr_settings.telegram_user_id = None
+            scenario = ScenarioTemplate(
+                scenario_key=scenario_key,
+                title=f"codex-step-missing-hr-{self.unique_tag}",
+                sort_order=10,
+                scenario_kind="scenario",
+                role_scope="all",
+                employee_scope="all",
+                trigger_mode="manual_only",
+            )
+            db.add(scenario)
+            db.flush()
+            step = FlowStepTemplate(
+                flow_key=scenario_key,
+                step_key=f"{scenario_key}_step_1",
+                step_title="Шаг с HR уведомлением",
+                sort_order=10,
+                default_text="Текст шага",
+                response_type="none",
+                send_mode="immediate",
+            )
+            db.add(step)
+            db.flush()
+            db.add(
+                StepSendNotification(
+                    flow_key=scenario_key,
+                    step_id=step.id,
+                    rule_index=0,
+                    message_text="HR не настроен",
+                    recipient_ids="hr",
+                )
+            )
+            db.commit()
+            messenger = DummyMessenger()
+
+            asyncio.run(send_step(messenger, db, employee, scenario, step))
+
+            self.assertEqual(messenger.sent_texts, [("200001", "Текст шага")])
+
+    def test_scenario_completion_does_not_send_technical_hr_stage_message(self) -> None:
+        scenario_key = f"codex_no_technical_completion_{self.unique_tag}"
+        now = datetime.now(UTC).replace(tzinfo=None)
+        with SessionLocal() as db:
+            employee = db.get(Employee, self.employee_id)
+            self.assertIsNotNone(employee)
+            set_primary_chat_id(employee, "200001", db=db)
+            hr_settings = db.get(HrSettings, 1)
+            self.assertIsNotNone(hr_settings)
+            hr_settings.telegram_user_id = "210006"
+            hr_settings.notify_scenario_completed = True
+            scenario = ScenarioTemplate(
+                scenario_key=scenario_key,
+                title=f"codex-no-technical-completion-{self.unique_tag}",
+                sort_order=10,
+                scenario_kind="scenario",
+                role_scope="all",
+                employee_scope="all",
+                trigger_mode="manual_only",
+            )
+            db.add(scenario)
+            db.flush()
+            step = FlowStepTemplate(
+                flow_key=scenario_key,
+                step_key=f"{scenario_key}_technical_step",
+                step_title="Финальный шаг",
+                sort_order=10,
+                default_text="Финальный текст",
+                response_type="none",
+                send_mode="immediate",
+            )
+            db.add(step)
+            db.commit()
+            messenger = DummyMessenger()
+
+            asyncio.run(send_step(messenger, db, employee, scenario, step))
+
+            self.assertEqual(messenger.sent_texts, [("200001", "Финальный текст")])
+            self.assertFalse(any("прошёл этап" in text for _chat_id, text in messenger.sent_texts))
+            self.assertFalse(any(scenario_key in text for _chat_id, text in messenger.sent_texts))
 
     def test_send_step_notification_skips_missing_manager_without_failing_scenario(self) -> None:
         scenario_key = f"codex_step_missing_manager_{self.unique_tag}"

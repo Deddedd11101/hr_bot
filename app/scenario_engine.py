@@ -19,7 +19,6 @@ from .employee_card import render_employee_card_png
 from .messaging import as_messenger, find_employee_by_channel_user_id
 from .messaging.identity import get_primary_chat_id
 from .models import DocumentLibraryItem, Employee, EmployeeDocumentLink, EmployeeFile, FlowLaunchRequest, FlowStepTemplate, HrSettings, OnboardingEvent, ScenarioProgress, ScenarioTemplate, StepButtonNotification, StepSendNotification, SurveyAnswer
-from .notifications import notify_hr_stage
 from .positions import position_matches_scope
 from .time_utils import utc_now
 
@@ -1030,7 +1029,7 @@ def _resolve_explicit_notification_recipient(db: Session | None, raw_value: str)
                 if linked_chat_id:
                     return linked_chat_id
         return None
-    return normalized
+    return None
 
 
 def _resolve_related_employee_chat_id(
@@ -1657,10 +1656,6 @@ async def send_step(
             progress.completed_at = utc_now()
             progress.updated_at = utc_now()
             db.commit()
-            try:
-                await notify_hr_stage(messenger, employee, step.step_key)
-            except Exception:
-                pass
             return True
         if scheduled_at is not None and next_step.send_mode == "specific_time":
             return True
@@ -1824,10 +1819,6 @@ async def handle_button_response(messenger_or_bot: Any, db: Session, employee: E
         progress.is_completed = True
         progress.completed_at = utc_now()
         db.commit()
-        try:
-            await notify_hr_stage(messenger, context_employee, "recruitment_consent_no")
-        except Exception:
-            pass
         return True
     if step.response_type == "branching":
         branch_step = get_branch_step(db, step.id, option_index)

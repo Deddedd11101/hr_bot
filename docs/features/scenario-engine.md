@@ -70,6 +70,16 @@ Scenario engine превращает scenario templates плюс employee state 
 8. Если response нужен, ждать text/file/button input от resolved recipient и применить result к employee state context employee.
 9. Для активного интерактивного шага runtime поддерживает default `Назад`: для text/file это reply button, для button/branching — inline button. Откат возвращает только на предыдущий интерактивный шаг в рамках текущего незавершенного сценария.
 
+## Scenario Notifications
+
+- Сценарные уведомления ответственным отправляются только по явно настроенным правилам шага или кнопки.
+- Runtime больше не отправляет legacy HR notification вида “прошел этап: `scenario_key/step_key`” при завершении шага или сценария.
+- Технические `scenario_key` / `step_key` остаются только diagnostic/audit identifiers и не должны попадать в Telegram-текст для пользователей.
+- Allowed recipient tokens для scenario notifications: `hr`, `manager`, `mentor_adaptation`, `mentor_ipr`.
+- `hr` резолвится через `HrSettings.telegram_user_id`; если он не задан, HR notification пропускается без остановки сценария.
+- `notification_recipient_ids` из HR settings не расширяет scenario notification token `hr`; это legacy/additional recipients для глобального notification layer.
+- Runtime-only backward compatibility для старых строк БД `employee:{id}` сохраняется, но raw chat ids и произвольные recipient ids больше не резолвятся.
+
 ## Step attachments
 
 - Шаг может использовать legacy uploaded attachment (`attachment_path` / `attachment_filename`) как раньше.
