@@ -34,6 +34,43 @@ source_of_truth: true
 
 ## Записи
 
+### 2026-08-28 00:35 MSK - app deploy - Telegram video answers
+
+- Deploy ref: `stage`.
+- Deployed commit: `a14d872`.
+- GitHub Actions run: `33118708716` -> success.
+- В stage включено:
+  - Telegram `video` теперь принимается как файловый ответ на scenario step, который ожидает файл;
+  - Telegram `video_note` тоже сохраняется как входящий файл и засчитывается для файлового шага;
+  - Telegram `document` с video MIME type продолжает сохраняться и работать как файловый ответ;
+  - видео сохраняется через общий employee file handling, отдельного блока `видеоответ` пока нет.
+- Локальные проверки перед deploy:
+  - `D:\HRBot\hr_bot_stage_pipeline\.venv\Scripts\python.exe -m compileall app tests tools`;
+  - `D:\HRBot\hr_bot_stage_pipeline\.venv\Scripts\python.exe -m ruff check --select F821 app tests tools`;
+  - `D:\HRBot\hr_bot_stage_pipeline\.venv\Scripts\python.exe -m unittest tests.test_p0_behaviour tests.test_scenario_engine_smoke tests.test_messaging_identity tests.test_employee_api_smoke -v` -> 163 tests OK;
+  - `D:\HRBot\hr_bot_stage_pipeline\.venv\Scripts\python.exe tools\check_docs_contracts.py`;
+  - `git diff --check origin/stage..HEAD`.
+- GitHub Actions preflight:
+  - backend dependencies install;
+  - `compileall`;
+  - `ruff F821`;
+  - backend smoke tests;
+  - frontend build;
+  - smoke imports.
+- Stage safety checks:
+  - verified SQLite backup created before checkout/restart: `backups/hr_bot.before-deploy.20260827-213447.db`;
+  - scenario config snapshot created: `backups/scenarios.before-deploy.20260827-213447.json`;
+  - scenario configuration fingerprint unchanged.
+- Stage smoke checks:
+  - `/app/employees` -> `303`;
+  - `/app/flows/workspace-v2` -> `303`;
+  - Telegram API reachability -> `HTTP/2 302`;
+  - deploy job завершился успешно и вывел `a14d872`.
+- Открытые риски:
+  - нужен ручной Telegram smoke: отправить обычное `video` в файловый шаг сценария и проверить, что сценарий пошел дальше, а файл появился в карточке;
+  - отдельно проверить `video_note`, если HR реально будет использовать этот формат;
+  - обычный document upload на файловом шаге нужно быстро перепроверить руками как baseline.
+
 ### 2026-08-27 17:52 MSK - app deploy - scenario role-only notifications
 
 - Deploy ref: `stage`.
