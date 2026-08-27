@@ -34,6 +34,45 @@ source_of_truth: true
 
 ## Записи
 
+### 2026-08-28 01:10 MSK - app deploy - TelegramSafeHTML renderer
+
+- Deploy ref: `stage`.
+- Deployed commit: `70954dc`.
+- GitHub Actions run: `33121334835` -> success.
+- В stage включено:
+  - сообщения сценариев теперь проходят через безопасный TelegramSafeHTML renderer;
+  - step notifications и button notifications тоже рендерятся через тот же безопасный HTML path;
+  - поддержан ограниченный набор Telegram HTML tags: `b`, `strong`, `i`, `em`, `u`, `s`, `code`, `pre`, `a`;
+  - ссылки разрешены только со схемами `http://`, `https://`, `mailto:`;
+  - template tags, например `{employee_full_name}`, экранируются как текст и не должны ломать HTML.
+- Локальные проверки перед deploy:
+  - `D:\HRBot\hr_bot_stage_pipeline\.venv\Scripts\python.exe -m compileall app tests tools`;
+  - `D:\HRBot\hr_bot_stage_pipeline\.venv\Scripts\python.exe -m ruff check --select F821 app tests tools`;
+  - `D:\HRBot\hr_bot_stage_pipeline\.venv\Scripts\python.exe -m unittest tests.test_scenario_engine_smoke tests.test_messaging_identity tests.test_employee_api_smoke -q` -> 161 tests OK;
+  - `D:\HRBot\hr_bot_stage_pipeline\.venv\Scripts\python.exe tools\check_docs_contracts.py`;
+  - `git diff --check origin/stage..HEAD`.
+- GitHub Actions preflight:
+  - backend dependencies install;
+  - `compileall`;
+  - `ruff F821`;
+  - backend smoke tests;
+  - frontend build;
+  - smoke imports.
+- Stage safety checks:
+  - verified SQLite backup created before checkout/restart: `backups/hr_bot.before-deploy.20260827-***1033.db`;
+  - scenario config snapshot created: `backups/scenarios.before-deploy.20260827-***1033.json`;
+  - GitHub log masked part of the timestamp in backup/snapshot filenames, but both creation and verification steps passed;
+  - scenario configuration fingerprint unchanged.
+- Stage smoke checks:
+  - `/app/employees` -> `303`;
+  - `/app/flows/workspace-v2` -> `303`;
+  - Telegram API reachability -> `HTTP/2 302`;
+  - deploy job завершился успешно и вывел `70954dc`.
+- Открытые риски:
+  - rich text editor in frontend еще не реализован, HTML можно использовать только вручную в тексте шага или уведомления;
+  - нужен ручной Telegram smoke: обычный текст, `<b>жирный</b>`, ссылка `<a href="https://example.com">ссылка</a>`, уведомление HR/manager с форматированием;
+  - нужно проверить, что `{employee_full_name}` подставляется как текст и не ломает HTML.
+
 ### 2026-08-28 00:35 MSK - app deploy - Telegram video answers
 
 - Deploy ref: `stage`.
