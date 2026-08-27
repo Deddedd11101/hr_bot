@@ -24,6 +24,7 @@ import { EmojiPickerPopover } from "@/components/ui/emoji-picker-popover";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
+import { TelegramFormatToolbar } from "@/components/ui/telegram-format-toolbar";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 
@@ -1049,6 +1050,14 @@ export function WorkspaceStepDetailPane(props: {
     });
   }, []);
 
+  const updateNotificationRuleText = React.useCallback((nextValue: string) => {
+    setNotificationRuleEditor((prev) => (prev ? { ...prev, message_text: nextValue } : prev));
+  }, []);
+
+  const updateStepNotificationRuleText = React.useCallback((nextValue: string) => {
+    setStepNotificationRuleEditor((prev) => (prev ? { ...prev, message_text: nextValue } : prev));
+  }, []);
+
   const saveNotificationRule = () => {
     if (!notificationRuleEditor) return;
     const normalizedMessageText = notificationRuleEditor.message_text.trim();
@@ -1240,8 +1249,13 @@ export function WorkspaceStepDetailPane(props: {
                       />
                     </label>
 
-                    <label className="grid gap-2">
+                    <div className="grid gap-2">
                       <span className="text-sm font-semibold text-foreground/75">Текст сообщения</span>
+                      <TelegramFormatToolbar
+                        value={form?.text || ""}
+                        textareaRef={textRef}
+                        onChange={(nextValue) => onFormChange((prev) => (prev ? { ...prev, text: nextValue } : prev))}
+                      />
                       <div className="relative">
                         <Textarea
                           ref={textRef}
@@ -1254,7 +1268,7 @@ export function WorkspaceStepDetailPane(props: {
                           <EmojiPickerPopover onEmojiSelect={onInsertIntoText} />
                         </div>
                       </div>
-                    </label>
+                    </div>
                   </>
                 )}
 
@@ -1744,22 +1758,26 @@ export function WorkspaceStepDetailPane(props: {
                 }
               />
             </label>
-            <label className="grid gap-2">
+            <div className="grid gap-2">
               <span className="text-sm font-semibold text-foreground/75">Текст уведомления</span>
+              <TelegramFormatToolbar
+                value={notificationRuleEditor?.message_text || ""}
+                textareaRef={notificationTextRef}
+                onChange={updateNotificationRuleText}
+                disabled={!notificationRuleEditor}
+              />
               <Textarea
                 ref={notificationTextRef}
                 className="min-h-[120px] text-sm"
                 value={notificationRuleEditor?.message_text || ""}
-                onChange={(event) =>
-                  setNotificationRuleEditor((prev) => (prev ? { ...prev, message_text: event.target.value } : prev))
-                }
+                onChange={(event) => updateNotificationRuleText(event.target.value)}
                 placeholder="Например: Пользователь нажал кнопку."
               />
               <TemplateTagButtons
                 tags={payloadWorkspace?.notification_template_tags || []}
                 onInsert={insertIntoNotificationRuleText}
               />
-            </label>
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setNotificationRuleEditor(null)}>
@@ -1796,22 +1814,26 @@ export function WorkspaceStepDetailPane(props: {
                 }
               />
             </label>
-            <label className="grid gap-2">
+            <div className="grid gap-2">
               <span className="text-sm font-semibold text-foreground/75">Текст уведомления</span>
+              <TelegramFormatToolbar
+                value={stepNotificationRuleEditor?.message_text || ""}
+                textareaRef={stepNotificationTextRef}
+                onChange={updateStepNotificationRuleText}
+                disabled={!stepNotificationRuleEditor}
+              />
               <Textarea
                 ref={stepNotificationTextRef}
                 className="min-h-[120px] text-sm"
                 value={stepNotificationRuleEditor?.message_text || ""}
-                onChange={(event) =>
-                  setStepNotificationRuleEditor((prev) => (prev ? { ...prev, message_text: event.target.value } : prev))
-                }
+                onChange={(event) => updateStepNotificationRuleText(event.target.value)}
                 placeholder="Например: Пользователю отправлен шаг."
               />
               <TemplateTagButtons
                 tags={payloadWorkspace?.notification_template_tags || []}
                 onInsert={insertIntoStepNotificationRuleText}
               />
-            </label>
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setStepNotificationRuleEditor(null)}>

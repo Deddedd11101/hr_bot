@@ -50,6 +50,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
+import { TelegramFormatToolbar } from "@/components/ui/telegram-format-toolbar";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 
@@ -495,6 +496,7 @@ export function ManualBotMessageSection(props: {
     onMessageTextChange: (value: string) => void;
     onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
 }) {
+    const messageTextareaRef = React.useRef<HTMLTextAreaElement | null>(null);
     const hasNumericTelegramId = isNumericTelegramId(props.form?.chat_id);
     const isBlocked = !!props.form?.is_bot_blocked;
     const canSend = hasNumericTelegramId && !isBlocked && !!props.messageText.trim() && !props.sendState.sending;
@@ -519,7 +521,14 @@ export function ManualBotMessageSection(props: {
                     <FieldGroup>
                         <Field>
                             <FieldLabel>Текст сообщения</FieldLabel>
+                            <TelegramFormatToolbar
+                                value={props.messageText}
+                                textareaRef={messageTextareaRef}
+                                onChange={props.onMessageTextChange}
+                                disabled={!hasNumericTelegramId || isBlocked || props.sendState.sending}
+                            />
                             <Textarea
+                                ref={messageTextareaRef}
                                 value={props.messageText}
                                 onChange={function (event) {
                                     props.onMessageTextChange(event.target.value);
