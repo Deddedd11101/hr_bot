@@ -15,6 +15,12 @@ type FormatConfig = {
   icon: React.ComponentType<React.SVGProps<SVGSVGElement>>;
 };
 
+type TextSelection = {
+  start: number;
+  end: number;
+  value: string;
+};
+
 const FORMATS: FormatConfig[] = [
   {
     action: "bold",
@@ -100,12 +106,70 @@ export function TelegramFormatToolbar({
   disabled?: boolean;
   className?: string;
 }) {
+  const selectionRef = React.useRef<TextSelection>({
+    start: value.length,
+    end: value.length,
+    value,
+  });
+
+  React.useEffect(() => {
+    const textarea = textareaRef.current;
+    if (!textarea) {
+      return;
+    }
+
+    const rememberSelection = () => {
+      selectionRef.current = {
+        start: textarea.selectionStart ?? textarea.value.length,
+        end: textarea.selectionEnd ?? textarea.value.length,
+        value: textarea.value,
+      };
+    };
+
+    rememberSelection();
+    textarea.addEventListener("focus", rememberSelection);
+    textarea.addEventListener("select", rememberSelection);
+    textarea.addEventListener("mouseup", rememberSelection);
+    textarea.addEventListener("keyup", rememberSelection);
+    textarea.addEventListener("input", rememberSelection);
+
+    return () => {
+      textarea.removeEventListener("focus", rememberSelection);
+      textarea.removeEventListener("select", rememberSelection);
+      textarea.removeEventListener("mouseup", rememberSelection);
+      textarea.removeEventListener("keyup", rememberSelection);
+      textarea.removeEventListener("input", rememberSelection);
+    };
+  }, [textareaRef]);
+
+  React.useEffect(() => {
+    if (selectionRef.current.value === value) {
+      return;
+    }
+    const cursor = Math.min(selectionRef.current.end, value.length);
+    selectionRef.current = {
+      start: cursor,
+      end: cursor,
+      value,
+    };
+  }, [value]);
+
   const handleFormat = React.useCallback(
     (format: FormatConfig) => {
       const textarea = textareaRef.current;
-      const selectionStart = textarea?.selectionStart ?? value.length;
-      const selectionEnd = textarea?.selectionEnd ?? value.length;
-      const next = applyTelegramFormat(value, selectionStart, selectionEnd, format);
+      const liveSelection: TextSelection = {
+        start: textarea?.selectionStart ?? value.length,
+        end: textarea?.selectionEnd ?? value.length,
+        value,
+      };
+      const rememberedSelection = selectionRef.current.value === value ? selectionRef.current : null;
+      const selection =
+        rememberedSelection &&
+        rememberedSelection.end > rememberedSelection.start &&
+        liveSelection.start === liveSelection.end
+          ? rememberedSelection
+          : liveSelection;
+      const next = applyTelegramFormat(value, selection.start, selection.end, format);
 
       onChange(next.value);
       requestAnimationFrame(() => {
@@ -137,6 +201,7 @@ export function TelegramFormatToolbar({
             type="button"
             variant="ghost"
             size="icon-xs"
+            onMouseDown={(event) => event.preventDefault()}
             onClick={() => handleFormat(format)}
             disabled={disabled}
             aria-label={format.label}
