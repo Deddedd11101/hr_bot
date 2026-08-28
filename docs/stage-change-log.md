@@ -34,6 +34,46 @@ source_of_truth: true
 
 ## Записи
 
+### 2026-08-28 11:13 MSK - app deploy - Telegram format toolbar selection fix
+
+- Deploy ref: `stage`.
+- Deployed commit: `daf58e6`.
+- GitHub Actions run: `33154375585` -> success.
+- В stage включено:
+  - toolbar форматирования теперь сохраняет выделение текста при клике по кнопкам;
+  - исправлена вставка Telegram HTML tags в scenario workspace;
+  - исправлена вставка Telegram HTML tags в ручном сообщении из карточки сотрудника/кандидата;
+  - generated Vite assets обновлены воспроизводимой сборкой.
+- Локальные проверки перед deploy:
+  - `npm ci` in `frontend`;
+  - `npm run build` in `frontend`;
+  - repeated `npm run build` left worktree clean;
+  - `D:\HRBot\hr_bot_stage_pipeline\.venv\Scripts\python.exe -m compileall app tests tools`;
+  - `D:\HRBot\hr_bot_stage_pipeline\.venv\Scripts\python.exe -m ruff check --select F821 app tests tools`;
+  - `D:\HRBot\hr_bot_stage_pipeline\.venv\Scripts\python.exe -m unittest tests.test_scenario_engine_smoke tests.test_messaging_identity tests.test_employee_api_smoke -q` -> 161 tests OK;
+  - `D:\HRBot\hr_bot_stage_pipeline\.venv\Scripts\python.exe tools\check_docs_contracts.py`;
+  - `git diff --check origin/stage..HEAD`.
+- GitHub Actions preflight:
+  - backend dependencies install;
+  - `compileall`;
+  - `ruff F821`;
+  - backend smoke tests;
+  - frontend build;
+  - smoke imports.
+- Stage safety checks:
+  - verified SQLite backup created before checkout/restart: `backups/hr_bot.before-deploy.20260828-081251.db`;
+  - scenario config snapshot created: `backups/scenarios.before-deploy.20260828-081251.json`;
+  - scenario configuration fingerprint unchanged.
+- Stage smoke checks:
+  - `/app/employees` -> `303`;
+  - `/app/flows/workspace-v2` -> `303`;
+  - Telegram API reachability -> `HTTP/2 302`;
+  - deploy job завершился успешно и вывел `daf58e6`.
+- Открытые риски:
+  - нужен ручной stage smoke: выделить слово, нажать жирный/курсив/ссылку и убедиться, что toolbar оборачивает именно выделение;
+  - ссылка вставляется шаблоном `https://example.com`, пользователь должен заменить адрес;
+  - Telegram formatting нужно проверить в сценарии, HR/manager notification и ручном сообщении.
+
 ### 2026-08-28 10:59 MSK - app deploy - Telegram format toolbar
 
 - Deploy ref: `stage`.
