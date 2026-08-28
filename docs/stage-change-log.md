@@ -34,6 +34,47 @@ source_of_truth: true
 
 ## Записи
 
+### 2026-08-28 10:59 MSK - app deploy - Telegram format toolbar
+
+- Deploy ref: `stage`.
+- Deployed commit: `eaa29b0`.
+- GitHub Actions run: `33153495440` -> success.
+- В stage включено:
+  - компактная панель Telegram-форматирования поверх textarea в scenario workspace;
+  - вставка разрешенных HTML-тегов для жирного, курсива, подчеркивания, зачеркивания, inline code, pre и ссылок;
+  - shared frontend component `TelegramFormatToolbar`;
+  - панель форматирования в ручном Telegram-сообщении из карточки сотрудника/кандидата;
+  - generated Vite assets обновлены воспроизводимой сборкой.
+- Локальные проверки перед deploy:
+  - `npm ci` in `frontend`;
+  - `npm run build` in `frontend`;
+  - repeated `npm run build` left worktree clean;
+  - `D:\HRBot\hr_bot_stage_pipeline\.venv\Scripts\python.exe -m compileall app tests tools`;
+  - `D:\HRBot\hr_bot_stage_pipeline\.venv\Scripts\python.exe -m ruff check --select F821 app tests tools`;
+  - `D:\HRBot\hr_bot_stage_pipeline\.venv\Scripts\python.exe -m unittest tests.test_scenario_engine_smoke tests.test_messaging_identity tests.test_employee_api_smoke -q` -> 161 tests OK;
+  - `D:\HRBot\hr_bot_stage_pipeline\.venv\Scripts\python.exe tools\check_docs_contracts.py`;
+  - `git diff --check origin/stage..HEAD`.
+- GitHub Actions preflight:
+  - backend dependencies install;
+  - `compileall`;
+  - `ruff F821`;
+  - backend smoke tests;
+  - frontend build;
+  - smoke imports.
+- Stage safety checks:
+  - verified SQLite backup created before checkout/restart: `backups/hr_bot.before-deploy.20260828-075945.db`;
+  - scenario config snapshot created: `backups/scenarios.before-deploy.20260828-075945.json`;
+  - scenario configuration fingerprint unchanged.
+- Stage smoke checks:
+  - `/app/employees` -> `303`;
+  - `/app/flows/workspace-v2` -> `303`;
+  - Telegram API reachability -> `HTTP/2 302`;
+  - deploy job завершился успешно и вывел `eaa29b0`.
+- Открытые риски:
+  - это не WYSIWYG: пользователь видит HTML tags в textarea, Telegram форматирует только после отправки;
+  - нужен ручной stage smoke: выделить слово в тексте шага, нажать форматирование/ссылку, сохранить и проверить форматирование в Telegram;
+  - отдельно проверить форматирование HR/manager notification и ручного сообщения из карточки.
+
 ### 2026-08-28 01:10 MSK - app deploy - TelegramSafeHTML renderer
 
 - Deploy ref: `stage`.
