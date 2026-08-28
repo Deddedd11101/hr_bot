@@ -30,6 +30,7 @@ FLOW_STEP_FIELDS = [
     "custom_text",
     "response_type",
     "button_options",
+    "confirm_choice",
     "send_mode",
     "send_time",
     "day_offset_workdays",
@@ -77,6 +78,8 @@ def _table_exists(connection: sqlite3.Connection, table_name: str) -> bool:
 def _ensure_flow_step_attachment_document_column(connection: sqlite3.Connection) -> None:
     if "attachment_document_item_id" not in _table_columns(connection, "flow_step_templates"):
         connection.execute("ALTER TABLE flow_step_templates ADD COLUMN attachment_document_item_id INTEGER")
+    if "confirm_choice" not in _table_columns(connection, "flow_step_templates"):
+        connection.execute("ALTER TABLE flow_step_templates ADD COLUMN confirm_choice BOOLEAN NOT NULL DEFAULT 0")
 
 
 def _normalize_scenario_keys(raw_values: list[str]) -> list[str]:
@@ -109,6 +112,11 @@ def _load_step_rows(connection: sqlite3.Connection, scenario_key: str) -> list[d
         if "attachment_document_item_id" in _table_columns(connection, "flow_step_templates")
         else "NULL AS attachment_document_item_id"
     )
+    confirm_choice_column = (
+        "confirm_choice"
+        if "confirm_choice" in _table_columns(connection, "flow_step_templates")
+        else "0 AS confirm_choice"
+    )
     return connection.execute(
         f"""
         SELECT
@@ -123,6 +131,7 @@ def _load_step_rows(connection: sqlite3.Connection, scenario_key: str) -> list[d
             custom_text,
             response_type,
             button_options,
+            {confirm_choice_column},
             send_mode,
             send_time,
             day_offset_workdays,
@@ -523,6 +532,7 @@ def import_scenarios(db_path: Path, input_dir: Path, storage_root: Path) -> None
                             custom_text,
                             response_type,
                             button_options,
+                            confirm_choice,
                             send_mode,
                             send_time,
                             day_offset_workdays,
@@ -535,7 +545,7 @@ def import_scenarios(db_path: Path, input_dir: Path, storage_root: Path) -> None
                             notify_on_send_text,
                             notify_on_send_recipient_ids,
                             notify_on_send_recipient_scope
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                         (
                             scenario_key,
@@ -548,6 +558,7 @@ def import_scenarios(db_path: Path, input_dir: Path, storage_root: Path) -> None
                             step.get("custom_text"),
                             step.get("response_type"),
                             step.get("button_options"),
+                            int(bool(step.get("confirm_choice"))),
                             step.get("send_mode"),
                             step.get("send_time"),
                             step.get("day_offset_workdays"),

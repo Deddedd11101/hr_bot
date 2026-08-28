@@ -9,11 +9,13 @@ from ..models import BotMenuButton, BotMenuSet, DocumentLibraryItem, Employee, E
 from ..notifications import notify_hr_test_task_received
 from ..positions import position_matches_scope
 from ..scenario_engine import (
-    SCENARIO_BACK_BUTTON_TEXT,
+    CHOICE_CONFIRM_CALLBACK_PREFIX,
     DATE_CALLBACK_PREFIX,
+    SCENARIO_BACK_BUTTON_TEXT,
     get_waiting_progress,
     handle_back_response,
     handle_button_response_by_step_id,
+    handle_choice_confirmation_response_by_step_id,
     handle_date_response_by_step_id,
     handle_file_response,
     handle_text_response,
@@ -565,6 +567,34 @@ async def handle_button_event(
         access.employee,
         step_id,
         option_index,
+    )
+    return "handled" if handled else "ignored"
+
+
+async def handle_choice_confirmation_event(
+    messenger: MessengerClient,
+    db: Session,
+    chat_user_id: str,
+    username: Optional[str],
+    callback_data: str,
+) -> Literal["handled", "ignored", "unknown", "blocked"]:
+    access = resolve_inbound_access(db, chat_user_id, username)
+    if access.state != "ok" or access.employee is None:
+        return access.state
+    if not callback_data.startswith(CHOICE_CONFIRM_CALLBACK_PREFIX):
+        return "ignored"
+    parts = callback_data.split(":", 3)
+    if len(parts) != 4:
+        return "ignored"
+    _, _, step_id_raw, action = parts
+    if not step_id_raw.isdigit():
+        return "ignored"
+    handled = await handle_choice_confirmation_response_by_step_id(
+        messenger,
+        db,
+        access.employee,
+        int(step_id_raw),
+        action,
     )
     return "handled" if handled else "ignored"
 

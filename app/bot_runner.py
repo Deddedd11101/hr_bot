@@ -16,11 +16,13 @@ from .file_storage import build_employee_file_path
 from .messaging import create_telegram_messenger
 from .messaging.service import (
     BLOCKED_USER_TEXT,
+    CHOICE_CONFIRM_CALLBACK_PREFIX,
     DATE_CALLBACK_PREFIX,
     UNKNOWN_USER_TEXT,
     detect_category_from_caption,
     handle_back_event,
     handle_button_event,
+    handle_choice_confirmation_event,
     handle_date_event,
     handle_saved_document,
     handle_start_command,
@@ -219,6 +221,15 @@ async def on_scenario_button(callback: CallbackQuery) -> None:
                 _telegram_username(user),
                 callback.data,
             )
+        elif callback.data.startswith(CHOICE_CONFIRM_CALLBACK_PREFIX):
+            handled = await handle_choice_confirmation_event(
+                messenger,
+                db,
+                str(user.id),
+                _telegram_username(user),
+                callback.data,
+            )
+            date_result = None
         else:
             _, step_id, option_index = callback.data.split(":", 2)
             handled = await handle_button_event(

@@ -30,7 +30,10 @@ logger = logging.getLogger(__name__)
 CALLBACK_PREFIX = "scenario:"
 BACK_CALLBACK_DATA = f"{CALLBACK_PREFIX}back"
 DATE_CALLBACK_PREFIX = f"{CALLBACK_PREFIX}date:"
+CHOICE_CONFIRM_CALLBACK_PREFIX = f"{CALLBACK_PREFIX}choice-confirm:"
 SCENARIO_BACK_BUTTON_TEXT = "Назад"
+CHOICE_CONFIRM_BUTTON_TEXT = "Подтвердить"
+CHOICE_CHANGE_BUTTON_TEXT = "Изменить выбор"
 RECRUITMENT_SCENARIO_KEY = "recruitment_hiring"
 FIRST_DAY_SCENARIO_KEY = "first_day"
 PROBATION_SCENARIO_KEYS = {"mid_probation", "end_probation"}
@@ -388,6 +391,9 @@ def get_or_create_progress(db: Session, employee_id: int, scenario_key: str) -> 
         current_step_key=None,
         step_history=None,
         response_undo_history=None,
+        pending_confirmation_step_key=None,
+        pending_confirmation_option_index=None,
+        pending_confirmation_value=None,
         waiting_for_response=False,
         is_completed=False,
         last_delivery_error=None,
@@ -409,6 +415,7 @@ def reset_progress(db: Session, employee_id: int, scenario_key: str) -> Scenario
     progress.recipient_chat_id = None
     progress.step_history = None
     progress.response_undo_history = None
+    _clear_choice_confirmation(progress)
     progress.waiting_for_response = False
     progress.is_completed = False
     progress.last_delivery_error = None
@@ -600,6 +607,48 @@ def _deserialize_response_undo_history(progress: ScenarioProgress) -> list[dict[
 
 def _serialize_response_undo_history(progress: ScenarioProgress, history: list[dict[str, Any]]) -> None:
     progress.response_undo_history = json.dumps(history, ensure_ascii=False) if history else None
+
+
+def _clear_choice_confirmation(progress: ScenarioProgress) -> None:
+    progress.pending_confirmation_step_key = None
+    progress.pending_confirmation_option_index = None
+    progress.pending_confirmation_value = None
+
+
+def _step_requires_choice_confirmation(step: FlowStepTemplate | None) -> bool:
+    if not step:
+        return False
+    return (
+        bool(getattr(step, "confirm_choice", False))
+        and step.response_type == "buttons"
+        and bool((step.button_options or "").strip())
+    )
+
+
+def _choice_confirmation_markup(step_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text=CHOICE_CONFIRM_BUTTON_TEXT,
+                    callback_data=f"{CHOICE_CONFIRM_CALLBACK_PREFIX}{step_id}:confirm",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text=CHOICE_CHANGE_BUTTON_TEXT,
+                    callback_data=f"{CHOICE_CONFIRM_CALLBACK_PREFIX}{step_id}:change",
+                )
+            ],
+        ]
+    )
+
+
+def _has_pending_choice_confirmation(progress: ScenarioProgress, step: FlowStepTemplate, option_index: int) -> bool:
+    return (
+        progress.pending_confirmation_step_key == step.step_key
+        and progress.pending_confirmation_option_index == option_index
+    )
 
 
 def _get_latest_survey_answer(
@@ -1620,6 +1669,7 @@ async def send_step(
     include_back = progress_has_back_step(progress)
     previous_step_key = progress.current_step_key
     if previous_step_key and previous_step_key != step.step_key:
+        _clear_choice_confirmation(progress)
         previous_step = get_step_by_key(db, scenario.scenario_key, previous_step_key)
         if step_requires_response(previous_step):
             history = _deserialize_step_history(progress)
@@ -1859,7 +1909,16 @@ async def handle_date_response_by_step_id(
     return DateCallbackResult(True, "selected", None)
 
 
-async def handle_button_response(messenger_or_bot: Any, db: Session, employee: Employee, scenario_key: str, step_key: str, option_index: int) -> bool:
+async def handle_button_response(
+    messenger_or_bot: Any,
+    db: Session,
+    employee: Employee,
+    scenario_key: str,
+    step_key: str,
+    option_index: int,
+    *,
+    confirmed: bool = False,
+) -> bool:
     if employee.is_bot_blocked:
         return False
     messenger = as_messenger(messenger_or_bot)
@@ -1880,6 +1939,25 @@ async def handle_button_response(messenger_or_bot: Any, db: Session, employee: E
     if option_index < 0 or option_index >= len(options):
         return False
     selected_value = options[option_index]
+    if _step_requires_choice_confirmation(step) and not confirmed:
+        if _has_pending_choice_confirmation(progress, step, option_index):
+            return True
+        progress.pending_confirmation_step_key = step.step_key
+        progress.pending_confirmation_option_index = option_index
+        progress.pending_confirmation_value = selected_value
+        progress.updated_at = utc_now()
+        db.commit()
+        chat_id = progress.recipient_chat_id or get_primary_chat_id(employee, db=db)
+        if not chat_id:
+            return False
+        await messenger.send_text(
+            chat_id=chat_id,
+            text=f"Вы выбрали: {html.escape(selected_value, quote=False)}. Подтвердить?",
+            reply_markup=_choice_confirmation_markup(step.id),
+        )
+        return True
+
+    _clear_choice_confirmation(progress)
     undo_snapshot = _capture_response_undo_snapshot(db, context_employee, scenario, step)
     store_survey_answer(db, context_employee, scenario, step, selected_value)
     if not apply_response_to_employee(db, context_employee, step, selected_value):
@@ -1923,6 +2001,48 @@ async def handle_button_response(messenger_or_bot: Any, db: Session, employee: E
             return True
     await advance_after_response(messenger, db, context_employee, scenario, step)
     return True
+
+
+async def handle_choice_confirmation_response_by_step_id(
+    messenger_or_bot: Any,
+    db: Session,
+    employee: Employee,
+    step_id: int,
+    action: str,
+) -> bool:
+    if employee.is_bot_blocked:
+        return False
+    messenger = as_messenger(messenger_or_bot)
+    step = db.get(FlowStepTemplate, step_id)
+    if not step or not _step_requires_choice_confirmation(step):
+        return False
+    progress = get_waiting_progress_for_step(db, employee.id, step.flow_key, step.step_key)
+    if not progress or progress.pending_confirmation_step_key != step.step_key:
+        return False
+    option_index = progress.pending_confirmation_option_index
+    if option_index is None:
+        return False
+    if action == "change":
+        _clear_choice_confirmation(progress)
+        progress.updated_at = utc_now()
+        db.commit()
+        context_employee = _load_progress_context_employee(db, progress)
+        scenario = db.query(ScenarioTemplate).filter(ScenarioTemplate.scenario_key == step.flow_key).first()
+        if not context_employee or not scenario:
+            return False
+        await send_step(messenger, db, context_employee, scenario, step, auto_follow=False)
+        return True
+    if action != "confirm":
+        return False
+    return await handle_button_response(
+        messenger,
+        db,
+        employee,
+        step.flow_key,
+        step.step_key,
+        int(option_index),
+        confirmed=True,
+    )
 
 
 async def handle_button_response_by_step_id(
@@ -1995,6 +2115,17 @@ async def handle_back_response(messenger_or_bot: Any, db: Session, employee: Emp
     scenario = db.query(ScenarioTemplate).filter(ScenarioTemplate.scenario_key == progress.scenario_key).first()
     if not scenario:
         return False
+    if progress.pending_confirmation_step_key:
+        current_step = get_step_by_key(db, scenario.scenario_key, progress.current_step_key)
+        if current_step:
+            _clear_choice_confirmation(progress)
+            progress.updated_at = utc_now()
+            db.commit()
+            chat_id = progress.recipient_chat_id or get_primary_chat_id(employee, db=db)
+            if chat_id:
+                await messenger.send_text(chat_id=chat_id, text="Выбор отменен. Выберите вариант еще раз.")
+            await send_step(messenger, db, context_employee, scenario, current_step, auto_follow=False)
+            return True
 
     undo_snapshot = _pop_response_undo_snapshot(progress)
     undo_step_key = (undo_snapshot or {}).get("step_key") if isinstance(undo_snapshot, dict) else None

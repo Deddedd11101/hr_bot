@@ -70,10 +70,10 @@ source_of_truth: true
 | Таблица | Назначение | Ключевые поля | Связи и примечания |
 | --- | --- | --- | --- |
 | `scenario_templates` | Metadata сценариев и опросов | `scenario_key`, `title`, `scenario_kind`, `role_scope`, `employee_scope`, `recipient_mode`, `trigger_mode`, `target_employee_id`, `description`, `sort_order` | Parent entity для steps и runtime launches; `role_scope` хранит `all` или CSV position slug'ов для multi-position targeting; `recipient_mode` отделяет context employee от фактического Telegram-получателя |
-| `flow_step_templates` | Step definitions | `flow_key`, `step_key`, `parent_step_id`, `branch_option_index`, `response_type`, `button_options`, scheduling fields, target field, `attachment_path`, `attachment_filename`, `attachment_document_item_id`, notification fields | Root steps имеют `parent_step_id = NULL`; branches и chains вложены через `parent_step_id`; `attachment_document_item_id` ссылается на shared `document_library_items` |
+| `flow_step_templates` | Step definitions | `flow_key`, `step_key`, `parent_step_id`, `branch_option_index`, `response_type`, `button_options`, `confirm_choice`, scheduling fields, target field, `attachment_path`, `attachment_filename`, `attachment_document_item_id`, notification fields | Root steps имеют `parent_step_id = NULL`; branches и chains вложены через `parent_step_id`; `confirm_choice` включает подтверждение выбора только для `response_type=buttons`; `attachment_document_item_id` ссылается на shared `document_library_items` |
 | `step_button_notifications` | Notification overrides для button options | `flow_key`, `step_id`, `option_index`, `message_text`, recipient fields | Дополнительная notification model для конкретной button option |
 | `step_send_notifications` | Notification rules при показе шага | `flow_key`, `step_id`, `rule_index`, `message_text`, recipient fields | Новая множественная модель step-level notifications; legacy `notify_on_send_*` остается compatibility seam |
-| `scenario_progress` | Runtime position сценария по context employee | `employee_id`, `scenario_key`, `recipient_mode`, `recipient_employee_id`, `recipient_chat_id`, `current_step_key`, `waiting_for_response`, `is_completed`, `last_delivery_error`, timestamps | Tracks active/completed scenario state и отдельно хранит resolved recipient для reply-flow и audit |
+| `scenario_progress` | Runtime position сценария по context employee | `employee_id`, `scenario_key`, `recipient_mode`, `recipient_employee_id`, `recipient_chat_id`, `current_step_key`, pending confirmation fields, `waiting_for_response`, `is_completed`, `last_delivery_error`, timestamps | Tracks active/completed scenario state, отдельно хранит resolved recipient для reply-flow/audit и временный неподтвержденный button choice без записи в карточку |
 | `flow_launch_requests` | Launch queue для manual и scheduled work | `employee_id`, `flow_key`, `requested_at`, `processed_at`, `launch_type`, `skip_step_key` | Используется для будущих запусков и follow-up continuation steps |
 | `survey_answers` | Сохраненные ответы на survey-like steps | `employee_id`, `scenario_key`, `step_key`, `answer_value`, `file_name`, `answered_at` | Отдельно от `scenario_progress`, потому что answers can accumulate |
 | `onboarding_events` | Исторический лог onboarding sends | `employee_id`, `scheduled_at`, `sent_at`, `event_key`, `message` | Используется scheduled onboarding logic |
@@ -182,6 +182,10 @@ source_of_truth: true
   - chain nodes;
   - launch-another-scenario nodes.
 - Nested structure кодируется через `parent_step_id` и `branch_option_index`, а не через отдельную graph model.
+- `confirm_choice` применяется только к обычным `buttons`-шагам:
+  - до подтверждения выбор хранится в `scenario_progress.pending_confirmation_*`;
+  - employee fields, survey answer, button notifications и переход к следующему шагу выполняются только после `Подтвердить`;
+  - `Изменить выбор` или `Назад` очищают pending choice и возвращают исходные кнопки шага.
 - Вложения шага имеют два совместимых источника:
   - legacy uploaded file через `attachment_path` / `attachment_filename`;
   - reusable shared document через nullable `attachment_document_item_id`.
@@ -202,6 +206,7 @@ SQLite schema guard делает больше, чем “создать табл
   - `scenario_progress.recipient_employee_id`;
   - `scenario_progress.recipient_chat_id`;
   - `scenario_progress.last_delivery_error`;
+- добавляет `flow_step_templates.confirm_choice` и `scenario_progress.pending_confirmation_step_key` / `pending_confirmation_option_index` / `pending_confirmation_value` для confirmation flow обычных button steps;
 - добавляет `flow_step_templates.attachment_document_item_id` и index `ix_flow_step_templates_attachment_document_item_id` для reusable вложений из shared document library;
 - создает целые таблицы, если они отсутствуют:
   - `employee_assignment_history`;

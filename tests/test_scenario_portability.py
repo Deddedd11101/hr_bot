@@ -290,6 +290,58 @@ class ScenarioPortabilityTests(unittest.TestCase):
                 ],
             )
 
+    def test_export_import_round_trip_preserves_step_confirm_choice(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            source_db = root / "source.db"
+            target_db = root / "target.db"
+            export_dir = root / "package"
+            storage_root = root / "storage"
+
+            _create_portability_schema(source_db)
+            _create_portability_schema(target_db)
+
+            source = sqlite3.connect(str(source_db))
+            try:
+                source.execute("ALTER TABLE flow_step_templates ADD COLUMN confirm_choice BOOLEAN NOT NULL DEFAULT 0")
+                source.execute(
+                    """
+                    INSERT INTO scenario_templates (
+                        scenario_key, title, sort_order, scenario_kind, role_scope, employee_scope, recipient_mode, trigger_mode, target_employee_id, description
+                    ) VALUES ('scenario_confirm', 'Confirm scenario', 10, 'scenario', 'all', 'candidates', 'self', 'manual_only', NULL, NULL)
+                    """
+                )
+                source.execute(
+                    """
+                    INSERT INTO flow_step_templates (
+                        flow_key, step_key, parent_step_id, branch_option_index, step_title, sort_order, default_text, custom_text, response_type, button_options,
+                        confirm_choice, send_mode, send_time, day_offset_workdays, target_field, launch_scenario_key, attachment_path, attachment_filename,
+                        send_employee_card, notify_on_send_text, notify_on_send_recipient_ids, notify_on_send_recipient_scope
+                    ) VALUES ('scenario_confirm', 'salary_step', NULL, NULL, 'Salary', 10, 'Choose salary', NULL, 'buttons', '100\\n200', 1, 'immediate', NULL, 0, 'salary_expectation', NULL, NULL, NULL, 0, NULL, NULL, NULL)
+                    """
+                )
+                source.commit()
+            finally:
+                source.close()
+
+            export_scenarios(source_db, export_dir, ["scenario_confirm"])
+
+            manifest = json.loads((export_dir / "manifest.json").read_text(encoding="utf-8"))
+            self.assertEqual(manifest["scenarios"][0]["steps"][0]["confirm_choice"], 1)
+
+            import_scenarios(target_db, export_dir, storage_root)
+
+            target = sqlite3.connect(str(target_db))
+            try:
+                row = target.execute(
+                    "SELECT confirm_choice FROM flow_step_templates WHERE flow_key = 'scenario_confirm'"
+                ).fetchone()
+            finally:
+                target.close()
+
+            self.assertIsNotNone(row)
+            self.assertEqual(row[0], 1)
+
     def test_export_from_old_db_without_attachment_document_column_does_not_fail(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)

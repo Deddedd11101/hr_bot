@@ -23,6 +23,7 @@ from app.scenario_engine import (
     handle_button_response,
     handle_back_response,
     handle_date_response_by_step_id,
+    handle_choice_confirmation_response_by_step_id,
     handle_file_response,
     handle_text_response,
     matches_role_scope,
@@ -1904,6 +1905,244 @@ class ScenarioEngineSmokeTests(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(handled)
             db.refresh(employee)
             self.assertEqual(employee.salary_expectation, "150 000")
+
+    async def test_confirm_choice_defers_button_side_effects_until_confirm(self) -> None:
+        init_db()
+        now = datetime.now(UTC).replace(tzinfo=None)
+        scenario_key = f"test_confirm_choice_{int(datetime.now(UTC).timestamp() * 1000000)}"
+
+        with SessionLocal() as db:
+            scenario = ScenarioTemplate(
+                scenario_key=scenario_key,
+                title="Confirm choice",
+                role_scope="all",
+                scenario_kind="scenario",
+                sort_order=0,
+                trigger_mode="manual_only",
+            )
+            step = FlowStepTemplate(
+                flow_key=scenario_key,
+                step_key="salary_step",
+                step_title="Salary step",
+                sort_order=10,
+                default_text="Выбери ожидания по доходу",
+                response_type="buttons",
+                button_options="100 000\n150 000\n200 000",
+                confirm_choice=True,
+                target_field="salary_expectation",
+                send_mode="immediate",
+                day_offset_workdays=0,
+            )
+            next_step = FlowStepTemplate(
+                flow_key=scenario_key,
+                step_key="next_step",
+                step_title="Next step",
+                sort_order=20,
+                default_text="Спасибо",
+                response_type="none",
+                send_mode="immediate",
+                day_offset_workdays=0,
+            )
+            employee = Employee(
+                full_name="Tester",
+                telegram_user_id="123456789",
+                created_at=now,
+                is_flow_scheduled=False,
+                employee_stage="candidate",
+            )
+            db.add_all([scenario, step, next_step, employee])
+            db.commit()
+            db.refresh(step)
+            db.refresh(employee)
+            hr_settings = _get_or_create_hr_settings(db)
+            hr_settings.telegram_user_id = "999020"
+            db.add(
+                StepButtonNotification(
+                    flow_key=scenario_key,
+                    step_id=step.id,
+                    option_index=1,
+                    rule_index=0,
+                    message_text="HR: 150 000",
+                    recipient_ids="hr",
+                    recipient_scope="",
+                )
+            )
+            db.commit()
+
+            messenger = FakeMessenger()
+            await send_step(messenger, db, employee, scenario, step)
+            handled = await handle_button_response(messenger, db, employee, scenario_key, "salary_step", 1)
+
+            self.assertTrue(handled)
+            db.refresh(employee)
+            self.assertIsNone(employee.salary_expectation)
+            progress = db.query(ScenarioProgress).filter_by(employee_id=employee.id, scenario_key=scenario_key).first()
+            self.assertIsNotNone(progress)
+            self.assertEqual(progress.pending_confirmation_step_key, "salary_step")
+            self.assertEqual(progress.pending_confirmation_option_index, 1)
+            self.assertEqual(progress.pending_confirmation_value, "150 000")
+            self.assertEqual(messenger.texts[-1]["text"], "Вы выбрали: 150 000. Подтвердить?")
+            self.assertNotIn("Спасибо", [item["text"] for item in messenger.texts])
+            self.assertNotIn("HR: 150 000", [item["text"] for item in messenger.texts])
+
+            confirmed = await handle_choice_confirmation_response_by_step_id(messenger, db, employee, step.id, "confirm")
+
+            self.assertTrue(confirmed)
+            db.refresh(employee)
+            self.assertEqual(employee.salary_expectation, "150 000")
+            db.refresh(progress)
+            self.assertIsNone(progress.pending_confirmation_step_key)
+            self.assertIn("Спасибо", [item["text"] for item in messenger.texts])
+            self.assertIn("HR: 150 000", [item["text"] for item in messenger.texts])
+
+    async def test_confirm_choice_repeated_same_button_does_not_duplicate_confirmation_message(self) -> None:
+        init_db()
+        now = datetime.now(UTC).replace(tzinfo=None)
+        scenario_key = f"test_confirm_choice_repeat_{int(datetime.now(UTC).timestamp() * 1000000)}"
+
+        with SessionLocal() as db:
+            scenario = ScenarioTemplate(
+                scenario_key=scenario_key,
+                title="Confirm choice repeat",
+                role_scope="all",
+                scenario_kind="scenario",
+                sort_order=0,
+                trigger_mode="manual_only",
+            )
+            step = FlowStepTemplate(
+                flow_key=scenario_key,
+                step_key="salary_step",
+                step_title="Salary step",
+                sort_order=10,
+                default_text="Выбери ожидания по доходу",
+                response_type="buttons",
+                button_options="100 000\n150 000",
+                confirm_choice=True,
+                target_field="salary_expectation",
+                send_mode="immediate",
+                day_offset_workdays=0,
+            )
+            employee = Employee(
+                full_name="Tester",
+                telegram_user_id="123456789",
+                created_at=now,
+                is_flow_scheduled=False,
+                employee_stage="candidate",
+            )
+            db.add_all([scenario, step, employee])
+            db.commit()
+
+            messenger = FakeMessenger()
+            await send_step(messenger, db, employee, scenario, step)
+            handled = await handle_button_response(messenger, db, employee, scenario_key, "salary_step", 0)
+            confirmation_count = len(messenger.texts)
+            repeated = await handle_button_response(messenger, db, employee, scenario_key, "salary_step", 0)
+
+            self.assertTrue(handled)
+            self.assertTrue(repeated)
+            self.assertEqual(len(messenger.texts), confirmation_count)
+
+    async def test_confirm_choice_change_returns_to_original_buttons_without_saving(self) -> None:
+        init_db()
+        now = datetime.now(UTC).replace(tzinfo=None)
+        scenario_key = f"test_confirm_choice_change_{int(datetime.now(UTC).timestamp() * 1000000)}"
+
+        with SessionLocal() as db:
+            scenario = ScenarioTemplate(
+                scenario_key=scenario_key,
+                title="Confirm choice change",
+                role_scope="all",
+                scenario_kind="scenario",
+                sort_order=0,
+                trigger_mode="manual_only",
+            )
+            step = FlowStepTemplate(
+                flow_key=scenario_key,
+                step_key="salary_step",
+                step_title="Salary step",
+                sort_order=10,
+                default_text="Выбери ожидания по доходу",
+                response_type="buttons",
+                button_options="100 000\n150 000",
+                confirm_choice=True,
+                target_field="salary_expectation",
+                send_mode="immediate",
+                day_offset_workdays=0,
+            )
+            employee = Employee(
+                full_name="Tester",
+                telegram_user_id="123456789",
+                created_at=now,
+                is_flow_scheduled=False,
+                employee_stage="candidate",
+            )
+            db.add_all([scenario, step, employee])
+            db.commit()
+            db.refresh(step)
+
+            messenger = FakeMessenger()
+            await send_step(messenger, db, employee, scenario, step)
+            await handle_button_response(messenger, db, employee, scenario_key, "salary_step", 1)
+
+            changed = await handle_choice_confirmation_response_by_step_id(messenger, db, employee, step.id, "change")
+
+            self.assertTrue(changed)
+            db.refresh(employee)
+            self.assertIsNone(employee.salary_expectation)
+            progress = db.query(ScenarioProgress).filter_by(employee_id=employee.id, scenario_key=scenario_key).first()
+            self.assertIsNotNone(progress)
+            self.assertIsNone(progress.pending_confirmation_step_key)
+            self.assertEqual(messenger.texts[-1]["text"], "Выбери ожидания по доходу")
+
+    async def test_back_cancels_pending_choice_confirmation(self) -> None:
+        init_db()
+        now = datetime.now(UTC).replace(tzinfo=None)
+        scenario_key = f"test_confirm_choice_back_{int(datetime.now(UTC).timestamp() * 1000000)}"
+
+        with SessionLocal() as db:
+            scenario = ScenarioTemplate(
+                scenario_key=scenario_key,
+                title="Confirm choice back",
+                role_scope="all",
+                scenario_kind="scenario",
+                sort_order=0,
+                trigger_mode="manual_only",
+            )
+            step = FlowStepTemplate(
+                flow_key=scenario_key,
+                step_key="salary_step",
+                step_title="Salary step",
+                sort_order=10,
+                default_text="Выбери ожидания по доходу",
+                response_type="buttons",
+                button_options="100 000\n150 000",
+                confirm_choice=True,
+                target_field="salary_expectation",
+                send_mode="immediate",
+                day_offset_workdays=0,
+            )
+            employee = Employee(
+                full_name="Tester",
+                telegram_user_id="123456789",
+                created_at=now,
+                is_flow_scheduled=False,
+                employee_stage="candidate",
+            )
+            db.add_all([scenario, step, employee])
+            db.commit()
+
+            messenger = FakeMessenger()
+            await send_step(messenger, db, employee, scenario, step)
+            await handle_button_response(messenger, db, employee, scenario_key, "salary_step", 1)
+            handled_back = await handle_back_response(messenger, db, employee)
+
+            self.assertTrue(handled_back)
+            db.refresh(employee)
+            self.assertIsNone(employee.salary_expectation)
+            progress = db.query(ScenarioProgress).filter_by(employee_id=employee.id, scenario_key=scenario_key).first()
+            self.assertIsNotNone(progress)
+            self.assertEqual(progress.current_step_key, "salary_step")
+            self.assertIsNone(progress.pending_confirmation_step_key)
 
     async def test_handle_date_response_persists_first_workday(self) -> None:
         init_db()

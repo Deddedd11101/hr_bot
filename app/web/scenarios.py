@@ -664,6 +664,7 @@ def _serialize_workspace_step(
         "response_type": step.response_type or "none",
         "response_label": _workspace_response_label(step, scenario_kind),
         "button_options": button_options,
+        "confirm_choice": bool(getattr(step, "confirm_choice", False)),
         "has_attachment": bool(step.attachment_filename or attachment_document_item),
         "attachment_filename": step.attachment_filename or "",
         "attachment_document_item_id": attachment_document_item_id,
@@ -851,6 +852,12 @@ def _normalize_workspace_response_type(value: str, step: FlowStepTemplate) -> st
     return normalized if normalized in allowed else (step.response_type or "none")
 
 
+def _payload_bool(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
 def _apply_workspace_step_update(db: Session, step: FlowStepTemplate, payload: dict, scenario_kind: str = "scenario"):
     if scenario_kind == "survey":
         question = (
@@ -867,6 +874,7 @@ def _apply_workspace_step_update(db: Session, step: FlowStepTemplate, payload: d
         step.default_text = question
         step.response_type = "text"
         step.button_options = button_options or None
+        step.confirm_choice = False
         step.send_mode = "immediate"
         step.send_time = None
         step.target_field = None
@@ -884,6 +892,7 @@ def _apply_workspace_step_update(db: Session, step: FlowStepTemplate, payload: d
     step.response_type = _normalize_workspace_response_type(str(payload.get("response_type") or ""), step)
     button_options = str(payload.get("button_options") or "").strip()
     step.button_options = button_options or None
+    step.confirm_choice = _payload_bool(payload.get("confirm_choice")) and step.response_type == "buttons"
 
     send_mode = str(payload.get("send_mode") or "").strip() or "immediate"
     step.send_mode = send_mode if send_mode in SEND_MODE_LABELS else "immediate"
@@ -914,7 +923,7 @@ def _apply_workspace_step_update(db: Session, step: FlowStepTemplate, payload: d
         else None
     )
     step.attachment_document_item_id = attachment_document_item.id if attachment_document_item else None
-    step.send_employee_card = str(payload.get("send_employee_card") or "").strip().lower() in {"1", "true", "yes", "on"}
+    step.send_employee_card = _payload_bool(payload.get("send_employee_card"))
     step.notify_on_send_text = str(payload.get("notify_on_send_text") or "").strip() or None
     step.notify_on_send_recipient_ids = _normalize_notification_recipient_tokens(
         str(payload.get("notify_on_send_recipient_ids") or ""),
@@ -924,6 +933,7 @@ def _apply_workspace_step_update(db: Session, step: FlowStepTemplate, payload: d
 
     if step.response_type not in {"buttons", "branching"}:
         step.button_options = None
+        step.confirm_choice = False
     if step.response_type == "chain":
         step.target_field = None
 
@@ -1238,6 +1248,7 @@ def _copy_template_entity(db: Session, scenario: ScenarioTemplate) -> ScenarioTe
             custom_text=original_step.custom_text,
             response_type=original_step.response_type,
             button_options=original_step.button_options,
+            confirm_choice=bool(getattr(original_step, "confirm_choice", False)),
             send_mode=original_step.send_mode,
             send_time=original_step.send_time,
             day_offset_workdays=original_step.day_offset_workdays,

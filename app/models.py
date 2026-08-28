@@ -622,6 +622,12 @@ class FlowStepTemplate(Base):
         nullable=True,
         doc="Кнопки через перевод строки, если response_type=buttons.",
     )
+    confirm_choice: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        doc="Нужно ли запрашивать подтверждение выбранной кнопки перед сохранением ответа.",
+    )
     send_mode: Mapped[str] = mapped_column(
         String(32),
         nullable=False,
@@ -750,6 +756,21 @@ class ScenarioProgress(Base):
         String(16384),
         nullable=True,
         doc="JSON-стек снимков последнего подтвержденного ответа для rollback по кнопке назад.",
+    )
+    pending_confirmation_step_key: Mapped[Optional[str]] = mapped_column(
+        String(128),
+        nullable=True,
+        doc="Шаг, для которого ожидается подтверждение выбранной кнопки.",
+    )
+    pending_confirmation_option_index: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        nullable=True,
+        doc="Индекс выбранной кнопки, ожидающей подтверждения.",
+    )
+    pending_confirmation_value: Mapped[Optional[str]] = mapped_column(
+        String(4096),
+        nullable=True,
+        doc="Текст выбранной кнопки, ожидающей подтверждения.",
     )
     waiting_for_response: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     is_completed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)

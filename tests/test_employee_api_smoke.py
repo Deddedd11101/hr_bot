@@ -2849,6 +2849,7 @@ class EmployeeApiSmokeTests(unittest.TestCase):
                 "text": "Выбери ожидания по доходу",
                 "response_type": "buttons",
                 "button_options": "100 000\n150 000\n200 000",
+                "confirm_choice": True,
                 "send_mode": "immediate",
                 "send_time": "",
                 "target_field": "salary_expectation",
@@ -2865,6 +2866,7 @@ class EmployeeApiSmokeTests(unittest.TestCase):
         payload = response.json()["payload"]["workspace"]["root_steps"][0]
         self.assertEqual(payload["response_type"], "buttons")
         self.assertEqual(payload["response_label"], "Выбор кнопками")
+        self.assertTrue(payload["confirm_choice"])
         self.assertEqual(payload["target_field"], "salary_expectation")
         self.assertEqual(payload["target_field_label"], "Ожидания по доходу")
 
@@ -2872,7 +2874,71 @@ class EmployeeApiSmokeTests(unittest.TestCase):
             step = db.get(FlowStepTemplate, step_id)
             self.assertIsNotNone(step)
             self.assertEqual(step.response_type, "buttons")
+            self.assertTrue(step.confirm_choice)
             self.assertEqual(step.target_field, "salary_expectation")
+
+    def test_workspace_step_api_clears_confirm_choice_for_non_button_steps(self) -> None:
+        scenario_key = f"codex_confirm_clear_{self.unique_tag}"
+        with SessionLocal() as db:
+            scenario = ScenarioTemplate(
+                scenario_key=scenario_key,
+                title=f"codex-confirm-clear-{self.unique_tag}",
+                sort_order=10,
+                scenario_kind="scenario",
+                role_scope="all",
+                employee_scope="all",
+                trigger_mode="manual_only",
+            )
+            step = FlowStepTemplate(
+                flow_key=scenario_key,
+                step_key=f"{scenario_key}_step_1",
+                step_title="Текстовый шаг",
+                sort_order=10,
+                default_text="Напиши ответ",
+                custom_text=None,
+                response_type="buttons",
+                button_options="Да\nНет",
+                confirm_choice=True,
+                send_mode="immediate",
+                send_time=None,
+                day_offset_workdays=0,
+                target_field="salary_expectation",
+                send_employee_card=False,
+            )
+            db.add_all([scenario, step])
+            db.commit()
+            db.refresh(step)
+            step_id = step.id
+
+        response = self.client.post(
+            f"/api/flows/workspace/steps/{step_id}",
+            json={
+                "title": "Текстовый шаг",
+                "text": "Напиши ответ",
+                "response_type": "text",
+                "button_options": "",
+                "confirm_choice": True,
+                "send_mode": "immediate",
+                "send_time": "",
+                "target_field": "salary_expectation",
+                "launch_scenario_key": "",
+                "send_employee_card": False,
+                "notify_on_send_text": "",
+                "notify_on_send_recipient_ids": "",
+                "notify_on_send_recipient_scope": "",
+                "button_notifications": [],
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()["payload"]["workspace"]["root_steps"][0]
+        self.assertEqual(payload["response_type"], "text")
+        self.assertFalse(payload["confirm_choice"])
+
+        with SessionLocal() as db:
+            step = db.get(FlowStepTemplate, step_id)
+            self.assertIsNotNone(step)
+            self.assertFalse(step.confirm_choice)
 
     def test_workspace_step_api_persists_date_response_for_first_workday(self) -> None:
         scenario_key = f"codex-date-step-{self.unique_tag}"

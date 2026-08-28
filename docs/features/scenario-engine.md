@@ -68,7 +68,9 @@ Scenario engine превращает scenario templates плюс employee state 
 6. Сохранить progress в `scenario_progress`, включая короткую историю предыдущих интерактивных шагов и resolved recipient (`recipient_mode`, `recipient_employee_id`, `recipient_chat_id`).
 7. Если user response не нужен, auto-advance к следующему step или schedule follow-up delivery.
 8. Если response нужен, ждать text/file/button input от resolved recipient и применить result к employee state context employee.
-9. Для активного интерактивного шага runtime поддерживает default `Назад`: для text/file это reply button, для button/branching — inline button. Откат возвращает только на предыдущий интерактивный шаг в рамках текущего незавершенного сценария.
+9. Для `buttons` step можно включить `confirm_choice`: выбранное значение сначала попадает в pending confirmation внутри `scenario_progress`, бот отправляет “Вы выбрали: <label>. Подтвердить?”, а employee/survey state, button notifications и переход дальше происходят только после `Подтвердить`.
+10. Если пользователь нажимает `Изменить выбор`, runtime очищает pending confirmation и повторно показывает исходные кнопки этого же шага без сохранения ответа.
+11. Для активного интерактивного шага runtime поддерживает default `Назад`: для text/file это reply button, для button/branching — inline button. Если есть pending confirmation, `Назад` сначала отменяет этот pending выбор и возвращает к исходному шагу; иначе откат возвращает только на предыдущий интерактивный шаг в рамках текущего незавершенного сценария.
 
 ## Scenario Notifications
 
@@ -170,6 +172,7 @@ Scenario engine превращает scenario templates плюс employee state 
 
 - В React scenario workspace тип ответа теперь явно показывает, блокирует ли шаг поток.
 - `text`, `file`, `buttons` и `branching` считаются интерактивными: после отправки такого шага бот ждет ответ и не переходит дальше автоматически.
+- `confirm_choice` — настройка уровня шага только для `response_type=buttons`: при других типах ответа backend сохраняет ее как `false`. Для `branching` и `date` подтверждение пока не включено, чтобы не смешивать выбор ветки/календаря с отдельной confirmation-семантикой.
 - `none` не блокирует сценарий и должен использоваться для чисто информационных шагов, файлов и текстов, после которых не нужен ответ.
 - Новые scenario-шаги, branch-шаги и chain-шаги не должны сохранять декоративный default text. Поле сообщения остается пустым, а подсказка показывается только как UI placeholder.
 
