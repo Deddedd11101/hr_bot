@@ -979,7 +979,7 @@ def render_telegram_message_html(db: Session, template: str, employee: Employee,
     employee_full_name = (employee.full_name or "").strip() or (f"Employee #{employee.id}" if getattr(employee, "id", None) else "не указано")
     position = (getattr(employee, "desired_position", None) or "").strip() or "не указана"
     first_workday = employee.first_workday.strftime("%d.%m.%Y") if getattr(employee, "first_workday", None) else "не указана"
-    resume = resolve_employee_resume_label(db, employee)
+    resume = resolve_employee_resume_template_value(db, employee)
     time_text = step_time or "10:00"
     links = (
         db.query(EmployeeDocumentLink)
@@ -1015,8 +1015,8 @@ def render_telegram_message_html(db: Session, template: str, employee: Employee,
             "employee_full_name": _escape_template_value(employee_full_name),
             "position": _escape_template_value(position),
             "first_workday": _escape_template_value(first_workday),
-            "resume": _escape_template_value(resume),
-            "резюме": _escape_template_value(resume),
+            "resume": resume,
+            "резюме": resume,
             "date": _escape_template_value(anchor_date.strftime("%d.%m.%Y")),
             "time": _escape_template_value(time_text),
             "test_url": _escape_template_value(settings.TEST_URL),
@@ -1032,23 +1032,53 @@ def format_message(db: Session, template: str, employee: Employee, anchor_date: 
 
 
 def resolve_employee_resume_label(db: Session, employee: Employee) -> str:
-    resume_file = resolve_employee_resume_file(db, employee)
-    if resume_file and (resume_file.original_filename or "").strip():
-        return resume_file.original_filename.strip()
     resume_slot = _get_employee_resume_slot(db, employee.id)
     if resume_slot:
+        if getattr(resume_slot, "employee_file_id", None):
+            resume_file = db.get(EmployeeFile, resume_slot.employee_file_id)
+            if resume_file and (resume_file.original_filename or "").strip():
+                return resume_file.original_filename.strip()
         if (resume_slot.url or "").strip():
             return (resume_slot.title or "").strip() or resume_slot.url.strip()
+    resume_file = _get_latest_legacy_resume_file(db, employee)
+    if resume_file and (resume_file.original_filename or "").strip():
+        return resume_file.original_filename.strip()
+    return "резюме не загружено"
+
+
+def resolve_employee_resume_template_value(db: Session, employee: Employee) -> str:
+    resume_slot = _get_employee_resume_slot(db, employee.id)
+    if resume_slot:
+        if getattr(resume_slot, "employee_file_id", None):
+            resume_file = db.get(EmployeeFile, resume_slot.employee_file_id)
+            if resume_file and (resume_file.original_filename or "").strip():
+                return _escape_template_value(resume_file.original_filename.strip())
+        if (resume_slot.url or "").strip():
+            resume_url = resume_slot.url.strip()
+            resume_title = (resume_slot.title or "").strip() or resume_url
+            if resume_url.lower().startswith(TELEGRAM_SAFE_LINK_SCHEMES):
+                return f'<a href="{html.escape(resume_url, quote=True)}">{html.escape(resume_title, quote=False)}</a>'
+            return _escape_template_value(resume_title)
+    resume_file = _get_latest_legacy_resume_file(db, employee)
+    if resume_file and (resume_file.original_filename or "").strip():
+        return _escape_template_value(resume_file.original_filename.strip())
     return "резюме не загружено"
 
 
 def resolve_employee_resume_file(db: Session, employee: Employee) -> EmployeeFile | None:
     resume_slot = _get_employee_resume_slot(db, employee.id)
-    if resume_slot and getattr(resume_slot, "employee_file_id", None):
-        resume_file = db.get(EmployeeFile, resume_slot.employee_file_id)
-        if resume_file:
-            return resume_file
-    resume_file = (
+    if resume_slot:
+        if getattr(resume_slot, "employee_file_id", None):
+            resume_file = db.get(EmployeeFile, resume_slot.employee_file_id)
+            if resume_file:
+                return resume_file
+        if (resume_slot.url or "").strip():
+            return None
+    return _get_latest_legacy_resume_file(db, employee)
+
+
+def _get_latest_legacy_resume_file(db: Session, employee: Employee) -> EmployeeFile | None:
+    return (
         db.query(EmployeeFile)
         .filter(
             EmployeeFile.employee_id == employee.id,
@@ -1057,7 +1087,6 @@ def resolve_employee_resume_file(db: Session, employee: Employee) -> EmployeeFil
         .order_by(EmployeeFile.created_at.desc(), EmployeeFile.id.desc())
         .first()
     )
-    return resume_file
 
 
 def _get_employee_resume_slot(db: Session, employee_id: int) -> EmployeeDocumentLink | None:
