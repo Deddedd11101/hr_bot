@@ -12,6 +12,7 @@ import {
     ShieldAlert,
     Trash2,
     Upload,
+    X,
 } from "lucide-react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -650,12 +651,36 @@ export function EmployeeProfileSection(props: any) {
                         </Field>
                         <Field>
                             <FieldLabel>{isCandidate ? "Плановая дата выхода" : "Первый день сотрудника"}</FieldLabel>
-                            <DatePicker
-                                value={form.first_workday}
-                                onValueChange={function (value) {
-                                    changeFieldValue(handleChange, "first_workday", value);
-                                }}
-                            />
+                            <div className="flex items-center gap-2">
+                                <DatePicker
+                                    value={form.first_workday}
+                                    onValueChange={function (value) {
+                                        changeFieldValue(handleChange, "first_workday", value);
+                                    }}
+                                />
+                                {form.first_workday ? (
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="icon"
+                                        onClick={function () {
+                                            changeFieldValue(handleChange, "first_workday", "");
+                                        }}
+                                        aria-label={
+                                            isCandidate
+                                                ? "Очистить плановую дату выхода"
+                                                : "Очистить первый день сотрудника"
+                                        }
+                                        title={
+                                            isCandidate
+                                                ? "Очистить плановую дату выхода"
+                                                : "Очистить первый день сотрудника"
+                                        }
+                                    >
+                                        <X />
+                                    </Button>
+                                ) : null}
+                            </div>
                         </Field>
                         <Field>
                             <FieldLabel htmlFor="employee-position">

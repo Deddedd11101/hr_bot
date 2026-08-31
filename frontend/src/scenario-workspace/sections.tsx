@@ -874,6 +874,7 @@ function TemplateTagButtons({
             variant="outline"
             size="xs"
             title={tag.description || tag.template}
+            onMouseDown={(event) => event.preventDefault()}
             onClick={() => onInsert(tag.template)}
           >
             {tag.label}
@@ -887,6 +888,7 @@ function TemplateTagButtons({
                 variant="outline"
                 size="xs"
                 title={`Вставить документ: ${title}`}
+                onMouseDown={(event) => event.preventDefault()}
                 onClick={() => onInsert(`{doc:${title}}`)}
               >
                 Документ: {title}
