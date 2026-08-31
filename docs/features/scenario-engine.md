@@ -105,9 +105,9 @@ Scenario engine превращает scenario templates плюс employee state 
   - `{employee_full_name}` — ФИО из карточки; fallback `Employee #id`, если ФИО пустое.
   - `{position}` — должность из карточки; fallback `не указана`.
   - `{first_workday}` — дата первого рабочего дня в формате `ДД.ММ.ГГГГ`; fallback `не указана`.
-  - `{resume}` — имя файла из актуального `employee_document_links.slot_key=resume`; если slot пустой, fallback на последний `employee_files.category=resume`; если данных нет, fallback `резюме не загружено`.
+  - `{resume}` / `{резюме}` — актуальный `employee_document_links.slot_key=resume`: для file-backed slot подставляется имя файла, для link-backed slot — безопасная HTML-ссылка; если slot пустой или битый, fallback на последний `employee_files.category=resume`; если данных нет, fallback `резюме не загружено`.
 - В UI эти теги могут называться по-русски: `ФИО`, `Должность`, `Дата первого рабочего дня`, `Резюме`.
-- `{resume}` сейчас намеренно возвращает только human-readable имя файла или текстовый fallback, а не локальный storage path и не временную ссылку. Отправка/скачивание файла резюме остается отдельным file delivery contract.
+- `{resume}` не раскрывает локальный storage path и не генерирует временную ссылку. В scenario step text это остается только безопасной текстовой/HTML-подстановкой; в явно настроенных step/button уведомлениях ответственным runtime дополнительно отправляет файл только для file-backed resume slot или legacy `employee_files.category=resume`, если актуального link-backed slot нет и файл существует физически.
 - File-response step с `target_field=resume` делает загруженный файл новым актуальным resume slot; кнопка `Назад` откатывает этот slot вместе с file record, созданным последним ответом.
 - File-response step принимает входящие Telegram media как `EmployeeFile`: обычный `document`, `photo`, `video` и `video_note`. Видео, отправленное как Telegram document, тоже проходит через тот же contract.
 - Для `video` runtime сохраняет Telegram `file_id` / `file_unique_id`, filename или fallback `<file_unique_id>.mp4`, mime type и file size; для `video_note` используется fallback filename `<file_unique_id>.mp4` и `video/mp4`.

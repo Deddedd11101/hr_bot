@@ -328,14 +328,17 @@ class P0BehaviourTests(unittest.IsolatedAsyncioTestCase):
                 bot_runner.create_telegram_messenger = previous_factory
                 settings.FILE_STORAGE_DIR = previous_storage_dir
 
-    async def test_telegram_video_note_is_saved_as_inbound_file(self) -> None:
+    async def test_telegram_video_note_is_saved_and_counts_as_file_response(self) -> None:
         fake_messenger = _FakeMessenger()
         previous_factory = bot_runner.create_telegram_messenger
         previous_storage_dir = settings.FILE_STORAGE_DIR
+        scenario_key = f"telegram_video_note_{uuid4().hex[:8]}"
         with TemporaryDirectory() as tmpdir:
             settings.FILE_STORAGE_DIR = tmpdir
             bot_runner.create_telegram_messenger = lambda _token: fake_messenger
             try:
+                with SessionLocal() as db:
+                    self._create_waiting_file_scenario(db, scenario_key)
                 message = SimpleNamespace(
                     from_user=SimpleNamespace(id=self.candidate_chat_id, username=None),
                     video_note=SimpleNamespace(
@@ -354,12 +357,15 @@ class P0BehaviourTests(unittest.IsolatedAsyncioTestCase):
                         .order_by(EmployeeFile.id.desc())
                         .all()
                     )
+                    progress = db.query(ScenarioProgress).filter_by(employee_id=self.candidate_testing_id, scenario_key=scenario_key).first()
                 self.assertTrue(files)
                 self.assertEqual(files[0].category, "candidate_file")
                 self.assertEqual(files[0].original_filename, "video-note-unique.mp4")
                 self.assertEqual(files[0].mime_type, "video/mp4")
                 self.assertEqual(files[0].telegram_file_unique_id, "video-note-unique")
                 self.assertTrue(Path(files[0].stored_path).exists())
+                self.assertIsNotNone(progress)
+                self.assertTrue(progress.is_completed)
             finally:
                 bot_runner.create_telegram_messenger = previous_factory
                 settings.FILE_STORAGE_DIR = previous_storage_dir
