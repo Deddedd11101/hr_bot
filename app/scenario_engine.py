@@ -35,7 +35,8 @@ RECRUITMENT_SCENARIO_KEY = "recruitment_hiring"
 FIRST_DAY_SCENARIO_KEY = "first_day"
 PROBATION_SCENARIO_KEYS = {"mid_probation", "end_probation"}
 DOCUMENT_TAG_RE = re.compile(r"\{doc:([^}]+)\}")
-TEMPLATE_FIELD_RE = re.compile(r"\{([a-zA-Z_][a-zA-Z0-9_]*)\}")
+TEMPLATE_FIELD_RE = re.compile(r"\{([a-zA-Zа-яА-ЯёЁ_][a-zA-Z0-9а-яА-ЯёЁ_]*)\}")
+RESUME_TAG_RE = re.compile(r"\{(?:resume|резюме)\}", re.IGNORECASE)
 RESUME_DOCUMENT_TITLE = "Резюме"
 RESUME_DOCUMENT_SLOT = "resume"
 SINGLE_STEP_REQUEST_PREFIX = "__single_step__:"
@@ -91,7 +92,7 @@ SCENARIO_NOTIFICATION_TEMPLATE_TAGS = [
     {
         "label": "Резюме",
         "template": "{resume}",
-        "description": "Имя актуального resume slot из карточки; если slot пустой, fallback на последний файл категории resume.",
+        "description": "Имя актуального resume slot из карточки; если slot пустой, fallback на последний файл категории resume. В уведомлениях также поддерживается алиас {резюме}.",
     },
 ]
 RECIPIENT_MODE_SELF = "self"
@@ -1015,6 +1016,7 @@ def render_telegram_message_html(db: Session, template: str, employee: Employee,
             "position": _escape_template_value(position),
             "first_workday": _escape_template_value(first_workday),
             "resume": _escape_template_value(resume),
+            "резюме": _escape_template_value(resume),
             "date": _escape_template_value(anchor_date.strftime("%d.%m.%Y")),
             "time": _escape_template_value(time_text),
             "test_url": _escape_template_value(settings.TEST_URL),
@@ -1030,14 +1032,22 @@ def format_message(db: Session, template: str, employee: Employee, anchor_date: 
 
 
 def resolve_employee_resume_label(db: Session, employee: Employee) -> str:
+    resume_file = resolve_employee_resume_file(db, employee)
+    if resume_file and (resume_file.original_filename or "").strip():
+        return resume_file.original_filename.strip()
     resume_slot = _get_employee_resume_slot(db, employee.id)
     if resume_slot:
-        if getattr(resume_slot, "employee_file_id", None):
-            resume_file = db.get(EmployeeFile, resume_slot.employee_file_id)
-            if resume_file and (resume_file.original_filename or "").strip():
-                return resume_file.original_filename.strip()
         if (resume_slot.url or "").strip():
             return (resume_slot.title or "").strip() or resume_slot.url.strip()
+    return "резюме не загружено"
+
+
+def resolve_employee_resume_file(db: Session, employee: Employee) -> EmployeeFile | None:
+    resume_slot = _get_employee_resume_slot(db, employee.id)
+    if resume_slot and getattr(resume_slot, "employee_file_id", None):
+        resume_file = db.get(EmployeeFile, resume_slot.employee_file_id)
+        if resume_file:
+            return resume_file
     resume_file = (
         db.query(EmployeeFile)
         .filter(
@@ -1047,9 +1057,7 @@ def resolve_employee_resume_label(db: Session, employee: Employee) -> str:
         .order_by(EmployeeFile.created_at.desc(), EmployeeFile.id.desc())
         .first()
     )
-    if resume_file and (resume_file.original_filename or "").strip():
-        return resume_file.original_filename.strip()
-    return "резюме не загружено"
+    return resume_file
 
 
 def _get_employee_resume_slot(db: Session, employee_id: int) -> EmployeeDocumentLink | None:
@@ -1182,6 +1190,14 @@ async def send_custom_notification(
     for chat_id in recipients:
         try:
             await messenger.send_text(chat_id=chat_id, text=message_text)
+            await send_tagged_employee_documents(
+                messenger,
+                db,
+                chat_id,
+                message_template,
+                employee,
+                include_resume=True,
+            )
         except Exception:
             continue
 
@@ -1195,7 +1211,13 @@ def get_step_send_notifications(db: Session, step_id: int) -> list[StepSendNotif
     )
 
 
-def resolve_tagged_employee_documents(db: Session, template: str, employee: Employee) -> list[EmployeeFile]:
+def resolve_tagged_employee_documents(
+    db: Session,
+    template: str,
+    employee: Employee,
+    *,
+    include_resume: bool = False,
+) -> list[EmployeeFile]:
     if not template.strip():
         return []
     links = (
@@ -1223,6 +1245,11 @@ def resolve_tagged_employee_documents(db: Session, template: str, employee: Empl
         if employee_file:
             seen_file_ids.add(employee_file_id)
             files.append(employee_file)
+    if include_resume and RESUME_TAG_RE.search(template):
+        resume_file = resolve_employee_resume_file(db, employee)
+        if resume_file and resume_file.id not in seen_file_ids:
+            seen_file_ids.add(resume_file.id)
+            files.append(resume_file)
     return files
 
 
@@ -1232,9 +1259,11 @@ async def send_tagged_employee_documents(
     chat_id: str,
     template: str,
     employee: Employee,
+    *,
+    include_resume: bool = False,
 ) -> None:
     messenger = as_messenger(messenger_or_bot)
-    for employee_file in resolve_tagged_employee_documents(db, template, employee):
+    for employee_file in resolve_tagged_employee_documents(db, template, employee, include_resume=include_resume):
         file_path = Path(employee_file.stored_path)
         if not file_path.exists():
             continue

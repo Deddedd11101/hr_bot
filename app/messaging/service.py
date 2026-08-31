@@ -37,7 +37,7 @@ UNKNOWN_USER_TEXT = "Ваш аккаунт пока не привязан к HR-
 BLOCKED_USER_TEXT = "Доступ к HR-боту отключен. Обратитесь в HR."
 MENU_BACK_BUTTON_TEXT = "Назад"
 MENU_HOME_BUTTON_TEXT = "Главное меню"
-INITIAL_CANDIDATE_STAGE = "hr_interview"
+INITIAL_CANDIDATE_STAGE: str | None = None
 
 
 class InboundAccess(NamedTuple):
@@ -108,7 +108,7 @@ def _candidate_registration_allowed(employee: Employee) -> bool:
 
 def _create_candidate_for_start(db: Session, chat_user_id: str, username: Optional[str]) -> Employee:
     initial_candidate_stage = (
-        INITIAL_CANDIDATE_STAGE if INITIAL_CANDIDATE_STAGE in CANDIDATE_WORK_STAGE_LABELS else "hr_interview"
+        INITIAL_CANDIDATE_STAGE if INITIAL_CANDIDATE_STAGE in CANDIDATE_WORK_STAGE_LABELS else None
     )
     employee = Employee(
         full_name=None,

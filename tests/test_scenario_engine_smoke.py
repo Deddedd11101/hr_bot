@@ -457,6 +457,94 @@ class ScenarioEngineSmokeTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(messenger.texts[1]["chat_id"], "999003")
             self.assertEqual(messenger.texts[1]["text"], "Ирина Смирнова / Дизайнер / irina_resume.pdf")
 
+    async def test_step_send_notification_sends_resume_slot_file_for_resume_tag_alias(self) -> None:
+        init_db()
+        now = datetime.now(UTC).replace(tzinfo=None)
+        scenario_key = f"test_notification_resume_file_{int(datetime.now(UTC).timestamp() * 1000000)}"
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            resume_path = Path(tmp_dir) / "resume-slot.pdf"
+            resume_path.write_bytes(b"resume")
+            with SessionLocal() as db:
+                scenario = ScenarioTemplate(
+                    scenario_key=scenario_key,
+                    title="Notification resume file",
+                    role_scope="all",
+                    scenario_kind="scenario",
+                    sort_order=0,
+                    trigger_mode="manual_only",
+                )
+                step = FlowStepTemplate(
+                    flow_key=scenario_key,
+                    step_key="step_one",
+                    step_title="Step one",
+                    sort_order=10,
+                    default_text="Шаг",
+                    response_type="none",
+                    send_mode="immediate",
+                    day_offset_workdays=0,
+                )
+                employee = Employee(
+                    full_name="Ирина Смирнова",
+                    desired_position="Дизайнер",
+                    telegram_user_id="100103",
+                    first_workday=datetime(2026, 9, 2).date(),
+                    created_at=now,
+                    is_flow_scheduled=False,
+                    employee_stage="candidate",
+                )
+                db.add_all([scenario, step, employee])
+                db.commit()
+                db.refresh(step)
+                db.refresh(employee)
+                hr_settings = _get_or_create_hr_settings(db)
+                hr_settings.telegram_user_id = "999103"
+                resume_file = EmployeeFile(
+                    employee_id=employee.id,
+                    direction="inbound",
+                    category="resume",
+                    telegram_file_id=None,
+                    telegram_file_unique_id=None,
+                    original_filename="resume-slot.pdf",
+                    stored_path=str(resume_path),
+                    mime_type="application/pdf",
+                    file_size=20,
+                    created_at=now,
+                )
+                db.add(resume_file)
+                db.flush()
+                db.add(
+                    EmployeeDocumentLink(
+                        employee_id=employee.id,
+                        slot_key="resume",
+                        title="Резюме",
+                        url="",
+                        item_kind="file",
+                        employee_file_id=resume_file.id,
+                        created_at=now,
+                    )
+                )
+                db.add(
+                    StepSendNotification(
+                        flow_key=scenario_key,
+                        step_id=step.id,
+                        rule_index=0,
+                        message_text="Резюме кандидата: {резюме}",
+                        recipient_ids="hr",
+                        recipient_scope="",
+                    )
+                )
+                db.commit()
+
+                messenger = FakeMessenger()
+                await send_step(messenger, db, employee, scenario, step)
+
+            self.assertEqual(messenger.texts[1]["chat_id"], "999103")
+            self.assertEqual(messenger.texts[1]["text"], "Резюме кандидата: resume-slot.pdf")
+            self.assertEqual(len(messenger.documents), 1)
+            self.assertEqual(messenger.documents[0]["chat_id"], "999103")
+            self.assertEqual(messenger.documents[0]["path"], str(resume_path))
+            self.assertEqual(messenger.documents[0]["filename"], "resume-slot.pdf")
+
     async def test_step_send_notification_uses_telegram_safe_html_renderer(self) -> None:
         init_db()
         now = datetime.now(UTC).replace(tzinfo=None)
