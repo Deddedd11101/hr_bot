@@ -4,6 +4,7 @@ function normalizeEmployeeDetailPayload(payload: any) {
         manual_bot_message_history: Array.isArray(payload && payload.manual_bot_message_history)
             ? payload.manual_bot_message_history
             : [],
+        hr_notes_history: Array.isArray(payload && payload.hr_notes_history) ? payload.hr_notes_history : [],
         options: Object.assign(
             {
                 employee_role_values: [],

@@ -60,6 +60,7 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
     const [offerFile, setOfferFile] = React.useState<File | null>(null);
     const [resumeFile, setResumeFile] = React.useState<File | null>(null);
     const [manualBotMessageText, setManualBotMessageText] = React.useState("");
+    const [hrNoteDraft, setHrNoteDraft] = React.useState("");
     const [manualBotMessageState, setManualBotMessageState] = React.useState({
         sending: false,
         message: "",
@@ -72,6 +73,7 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
             manual_bot_message_history: Array.isArray(payload.manual_bot_message_history)
                 ? payload.manual_bot_message_history
                 : [],
+            hr_notes_history: Array.isArray(payload.hr_notes_history) ? payload.hr_notes_history : [],
             options: Object.assign(
                 {
                     employee_role_values: [],
@@ -179,8 +181,14 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
         });
     }
 
-    function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
-        event.preventDefault();
+    function saveEmployeeForm(
+        nextForm: any,
+        successMessage: string,
+        options: { noteDraft?: string; onSuccess?: () => void } = {},
+    ) {
+        const noteDraft = String(options.noteDraft || "").trim();
+        const payloadForm = noteDraft ? Object.assign({}, nextForm, { notes: noteDraft }) : nextForm;
+
         setSaveState({
             saving: true,
             message: "",
@@ -194,7 +202,7 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
                 "Content-Type": "application/json",
                 Accept: "application/json",
             },
-            body: JSON.stringify(buildEmployeeUpdatePayload(form)),
+            body: JSON.stringify(buildEmployeeUpdatePayload(payloadForm)),
         })
             .then(function (response) {
                 if (!response.ok) {
@@ -206,9 +214,12 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
             })
             .then(function (payload) {
                 updatePayloadState(setState, setForm, payload);
+                if (options.onSuccess) {
+                    options.onSuccess();
+                }
                 setSaveState({
                     saving: false,
-                    message: "Изменения сохранены",
+                    message: successMessage,
                     error: false,
                 });
             })
@@ -219,6 +230,26 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
                     error: true,
                 });
             });
+    }
+
+    function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+        event.preventDefault();
+        const noteDraft = hrNoteDraft.trim();
+        saveEmployeeForm(
+            form,
+            noteDraft ? "Заметка добавлена" : "Изменения сохранены",
+            noteDraft ? { noteDraft, onSuccess: function () { setHrNoteDraft(""); } } : {},
+        );
+    }
+
+    function handleClearFirstWorkday() {
+        const nextForm = Object.assign({}, form, { first_workday: "" });
+        setForm(nextForm);
+        saveEmployeeForm(nextForm, "Дата очищена");
+    }
+
+    function handleHrNoteDraftChange(event: React.ChangeEvent<HTMLTextAreaElement>) {
+        setHrNoteDraft(event.target.value);
     }
 
     function handleOfferSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -498,30 +529,6 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
             });
     }
 
-    function handleSendFile(fileId: number) {
-        setOpsState({ message: "", error: false, working: true });
-        fetch(apiUrl + "/files/" + fileId + "/send", {
-            method: "POST",
-            credentials: "same-origin",
-            headers: { Accept: "application/json" },
-        })
-            .then(function (response) {
-                if (!response.ok) {
-                    return response.json().catch(function () { return {}; }).then(function (payload) {
-                        throw new Error(payload.detail || "Не удалось отправить файл");
-                    });
-                }
-                return response.json();
-            })
-            .then(function (payload) {
-                updatePayloadState(setState, setForm, payload);
-                setOperationMessage("Файл отправлен в мессенджер", false);
-            })
-            .catch(function (error) {
-                setOperationMessage(error.message || "Не удалось отправить файл", true);
-            });
-    }
-
     function handleDeleteFile(fileId: number) {
         setOpsState({ message: "", error: false, working: true });
         fetch(apiUrl + "/files/" + fileId, {
@@ -691,6 +698,37 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
     const manualBotMessageHistory = Array.isArray(payload.manual_bot_message_history)
         ? payload.manual_bot_message_history
         : [];
+    const hrNotesHistory = Array.isArray(payload.hr_notes_history) ? payload.hr_notes_history : [];
+
+    function buildDocumentItem(document: any, fallbackTitle: string, fallbackSubtitle: string, deleteAction?: () => void) {
+        const kind = String(document.kind || document.item_kind || "").trim();
+        const downloadUrl = document.download_url || "";
+        const openUrl = document.open_url || document.url || downloadUrl || "";
+        const isFileLike = kind === "file" || kind === "video" || kind === "photo" || !!downloadUrl;
+        const title = document.original_filename || document.filename || document.label || document.title || fallbackTitle;
+        const metaParts = [
+            document.created_at_label || document.created_at || "",
+            document.file_size_label || document.size_label || (
+                document.file_size || document.size ? String(document.file_size || document.size) : ""
+            ),
+            document.source === "legacy_file" ? "старый файл" : "",
+        ].filter(Boolean);
+
+        return {
+            id: document.id || document.employee_file_id || fallbackTitle,
+            title: title,
+            subtitle: metaParts.length ? metaParts.join(" · ") : fallbackSubtitle,
+            link: openUrl,
+            linkLabel: isFileLike ? "Скачать" : "Открыть",
+            downloadLink: downloadUrl && downloadUrl !== openUrl ? downloadUrl : null,
+            downloadLabel: "Скачать",
+            deleteAction: deleteAction || null,
+            deleteActionLabel: deleteAction ? "Очистить" : null,
+            deleteConfirmTitle: deleteAction ? `Очистить ${fallbackTitle.toLowerCase()}?` : null,
+            deleteConfirmDescription: deleteAction ? "Документ будет убран из карточки. Физический файл не удаляется." : null,
+            deleteConfirmLabel: deleteAction ? "Очистить" : null,
+        };
+    }
 
     const fileItems = payload.files.map(function (file: any) {
         return {
@@ -700,8 +738,6 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
             direction: file.direction,
             link: file.download_url,
             linkLabel: "Скачать",
-            extraAction: file.can_send_to_channel ? function () { handleSendFile(file.id); } : null,
-            extraActionLabel: file.can_send_to_channel ? "Отправить в мессенджер" : null,
             deleteAction: function () { handleDeleteFile(file.id); },
             deleteActionLabel: "Удалить файл",
             deleteConfirmTitle: "Удалить файл?",
@@ -709,55 +745,39 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
             deleteConfirmLabel: "Удалить",
         };
     });
-    const employeeFileItems = fileItems.filter(function (file: any) {
-        return file.direction === "inbound";
-    });
     const hrFileItems = fileItems.filter(function (file: any) {
         return file.direction !== "inbound";
     });
 
     const offerDocumentItem = payload.offer_document
-        ? {
-            id: payload.offer_document.id,
-            title: payload.offer_document.title,
-            subtitle: payload.offer_document.item_kind === "file"
-                ? "Файл оффера"
-                : payload.offer_document.scenario_tag,
-            link: payload.offer_document.url,
-            linkLabel: payload.offer_document.item_kind === "file" ? "Скачать" : "Открыть",
-            deleteAction: function () { handleOfferDelete(payload.offer_document.id); },
-            deleteActionLabel: "Удалить",
-            deleteConfirmTitle: "Удалить оффер?",
-            deleteConfirmDescription: "Оффер будет удален из карточки сотрудника.",
-            deleteConfirmLabel: "Удалить",
-        }
+        ? Object.assign(
+            buildDocumentItem(payload.offer_document, "Оффер", "Оффер"),
+            {
+                deleteAction: function () { handleOfferDelete(payload.offer_document.id); },
+                deleteActionLabel: "Удалить",
+                deleteConfirmTitle: "Удалить оффер?",
+                deleteConfirmDescription: "Оффер будет удален из карточки сотрудника.",
+                deleteConfirmLabel: "Удалить",
+            },
+        )
         : null;
 
     const resumeDocument = payload.resume_document;
-    const resumeMetaParts = resumeDocument
-        ? [
-            resumeDocument.created_at_label || resumeDocument.created_at || resumeDocument.updated_at || "",
-            resumeDocument.file_size_label || resumeDocument.size_label || (
-                resumeDocument.file_size || resumeDocument.size
-                    ? String(resumeDocument.file_size || resumeDocument.size)
-                    : ""
-            ),
-            resumeDocument.source === "legacy_file" ? "legacy-файл резюме" : "",
-        ].filter(Boolean)
-        : [];
     const resumeDocumentItem = resumeDocument
-        ? {
-            id: resumeDocument.id || resumeDocument.employee_file_id || "resume",
-            title: resumeDocument.original_filename || resumeDocument.filename || resumeDocument.title || "Резюме",
-            subtitle: resumeMetaParts.length ? resumeMetaParts.join(" · ") : "Актуальное резюме",
-            link: resumeDocument.download_url || resumeDocument.url,
-            linkLabel: "Скачать",
-            deleteAction: handleResumeClear,
-            deleteActionLabel: "Очистить резюме",
-            deleteConfirmTitle: "Очистить резюме?",
-            deleteConfirmDescription: "Актуальное резюме будет убрано из карточки. Физический файл не удаляется.",
-            deleteConfirmLabel: "Очистить",
-        }
+        ? Object.assign(
+            buildDocumentItem(resumeDocument, "Резюме", "Актуальное резюме"),
+            {
+                deleteAction: handleResumeClear,
+                deleteActionLabel: "Очистить резюме",
+                deleteConfirmTitle: "Очистить резюме?",
+                deleteConfirmDescription: "Актуальное резюме будет убрано из карточки. Физический файл не удаляется.",
+                deleteConfirmLabel: "Очистить",
+            },
+        )
+        : null;
+    const testAssignmentDocument = payload.test_assignment_answer || payload.test_task_result;
+    const testAssignmentDocumentItem = testAssignmentDocument
+        ? buildDocumentItem(testAssignmentDocument, "Тестовое задание / ответ кандидата", "Ответ кандидата")
         : null;
 
     const launchItems = payload.scheduled_launches.map(function (item: any) {
@@ -817,6 +837,10 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
                         handleWorkHoursChange={handleWorkHoursChange}
                         handleSubmit={handleSubmit}
                         saveState={saveState}
+                        hrNoteDraft={hrNoteDraft}
+                        hrNotesHistory={hrNotesHistory}
+                        onHrNoteDraftChange={handleHrNoteDraftChange}
+                        onClearFirstWorkday={handleClearFirstWorkday}
                     />
                     <AssignmentHistorySection items={assignmentHistory} />
                 </div>
@@ -848,8 +872,8 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
                     handlePromoteToAdaptation={handlePromoteToAdaptation}
                     handleResetBotLinkage={handleResetBotLinkage}
                     handleDeleteEmployee={handleDeleteEmployee}
-                    employeeFileItems={employeeFileItems}
                     hrFileItems={hrFileItems}
+                    testAssignmentDocumentItem={testAssignmentDocumentItem}
                     launchItems={launchItems}
                     manualLaunchItems={manualLaunchItems}
                     manualBotMessageText={manualBotMessageText}
