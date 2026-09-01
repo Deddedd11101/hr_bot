@@ -228,6 +228,18 @@ class EmployeeManualBotMessage(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
 
 
+class EmployeeHrNote(Base):
+    """Append-only история HR-заметок по карточке сотрудника."""
+
+    __tablename__ = "employee_hr_notes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    employee_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    author_account_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
+    note_text: Mapped[str] = mapped_column(String(2048), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+
+
 class Position(Base):
     """Управляемый справочник должностей."""
 

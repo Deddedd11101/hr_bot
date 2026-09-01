@@ -25,6 +25,7 @@ from ..models import (
     EmployeeAssignmentHistory,
     EmployeeDocumentLink,
     EmployeeFile,
+    EmployeeHrNote,
     EmployeeManualBotMessage,
     EmployeeMessengerAccount,
     FlowLaunchRequest,
@@ -39,6 +40,21 @@ OFFER_DOCUMENT_TITLE = "Оффер"
 OFFER_DOCUMENT_SLOT = "offer"
 RESUME_DOCUMENT_TITLE = "Резюме"
 RESUME_DOCUMENT_SLOT = "resume"
+TEST_TASK_RESULT_TITLE = "Ответ на тестовое"
+TEST_TASK_RESULT_SLOT = "test_task_result"
+SEMANTIC_DOCUMENT_SLOTS = {OFFER_DOCUMENT_SLOT, RESUME_DOCUMENT_SLOT, TEST_TASK_RESULT_SLOT}
+SEMANTIC_FILE_CATEGORIES = {"offer_document", RESUME_DOCUMENT_SLOT, "test_result"}
+AUTOMATIC_LAUNCH_TYPES = {"status_transition"}
+SYSTEM_LAUNCH_TYPES = {"registration", "bot_registration", "trigger", "system"}
+LAUNCH_TYPE_LABELS = {
+    "manual": "Ручной запуск",
+    "scheduled": "Запланированный запуск",
+    "status_transition": "Автозапуск по статусу",
+    "registration": "Регистрация",
+    "bot_registration": "Регистрация в боте",
+    "trigger": "Системный триггер",
+    "system": "Системный запуск",
+}
 MANAGER_ASSIGNMENT_TRIGGER_MODE = "manager_assigned_adaptation"
 ASSIGNMENT_ROLE_MANAGER = "manager"
 ASSIGNMENT_ROLE_MENTOR_ADAPTATION = "mentor_adaptation"
@@ -446,6 +462,28 @@ def _sync_assignment_history(
         )
 
 
+def _sync_hr_note_history(
+    db: Session,
+    *,
+    employee: Employee,
+    previous_notes: str | None,
+    next_notes: str | None,
+    author_account_id: int | None,
+) -> None:
+    previous_value = (previous_notes or "").strip()
+    next_value = (next_notes or "").strip()
+    if not next_value or next_value == previous_value:
+        return
+    db.add(
+        EmployeeHrNote(
+            employee_id=employee.id,
+            author_account_id=author_account_id,
+            note_text=next_value,
+            created_at=utc_now(),
+        )
+    )
+
+
 def _serialize_assignment_history(db: Session, employee_id: int) -> list[dict]:
     history_rows = (
         db.query(EmployeeAssignmentHistory)
@@ -512,6 +550,26 @@ def _serialize_manual_bot_message_history(db: Session, employee_id: int) -> list
             "status": row.status or "",
             "error_text": row.error_text or "",
             "sent_at": row.sent_at.isoformat() if row.sent_at else "",
+            "created_at": row.created_at.isoformat() if row.created_at else "",
+        }
+        for row, account in history_rows
+    ]
+
+
+def _serialize_hr_notes_history(db: Session, employee_id: int) -> list[dict]:
+    history_rows = (
+        db.query(EmployeeHrNote, AdminAccount)
+        .outerjoin(AdminAccount, AdminAccount.id == EmployeeHrNote.author_account_id)
+        .filter(EmployeeHrNote.employee_id == employee_id)
+        .order_by(EmployeeHrNote.created_at.desc(), EmployeeHrNote.id.desc())
+        .all()
+    )
+    return [
+        {
+            "id": row.id,
+            "author_account_id": row.author_account_id,
+            "author_label": _sender_account_label(account),
+            "note_text": row.note_text or "",
             "created_at": row.created_at.isoformat() if row.created_at else "",
         }
         for row, account in history_rows
@@ -720,7 +778,7 @@ def _create_employee_record(
         candidate_work_stage=(
             normalized_candidate_stage
             if list_kind == "candidates" and normalized_candidate_stage
-            else ("testing" if list_kind == "candidates" else None)
+            else None
         ),
     )
     _apply_employee_telegram_identity(employee, chat_id=chat_id, chat_handle=chat_handle)
@@ -733,6 +791,7 @@ def _create_employee_record(
             flow_key="recruitment_hiring",
             requested_at=utc_now(),
             processed_at=None,
+            launch_type="registration",
         )
     )
     db.commit()
@@ -773,6 +832,7 @@ def _apply_employee_update(
 ) -> Employee:
     is_candidate = _employee_list_kind(employee) == "candidates"
     previous_candidate_work_stage = (employee.candidate_work_stage or "").strip() or None
+    previous_notes = employee.notes
     first_day = _parse_optional_date(first_workday)
     parsed_birth_date = _parse_optional_date(birth_date)
     previous_stage = (employee.employee_stage or "").strip()
@@ -848,6 +908,13 @@ def _apply_employee_update(
         )
 
     employee.notes = notes.strip() or None
+    _sync_hr_note_history(
+        db,
+        employee=employee,
+        previous_notes=previous_notes,
+        next_notes=employee.notes,
+        author_account_id=assigned_by_account_id,
+    )
     db.commit()
     _queue_candidate_stage_transition_launches(db, employee, previous_candidate_work_stage, employee.candidate_work_stage)
     db.commit()
@@ -877,17 +944,81 @@ def _serialize_employee_file(file_row: EmployeeFile, employee_id: int, can_send_
     }
 
 
+def _file_kind(file_row: EmployeeFile) -> str:
+    mime_type = (file_row.mime_type or "").strip().lower()
+    if mime_type.startswith("image/"):
+        return "photo"
+    if mime_type.startswith("video/"):
+        return "video"
+    return "file"
+
+
+def _serialize_explicit_file_document(file_row: EmployeeFile, employee_id: int, *, source: str) -> dict:
+    return {
+        "id": file_row.id,
+        "source": source,
+        "label": file_row.original_filename or f"Файл #{file_row.id}",
+        "kind": _file_kind(file_row),
+        "employee_file_id": file_row.id,
+        "original_filename": file_row.original_filename or "",
+        "mime_type": file_row.mime_type or "",
+        "file_size": file_row.file_size,
+        "download_url": f"/employees/{employee_id}/files/{file_row.id}/download",
+        "open_url": f"/employees/{employee_id}/files/{file_row.id}/download",
+        "created_at": file_row.created_at.isoformat() if file_row.created_at else "",
+        "created_at_label": file_row.created_at.strftime("%d.%m.%Y %H:%M") if file_row.created_at else "—",
+    }
+
+
+def _serialize_explicit_link_document(link_row: EmployeeDocumentLink, employee_id: int, *, source: str) -> dict:
+    return {
+        "id": link_row.id,
+        "source": source,
+        "label": link_row.title or link_row.url or f"Документ #{link_row.id}",
+        "kind": "link",
+        "slot_key": getattr(link_row, "slot_key", None) or "",
+        "employee_file_id": getattr(link_row, "employee_file_id", None),
+        "download_url": None,
+        "open_url": link_row.url or "",
+        "created_at": link_row.created_at.isoformat() if link_row.created_at else "",
+        "created_at_label": link_row.created_at.strftime("%d.%m.%Y %H:%M") if link_row.created_at else "—",
+    }
+
+
+def _serialize_explicit_document_link(
+    db: Session,
+    link_row: EmployeeDocumentLink,
+    employee_id: int,
+    *,
+    source: str,
+) -> Optional[dict]:
+    if link_row.employee_file_id:
+        file_row = db.get(EmployeeFile, link_row.employee_file_id)
+        if file_row:
+            payload = _serialize_explicit_file_document(file_row, employee_id, source=source)
+            payload["slot_key"] = getattr(link_row, "slot_key", None) or ""
+            payload["document_link_id"] = link_row.id
+            return payload
+    if (link_row.url or "").strip():
+        return _serialize_explicit_link_document(link_row, employee_id, source=source)
+    return None
+
+
 def _serialize_resume_file_fallback(file_row: EmployeeFile, employee_id: int) -> dict:
     return {
         "id": None,
         "slot_key": RESUME_DOCUMENT_SLOT,
         "title": RESUME_DOCUMENT_TITLE,
+        "label": file_row.original_filename or f"Файл #{file_row.id}",
+        "kind": _file_kind(file_row),
         "url": f"/employees/{employee_id}/files/{file_row.id}/download",
         "item_kind": "file",
         "employee_file_id": file_row.id,
         "original_filename": file_row.original_filename or "",
         "source": "legacy_file",
         "download_url": f"/employees/{employee_id}/files/{file_row.id}/download",
+        "open_url": f"/employees/{employee_id}/files/{file_row.id}/download",
+        "created_at": file_row.created_at.isoformat() if file_row.created_at else "",
         "created_at_label": file_row.created_at.strftime("%d.%m.%Y %H:%M") if file_row.created_at else "—",
     }
 
@@ -903,11 +1034,15 @@ def _serialize_document_link(link_row: EmployeeDocumentLink, employee_id: int) -
         "id": link_row.id,
         "slot_key": getattr(link_row, "slot_key", None) or "",
         "title": link_row.title,
+        "label": link_row.title or effective_url or f"Документ #{link_row.id}",
         "url": effective_url,
         "item_kind": getattr(link_row, "item_kind", "link") or "link",
+        "kind": "file" if file_download_url else "link",
         "employee_file_id": getattr(link_row, "employee_file_id", None),
         "source": "slot",
         "download_url": file_download_url,
+        "open_url": effective_url,
+        "created_at": link_row.created_at.isoformat() if link_row.created_at else "",
         "scenario_tag": f"{{doc:{link_row.title}}}",
         "delete_url": f"/employees/{employee_id}/document-links/{link_row.id}/delete",
     }
@@ -919,9 +1054,12 @@ def _serialize_launch_request(
     employee_id: int,
 ) -> dict:
     scenario = scenario_by_key.get(launch_request.flow_key)
+    launch_type = launch_request.launch_type or "manual"
     return {
         "id": launch_request.id,
         "flow_key": launch_request.flow_key,
+        "launch_type": launch_type,
+        "launch_type_label": LAUNCH_TYPE_LABELS.get(launch_type, launch_type),
         "scenario_title": scenario.title if scenario else launch_request.flow_key,
         "scenario_url": f"/flows/{scenario.id}" if scenario else None,
         "requested_at_label": launch_request.requested_at.strftime("%d.%m.%Y %H:%M") if launch_request.requested_at else "—",
@@ -964,6 +1102,18 @@ def _get_latest_resume_file(db: Session, employee_id: int) -> Optional[EmployeeF
     )
 
 
+def _get_latest_test_task_result_file(db: Session, employee_id: int) -> Optional[EmployeeFile]:
+    return (
+        db.query(EmployeeFile)
+        .filter(
+            EmployeeFile.employee_id == employee_id,
+            EmployeeFile.category == "test_result",
+        )
+        .order_by(EmployeeFile.created_at.desc(), EmployeeFile.id.desc())
+        .first()
+    )
+
+
 def _get_employee_resume_document_payload(db: Session, employee_id: int) -> Optional[dict]:
     resume_slot = _get_employee_document_slot(db, employee_id, slot_key=RESUME_DOCUMENT_SLOT)
     if resume_slot:
@@ -976,6 +1126,18 @@ def _get_employee_resume_document_payload(db: Session, employee_id: int) -> Opti
     latest_resume_file = _get_latest_resume_file(db, employee_id)
     if latest_resume_file:
         return _serialize_resume_file_fallback(latest_resume_file, employee_id)
+    return None
+
+
+def _get_employee_test_task_result_payload(db: Session, employee_id: int) -> Optional[dict]:
+    test_result_slot = _get_employee_document_slot(db, employee_id, slot_key=TEST_TASK_RESULT_SLOT)
+    if test_result_slot:
+        payload = _serialize_explicit_document_link(db, test_result_slot, employee_id, source="slot")
+        if payload:
+            return payload
+    latest_test_result_file = _get_latest_test_task_result_file(db, employee_id)
+    if latest_test_result_file:
+        return _serialize_explicit_file_document(latest_test_result_file, employee_id, source="legacy_file")
     return None
 
 
@@ -1440,7 +1602,10 @@ async def _send_manual_bot_message(
 def _build_employee_detail_payload(db: Session, employee: Employee) -> dict:
     employee_files = (
         db.query(EmployeeFile)
-        .filter(EmployeeFile.employee_id == employee.id)
+        .filter(
+            EmployeeFile.employee_id == employee.id,
+            (EmployeeFile.category.is_(None)) | (~EmployeeFile.category.in_(SEMANTIC_FILE_CATEGORIES)),
+        )
         .order_by(EmployeeFile.id.desc())
         .all()
     )
@@ -1448,13 +1613,14 @@ def _build_employee_detail_payload(db: Session, employee: Employee) -> dict:
         db.query(EmployeeDocumentLink)
         .filter(
             EmployeeDocumentLink.employee_id == employee.id,
-            (EmployeeDocumentLink.slot_key.is_(None)) | (EmployeeDocumentLink.slot_key != RESUME_DOCUMENT_SLOT),
+            (EmployeeDocumentLink.slot_key.is_(None)) | (~EmployeeDocumentLink.slot_key.in_(SEMANTIC_DOCUMENT_SLOTS)),
         )
         .order_by(EmployeeDocumentLink.created_at.desc(), EmployeeDocumentLink.id.desc())
         .all()
     )
     offer_document_link = _get_employee_document_slot(db, employee.id, slot_key=OFFER_DOCUMENT_SLOT)
     resume_document = _get_employee_resume_document_payload(db, employee.id)
+    test_task_result = _get_employee_test_task_result_payload(db, employee.id)
     scenarios = _available_scenarios_for_employee(db, employee)
     scenario_by_key = {scenario.scenario_key: scenario for scenario in db.query(ScenarioTemplate).all()}
     pending_scheduled_launches = (
@@ -1477,6 +1643,26 @@ def _build_employee_detail_payload(db: Session, employee: Employee) -> dict:
         .filter(
             FlowLaunchRequest.employee_id == employee.id,
             FlowLaunchRequest.launch_type == "manual",
+            FlowLaunchRequest.processed_at.is_not(None),
+        )
+        .order_by(FlowLaunchRequest.processed_at.desc(), FlowLaunchRequest.id.desc())
+        .all()
+    )
+    automatic_launch_history = (
+        db.query(FlowLaunchRequest)
+        .filter(
+            FlowLaunchRequest.employee_id == employee.id,
+            FlowLaunchRequest.launch_type.in_(AUTOMATIC_LAUNCH_TYPES),
+            FlowLaunchRequest.processed_at.is_not(None),
+        )
+        .order_by(FlowLaunchRequest.processed_at.desc(), FlowLaunchRequest.id.desc())
+        .all()
+    )
+    system_launch_history = (
+        db.query(FlowLaunchRequest)
+        .filter(
+            FlowLaunchRequest.employee_id == employee.id,
+            FlowLaunchRequest.launch_type.in_(SYSTEM_LAUNCH_TYPES),
             FlowLaunchRequest.processed_at.is_not(None),
         )
         .order_by(FlowLaunchRequest.processed_at.desc(), FlowLaunchRequest.id.desc())
@@ -1565,6 +1751,8 @@ def _build_employee_detail_payload(db: Session, employee: Employee) -> dict:
         "document_links": [_serialize_document_link(link_row, employee.id) for link_row in employee_document_links],
         "offer_document": _serialize_document_link(offer_document_link, employee.id) if offer_document_link else None,
         "resume_document": resume_document,
+        "test_assignment_answer": test_task_result,
+        "test_task_result": test_task_result,
         "scheduled_launches": [
             _serialize_launch_request(launch_request, scenario_by_key, employee.id)
             for launch_request in pending_scheduled_launches
@@ -1573,6 +1761,15 @@ def _build_employee_detail_payload(db: Session, employee: Employee) -> dict:
             _serialize_launch_request(launch_request, scenario_by_key, employee.id)
             for launch_request in manual_launch_history
         ],
+        "automatic_launch_history": [
+            _serialize_launch_request(launch_request, scenario_by_key, employee.id)
+            for launch_request in automatic_launch_history
+        ],
+        "system_launch_history": [
+            _serialize_launch_request(launch_request, scenario_by_key, employee.id)
+            for launch_request in system_launch_history
+        ],
         "assignment_history": _serialize_assignment_history(db, employee.id),
         "manual_bot_message_history": _serialize_manual_bot_message_history(db, employee.id),
+        "hr_notes_history": _serialize_hr_notes_history(db, employee.id),
     }

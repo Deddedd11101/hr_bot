@@ -33,6 +33,7 @@ from app.models import (
     Employee,
     EmployeeAssignmentHistory,
     EmployeeDocumentLink,
+    EmployeeHrNote,
     EmployeeMessengerAccount,
     EmployeeFile,
     EmployeeManualBotMessage,
@@ -385,6 +386,148 @@ class EmployeeApiSmokeTests(unittest.TestCase):
         self.assertEqual(resume_document["source"], "legacy_file")
         self.assertEqual(resume_document["employee_file_id"], legacy_file_id)
         self.assertEqual(resume_document["original_filename"], "legacy-resume.pdf")
+
+    def test_employee_detail_payload_splits_semantic_documents_from_generic_files(self) -> None:
+        now = datetime.now(UTC).replace(tzinfo=None)
+        with SessionLocal() as db:
+            generic_file = EmployeeFile(
+                employee_id=self.employee_id,
+                direction="inbound",
+                category="candidate_file",
+                telegram_file_id=None,
+                telegram_file_unique_id=None,
+                original_filename="generic.pdf",
+                stored_path=str((Path("storage") / "employee_files" / f"generic-{self.unique_tag}.pdf").resolve()),
+                mime_type="application/pdf",
+                file_size=7,
+                created_at=now,
+            )
+            resume_file = EmployeeFile(
+                employee_id=self.employee_id,
+                direction="inbound",
+                category="resume",
+                telegram_file_id=None,
+                telegram_file_unique_id=None,
+                original_filename="resume.pdf",
+                stored_path=str((Path("storage") / "employee_files" / f"resume-{self.unique_tag}.pdf").resolve()),
+                mime_type="application/pdf",
+                file_size=6,
+                created_at=now + timedelta(minutes=1),
+            )
+            test_video = EmployeeFile(
+                employee_id=self.employee_id,
+                direction="inbound",
+                category="test_result",
+                telegram_file_id="tg-video",
+                telegram_file_unique_id="tg-video-unique",
+                original_filename="answer.mp4",
+                stored_path=str((Path("storage") / "employee_files" / f"answer-{self.unique_tag}.mp4").resolve()),
+                mime_type="video/mp4",
+                file_size=10,
+                created_at=now + timedelta(minutes=2),
+            )
+            offer_file = EmployeeFile(
+                employee_id=self.employee_id,
+                direction="inbound",
+                category="offer_document",
+                telegram_file_id=None,
+                telegram_file_unique_id=None,
+                original_filename="offer.pdf",
+                stored_path=str((Path("storage") / "employee_files" / f"offer-{self.unique_tag}.pdf").resolve()),
+                mime_type="application/pdf",
+                file_size=8,
+                created_at=now + timedelta(minutes=3),
+            )
+            db.add_all([generic_file, resume_file, test_video, offer_file])
+            db.flush()
+            db.add_all(
+                [
+                    EmployeeDocumentLink(
+                        employee_id=self.employee_id,
+                        slot_key="offer",
+                        title="Оффер",
+                        url="",
+                        item_kind="file",
+                        employee_file_id=offer_file.id,
+                        created_at=now,
+                    ),
+                    EmployeeDocumentLink(
+                        employee_id=self.employee_id,
+                        slot_key="resume",
+                        title="Резюме",
+                        url="",
+                        item_kind="file",
+                        employee_file_id=resume_file.id,
+                        created_at=now,
+                    ),
+                    EmployeeDocumentLink(
+                        employee_id=self.employee_id,
+                        slot_key="test_task_result",
+                        title="Ответ на тестовое",
+                        url="https://example.com/test-answer",
+                        item_kind="link",
+                        employee_file_id=None,
+                        created_at=now,
+                    ),
+                    EmployeeDocumentLink(
+                        employee_id=self.employee_id,
+                        slot_key=None,
+                        title="Обычный документ",
+                        url="https://example.com/generic",
+                        item_kind="link",
+                        employee_file_id=None,
+                        created_at=now,
+                    ),
+                ]
+            )
+            db.commit()
+            resume_file_id = resume_file.id
+            test_video_id = test_video.id
+            offer_file_id = offer_file.id
+
+        response = self.client.get(f"/api/employees/{self.employee_id}")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual([item["original_filename"] for item in payload["files"]], ["generic.pdf"])
+        self.assertFalse(any(item.get("slot_key") in {"resume", "offer", "test_task_result"} for item in payload["document_links"]))
+        self.assertEqual(payload["resume_document"]["employee_file_id"], resume_file_id)
+        self.assertEqual(payload["offer_document"]["employee_file_id"], offer_file_id)
+        self.assertFalse(any(item.get("id") == test_video_id for item in payload["files"]))
+        self.assertEqual(payload["test_task_result"]["kind"], "link")
+        self.assertEqual(payload["test_task_result"]["open_url"], "https://example.com/test-answer")
+        self.assertEqual(payload["test_assignment_answer"], payload["test_task_result"])
+        self.assertNotIn("send_url", payload["resume_document"])
+        self.assertNotIn("send_url", payload["offer_document"])
+        self.assertNotIn("send_url", payload["test_task_result"])
+
+    def test_employee_detail_payload_uses_legacy_test_video_when_no_slot_exists(self) -> None:
+        with SessionLocal() as db:
+            test_video = EmployeeFile(
+                employee_id=self.employee_id,
+                direction="inbound",
+                category="test_result",
+                telegram_file_id="tg-video-note",
+                telegram_file_unique_id="tg-video-note-unique",
+                original_filename="video-note.mp4",
+                stored_path=str((Path("storage") / "employee_files" / f"video-note-{self.unique_tag}.mp4").resolve()),
+                mime_type="video/mp4",
+                file_size=10,
+                created_at=datetime.now(UTC).replace(tzinfo=None),
+            )
+            db.add(test_video)
+            db.commit()
+            db.refresh(test_video)
+            file_id = test_video.id
+
+        response = self.client.get(f"/api/employees/{self.employee_id}")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()["test_task_result"]
+        self.assertEqual(payload["source"], "legacy_file")
+        self.assertEqual(payload["kind"], "video")
+        self.assertEqual(payload["employee_file_id"], file_id)
+        self.assertIn(f"/employees/{self.employee_id}/files/{file_id}/download", payload["download_url"])
 
     def test_clear_resume_document_slot_keeps_resume_files(self) -> None:
         response = self.client.post(
@@ -953,6 +1096,49 @@ class EmployeeApiSmokeTests(unittest.TestCase):
         self.assertEqual(history_items[0]["assigned_employee_name"], "")
         self.assertTrue(history_items[0]["is_active"])
 
+    def test_employee_update_appends_hr_notes_history_on_note_changes(self) -> None:
+        with SessionLocal() as db:
+            employee = db.get(Employee, self.employee_id)
+            self.assertIsNotNone(employee)
+            employee.notes = None
+            db.query(EmployeeHrNote).filter(EmployeeHrNote.employee_id == self.employee_id).delete(
+                synchronize_session=False
+            )
+            db.commit()
+
+        first_response = self.client.post(
+            f"/api/employees/{self.employee_id}",
+            json=self._staff_update_payload(notes="Первая HR заметка"),
+        )
+        duplicate_response = self.client.post(
+            f"/api/employees/{self.employee_id}",
+            json=self._staff_update_payload(notes="Первая HR заметка"),
+        )
+        second_response = self.client.post(
+            f"/api/employees/{self.employee_id}",
+            json=self._staff_update_payload(notes="Вторая HR заметка"),
+        )
+
+        self.assertEqual(first_response.status_code, 200)
+        self.assertEqual(duplicate_response.status_code, 200)
+        self.assertEqual(second_response.status_code, 200)
+        history_items = second_response.json()["hr_notes_history"]
+        self.assertEqual([item["note_text"] for item in history_items], ["Вторая HR заметка", "Первая HR заметка"])
+        self.assertTrue(history_items[0]["author_account_id"])
+        self.assertTrue(history_items[0]["author_label"])
+
+        with SessionLocal() as db:
+            employee = db.get(Employee, self.employee_id)
+            self.assertIsNotNone(employee)
+            self.assertEqual(employee.notes, "Вторая HR заметка")
+            rows = (
+                db.query(EmployeeHrNote)
+                .filter(EmployeeHrNote.employee_id == self.employee_id)
+                .order_by(EmployeeHrNote.created_at.desc(), EmployeeHrNote.id.desc())
+                .all()
+            )
+            self.assertEqual([row.note_text for row in rows], ["Вторая HR заметка", "Первая HR заметка"])
+
     def test_update_employee_api_enqueues_manager_trigger_for_adaptation_assignment(self) -> None:
         scenario_key = f"manager_assign_{self.unique_tag}"
         with SessionLocal() as db:
@@ -1138,28 +1324,70 @@ class EmployeeApiSmokeTests(unittest.TestCase):
 
     def test_employee_detail_api_includes_manual_launch_history(self) -> None:
         scenario_key = f"codex_manual_launch_{self.unique_tag}"
+        automatic_scenario_key = f"codex_status_launch_{self.unique_tag}"
+        system_scenario_key = f"codex_registration_launch_{self.unique_tag}"
         processed_at = datetime(2026, 6, 1, 9, 45)
         with SessionLocal() as db:
-            scenario = ScenarioTemplate(
-                scenario_key=scenario_key,
-                scenario_kind="scenario",
-                title=f"Manual launch {self.unique_tag}",
-                sort_order=10,
-                role_scope="all",
-                employee_scope="all",
-                trigger_mode="manual_only",
-                description="manual launch history smoke",
+            db.add_all(
+                [
+                    ScenarioTemplate(
+                        scenario_key=scenario_key,
+                        scenario_kind="scenario",
+                        title=f"Manual launch {self.unique_tag}",
+                        sort_order=10,
+                        role_scope="all",
+                        employee_scope="all",
+                        trigger_mode="manual_only",
+                        description="manual launch history smoke",
+                    ),
+                    ScenarioTemplate(
+                        scenario_key=automatic_scenario_key,
+                        scenario_kind="scenario",
+                        title=f"Status launch {self.unique_tag}",
+                        sort_order=20,
+                        role_scope="all",
+                        employee_scope="all",
+                        trigger_mode="candidate_hr_stage",
+                        description="automatic launch history smoke",
+                    ),
+                    ScenarioTemplate(
+                        scenario_key=system_scenario_key,
+                        scenario_kind="scenario",
+                        title=f"Registration launch {self.unique_tag}",
+                        sort_order=30,
+                        role_scope="all",
+                        employee_scope="all",
+                        trigger_mode="bot_registration",
+                        description="system launch history smoke",
+                    ),
+                ]
             )
-            db.add(scenario)
             db.flush()
-            launch_request = FlowLaunchRequest(
-                employee_id=self.employee_id,
-                flow_key=scenario_key,
-                requested_at=datetime(2026, 6, 1, 9, 30),
-                processed_at=processed_at,
-                launch_type="manual",
+            db.add_all(
+                [
+                    FlowLaunchRequest(
+                        employee_id=self.employee_id,
+                        flow_key=scenario_key,
+                        requested_at=datetime(2026, 6, 1, 9, 30),
+                        processed_at=processed_at,
+                        launch_type="manual",
+                    ),
+                    FlowLaunchRequest(
+                        employee_id=self.employee_id,
+                        flow_key=automatic_scenario_key,
+                        requested_at=datetime(2026, 6, 1, 10, 30),
+                        processed_at=datetime(2026, 6, 1, 10, 45),
+                        launch_type="status_transition",
+                    ),
+                    FlowLaunchRequest(
+                        employee_id=self.employee_id,
+                        flow_key=system_scenario_key,
+                        requested_at=datetime(2026, 6, 1, 11, 30),
+                        processed_at=datetime(2026, 6, 1, 11, 45),
+                        launch_type="registration",
+                    ),
+                ]
             )
-            db.add(launch_request)
             db.commit()
 
         response = self.client.get(f"/api/employees/{self.employee_id}")
@@ -1169,8 +1397,13 @@ class EmployeeApiSmokeTests(unittest.TestCase):
         self.assertEqual(len(payload["manual_launch_history"]), 1)
         launch_item = payload["manual_launch_history"][0]
         self.assertEqual(launch_item["flow_key"], scenario_key)
+        self.assertEqual(launch_item["launch_type"], "manual")
         self.assertEqual(launch_item["scenario_title"], f"Manual launch {self.unique_tag}")
         self.assertEqual(launch_item["processed_at_label"], "01.06.2026 09:45")
+        self.assertEqual([item["flow_key"] for item in payload["automatic_launch_history"]], [automatic_scenario_key])
+        self.assertEqual(payload["automatic_launch_history"][0]["launch_type"], "status_transition")
+        self.assertEqual([item["flow_key"] for item in payload["system_launch_history"]], [system_scenario_key])
+        self.assertEqual(payload["system_launch_history"][0]["launch_type"], "registration")
 
     def test_manual_bot_message_send_logs_sent_history(self) -> None:
         with SessionLocal() as db:
@@ -2127,6 +2360,23 @@ class EmployeeApiSmokeTests(unittest.TestCase):
                 "notes": "",
             },
         )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["employee"]["first_workday"], "")
+        with SessionLocal() as db:
+            employee = db.get(Employee, self.employee_id)
+            self.assertIsNotNone(employee)
+            self.assertIsNone(employee.first_workday)
+
+    def test_update_employee_api_clears_first_workday_with_null_value(self) -> None:
+        with SessionLocal() as db:
+            employee = db.get(Employee, self.employee_id)
+            self.assertIsNotNone(employee)
+            employee.first_workday = datetime(2026, 5, 20).date()
+            db.commit()
+
+        payload = self._staff_update_payload(first_workday=None)
+        response = self.client.post(f"/api/employees/{self.employee_id}", json=payload)
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["employee"]["first_workday"], "")
