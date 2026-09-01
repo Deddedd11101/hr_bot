@@ -61,6 +61,8 @@ type DetailItem = {
     subtitle?: string;
     link?: string | null;
     linkLabel?: string | null;
+    downloadLink?: string | null;
+    downloadLabel?: string | null;
     extraAction?: (() => void) | null;
     extraActionLabel?: string | null;
     extraActionConfirmTitle?: string | null;
@@ -93,6 +95,14 @@ type ManualBotMessageHistoryItem = {
     status?: string | null;
     error_text?: string | null;
     sent_at?: string | null;
+    created_at?: string | null;
+};
+
+type HrNoteHistoryItem = {
+    id: string | number;
+    author_account_id?: string | number | null;
+    author_label?: string | null;
+    note_text?: string | null;
     created_at?: string | null;
 };
 
@@ -261,20 +271,15 @@ function DocumentList(props: {
                                                 {item.linkLabel === "Скачать" ? null : item.linkLabel || "Открыть"}
                                             </a>
                                         ) : null}
-                                        {item.extraAction ? (
-                                            <Button
-                                                type="button"
-                                                variant="secondary"
-                                                size={item.extraActionLabel === "Отправить в мессенджер" ? "icon-sm" : "sm"}
-                                                onClick={item.extraAction}
-                                                aria-label={item.extraActionLabel || "Отправить"}
-                                                title={item.extraActionLabel || "Отправить"}
+                                        {item.downloadLink && item.downloadLink !== item.link ? (
+                                            <a
+                                                href={item.downloadLink}
+                                                className={buttonVariants({ variant: "outline", size: "icon-sm" })}
+                                                aria-label={item.downloadLabel || "Скачать"}
+                                                title={item.downloadLabel || "Скачать"}
                                             >
-                                                <Send data-icon={item.extraActionLabel === "Отправить в мессенджер" ? undefined : "inline-start"} />
-                                                {item.extraActionLabel === "Отправить в мессенджер"
-                                                    ? null
-                                                    : item.extraActionLabel || "Отправить"}
-                                            </Button>
+                                                <Download />
+                                            </a>
                                         ) : null}
                                         {item.deleteAction ? (
                                             item.deleteConfirmTitle && item.deleteConfirmDescription ? (
@@ -609,6 +614,67 @@ export function ManualBotMessageHistorySection(props: { items: ManualBotMessageH
     );
 }
 
+function HrNotesSection(props: {
+    value: string;
+    items: HrNoteHistoryItem[];
+    onChange: (event: React.ChangeEvent<HTMLTextAreaElement>) => void;
+}) {
+    const items = Array.isArray(props.items) ? props.items : [];
+
+    return (
+        <DetailCard>
+            <CardHeader>
+                <CardTitle>HR-заметки</CardTitle>
+            </CardHeader>
+            <CardContent>
+                <FieldSet>
+                    <Field>
+                        <FieldLabel>Новая заметка</FieldLabel>
+                        <Textarea
+                            name="notes"
+                            value={props.value || ""}
+                            onChange={props.onChange}
+                            rows={4}
+                            placeholder="Добавьте внутреннюю заметку"
+                        />
+                    </Field>
+                    <div className="employee-manual-message-list">
+                        {items.length ? (
+                            items.map(function (item) {
+                                const authorLabel = item.author_label || (
+                                    item.author_account_id ? "Account #" + item.author_account_id : "Автор не указан"
+                                );
+                                return (
+                                    <div className="employee-manual-message-row" key={item.id}>
+                                        <div className="employee-manual-message-header">
+                                            <div className="employee-manual-message-meta">
+                                                <span>{formatHistoryDate(item.created_at)}</span>
+                                                <span>{authorLabel}</span>
+                                            </div>
+                                        </div>
+                                        <p className="employee-manual-message-text">
+                                            {item.note_text || "Без текста заметки"}
+                                        </p>
+                                    </div>
+                                );
+                            })
+                        ) : (
+                            <Empty className="employee-empty-state">
+                                <EmptyHeader>
+                                    <EmptyMedia variant="icon">
+                                        <FileText />
+                                    </EmptyMedia>
+                                    <EmptyTitle>История заметок пока пустая</EmptyTitle>
+                                </EmptyHeader>
+                            </Empty>
+                        )}
+                    </div>
+                </FieldSet>
+            </CardContent>
+        </DetailCard>
+    );
+}
+
 export function EmployeeProfileSection(props: any) {
     const {
         form,
@@ -619,6 +685,8 @@ export function EmployeeProfileSection(props: any) {
         handleWorkHoursChange,
         handleSubmit,
         saveState,
+        hrNotesHistory,
+        onClearFirstWorkday,
     } = props;
     return (
         <form className="employee-profile-form" onSubmit={handleSubmit}>
@@ -663,9 +731,8 @@ export function EmployeeProfileSection(props: any) {
                                         type="button"
                                         variant="outline"
                                         size="icon"
-                                        onClick={function () {
-                                            changeFieldValue(handleChange, "first_workday", "");
-                                        }}
+                                        onClick={onClearFirstWorkday}
+                                        disabled={saveState.saving}
                                         aria-label={
                                             isCandidate
                                                 ? "Очистить плановую дату выхода"
@@ -912,16 +979,18 @@ export function EmployeeProfileSection(props: any) {
                 </>
             )}
 
+            <HrNotesSection
+                value={form.notes}
+                items={hrNotesHistory}
+                onChange={handleChange}
+            />
+
             <DetailCard>
                 <CardHeader>
-                    <CardTitle>Заметки и доступ</CardTitle>
+                    <CardTitle>Доступ к боту</CardTitle>
                 </CardHeader>
                 <CardContent>
                     <FieldSet>
-                        <Field>
-                            <FieldLabel>Заметки HR</FieldLabel>
-                            <Textarea name="notes" value={form.notes} onChange={handleChange} rows={5} />
-                        </Field>
                         <CheckboxField
                             name="is_bot_blocked"
                             checked={!!form.is_bot_blocked}
@@ -972,8 +1041,8 @@ export function EmployeeOperationsSection(props: any) {
         handlePromoteToAdaptation,
         handleResetBotLinkage,
         handleDeleteEmployee,
-        employeeFileItems,
         hrFileItems,
+        testAssignmentDocumentItem,
         launchItems,
         manualLaunchItems,
         manualBotMessageText,
@@ -1132,48 +1201,48 @@ export function EmployeeOperationsSection(props: any) {
             </DetailCard>
 
             <DocumentList
-                title="Файлы HR"
-                items={hrFileItems}
-                emptyTitle="HR-файлов нет"
+                title="Резюме"
+                items={resumeDocumentItem ? [resumeDocumentItem] : []}
+                emptyTitle="Резюме пока не загружено"
             >
-                    <form className="employee-inline-form" onSubmit={handleFileSubmit}>
-                        <FieldGroup>
-                            <Field>
-                                <FieldLabel>Загрузить файл HR</FieldLabel>
-                                <Input
-                                    id="react-file-input"
-                                    className="employee-file-native"
-                                    type="file"
-                                    onChange={function (event) {
-                                        const file = event.target.files && event.target.files[0] ? event.target.files[0] : null;
-                                        setFileForm(function (prev: any) {
-                                            return Object.assign({}, prev, { upload: file });
-                                        });
-                                    }}
-                                />
-                                <div className="employee-file-picker">
-                                    <label
-                                        htmlFor="react-file-input"
-                                        className={buttonVariants({ variant: "outline", size: "sm" })}
-                                    >
-                                        <Upload data-icon="inline-start" />
-                                        Выбрать файл
-                                    </label>
-                                    <span>{fileForm.upload ? fileForm.upload.name : "Файл не выбран"}</span>
-                                </div>
-                            </Field>
+                <form className="employee-inline-form" onSubmit={handleResumeFileSubmit}>
+                    <FieldGroup>
+                        <Field>
+                            <FieldLabel>{resumeDocumentItem ? "Заменить резюме" : "Загрузить резюме"}</FieldLabel>
+                            <Input
+                                id="react-resume-file-input"
+                                className="employee-file-native"
+                                type="file"
+                                onChange={function (event) {
+                                    const file = event.target.files && event.target.files[0] ? event.target.files[0] : null;
+                                    setResumeFile(file);
+                                }}
+                            />
+                            <div className="employee-file-picker">
+                                <label
+                                    htmlFor="react-resume-file-input"
+                                    className={buttonVariants({ variant: "outline", size: "sm" })}
+                                >
+                                    <Upload data-icon="inline-start" />
+                                    Выбрать файл
+                                </label>
+                                <span>{resumeFile ? resumeFile.name : "Файл не выбран"}</span>
+                            </div>
+                        </Field>
+                        <div className="employee-action-row">
                             <Button type="submit" variant="secondary">
                                 <Upload data-icon="inline-start" />
-                                Загрузить
+                                {resumeDocumentItem ? "Заменить" : "Загрузить"}
                             </Button>
-                        </FieldGroup>
-                    </form>
+                        </div>
+                    </FieldGroup>
+                </form>
             </DocumentList>
 
             <DocumentList
-                title="Документы сотрудника"
-                items={employeeFileItems}
-                emptyTitle="Входящих документов нет"
+                title="Тестовое задание / ответ кандидата"
+                items={testAssignmentDocumentItem ? [testAssignmentDocumentItem] : []}
+                emptyTitle="Ответ кандидата пока не получен"
             />
 
             <DocumentList
@@ -1239,42 +1308,42 @@ export function EmployeeOperationsSection(props: any) {
             </DocumentList>
 
             <DocumentList
-                title="Резюме"
-                items={resumeDocumentItem ? [resumeDocumentItem] : []}
-                emptyTitle="Резюме пока не загружено"
+                title="Файлы HR"
+                items={hrFileItems}
+                emptyTitle="HR-файлов нет"
             >
-                <form className="employee-inline-form" onSubmit={handleResumeFileSubmit}>
-                    <FieldGroup>
-                        <Field>
-                            <FieldLabel>{resumeDocumentItem ? "Заменить резюме" : "Загрузить резюме"}</FieldLabel>
-                            <Input
-                                id="react-resume-file-input"
-                                className="employee-file-native"
-                                type="file"
-                                onChange={function (event) {
-                                    const file = event.target.files && event.target.files[0] ? event.target.files[0] : null;
-                                    setResumeFile(file);
-                                }}
-                            />
-                            <div className="employee-file-picker">
-                                <label
-                                    htmlFor="react-resume-file-input"
-                                    className={buttonVariants({ variant: "outline", size: "sm" })}
-                                >
-                                    <Upload data-icon="inline-start" />
-                                    Выбрать файл
-                                </label>
-                                <span>{resumeFile ? resumeFile.name : "Файл не выбран"}</span>
-                            </div>
-                        </Field>
-                        <div className="employee-action-row">
+                    <form className="employee-inline-form" onSubmit={handleFileSubmit}>
+                        <FieldGroup>
+                            <Field>
+                                <FieldLabel>Загрузить файл HR</FieldLabel>
+                                <Input
+                                    id="react-file-input"
+                                    className="employee-file-native"
+                                    type="file"
+                                    onChange={function (event) {
+                                        const file = event.target.files && event.target.files[0] ? event.target.files[0] : null;
+                                        setFileForm(function (prev: any) {
+                                            return Object.assign({}, prev, { upload: file });
+                                        });
+                                    }}
+                                />
+                                <div className="employee-file-picker">
+                                    <label
+                                        htmlFor="react-file-input"
+                                        className={buttonVariants({ variant: "outline", size: "sm" })}
+                                    >
+                                        <Upload data-icon="inline-start" />
+                                        Выбрать файл
+                                    </label>
+                                    <span>{fileForm.upload ? fileForm.upload.name : "Файл не выбран"}</span>
+                                </div>
+                            </Field>
                             <Button type="submit" variant="secondary">
                                 <Upload data-icon="inline-start" />
-                                {resumeDocumentItem ? "Заменить" : "Загрузить"}
+                                Загрузить
                             </Button>
-                        </div>
-                    </FieldGroup>
-                </form>
+                        </FieldGroup>
+                    </form>
             </DocumentList>
 
             <DetailCard>
