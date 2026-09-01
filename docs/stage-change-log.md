@@ -34,6 +34,51 @@ source_of_truth: true
 
 ## Записи
 
+### 2026-09-01 13:32 MSK - app deploy - P0 candidate regression pack
+
+- Deploy ref: `stage`.
+- Deployed commit: `89a460c`.
+- GitHub Actions run: `33497782010` -> success.
+- В stage включено:
+  - `/start` candidate registration regression fixes;
+  - default candidate status `Не указан`;
+  - status-trigger scenarios для candidate HR status transitions;
+  - очистка `first_workday` из карточки сотрудника/кандидата;
+  - Telegram `video` и `video_note` засчитываются как файловый ответ сценария;
+  - `{resume}` / `{резюме}` в HR notification использует актуальное резюме;
+  - вставка template tags в scenario workspace идет в позицию курсора;
+  - deploy hygiene: untracked runtime `storage/` больше не блокирует deploy как code drift, tracked changes по-прежнему блокируются.
+- Локальные проверки перед deploy:
+  - `npm ci` in `frontend`;
+  - `npm run build` in `frontend`;
+  - repeated `npm run build` left worktree clean;
+  - `D:\HRBot\hr_bot_stage_pipeline\.venv\Scripts\python.exe -m compileall app tests tools`;
+  - `D:\HRBot\hr_bot_stage_pipeline\.venv\Scripts\python.exe -m ruff check --select F821 app tests tools`;
+  - `D:\HRBot\hr_bot_stage_pipeline\.venv\Scripts\python.exe -m unittest tests.test_p0_behaviour tests.test_scenario_engine_smoke tests.test_messaging_identity tests.test_employee_api_smoke -v` -> 172 tests OK;
+  - `D:\HRBot\hr_bot_stage_pipeline\.venv\Scripts\python.exe tools\check_docs_contracts.py`;
+  - `git diff --check origin/stage..HEAD`.
+- GitHub Actions preflight:
+  - backend dependencies install;
+  - `compileall`;
+  - `ruff F821`;
+  - backend smoke tests;
+  - frontend build;
+  - smoke imports.
+- Stage safety checks:
+  - verified SQLite backup created before checkout/restart: `backups/hr_bot.before-deploy.20260901-103151.db`;
+  - scenario config snapshot created: `backups/scenarios.before-deploy.20260901-103151.json`;
+  - scenario configuration fingerprint unchanged.
+- Stage smoke checks:
+  - `/app/employees` -> `303`;
+  - `/app/flows/workspace-v2` -> `303`;
+  - Telegram API reachability -> `HTTP/2 302`;
+  - deploy job завершился успешно и вывел `89a460c`.
+- Открытые риски:
+  - нужен ручной stage smoke в Telegram: новый кандидат через `/start`, status-trigger на `Собеседование с HR`, повторный выбор даты и video/video_note как файловый ответ;
+  - нужно руками проверить в админке очистку `first_workday`;
+  - нужно руками проверить `{resume}` / `{резюме}` в HR notification на актуальном резюме;
+  - rich text editor остается textarea + toolbar, не полноценный WYSIWYG.
+
 ### 2026-08-28 11:13 MSK - app deploy - Telegram format toolbar selection fix
 
 - Deploy ref: `stage`.
