@@ -34,6 +34,50 @@ source_of_truth: true
 
 ## Записи
 
+### 2026-09-01 14:57 MSK - app deploy - P0 card/data regression pack 2
+
+- Deploy ref: `stage`.
+- Deployed commit: `6bb098a`.
+- GitHub Actions run: `33504943674` -> success.
+- В stage включено:
+  - employee/candidate detail API теперь разделяет semantic document blocks и generic files;
+  - `first_workday` можно очищать через карточку сотрудника/кандидата;
+  - launch history отделяет ручные запуски от автоматических/регистрационных сценариев;
+  - карточка показывает отдельные блоки `Резюме`, `Тестовое задание / ответ кандидата`, `Оффер`;
+  - HR notes сохраняются через existing `notes` save flow как append-only history;
+  - новая additive SQLite таблица `employee_hr_notes` создается через compatibility patching;
+  - employee detail UI обновлен, generated Vite asset `employee-detail.js` пересобран.
+- Локальные проверки перед deploy:
+  - `npm ci` in `frontend`;
+  - `npm run build` in `frontend`;
+  - repeated `npm run build` left worktree clean;
+  - `D:\HRBot\hr_bot_stage_pipeline\.venv\Scripts\python.exe -m compileall app tests tools`;
+  - `D:\HRBot\hr_bot_stage_pipeline\.venv\Scripts\python.exe -m ruff check --select F821 app tests tools`;
+  - `D:\HRBot\hr_bot_stage_pipeline\.venv\Scripts\python.exe -m unittest tests.test_employee_api_smoke tests.test_scenario_engine_smoke tests.test_messaging_identity -v` -> 167 tests OK;
+  - `D:\HRBot\hr_bot_stage_pipeline\.venv\Scripts\python.exe tools\check_docs_contracts.py`;
+  - `git diff --check origin/stage..HEAD`.
+- GitHub Actions preflight:
+  - backend dependencies install;
+  - `compileall`;
+  - `ruff F821`;
+  - backend smoke tests;
+  - frontend build;
+  - smoke imports.
+- Stage safety checks:
+  - verified SQLite backup created before checkout/restart: `backups/hr_bot.before-deploy.20260901-115641.db`;
+  - scenario config snapshot created: `backups/scenarios.before-deploy.20260901-115641.json`;
+  - scenario configuration fingerprint unchanged.
+- Stage smoke checks:
+  - `/app/employees` -> `303`;
+  - `/app/flows/workspace-v2` -> `303`;
+  - Telegram API reachability -> `HTTP/2 302`;
+  - deploy job завершился успешно и вывел `6bb098a`.
+- Открытые риски:
+  - нужен ручной stage smoke карточки кандидата: очистка даты первого рабочего дня, semantic document blocks, отсутствие generic `Документы сотрудника`;
+  - `Тестовое задание / ответ кандидата` пока read-only, upload/replace endpoint для этого slot не добавлялся;
+  - HR notes сохраняют историю, но отдельной retention policy для заметок пока нет;
+  - видео/файлы тестового отображаются единым блоком, без специализированного viewer.
+
 ### 2026-09-01 13:32 MSK - app deploy - P0 candidate regression pack
 
 - Deploy ref: `stage`.
