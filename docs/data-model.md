@@ -74,7 +74,7 @@ source_of_truth: true
 | `step_button_notifications` | Notification overrides для button options | `flow_key`, `step_id`, `option_index`, `message_text`, recipient fields | Дополнительная notification model для конкретной button option |
 | `step_send_notifications` | Notification rules при показе шага | `flow_key`, `step_id`, `rule_index`, `message_text`, recipient fields | Новая множественная модель step-level notifications; legacy `notify_on_send_*` остается compatibility seam |
 | `scenario_progress` | Runtime position сценария по context employee | `employee_id`, `scenario_key`, `recipient_mode`, `recipient_employee_id`, `recipient_chat_id`, `current_step_key`, `waiting_for_response`, `is_completed`, `last_delivery_error`, timestamps | Tracks active/completed scenario state и отдельно хранит resolved recipient для reply-flow и audit |
-| `flow_launch_requests` | Launch queue для manual и scheduled work | `employee_id`, `flow_key`, `requested_at`, `processed_at`, `launch_type`, `skip_step_key` | Используется для будущих запусков и follow-up continuation steps |
+| `flow_launch_requests` | Launch queue/audit для manual, scheduled, status-triggered и system work | `employee_id`, `flow_key`, `requested_at`, `processed_at`, `launch_type`, `skip_step_key` | `launch_type=manual` означает операторский запуск; `status_transition` — автозапуск по HR-статусу; `registration`/`bot_registration`/`trigger`/`system` — системные/регистрационные события |
 | `survey_answers` | Сохраненные ответы на survey-like steps | `employee_id`, `scenario_key`, `step_key`, `answer_value`, `file_name`, `answered_at` | Отдельно от `scenario_progress`, потому что answers can accumulate |
 | `onboarding_events` | Исторический лог onboarding sends | `employee_id`, `scheduled_at`, `sent_at`, `event_key`, `message` | Используется scheduled onboarding logic |
 
@@ -93,7 +93,7 @@ source_of_truth: true
 | Таблица | Назначение | Ключевые поля | Связи и примечания |
 | --- | --- | --- | --- |
 | `employee_files` | Inbound и outbound employee files | `employee_id`, `direction`, `category`, Telegram file ids, `stored_path`, `mime_type`, `file_size` | Backed by local filesystem storage |
-| `employee_document_links` | Per-employee document slots/links | `employee_id`, `slot_key`, `title`, `url`, `item_kind`, `employee_file_id` | Offer slot может быть link-backed или file-backed через `employee_files`; resume slot хранит одно актуальное резюме как `slot_key=resume`, обычно file-backed |
+| `employee_document_links` | Per-employee document slots/links | `employee_id`, `slot_key`, `title`, `url`, `item_kind`, `employee_file_id` | Offer, resume и test-result slots могут быть link-backed или file-backed через `employee_files`; generic payload исключает semantic slots |
 | `document_library_items` | Shared library documents for bot menu and scenario steps | `title`, `description`, `category`, `item_kind`, `external_url`, stored file metadata, `is_active`, `sort_order` | Общие материалы для `/app/documents`, `send_document` menu buttons и reusable вложений шагов сценария |
 
 ## Важные runtime rules
@@ -106,6 +106,8 @@ source_of_truth: true
 - `resume` slot не должен попадать в generic `document_links` payload, чтобы UI не показывал destructive generic delete рядом с резюме.
 - Даже если старый клиент напрямую вызовет generic document-link delete для `slot_key=resume`, backend удаляет только link row и сохраняет `EmployeeFile` плюс физический файл.
 - Если `resume` slot пустой, runtime/API может использовать последний `employee_files.category=resume` как совместимый fallback.
+- `employee_document_links.slot_key=test_task_result` — актуальная связь ответа на тестовое; если slot отсутствует или невалиден, карточка может показать последний legacy `employee_files.category=test_result`.
+- Generic employee detail payload исключает semantic file categories `resume`, `test_result`, `offer_document`, чтобы карточка не смешивала текущие продуктовые документы с общими файлами.
 
 ### `employees`
 
@@ -142,6 +144,13 @@ source_of_truth: true
   - пустой текст отклоняется validation-слоем и не логируется;
   - blocked employee, missing/non-numeric chat id, missing token и Telegram exception пишутся как `status=failed`;
   - успешная отправка пишет `status=sent` и `sent_at`.
+
+### `employee_hr_notes`
+
+- Таблица хранит append-only историю непустых изменений HR-заметок из карточки.
+- `employees.notes` остается текущим editable значением для совместимости с существующим UI/API.
+- Повторное сохранение того же текста не создает дубль history row.
+- `author_account_id` best-effort и nullable: JSON/API path передает текущий admin account, старые или системные paths могут оставить пустым.
 
 ### `employee_messenger_accounts`
 
@@ -206,6 +215,7 @@ SQLite schema guard делает больше, чем “создать табл
 - создает целые таблицы, если они отсутствуют:
   - `employee_assignment_history`;
   - `employee_manual_bot_messages`;
+  - `employee_hr_notes`;
   - `step_button_notifications`;
   - `step_send_notifications`;
   - `scenario_progress`;

@@ -168,6 +168,33 @@ def _ensure_sqlite_schema() -> None:
                 "ON employee_manual_bot_messages (sender_account_id)"
             )
         )
+        conn.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS employee_hr_notes (
+                    id INTEGER NOT NULL,
+                    employee_id INTEGER NOT NULL,
+                    author_account_id INTEGER,
+                    note_text VARCHAR(2048) NOT NULL,
+                    created_at DATETIME NOT NULL,
+                    PRIMARY KEY (id)
+                )
+                """
+            )
+        )
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_employee_hr_notes_id ON employee_hr_notes (id)"))
+        conn.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_employee_hr_notes_employee_id "
+                "ON employee_hr_notes (employee_id)"
+            )
+        )
+        conn.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_employee_hr_notes_author_account_id "
+                "ON employee_hr_notes (author_account_id)"
+            )
+        )
 
         employee_columns = {row[1] for row in conn.execute(text("PRAGMA table_info(employees)")).fetchall()}
         if "desired_position" in employee_columns:
