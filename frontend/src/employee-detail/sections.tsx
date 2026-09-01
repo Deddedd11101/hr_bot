@@ -631,7 +631,7 @@ function HrNotesSection(props: {
                     <Field>
                         <FieldLabel>Новая заметка</FieldLabel>
                         <Textarea
-                            name="notes"
+                            name="hr_note_draft"
                             value={props.value || ""}
                             onChange={props.onChange}
                             rows={4}
@@ -685,7 +685,9 @@ export function EmployeeProfileSection(props: any) {
         handleWorkHoursChange,
         handleSubmit,
         saveState,
+        hrNoteDraft,
         hrNotesHistory,
+        onHrNoteDraftChange,
         onClearFirstWorkday,
     } = props;
     return (
@@ -980,9 +982,9 @@ export function EmployeeProfileSection(props: any) {
             )}
 
             <HrNotesSection
-                value={form.notes}
+                value={hrNoteDraft}
                 items={hrNotesHistory}
-                onChange={handleChange}
+                onChange={onHrNoteDraftChange}
             />
 
             <DetailCard>

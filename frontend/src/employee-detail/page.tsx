@@ -60,6 +60,7 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
     const [offerFile, setOfferFile] = React.useState<File | null>(null);
     const [resumeFile, setResumeFile] = React.useState<File | null>(null);
     const [manualBotMessageText, setManualBotMessageText] = React.useState("");
+    const [hrNoteDraft, setHrNoteDraft] = React.useState("");
     const [manualBotMessageState, setManualBotMessageState] = React.useState({
         sending: false,
         message: "",
@@ -180,7 +181,14 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
         });
     }
 
-    function saveEmployeeForm(nextForm: any, successMessage: string) {
+    function saveEmployeeForm(
+        nextForm: any,
+        successMessage: string,
+        options: { noteDraft?: string; onSuccess?: () => void } = {},
+    ) {
+        const noteDraft = String(options.noteDraft || "").trim();
+        const payloadForm = noteDraft ? Object.assign({}, nextForm, { notes: noteDraft }) : nextForm;
+
         setSaveState({
             saving: true,
             message: "",
@@ -194,7 +202,7 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
                 "Content-Type": "application/json",
                 Accept: "application/json",
             },
-            body: JSON.stringify(buildEmployeeUpdatePayload(nextForm)),
+            body: JSON.stringify(buildEmployeeUpdatePayload(payloadForm)),
         })
             .then(function (response) {
                 if (!response.ok) {
@@ -206,6 +214,9 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
             })
             .then(function (payload) {
                 updatePayloadState(setState, setForm, payload);
+                if (options.onSuccess) {
+                    options.onSuccess();
+                }
                 setSaveState({
                     saving: false,
                     message: successMessage,
@@ -223,13 +234,22 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
 
     function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
         event.preventDefault();
-        saveEmployeeForm(form, "Изменения сохранены");
+        const noteDraft = hrNoteDraft.trim();
+        saveEmployeeForm(
+            form,
+            noteDraft ? "Заметка добавлена" : "Изменения сохранены",
+            noteDraft ? { noteDraft, onSuccess: function () { setHrNoteDraft(""); } } : {},
+        );
     }
 
     function handleClearFirstWorkday() {
         const nextForm = Object.assign({}, form, { first_workday: "" });
         setForm(nextForm);
         saveEmployeeForm(nextForm, "Дата очищена");
+    }
+
+    function handleHrNoteDraftChange(event: React.ChangeEvent<HTMLTextAreaElement>) {
+        setHrNoteDraft(event.target.value);
     }
 
     function handleOfferSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -817,7 +837,9 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
                         handleWorkHoursChange={handleWorkHoursChange}
                         handleSubmit={handleSubmit}
                         saveState={saveState}
+                        hrNoteDraft={hrNoteDraft}
                         hrNotesHistory={hrNotesHistory}
+                        onHrNoteDraftChange={handleHrNoteDraftChange}
                         onClearFirstWorkday={handleClearFirstWorkday}
                     />
                     <AssignmentHistorySection items={assignmentHistory} />
