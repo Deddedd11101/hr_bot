@@ -67,7 +67,7 @@ source_of_truth: true
    - `npm ci && npm run build` в `frontend`;
    - smoke imports;
 4. подключается по SSH через GitHub secrets;
-5. отказывается деплоить, если stage worktree грязный;
+5. отказывается деплоить, если stage worktree содержит tracked changes; untracked runtime data вроде `storage/`, `backups/` и SQLite sidecar-файлов не считается code drift;
 6. до checkout/restart создаёт консистентный SQLite backup через Python `sqlite3.Connection.backup`, проверяет его через `PRAGMA quick_check` и сохраняет долговечный JSON snapshot конфигурации сценариев в `backups/scenarios.before-deploy.<timestamp>.json`;
 7. выполняет:
    - `cd "${{ secrets.STAGE_APP_DIR }}"`;

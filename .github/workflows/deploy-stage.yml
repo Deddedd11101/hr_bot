@@ -81,9 +81,9 @@ jobs:
           script: |
             set -euo pipefail
             cd "${{ secrets.STAGE_APP_DIR }}"
-            if [ -n "$(git status --porcelain)" ]; then
+            if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
               echo "Stage worktree is dirty; refusing deploy."
-              git status --short
+              git status --short --untracked-files=no
               exit 1
             fi
             db_path="${STAGE_DB_PATH:-hr_bot.db}"
