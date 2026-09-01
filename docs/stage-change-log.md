@@ -34,6 +34,40 @@ source_of_truth: true
 
 ## Записи
 
+### 2026-09-01 15:03 MSK - app deploy - first workday clear hotfix
+
+- Deploy ref: `stage`.
+- Deployed commit: `7154ac6`.
+- GitHub Actions run: `33505535026` -> success.
+- В stage включено:
+  - в shared `DatePicker` добавлена кнопка `Очистить дату`;
+  - карточка сотрудника/кандидата теперь может реально отправить пустое значение `first_workday` через UI;
+  - generated Vite assets пересобраны.
+- Локальные проверки перед deploy:
+  - `npm ci` in `frontend`;
+  - `npm run build` in `frontend`;
+  - repeated `npm run build`;
+  - `D:\HRBot\hr_bot_stage_pipeline\.venv\Scripts\python.exe -m unittest tests.test_employee_api_smoke.EmployeeApiSmokeTests.test_update_employee_api_clears_first_workday_with_empty_value tests.test_employee_api_smoke.EmployeeApiSmokeTests.test_update_employee_api_clears_first_workday_with_null_value -v`;
+  - `git diff --check`.
+- GitHub Actions preflight:
+  - backend dependencies install;
+  - `compileall`;
+  - `ruff F821`;
+  - backend smoke tests;
+  - frontend build;
+  - smoke imports.
+- Stage safety checks:
+  - verified SQLite backup created before checkout/restart: `backups/hr_bot.before-deploy.20260901-120319.db`;
+  - scenario config snapshot created: `backups/scenarios.before-deploy.20260901-120319.json`;
+  - scenario configuration fingerprint unchanged.
+- Stage smoke checks:
+  - `/app/employees` -> `303`;
+  - `/app/flows/workspace-v2` -> `303`;
+  - Telegram API reachability -> `HTTP/2 302`;
+  - deploy job завершился успешно и вывел `7154ac6`.
+- Открытые риски:
+  - нужен ручной smoke в карточке: открыть календарь, нажать `Очистить дату`, сохранить и проверить после reload, что дата пустая.
+
 ### 2026-09-01 14:57 MSK - app deploy - P0 card/data regression pack 2
 
 - Deploy ref: `stage`.
