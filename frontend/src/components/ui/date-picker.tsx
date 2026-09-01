@@ -1,6 +1,7 @@
 import * as React from "react";
 import { CalendarIcon } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
 import { buttonVariants } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -89,6 +90,19 @@ function DatePicker({
             if (date) onValueChange(formatDateValue(date));
           }}
         />
+        {value ? (
+          <div className="border-t p-2">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="w-full justify-center"
+              onClick={() => onValueChange("")}
+            >
+              Очистить дату
+            </Button>
+          </div>
+        ) : null}
       </PopoverContent>
     </Popover>
   );
