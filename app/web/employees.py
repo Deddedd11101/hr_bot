@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Optional
 
 from aiogram.exceptions import TelegramBadRequest
+from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -1319,9 +1320,43 @@ def _delete_employee_document_link(db: Session, link_row: EmployeeDocumentLink) 
     db.commit()
 
 
+def _incomplete_scenario_progress_filter():
+    return or_(
+        ScenarioProgress.is_completed.is_(False),
+        ScenarioProgress.waiting_for_response.is_(True),
+        ScenarioProgress.completed_at.is_(None),
+    )
+
+
+def _delete_employee_active_scenario_runtime_state(db: Session, employee_id: int) -> None:
+    db.query(ScenarioProgress).filter(
+        _incomplete_scenario_progress_filter(),
+        or_(
+            ScenarioProgress.employee_id == employee_id,
+            ScenarioProgress.recipient_employee_id == employee_id,
+        )
+    ).delete(synchronize_session=False)
+
+
+def _delete_employee_related_scenario_state(db: Session, employee_id: int) -> None:
+    db.query(ScenarioProgress).filter(
+        or_(
+            ScenarioProgress.employee_id == employee_id,
+            (
+                (ScenarioProgress.recipient_employee_id == employee_id)
+                & _incomplete_scenario_progress_filter()
+            ),
+        )
+    ).delete(synchronize_session=False)
+
+
 def _delete_employee_record(db: Session, employee: Employee) -> str:
     redirect_url = "/candidates" if _employee_list_kind(employee) == "candidates" else "/employees"
     employee_id = employee.id
+    db.query(EmployeeMessengerAccount).filter(
+        EmployeeMessengerAccount.employee_id == employee_id,
+    ).delete(synchronize_session=False)
+    _delete_employee_related_scenario_state(db, employee_id)
     employee_files = db.query(EmployeeFile).filter(EmployeeFile.employee_id == employee_id).all()
     for file_row in employee_files:
         path = Path(file_row.stored_path)
@@ -1369,9 +1404,7 @@ def _reset_employee_bot_linkage(db: Session, employee: Employee) -> Employee:
     db.query(EmployeeMessengerAccount).filter(
         EmployeeMessengerAccount.employee_id == employee.id,
     ).delete(synchronize_session=False)
-    db.query(ScenarioProgress).filter(
-        ScenarioProgress.employee_id == employee.id,
-    ).delete(synchronize_session=False)
+    _delete_employee_active_scenario_runtime_state(db, employee.id)
     db.query(FlowLaunchRequest).filter(
         FlowLaunchRequest.employee_id == employee.id,
         FlowLaunchRequest.processed_at.is_(None),
@@ -1380,6 +1413,7 @@ def _reset_employee_bot_linkage(db: Session, employee: Employee) -> Employee:
     employee.telegram_user_id = None
     employee.telegram_username = None
     employee.current_menu_set_id = None
+    employee.current_menu_path = None
     employee.is_flow_scheduled = False
 
     db.commit()

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import Literal, NamedTuple, Optional
 
 from sqlalchemy.orm import Session
@@ -23,17 +24,21 @@ from ..scenario_engine import (
 from ..time_utils import utc_now
 from .base import MessengerClient
 from .identity import (
-    find_employee_by_public_chat_handle,
-    find_employee_by_channel_user_id,
+    find_employees_by_public_chat_handle,
+    find_employees_by_channel_user_id,
     get_primary_chat_id,
     get_public_chat_handle,
+    normalize_public_chat_handle,
     set_primary_chat_id,
     set_public_chat_handle,
     sync_legacy_telegram_account,
 )
 
 
-UNKNOWN_USER_TEXT = "Ваш аккаунт пока не привязан к HR-боту. Обратитесь в HR."
+logger = logging.getLogger(__name__)
+
+
+UNKNOWN_USER_TEXT = "Не удалось автоматически привязать Telegram, обратитесь к HR."
 BLOCKED_USER_TEXT = "Доступ к HR-боту отключен. Обратитесь в HR."
 MENU_BACK_BUTTON_TEXT = "Назад"
 MENU_HOME_BUTTON_TEXT = "Главное меню"
@@ -42,13 +47,13 @@ INITIAL_CANDIDATE_STAGE: str | None = None
 
 class InboundAccess(NamedTuple):
     employee: Optional[Employee]
-    state: Literal["ok", "unknown", "blocked"]
+    state: Literal["ok", "unknown", "blocked", "conflict"]
     newly_linked: bool = False
 
 
 class StartAccess(NamedTuple):
     employee: Optional[Employee]
-    state: Literal["ok", "blocked"]
+    state: Literal["ok", "blocked", "conflict"]
     newly_linked: bool = False
     created: bool = False
 
@@ -71,11 +76,11 @@ def detect_category_from_caption(caption: Optional[str]) -> str:
 def _sync_employee_after_inbound(db: Session, employee: Employee, chat_user_id: str, username: Optional[str]) -> bool:
     changed = False
     had_primary_chat_id = bool(get_primary_chat_id(employee, db=db))
-    normalized_username = username.strip() if isinstance(username, str) and username.strip() else None
-    if get_public_chat_handle(employee, db=db) != normalized_username:
+    normalized_username = normalize_public_chat_handle(username)
+    if get_public_chat_handle(employee, db=db) != normalized_username or employee.telegram_username != normalized_username:
         set_public_chat_handle(employee, username, db=db)
         changed = True
-    if get_primary_chat_id(employee, db=db) != chat_user_id:
+    if get_primary_chat_id(employee, db=db) != chat_user_id or employee.telegram_user_id != chat_user_id:
         set_primary_chat_id(employee, chat_user_id, db=db)
         changed = True
     if employee.is_flow_scheduled:
@@ -113,7 +118,7 @@ def _create_candidate_for_start(db: Session, chat_user_id: str, username: Option
     employee = Employee(
         full_name=None,
         telegram_user_id=chat_user_id,
-        telegram_username=(username or "").strip() or None,
+        telegram_username=normalize_public_chat_handle(username),
         first_workday=None,
         created_at=utc_now(),
         is_flow_scheduled=False,
@@ -135,6 +140,8 @@ def resolve_start_access(db: Session, chat_user_id: str, username: Optional[str]
         if access.state == "blocked":
             return StartAccess(access.employee, "blocked", newly_linked=access.newly_linked, created=False)
         return StartAccess(access.employee, "ok", newly_linked=access.newly_linked, created=False)
+    if access.state == "conflict":
+        return StartAccess(None, "conflict", newly_linked=False, created=False)
 
     employee = _create_candidate_for_start(db, chat_user_id, username)
     return StartAccess(employee, "ok", newly_linked=True, created=True)
@@ -430,15 +437,41 @@ async def handle_menu_button(messenger: MessengerClient, db: Session, employee: 
 
 
 def resolve_inbound_access(db: Session, chat_user_id: str, username: Optional[str]) -> InboundAccess:
-    employee = find_employee_by_channel_user_id(db, channel="telegram", external_user_id=chat_user_id)
-    if employee:
+    numeric_matches = find_employees_by_channel_user_id(
+        db,
+        channel="telegram",
+        external_user_id=chat_user_id,
+        repair_orphans=True,
+    )
+    if len(numeric_matches) > 1:
+        logger.warning(
+            "Telegram identity conflict by numeric id: chat_user_id=%s employee_ids=%s",
+            chat_user_id,
+            [employee.id for employee in numeric_matches],
+        )
+        return InboundAccess(None, "conflict", False)
+    if numeric_matches:
+        employee = numeric_matches[0]
         if employee.is_bot_blocked:
             return InboundAccess(employee, "blocked", False)
         newly_linked = _sync_employee_after_inbound(db, employee, chat_user_id, username)
         return InboundAccess(employee, "ok", newly_linked)
 
-    employee = find_employee_by_public_chat_handle(db, channel="telegram", external_username=username)
-    if employee:
+    username_matches = find_employees_by_public_chat_handle(
+        db,
+        channel="telegram",
+        external_username=username,
+        repair_orphans=True,
+    )
+    if len(username_matches) > 1:
+        logger.warning(
+            "Telegram identity conflict by username: username=%s employee_ids=%s",
+            normalize_public_chat_handle(username),
+            [employee.id for employee in username_matches],
+        )
+        return InboundAccess(None, "conflict", False)
+    if username_matches:
+        employee = username_matches[0]
         if employee.is_bot_blocked:
             return InboundAccess(employee, "blocked", False)
         newly_linked = _sync_employee_after_inbound(db, employee, chat_user_id, username)
@@ -451,7 +484,11 @@ def get_or_create_employee_by_chat(db: Session, chat_user_id: str, username: Opt
     return access.employee, access.created
 
 
-async def send_access_state_message(messenger: MessengerClient, chat_user_id: str, state: Literal["unknown", "blocked"]) -> None:
+async def send_access_state_message(
+    messenger: MessengerClient,
+    chat_user_id: str,
+    state: Literal["unknown", "blocked", "conflict"],
+) -> None:
     if state == "blocked":
         await messenger.send_text(chat_id=chat_user_id, text=BLOCKED_USER_TEXT)
         return
@@ -461,7 +498,7 @@ async def send_access_state_message(messenger: MessengerClient, chat_user_id: st
 async def handle_start_command(messenger: MessengerClient, db: Session, chat_user_id: str, username: Optional[str]) -> None:
     access = resolve_start_access(db, chat_user_id, username)
     if access.state != "ok" or access.employee is None:
-        await send_access_state_message(messenger, chat_user_id, "blocked")
+        await send_access_state_message(messenger, chat_user_id, access.state)
         return
 
     employee = access.employee
@@ -484,7 +521,7 @@ async def save_incoming_file(
     file_size: Optional[int],
     external_file_id: Optional[str] = None,
     external_unique_id: Optional[str] = None,
-) -> tuple[Optional[Employee], Optional[EmployeeFile], Literal["saved", "unknown", "blocked"]]:
+) -> tuple[Optional[Employee], Optional[EmployeeFile], Literal["saved", "unknown", "blocked", "conflict"]]:
     access = resolve_inbound_access(db, chat_user_id, username)
     if access.state != "ok" or access.employee is None:
         return None, None, access.state
