@@ -373,6 +373,7 @@ def _ensure_sqlite_schema() -> None:
             "branch_option_index": "INTEGER",
             "response_type": "TEXT NOT NULL DEFAULT 'none'",
             "button_options": "TEXT",
+            "confirm_choice": "BOOLEAN NOT NULL DEFAULT 0",
             "send_mode": "TEXT NOT NULL DEFAULT 'immediate'",
             "send_time": "TEXT",
             "day_offset_workdays": "INTEGER NOT NULL DEFAULT 0",
@@ -540,6 +541,9 @@ def _ensure_sqlite_schema() -> None:
                         current_step_key VARCHAR(128),
                         step_history TEXT,
                         response_undo_history TEXT,
+                        pending_confirmation_value TEXT,
+                        pending_confirmation_option_index INTEGER,
+                        pending_confirmation_message_id INTEGER,
                         waiting_for_response BOOLEAN NOT NULL DEFAULT 0,
                         is_completed BOOLEAN NOT NULL DEFAULT 0,
                         last_delivery_error TEXT,
@@ -576,6 +580,12 @@ def _ensure_sqlite_schema() -> None:
                 conn.execute(text("ALTER TABLE scenario_progress ADD COLUMN step_history TEXT"))
             if "response_undo_history" not in progress_columns:
                 conn.execute(text("ALTER TABLE scenario_progress ADD COLUMN response_undo_history TEXT"))
+            if "pending_confirmation_value" not in progress_columns:
+                conn.execute(text("ALTER TABLE scenario_progress ADD COLUMN pending_confirmation_value TEXT"))
+            if "pending_confirmation_option_index" not in progress_columns:
+                conn.execute(text("ALTER TABLE scenario_progress ADD COLUMN pending_confirmation_option_index INTEGER"))
+            if "pending_confirmation_message_id" not in progress_columns:
+                conn.execute(text("ALTER TABLE scenario_progress ADD COLUMN pending_confirmation_message_id INTEGER"))
             if "last_delivery_error" not in progress_columns:
                 conn.execute(text("ALTER TABLE scenario_progress ADD COLUMN last_delivery_error TEXT"))
 

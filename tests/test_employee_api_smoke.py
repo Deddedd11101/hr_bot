@@ -3218,6 +3218,7 @@ class EmployeeApiSmokeTests(unittest.TestCase):
                 "text": "Выбери ожидания по доходу",
                 "response_type": "buttons",
                 "button_options": "100 000\n150 000\n200 000",
+                "confirm_choice": True,
                 "send_mode": "immediate",
                 "send_time": "",
                 "target_field": "salary_expectation",
@@ -3234,6 +3235,7 @@ class EmployeeApiSmokeTests(unittest.TestCase):
         payload = response.json()["payload"]["workspace"]["root_steps"][0]
         self.assertEqual(payload["response_type"], "buttons")
         self.assertEqual(payload["response_label"], "Выбор кнопками")
+        self.assertTrue(payload["confirm_choice"])
         self.assertEqual(payload["target_field"], "salary_expectation")
         self.assertEqual(payload["target_field_label"], "Ожидания по доходу")
 
@@ -3241,6 +3243,7 @@ class EmployeeApiSmokeTests(unittest.TestCase):
             step = db.get(FlowStepTemplate, step_id)
             self.assertIsNotNone(step)
             self.assertEqual(step.response_type, "buttons")
+            self.assertTrue(step.confirm_choice)
             self.assertEqual(step.target_field, "salary_expectation")
 
     def test_workspace_step_api_persists_date_response_for_first_workday(self) -> None:

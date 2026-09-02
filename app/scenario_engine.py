@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 
 from .config import settings
 from .employee_card import render_employee_card_png
-from .messaging import as_messenger, find_employee_by_channel_user_id
+from .messaging import MessengerClient, as_messenger, find_employee_by_channel_user_id
 from .messaging.identity import get_primary_chat_id
 from .models import DocumentLibraryItem, Employee, EmployeeDocumentLink, EmployeeFile, FlowLaunchRequest, FlowStepTemplate, HrSettings, OnboardingEvent, ScenarioProgress, ScenarioTemplate, StepButtonNotification, StepSendNotification, SurveyAnswer
 from .positions import position_matches_scope
@@ -30,7 +30,12 @@ logger = logging.getLogger(__name__)
 CALLBACK_PREFIX = "scenario:"
 BACK_CALLBACK_DATA = f"{CALLBACK_PREFIX}back"
 DATE_CALLBACK_PREFIX = f"{CALLBACK_PREFIX}date:"
+CHOICE_CONFIRM_CALLBACK_PREFIX = f"{CALLBACK_PREFIX}choice:"
+CHOICE_CONFIRM_ACTION = "confirm"
+CHOICE_CHANGE_ACTION = "change"
 SCENARIO_BACK_BUTTON_TEXT = "Назад"
+CHOICE_CONFIRM_BUTTON_TEXT = "Подтвердить"
+CHOICE_CHANGE_BUTTON_TEXT = "Изменить выбор"
 RECRUITMENT_SCENARIO_KEY = "recruitment_hiring"
 FIRST_DAY_SCENARIO_KEY = "first_day"
 PROBATION_SCENARIO_KEYS = {"mid_probation", "end_probation"}
@@ -389,6 +394,9 @@ def get_or_create_progress(db: Session, employee_id: int, scenario_key: str) -> 
         current_step_key=None,
         step_history=None,
         response_undo_history=None,
+        pending_confirmation_value=None,
+        pending_confirmation_option_index=None,
+        pending_confirmation_message_id=None,
         waiting_for_response=False,
         is_completed=False,
         last_delivery_error=None,
@@ -410,6 +418,7 @@ def reset_progress(db: Session, employee_id: int, scenario_key: str) -> Scenario
     progress.recipient_chat_id = None
     progress.step_history = None
     progress.response_undo_history = None
+    _clear_pending_choice_confirmation(progress)
     progress.waiting_for_response = False
     progress.is_completed = False
     progress.last_delivery_error = None
@@ -1336,6 +1345,99 @@ def step_reply_markup(step: FlowStepTemplate, include_back: bool = False) -> Opt
     return InlineKeyboardMarkup(inline_keyboard=buttons) if buttons else None
 
 
+def _clear_pending_choice_confirmation(progress: ScenarioProgress) -> None:
+    progress.pending_confirmation_value = None
+    progress.pending_confirmation_option_index = None
+    progress.pending_confirmation_message_id = None
+
+
+def _has_pending_choice_confirmation(progress: ScenarioProgress) -> bool:
+    return bool((getattr(progress, "pending_confirmation_value", None) or "").strip())
+
+
+def _choice_confirmation_text(
+    db: Session,
+    employee: Employee,
+    scenario: ScenarioTemplate,
+    step: FlowStepTemplate,
+    selected_value: str,
+) -> str:
+    anchor_date = scenario_anchor_date(employee, scenario) or datetime.now(_get_tz()).date()
+    message_template = resolve_step_message_template(step)
+    base_text = format_message(db, message_template, employee, anchor_date, step.send_time).strip()
+    selected_html = html.escape(selected_value, quote=False)
+    selected_line = f"Вы выбрали: <b>{selected_html}</b>"
+    if base_text:
+        return f"{base_text}\n\n{selected_line}\nПодтвердить?"
+    return f"{selected_line}\nПодтвердить?"
+
+
+async def _edit_or_send_choice_confirmation(
+    messenger: MessengerClient,
+    chat_id: str,
+    message_id: int | None,
+    text: str,
+    reply_markup: InlineKeyboardMarkup,
+) -> None:
+    if message_id is not None and hasattr(messenger, "edit_text"):
+        try:
+            await messenger.edit_text(chat_id=chat_id, message_id=message_id, text=text, reply_markup=reply_markup)
+            return
+        except Exception as exc:  # noqa: BLE001 - Telegram rejects edits for media/caption/old messages.
+            logger.warning(
+                "Scenario choice confirmation edit failed: chat_id=%s message_id=%s error=%s",
+                chat_id,
+                message_id,
+                exc,
+            )
+    await messenger.send_text(chat_id=chat_id, text=text, reply_markup=reply_markup)
+
+
+async def _edit_or_send_original_choice_step(
+    messenger: MessengerClient,
+    db: Session,
+    chat_id: str,
+    message_id: int | None,
+    employee: Employee,
+    scenario: ScenarioTemplate,
+    step: FlowStepTemplate,
+    include_back: bool,
+) -> None:
+    anchor_date = scenario_anchor_date(employee, scenario) or datetime.now(_get_tz()).date()
+    message_template = resolve_step_message_template(step)
+    text = format_message(db, message_template, employee, anchor_date, step.send_time).strip() or "Выберите вариант:"
+    reply_markup = step_reply_markup(step, include_back=include_back)
+    if message_id is not None and hasattr(messenger, "edit_text"):
+        try:
+            await messenger.edit_text(chat_id=chat_id, message_id=message_id, text=text, reply_markup=reply_markup)
+            return
+        except Exception as exc:  # noqa: BLE001 - Telegram rejects edits for media/caption/old messages.
+            logger.warning(
+                "Scenario choice change edit failed: chat_id=%s message_id=%s error=%s",
+                chat_id,
+                message_id,
+                exc,
+            )
+    await messenger.send_text(chat_id=chat_id, text=text, reply_markup=reply_markup)
+
+
+def choice_confirmation_markup(step: FlowStepTemplate) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text=CHOICE_CONFIRM_BUTTON_TEXT,
+                    callback_data=f"{CHOICE_CONFIRM_CALLBACK_PREFIX}{step.id}:{CHOICE_CONFIRM_ACTION}",
+                ),
+                InlineKeyboardButton(
+                    text=CHOICE_CHANGE_BUTTON_TEXT,
+                    callback_data=f"{CHOICE_CONFIRM_CALLBACK_PREFIX}{step.id}:{CHOICE_CHANGE_ACTION}",
+                ),
+            ],
+        ]
+    )
+
+
 def step_back_keyboard(step: FlowStepTemplate, include_back: bool = False) -> Optional[ReplyKeyboardMarkup]:
     if not include_back or step.response_type not in {"text", "file"}:
         return None
@@ -1917,7 +2019,91 @@ async def handle_date_response_by_step_id(
     return DateCallbackResult(True, "selected", None)
 
 
-async def handle_button_response(messenger_or_bot: Any, db: Session, employee: Employee, scenario_key: str, step_key: str, option_index: int) -> bool:
+def _step_can_confirm_choice(scenario: ScenarioTemplate, step: FlowStepTemplate) -> bool:
+    return (
+        not is_survey(scenario)
+        and bool(getattr(step, "confirm_choice", False))
+        and step.response_type in {"buttons", "branching"}
+        and bool((step.button_options or "").strip())
+    )
+
+
+async def _apply_confirmed_button_choice(
+    messenger: MessengerClient,
+    db: Session,
+    context_employee: Employee,
+    scenario: ScenarioTemplate,
+    step: FlowStepTemplate,
+    selected_value: str,
+    option_index: int,
+    progress: ScenarioProgress,
+) -> bool:
+    undo_snapshot = _capture_response_undo_snapshot(db, context_employee, scenario, step)
+    store_survey_answer(db, context_employee, scenario, step, selected_value)
+    if not apply_response_to_employee(db, context_employee, step, selected_value):
+        _restore_response_undo_snapshot(db, context_employee, scenario, step, undo_snapshot)
+        return False
+    apply_status_from_recruitment_choice(db, context_employee, scenario, step, selected_value)
+    options = [item.strip() for item in (step.button_options or "").splitlines() if item.strip()]
+    stale_option_index = option_index < 0 or option_index >= len(options) or options[option_index] != selected_value
+    if stale_option_index:
+        logger.warning(
+            "Scenario choice confirmation option index is stale: scenario=%s step=%s option_index=%s",
+            scenario.scenario_key,
+            step.step_key,
+            option_index,
+        )
+    else:
+        button_notifications = get_button_notifications(db, step.id, option_index)
+        for button_notification in button_notifications:
+            await send_custom_notification(
+                messenger,
+                db,
+                context_employee,
+                button_notification.message_text,
+                button_notification.recipient_ids,
+                button_notification.recipient_scope,
+                step.send_time,
+            )
+    context_employee.candidate_status = step.step_key
+    _push_response_undo_snapshot(progress, undo_snapshot)
+    _clear_pending_choice_confirmation(progress)
+    db.commit()
+    if step.target_field in {"personal_data_consent", "employee_data_consent"} and not getattr(context_employee, step.target_field):
+        progress.waiting_for_response = False
+        progress.is_completed = True
+        progress.completed_at = utc_now()
+        db.commit()
+        return True
+    if step.response_type == "branching" and not stale_option_index:
+        branch_step = get_branch_step(db, step.id, option_index)
+        if branch_step:
+            if branch_step.response_type == "chain":
+                if step_has_sendable_content(branch_step):
+                    await send_step(messenger, db, context_employee, scenario, branch_step, auto_follow=False)
+                next_branch_step = resolve_branch_followup_step(db, scenario.scenario_key, branch_step)
+                if next_branch_step:
+                    await send_step(messenger, db, context_employee, scenario, next_branch_step)
+                else:
+                    await advance_after_response(messenger, db, context_employee, scenario, branch_step)
+                return True
+
+            await send_step(messenger, db, context_employee, scenario, branch_step)
+            return True
+    await advance_after_response(messenger, db, context_employee, scenario, step)
+    return True
+
+
+async def handle_button_response(
+    messenger_or_bot: Any,
+    db: Session,
+    employee: Employee,
+    scenario_key: str,
+    step_key: str,
+    option_index: int,
+    *,
+    message_id: int | None = None,
+) -> bool:
     if employee.is_bot_blocked:
         return False
     messenger = as_messenger(messenger_or_bot)
@@ -1938,49 +2124,95 @@ async def handle_button_response(messenger_or_bot: Any, db: Session, employee: E
     if option_index < 0 or option_index >= len(options):
         return False
     selected_value = options[option_index]
-    undo_snapshot = _capture_response_undo_snapshot(db, context_employee, scenario, step)
-    store_survey_answer(db, context_employee, scenario, step, selected_value)
-    if not apply_response_to_employee(db, context_employee, step, selected_value):
-        _restore_response_undo_snapshot(db, context_employee, scenario, step, undo_snapshot)
-        return False
-    apply_status_from_recruitment_choice(db, context_employee, scenario, step, selected_value)
-    button_notifications = get_button_notifications(db, step.id, option_index)
-    for button_notification in button_notifications:
-        await send_custom_notification(
-            messenger,
-            db,
-            context_employee,
-            button_notification.message_text,
-            button_notification.recipient_ids,
-            button_notification.recipient_scope,
-            step.send_time,
-        )
-    context_employee.candidate_status = step.step_key
-    _push_response_undo_snapshot(progress, undo_snapshot)
-    db.commit()
-    if step.target_field in {"personal_data_consent", "employee_data_consent"} and not getattr(context_employee, step.target_field):
-        progress.waiting_for_response = False
-        progress.is_completed = True
-        progress.completed_at = utc_now()
+    if _step_can_confirm_choice(scenario, step):
+        progress.pending_confirmation_value = selected_value
+        progress.pending_confirmation_option_index = option_index
+        progress.pending_confirmation_message_id = message_id
+        progress.updated_at = utc_now()
         db.commit()
+        chat_id = progress.recipient_chat_id or get_primary_chat_id(employee, db=db)
+        if chat_id:
+            await _edit_or_send_choice_confirmation(
+                messenger,
+                chat_id,
+                message_id,
+                _choice_confirmation_text(db, context_employee, scenario, step, selected_value),
+                choice_confirmation_markup(step),
+            )
         return True
-    if step.response_type == "branching":
-        branch_step = get_branch_step(db, step.id, option_index)
-        if branch_step:
-            if branch_step.response_type == "chain":
-                if step_has_sendable_content(branch_step):
-                    await send_step(messenger, db, context_employee, scenario, branch_step, auto_follow=False)
-                next_branch_step = resolve_branch_followup_step(db, scenario.scenario_key, branch_step)
-                if next_branch_step:
-                    await send_step(messenger, db, context_employee, scenario, next_branch_step)
-                else:
-                    await advance_after_response(messenger, db, context_employee, scenario, branch_step)
-                return True
+    return await _apply_confirmed_button_choice(
+        messenger,
+        db,
+        context_employee,
+        scenario,
+        step,
+        selected_value,
+        option_index,
+        progress,
+    )
 
-            await send_step(messenger, db, context_employee, scenario, branch_step)
-            return True
-    await advance_after_response(messenger, db, context_employee, scenario, step)
-    return True
+
+async def handle_choice_confirmation_response_by_step_id(
+    messenger_or_bot: Any,
+    db: Session,
+    employee: Employee,
+    step_id: int,
+    action: str,
+    *,
+    message_id: int | None = None,
+) -> bool:
+    if employee.is_bot_blocked:
+        return False
+    messenger = as_messenger(messenger_or_bot)
+    step = db.get(FlowStepTemplate, step_id)
+    if not step:
+        return False
+    progress = get_waiting_progress_for_step(db, employee.id, step.flow_key, step.step_key)
+    if not progress:
+        return False
+    context_employee = _load_progress_context_employee(db, progress)
+    if not context_employee:
+        return False
+    scenario = db.query(ScenarioTemplate).filter(ScenarioTemplate.scenario_key == step.flow_key).first()
+    if not scenario or not _step_can_confirm_choice(scenario, step):
+        return False
+    selected_value = (getattr(progress, "pending_confirmation_value", None) or "").strip()
+    if not selected_value:
+        return False
+    stored_message_id = getattr(progress, "pending_confirmation_message_id", None)
+    effective_message_id = message_id or stored_message_id
+    chat_id = progress.recipient_chat_id or get_primary_chat_id(employee, db=db)
+    if action == CHOICE_CHANGE_ACTION:
+        _clear_pending_choice_confirmation(progress)
+        progress.updated_at = utc_now()
+        db.commit()
+        if chat_id:
+            await _edit_or_send_original_choice_step(
+                messenger,
+                db,
+                chat_id,
+                effective_message_id,
+                context_employee,
+                scenario,
+                step,
+                include_back=progress_has_back_step(progress),
+            )
+        return True
+    if action != CHOICE_CONFIRM_ACTION:
+        return False
+    option_index = progress.pending_confirmation_option_index
+    if option_index is None:
+        option_index = -1
+    return await _apply_confirmed_button_choice(
+        messenger,
+        db,
+        context_employee,
+        scenario,
+        step,
+        selected_value,
+        option_index,
+        progress,
+    )
 
 
 async def handle_button_response_by_step_id(
@@ -1989,6 +2221,8 @@ async def handle_button_response_by_step_id(
     employee: Employee,
     step_id: int,
     option_index: int,
+    *,
+    message_id: int | None = None,
 ) -> bool:
     step = db.get(FlowStepTemplate, step_id)
     if not step:
@@ -2000,6 +2234,7 @@ async def handle_button_response_by_step_id(
         step.flow_key,
         step.step_key,
         option_index,
+        message_id=message_id,
     )
 
 
@@ -2053,6 +2288,15 @@ async def handle_back_response(messenger_or_bot: Any, db: Session, employee: Emp
     scenario = db.query(ScenarioTemplate).filter(ScenarioTemplate.scenario_key == progress.scenario_key).first()
     if not scenario:
         return False
+    current_step = get_step_by_key(db, scenario.scenario_key, progress.current_step_key)
+    if current_step and _has_pending_choice_confirmation(progress):
+        _clear_pending_choice_confirmation(progress)
+        progress.updated_at = utc_now()
+        db.commit()
+        chat_id = progress.recipient_chat_id or get_primary_chat_id(employee, db=db)
+        if chat_id:
+            await send_step(messenger, db, context_employee, scenario, current_step, auto_follow=False)
+        return True
 
     undo_snapshot = _pop_response_undo_snapshot(progress)
     undo_step_key = (undo_snapshot or {}).get("step_key") if isinstance(undo_snapshot, dict) else None

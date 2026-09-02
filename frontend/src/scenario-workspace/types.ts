@@ -25,6 +25,7 @@ export type WorkspaceStep = {
   response_type: string;
   response_label: string;
   button_options: string[];
+  confirm_choice: boolean;
   has_attachment: boolean;
   attachment_filename: string;
   attachment_document_item_id: number | null;
@@ -228,6 +229,7 @@ export type WorkspaceStepForm = {
   text: string;
   response_type: string;
   button_options: string;
+  confirm_choice: boolean;
   send_mode: string;
   send_time: string;
   target_field: string;

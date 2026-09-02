@@ -30,6 +30,7 @@ FLOW_STEP_FIELDS = [
     "custom_text",
     "response_type",
     "button_options",
+    "confirm_choice",
     "send_mode",
     "send_time",
     "day_offset_workdays",
@@ -79,6 +80,11 @@ def _ensure_flow_step_attachment_document_column(connection: sqlite3.Connection)
         connection.execute("ALTER TABLE flow_step_templates ADD COLUMN attachment_document_item_id INTEGER")
 
 
+def _ensure_flow_step_confirm_choice_column(connection: sqlite3.Connection) -> None:
+    if "confirm_choice" not in _table_columns(connection, "flow_step_templates"):
+        connection.execute("ALTER TABLE flow_step_templates ADD COLUMN confirm_choice INTEGER NOT NULL DEFAULT 0")
+
+
 def _normalize_scenario_keys(raw_values: list[str]) -> list[str]:
     result: list[str] = []
     for raw_value in raw_values:
@@ -109,6 +115,11 @@ def _load_step_rows(connection: sqlite3.Connection, scenario_key: str) -> list[d
         if "attachment_document_item_id" in _table_columns(connection, "flow_step_templates")
         else "NULL AS attachment_document_item_id"
     )
+    confirm_choice_column = (
+        "confirm_choice"
+        if "confirm_choice" in _table_columns(connection, "flow_step_templates")
+        else "0 AS confirm_choice"
+    )
     return connection.execute(
         f"""
         SELECT
@@ -123,6 +134,7 @@ def _load_step_rows(connection: sqlite3.Connection, scenario_key: str) -> list[d
             custom_text,
             response_type,
             button_options,
+            {confirm_choice_column},
             send_mode,
             send_time,
             day_offset_workdays,
@@ -327,6 +339,7 @@ def export_scenarios(db_path: Path, output_dir: Path, scenario_keys: list[str]) 
 
     connection = _connect(db_path)
     try:
+        _ensure_flow_step_confirm_choice_column(connection)
         payload: dict[str, Any] = {
             "version": 1,
             "exported_from": str(db_path),
@@ -485,6 +498,7 @@ def import_scenarios(db_path: Path, input_dir: Path, storage_root: Path) -> None
     connection = _connect(db_path)
     try:
         _ensure_flow_step_attachment_document_column(connection)
+        _ensure_flow_step_confirm_choice_column(connection)
         for scenario_item in payload.get("scenarios", []):
             template = scenario_item["template"]
             scenario_key = template["scenario_key"]
@@ -523,6 +537,7 @@ def import_scenarios(db_path: Path, input_dir: Path, storage_root: Path) -> None
                             custom_text,
                             response_type,
                             button_options,
+                            confirm_choice,
                             send_mode,
                             send_time,
                             day_offset_workdays,
@@ -535,7 +550,7 @@ def import_scenarios(db_path: Path, input_dir: Path, storage_root: Path) -> None
                             notify_on_send_text,
                             notify_on_send_recipient_ids,
                             notify_on_send_recipient_scope
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                         (
                             scenario_key,
@@ -548,6 +563,7 @@ def import_scenarios(db_path: Path, input_dir: Path, storage_root: Path) -> None
                             step.get("custom_text"),
                             step.get("response_type"),
                             step.get("button_options"),
+                            int(bool(step.get("confirm_choice"))),
                             step.get("send_mode"),
                             step.get("send_time"),
                             step.get("day_offset_workdays"),
