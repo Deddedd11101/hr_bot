@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Optional
 
 from aiogram.exceptions import TelegramBadRequest
+from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -1319,12 +1320,22 @@ def _delete_employee_document_link(db: Session, link_row: EmployeeDocumentLink) 
     db.commit()
 
 
+def _delete_employee_scenario_runtime_state(db: Session, employee_id: int) -> None:
+    db.query(ScenarioProgress).filter(
+        or_(
+            ScenarioProgress.employee_id == employee_id,
+            ScenarioProgress.recipient_employee_id == employee_id,
+        )
+    ).delete(synchronize_session=False)
+
+
 def _delete_employee_record(db: Session, employee: Employee) -> str:
     redirect_url = "/candidates" if _employee_list_kind(employee) == "candidates" else "/employees"
     employee_id = employee.id
     db.query(EmployeeMessengerAccount).filter(
         EmployeeMessengerAccount.employee_id == employee_id,
     ).delete(synchronize_session=False)
+    _delete_employee_scenario_runtime_state(db, employee_id)
     employee_files = db.query(EmployeeFile).filter(EmployeeFile.employee_id == employee_id).all()
     for file_row in employee_files:
         path = Path(file_row.stored_path)
@@ -1372,9 +1383,7 @@ def _reset_employee_bot_linkage(db: Session, employee: Employee) -> Employee:
     db.query(EmployeeMessengerAccount).filter(
         EmployeeMessengerAccount.employee_id == employee.id,
     ).delete(synchronize_session=False)
-    db.query(ScenarioProgress).filter(
-        ScenarioProgress.employee_id == employee.id,
-    ).delete(synchronize_session=False)
+    _delete_employee_scenario_runtime_state(db, employee.id)
     db.query(FlowLaunchRequest).filter(
         FlowLaunchRequest.employee_id == employee.id,
         FlowLaunchRequest.processed_at.is_(None),

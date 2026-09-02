@@ -4576,6 +4576,56 @@ class EmployeeApiSmokeTests(unittest.TestCase):
                 1,
             )
 
+    def test_reset_employee_bot_linkage_api_clears_recipient_runtime_state(self) -> None:
+        scenario_key = f"codex-reset-recipient-{self.unique_tag}"
+        now = datetime.now(UTC).replace(tzinfo=None)
+        with SessionLocal() as db:
+            recipient = db.get(Employee, self.employee_id)
+            self.assertIsNotNone(recipient)
+            recipient.telegram_user_id = "777333444"
+            recipient.telegram_username = "recipient_reset"
+            subject = Employee(
+                full_name="Context Employee",
+                employee_stage="adaptation",
+                first_workday=now.date(),
+                created_at=now,
+            )
+            db.add(subject)
+            db.flush()
+            db.add(
+                ScenarioProgress(
+                    employee_id=subject.id,
+                    scenario_key=scenario_key,
+                    recipient_mode="manager",
+                    recipient_employee_id=recipient.id,
+                    recipient_chat_id="777333444",
+                    current_step_key="manager_step",
+                    waiting_for_response=True,
+                    is_completed=False,
+                    started_at=now,
+                    updated_at=now,
+                )
+            )
+            db.commit()
+            subject_id = subject.id
+
+        response = self.client.post(
+            f"/api/employees/{self.employee_id}/bot-link/reset",
+            headers={"Accept": "application/json"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        with SessionLocal() as db:
+            self.assertEqual(
+                db.query(ScenarioProgress)
+                .filter(
+                    ScenarioProgress.employee_id == subject_id,
+                    ScenarioProgress.recipient_employee_id == self.employee_id,
+                )
+                .count(),
+                0,
+            )
+
     def test_delete_employee_api_removes_active_messenger_accounts(self) -> None:
         now = datetime.now(UTC).replace(tzinfo=None)
         with SessionLocal() as db:
@@ -4607,6 +4657,52 @@ class EmployeeApiSmokeTests(unittest.TestCase):
                 .filter(
                     EmployeeMessengerAccount.employee_id == self.employee_id,
                     EmployeeMessengerAccount.is_active.is_(True),
+                )
+                .count(),
+                0,
+            )
+
+    def test_delete_employee_api_removes_recipient_runtime_state(self) -> None:
+        scenario_key = f"codex-delete-recipient-{self.unique_tag}"
+        now = datetime.now(UTC).replace(tzinfo=None)
+        with SessionLocal() as db:
+            recipient = db.get(Employee, self.employee_id)
+            self.assertIsNotNone(recipient)
+            subject = Employee(
+                full_name="Context Employee",
+                employee_stage="adaptation",
+                first_workday=now.date(),
+                created_at=now,
+            )
+            db.add(subject)
+            db.flush()
+            db.add(
+                ScenarioProgress(
+                    employee_id=subject.id,
+                    scenario_key=scenario_key,
+                    recipient_mode="manager",
+                    recipient_employee_id=recipient.id,
+                    recipient_chat_id="777444555",
+                    current_step_key="manager_step",
+                    waiting_for_response=True,
+                    is_completed=False,
+                    started_at=now,
+                    updated_at=now,
+                )
+            )
+            db.commit()
+            subject_id = subject.id
+
+        response = self.client.delete(f"/api/employees/{self.employee_id}", headers={"Accept": "application/json"})
+
+        self.assertEqual(response.status_code, 200)
+        with SessionLocal() as db:
+            self.assertIsNone(db.get(Employee, self.employee_id))
+            self.assertEqual(
+                db.query(ScenarioProgress)
+                .filter(
+                    ScenarioProgress.employee_id == subject_id,
+                    ScenarioProgress.recipient_employee_id == self.employee_id,
                 )
                 .count(),
                 0,
