@@ -17,6 +17,7 @@ from app.messaging.service import (
     BLOCKED_USER_TEXT,
     MENU_BACK_BUTTON_TEXT,
     MENU_HOME_BUTTON_TEXT,
+    UNKNOWN_USER_TEXT,
     current_menu_set,
     get_or_create_employee_by_chat,
     handle_menu_button,
@@ -2268,8 +2269,129 @@ class EmployeeApiSmokeTests(unittest.TestCase):
             self.assertFalse(created)
             self.assertEqual(employee.id, self.employee_id)
             self.assertEqual(get_primary_chat_id(employee, db=db), chat_id)
-            self.assertEqual(employee.telegram_username, username.upper())
+            self.assertEqual(employee.telegram_username, username)
             self.assertEqual(db.query(Employee).filter(Employee.id == self.employee_id).count(), 1)
+
+    def test_bot_start_numeric_id_prefers_existing_active_account_over_username(self) -> None:
+        username = f"numeric_owner_{self.unique_tag}"
+        other_username = f"other_owner_{self.unique_tag}"
+        chat_id = str(900100000000 + (uuid4().int % 100000000000))
+        with SessionLocal() as db:
+            employee = db.get(Employee, self.employee_id)
+            self.assertIsNotNone(employee)
+            employee.telegram_user_id = None
+            employee.telegram_username = username
+            employee.employee_stage = "staff"
+            other_employee = Employee(
+                full_name=f"Other Numeric Username {self.unique_tag}",
+                telegram_user_id=None,
+                telegram_username=other_username,
+                first_workday=None,
+                created_at=datetime.now(UTC).replace(tzinfo=None),
+                is_flow_scheduled=False,
+                employee_stage="candidate",
+                candidate_work_stage=None,
+            )
+            db.add(other_employee)
+            db.flush()
+            db.add(
+                EmployeeMessengerAccount(
+                    employee_id=employee.id,
+                    channel="telegram",
+                    external_user_id=chat_id,
+                    external_username=username,
+                    is_primary=True,
+                    is_active=True,
+                    created_at=datetime.now(UTC).replace(tzinfo=None),
+                    updated_at=datetime.now(UTC).replace(tzinfo=None),
+                )
+            )
+            db.commit()
+            other_employee_id = other_employee.id
+            messenger = DummyMessenger()
+
+            asyncio.run(handle_start_command(messenger, db, chat_id, other_username))
+
+            db.refresh(employee)
+            other_employee = db.get(Employee, other_employee_id)
+            self.assertEqual(get_primary_chat_id(employee, db=db), chat_id)
+            self.assertEqual(employee.telegram_username, other_username)
+            self.assertIsNotNone(other_employee)
+            if other_employee is not None:
+                self.assertIsNone(get_primary_chat_id(other_employee, db=db))
+            self.assertEqual(db.query(Employee).filter(Employee.telegram_user_id == chat_id).count(), 1)
+
+    def test_bot_start_repairs_orphan_account_and_creates_candidate_without_duplicate_orphan(self) -> None:
+        chat_id = str(900200000000 + (uuid4().int % 100000000000))
+        now = datetime.now(UTC).replace(tzinfo=None)
+        with SessionLocal() as db:
+            db.add(
+                EmployeeMessengerAccount(
+                    employee_id=999999000 + self.employee_id,
+                    channel="telegram",
+                    external_user_id=chat_id,
+                    external_username="orphan_before",
+                    is_primary=True,
+                    is_active=True,
+                    created_at=now,
+                    updated_at=now,
+                )
+            )
+            db.commit()
+            messenger = DummyMessenger()
+
+            asyncio.run(handle_start_command(messenger, db, chat_id, f"orphan_{self.unique_tag}"))
+
+            created_employee = db.query(Employee).filter(Employee.telegram_user_id == chat_id).one()
+            self.assertEqual(created_employee.employee_stage, "candidate")
+            self.assertEqual(created_employee.telegram_username, f"orphan_{self.unique_tag}")
+            accounts = (
+                db.query(EmployeeMessengerAccount)
+                .filter(
+                    EmployeeMessengerAccount.channel == "telegram",
+                    EmployeeMessengerAccount.external_user_id == chat_id,
+                )
+                .all()
+            )
+            self.assertEqual(len(accounts), 1)
+            self.assertEqual(accounts[0].employee_id, created_employee.id)
+            self.assertTrue(accounts[0].is_active)
+            db.query(EmployeeMessengerAccount).filter(EmployeeMessengerAccount.employee_id == created_employee.id).delete(
+                synchronize_session=False
+            )
+            db.delete(created_employee)
+            db.commit()
+
+    def test_bot_start_duplicate_username_conflict_does_not_attach_or_create_candidate(self) -> None:
+        username = f"duplicate_username_{self.unique_tag}"
+        chat_id = str(900300000000 + (uuid4().int % 100000000000))
+        with SessionLocal() as db:
+            employee = db.get(Employee, self.employee_id)
+            self.assertIsNotNone(employee)
+            employee.telegram_user_id = None
+            employee.telegram_username = f"@{username.upper()}"
+            second_employee = Employee(
+                full_name=f"Duplicate Username {self.unique_tag}",
+                telegram_user_id=None,
+                telegram_username=username,
+                first_workday=None,
+                created_at=datetime.now(UTC).replace(tzinfo=None),
+                is_flow_scheduled=False,
+                employee_stage="candidate",
+                candidate_work_stage=None,
+            )
+            db.add(second_employee)
+            db.commit()
+            before_count = db.query(Employee).count()
+            messenger = DummyMessenger()
+
+            asyncio.run(handle_start_command(messenger, db, chat_id, username))
+
+            db.refresh(employee)
+            self.assertIsNone(get_primary_chat_id(employee, db=db))
+            self.assertEqual(db.query(Employee).count(), before_count)
+            self.assertEqual(db.query(Employee).filter(Employee.telegram_user_id == chat_id).count(), 0)
+            self.assertEqual(messenger.sent_texts, [(chat_id, UNKNOWN_USER_TEXT)])
 
     def test_bot_start_creates_candidate_when_card_is_missing(self) -> None:
         with SessionLocal() as db:
@@ -4360,6 +4482,7 @@ class EmployeeApiSmokeTests(unittest.TestCase):
             employee.telegram_user_id = "777123456"
             employee.telegram_username = "reset_me"
             employee.current_menu_set_id = 123
+            employee.current_menu_path = "1,123"
             employee.is_flow_scheduled = True
             db.add(
                 EmployeeMessengerAccount(
@@ -4424,6 +4547,7 @@ class EmployeeApiSmokeTests(unittest.TestCase):
             self.assertIsNone(employee.telegram_user_id)
             self.assertIsNone(employee.telegram_username)
             self.assertIsNone(employee.current_menu_set_id)
+            self.assertIsNone(employee.current_menu_path)
             self.assertFalse(employee.is_flow_scheduled)
             self.assertEqual(
                 db.query(EmployeeMessengerAccount).filter(EmployeeMessengerAccount.employee_id == self.employee_id).count(),
@@ -4450,6 +4574,42 @@ class EmployeeApiSmokeTests(unittest.TestCase):
                 )
                 .count(),
                 1,
+            )
+
+    def test_delete_employee_api_removes_active_messenger_accounts(self) -> None:
+        now = datetime.now(UTC).replace(tzinfo=None)
+        with SessionLocal() as db:
+            employee = db.get(Employee, self.employee_id)
+            self.assertIsNotNone(employee)
+            employee.telegram_user_id = "777222333"
+            employee.telegram_username = "delete_me"
+            db.add(
+                EmployeeMessengerAccount(
+                    employee_id=employee.id,
+                    channel="telegram",
+                    external_user_id="777222333",
+                    external_username="delete_me",
+                    is_primary=True,
+                    is_active=True,
+                    created_at=now,
+                    updated_at=now,
+                )
+            )
+            db.commit()
+
+        response = self.client.delete(f"/api/employees/{self.employee_id}", headers={"Accept": "application/json"})
+
+        self.assertEqual(response.status_code, 200)
+        with SessionLocal() as db:
+            self.assertIsNone(db.get(Employee, self.employee_id))
+            self.assertEqual(
+                db.query(EmployeeMessengerAccount)
+                .filter(
+                    EmployeeMessengerAccount.employee_id == self.employee_id,
+                    EmployeeMessengerAccount.is_active.is_(True),
+                )
+                .count(),
+                0,
             )
 
     def test_bulk_actions_preview_api_uses_candidate_stage_split(self) -> None:
@@ -5042,12 +5202,15 @@ class EmployeeApiSmokeTests(unittest.TestCase):
             employee.telegram_user_id = None
             employee.is_bot_blocked = True
             db.commit()
+            before_count = db.query(Employee).count()
             messenger = DummyMessenger()
 
             asyncio.run(handle_start_command(messenger, db, chat_id, username.upper()))
 
             db.refresh(employee)
             self.assertIsNone(get_primary_chat_id(employee, db=db))
+            self.assertEqual(db.query(Employee).count(), before_count)
+            self.assertEqual(db.query(Employee).filter(Employee.telegram_user_id == chat_id).count(), 0)
             self.assertEqual(messenger.sent_texts, [(chat_id, BLOCKED_USER_TEXT)])
 
     def test_bot_menu_back_returns_to_previous_menu(self) -> None:

@@ -38,6 +38,10 @@ def _normalized_public_handle(value: Optional[str]) -> Optional[str]:
     return text.lower() or None
 
 
+def normalize_public_chat_handle(value: Optional[str]) -> Optional[str]:
+    return _normalized_public_handle(value)
+
+
 def _looks_like_numeric_chat_id(value: Optional[str]) -> bool:
     normalized = _normalized(value)
     return bool(normalized) and (normalized.isdigit() or (normalized.startswith("-") and normalized[1:].isdigit()))
@@ -75,11 +79,22 @@ def find_employee_by_channel_user_id(
     channel: str,
     external_user_id: Optional[str],
 ) -> Optional[Employee]:
+    matches = find_employees_by_channel_user_id(db, channel=channel, external_user_id=external_user_id)
+    return matches[0] if len(matches) == 1 else None
+
+
+def find_employees_by_channel_user_id(
+    db: Session,
+    *,
+    channel: str,
+    external_user_id: Optional[str],
+    repair_orphans: bool = False,
+) -> list[Employee]:
     normalized_user_id = _normalized(external_user_id)
     if not normalized_user_id:
-        return None
+        return []
 
-    account = (
+    accounts = (
         db.query(EmployeeMessengerAccount)
         .filter(
             EmployeeMessengerAccount.channel == channel,
@@ -87,14 +102,32 @@ def find_employee_by_channel_user_id(
             EmployeeMessengerAccount.is_active.is_(True),
         )
         .order_by(EmployeeMessengerAccount.is_primary.desc(), EmployeeMessengerAccount.id.asc())
-        .first()
+        .all()
     )
-    if account:
-        return db.get(Employee, account.employee_id)
+    employees_by_id: dict[int, Employee] = {}
+    changed = False
+    for account in accounts:
+        employee = db.get(Employee, account.employee_id)
+        if employee:
+            employees_by_id[employee.id] = employee
+            continue
+        if repair_orphans:
+            account.is_active = False
+            account.updated_at = utc_now()
+            changed = True
+    if changed:
+        db.commit()
+    if employees_by_id:
+        return [employees_by_id[employee_id] for employee_id in sorted(employees_by_id)]
 
     if channel == "telegram":
-        return db.query(Employee).filter(Employee.telegram_user_id == normalized_user_id).first()
-    return None
+        return (
+            db.query(Employee)
+            .filter(Employee.telegram_user_id == normalized_user_id)
+            .order_by(Employee.id.asc())
+            .all()
+        )
+    return []
 
 
 def find_employee_by_public_chat_handle(
@@ -103,9 +136,20 @@ def find_employee_by_public_chat_handle(
     channel: str,
     external_username: Optional[str],
 ) -> Optional[Employee]:
+    matches = find_employees_by_public_chat_handle(db, channel=channel, external_username=external_username)
+    return matches[0] if len(matches) == 1 else None
+
+
+def find_employees_by_public_chat_handle(
+    db: Session,
+    *,
+    channel: str,
+    external_username: Optional[str],
+    repair_orphans: bool = False,
+) -> list[Employee]:
     normalized_username = _normalized_public_handle(external_username)
     if not normalized_username:
-        return None
+        return []
 
     normalized_account_username = func.lower(func.trim(func.replace(EmployeeMessengerAccount.external_username, "@", "")))
     accounts = (
@@ -118,20 +162,31 @@ def find_employee_by_public_chat_handle(
         .order_by(EmployeeMessengerAccount.is_primary.desc(), EmployeeMessengerAccount.id.asc())
         .all()
     )
+    employees_by_id: dict[int, Employee] = {}
+    changed = False
     for account in accounts:
         employee = db.get(Employee, account.employee_id)
         if employee:
-            return employee
+            employees_by_id[employee.id] = employee
+            continue
+        if repair_orphans:
+            account.is_active = False
+            account.updated_at = utc_now()
+            changed = True
 
     if channel == "telegram":
         normalized_employee_username = func.lower(func.trim(func.replace(Employee.telegram_username, "@", "")))
-        return (
+        employees = (
             db.query(Employee)
             .filter(normalized_employee_username == normalized_username)
             .order_by(Employee.id.asc())
-            .first()
+            .all()
         )
-    return None
+        for employee in employees:
+            employees_by_id[employee.id] = employee
+    if changed:
+        db.commit()
+    return [employees_by_id[employee_id] for employee_id in sorted(employees_by_id)]
 
 
 def get_primary_chat_id(
@@ -175,7 +230,7 @@ def set_primary_chat_id(
             employee,
             channel=channel,
             external_user_id=normalized,
-            external_username=_normalized(employee.telegram_username),
+            external_username=_normalized_public_handle(employee.telegram_username),
             make_primary=(channel == "telegram"),
         )
 
@@ -187,8 +242,8 @@ def get_public_chat_handle(
 ) -> Optional[str]:
     account = get_primary_account(employee, db=db, channel=channel)
     if account and _normalized(account.external_username):
-        return _normalized(account.external_username)
-    public_handle = _normalized(employee.telegram_username)
+        return _normalized_public_handle(account.external_username)
+    public_handle = _normalized_public_handle(employee.telegram_username)
     if public_handle:
         return public_handle
     legacy_user_id = _normalized(employee.telegram_user_id)
@@ -203,7 +258,7 @@ def set_public_chat_handle(
     db: Session | None = None,
     channel: str = "telegram",
 ) -> None:
-    normalized = _normalized(value)
+    normalized = _normalized_public_handle(value)
     employee.telegram_username = normalized
     if db is not None and employee.id is not None and _looks_like_numeric_chat_id(employee.telegram_user_id):
         upsert_employee_channel_account(
@@ -236,9 +291,10 @@ def upsert_employee_channel_account(
             EmployeeMessengerAccount.external_user_id == normalized_user_id,
             EmployeeMessengerAccount.employee_id != employee.id,
         )
+        .order_by(EmployeeMessengerAccount.is_active.desc(), EmployeeMessengerAccount.id.asc())
         .first()
     )
-    if conflicting_account:
+    if conflicting_account and conflicting_account.is_active:
         conflicting_employee = db.get(Employee, conflicting_account.employee_id)
         raise EmployeeIdentityConflictError(
             channel=channel,
@@ -257,12 +313,16 @@ def upsert_employee_channel_account(
         .first()
     )
     now = utc_now()
+    if not account and conflicting_account and not conflicting_account.is_active:
+        account = conflicting_account
+        account.employee_id = employee.id
+
     if not account:
         account = EmployeeMessengerAccount(
             employee_id=employee.id,
             channel=channel,
             external_user_id=normalized_user_id,
-            external_username=_normalized(external_username),
+            external_username=_normalized_public_handle(external_username),
             is_primary=bool(make_primary),
             is_active=True,
             created_at=now,
@@ -270,7 +330,7 @@ def upsert_employee_channel_account(
         )
         db.add(account)
     else:
-        account.external_username = _normalized(external_username)
+        account.external_username = _normalized_public_handle(external_username)
         account.is_active = True
         if make_primary:
             account.is_primary = True
@@ -296,7 +356,7 @@ def sync_legacy_telegram_account(db: Session, employee: Employee) -> Optional[Em
         employee,
         channel="telegram",
         external_user_id=_normalized(employee.telegram_user_id),
-        external_username=_normalized(employee.telegram_username),
+        external_username=_normalized_public_handle(employee.telegram_username),
         make_primary=True,
     )
 

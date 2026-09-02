@@ -1322,6 +1322,9 @@ def _delete_employee_document_link(db: Session, link_row: EmployeeDocumentLink) 
 def _delete_employee_record(db: Session, employee: Employee) -> str:
     redirect_url = "/candidates" if _employee_list_kind(employee) == "candidates" else "/employees"
     employee_id = employee.id
+    db.query(EmployeeMessengerAccount).filter(
+        EmployeeMessengerAccount.employee_id == employee_id,
+    ).delete(synchronize_session=False)
     employee_files = db.query(EmployeeFile).filter(EmployeeFile.employee_id == employee_id).all()
     for file_row in employee_files:
         path = Path(file_row.stored_path)
@@ -1380,6 +1383,7 @@ def _reset_employee_bot_linkage(db: Session, employee: Employee) -> Employee:
     employee.telegram_user_id = None
     employee.telegram_username = None
     employee.current_menu_set_id = None
+    employee.current_menu_path = None
     employee.is_flow_scheduled = False
 
     db.commit()
