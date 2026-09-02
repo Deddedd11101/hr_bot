@@ -70,6 +70,16 @@ Scenario engine превращает scenario templates плюс employee state 
 8. Если response нужен, ждать text/file/button input от resolved recipient и применить result к employee state context employee.
 9. Для активного интерактивного шага runtime поддерживает default `Назад`: для text/file это reply button, для button/branching — inline button. Откат возвращает только на предыдущий интерактивный шаг в рамках текущего незавершенного сценария.
 
+## Terminal steps
+
+- `flow_step_templates.is_terminal=true` означает явную остановку текущего сценария на этом шаге.
+- Для send-only step (`response_type=none`) progress закрывается сразу после отправки текста/вложения/уведомлений этого шага.
+- Для интерактивных step (`text`, `date`, `file`, `buttons`, `branching`) progress закрывается после валидного ответа пользователя и применения side effects этого ответа.
+- Terminal step не запускает следующий root/chain/follow-up step и не создает scheduled follow-up request.
+- Terminal работает одинаково в root-flow, branch-step и chain-step, потому что `resolve_followup_step()` возвращает `None` для explicit terminal step.
+- Практический editor contract: завершающим надо помечать последний step конкретной ветки, где сценарий должен остановиться. Если отказной step остается обычным root-step после branch parent, любой путь, который явно или неявно вернулся в root-flow до этого шага, все равно может его отправить.
+- `launch_scenario` остается отдельной transition-механикой: текущий сценарий завершается и запускает target scenario. Не использовать `is_terminal` как замену `launch_scenario`, если нужен переход в другой сценарий.
+
 ## Scenario Notifications
 
 - Сценарные уведомления ответственным отправляются только по явно настроенным правилам шага или кнопки.
@@ -171,6 +181,7 @@ Scenario engine превращает scenario templates плюс employee state 
 - В React scenario workspace тип ответа теперь явно показывает, блокирует ли шаг поток.
 - `text`, `file`, `buttons` и `branching` считаются интерактивными: после отправки такого шага бот ждет ответ и не переходит дальше автоматически.
 - `none` не блокирует сценарий и должен использоваться для чисто информационных шагов, файлов и текстов, после которых не нужен ответ.
+- Чекбокс `Завершить сценарий после этого шага` сохраняет `flow_step_templates.is_terminal`; список шагов и read-only graph должны визуально отличать explicit terminal step от обычной ноды без outgoing edges.
 - Новые scenario-шаги, branch-шаги и chain-шаги не должны сохранять декоративный default text. Поле сообщения остается пустым, а подсказка показывается только как UI placeholder.
 
 ## Известные ограничения

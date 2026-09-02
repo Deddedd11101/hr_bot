@@ -3704,6 +3704,73 @@ class EmployeeApiSmokeTests(unittest.TestCase):
             self.assertIsNotNone(branch_step)
             self.assertEqual(branch_step.return_to_step_key, followup_step_key)
 
+    def test_workspace_step_api_persists_terminal_flag(self) -> None:
+        scenario_key = f"codex_terminal_step_{self.unique_tag}"
+        with SessionLocal() as db:
+            scenario = ScenarioTemplate(
+                scenario_key=scenario_key,
+                title=f"codex-terminal-step-{self.unique_tag}",
+                sort_order=10,
+                scenario_kind="scenario",
+                role_scope="all",
+                employee_scope="all",
+                trigger_mode="manual_only",
+            )
+            step = FlowStepTemplate(
+                flow_key=scenario_key,
+                step_key=f"{scenario_key}_step_1",
+                step_title="Финальный шаг",
+                sort_order=10,
+                default_text="Финальный текст",
+                custom_text=None,
+                response_type="text",
+                button_options=None,
+                send_mode="immediate",
+                send_time=None,
+                day_offset_workdays=0,
+                target_field=None,
+                send_employee_card=False,
+            )
+            db.add_all([scenario, step])
+            db.commit()
+            db.refresh(step)
+            step_id = step.id
+
+        response = self.client.post(
+            f"/api/flows/workspace/steps/{step_id}",
+            json={
+                "title": "Финальный шаг",
+                "text": "Финальный текст",
+                "response_type": "text",
+                "button_options": "",
+                "send_mode": "immediate",
+                "send_time": "",
+                "target_field": "",
+                "launch_scenario_key": "",
+                "return_to_step_key": "",
+                "is_terminal": True,
+                "send_employee_card": False,
+                "notify_on_send_text": "",
+                "notify_on_send_recipient_ids": "",
+                "notify_on_send_recipient_scope": "",
+                "step_send_notifications": [],
+                "button_notifications": [],
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()["payload"]["workspace"]
+        step_payload = payload["root_steps"][0]
+        self.assertTrue(step_payload["is_terminal"])
+        graph_node = next(node for node in payload["graph"]["nodes"] if node["step_id"] == step_id)
+        self.assertTrue(graph_node["is_terminal"])
+        self.assertTrue(graph_node["is_explicit_terminal"])
+
+        with SessionLocal() as db:
+            saved_step = db.get(FlowStepTemplate, step_id)
+            self.assertIsNotNone(saved_step)
+            self.assertTrue(saved_step.is_terminal)
+
     def test_workspace_payload_includes_read_only_graph_contract(self) -> None:
         scenario_key = f"codex_graph_payload_{self.unique_tag}"
         target_scenario_key = f"{scenario_key}_target"

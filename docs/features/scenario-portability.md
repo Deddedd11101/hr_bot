@@ -39,6 +39,7 @@ source_of_truth: true
 - экспортировать выбранные сценарии в переносимый пакет;
 - импортировать пакет обратно в SQLite-базу;
 - переносить шаги, branch/chain-структуру и уведомления кнопок;
+- переносить `return_to_step_key` и `is_terminal`, чтобы branch return/terminal semantics не терялись между базами;
 - копировать вложения шагов в пакет `assets/` и восстанавливать их при импорте.
 - экспортировать metadata shared document library item, если шаг использует reusable document attachment.
 
@@ -70,6 +71,7 @@ source_of_truth: true
   - `hr`;
 - список шагов;
 - parent/child связи шагов через `parent_step_key`;
+- `return_to_step_key` и `is_terminal` для step-level flow control;
 - button notifications;
 - сведения о вложениях шагов.
 - `attachment_document_item` metadata, если шаг привязан к shared document library:

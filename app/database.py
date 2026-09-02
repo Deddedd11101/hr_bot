@@ -379,6 +379,7 @@ def _ensure_sqlite_schema() -> None:
             "target_field": "TEXT",
             "launch_scenario_key": "TEXT",
             "return_to_step_key": "TEXT",
+            "is_terminal": "BOOLEAN NOT NULL DEFAULT 0",
             "attachment_path": "TEXT",
             "attachment_filename": "TEXT",
             "attachment_document_item_id": "INTEGER",

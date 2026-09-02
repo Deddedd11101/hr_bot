@@ -325,6 +325,65 @@ class ScenarioPortabilityTests(unittest.TestCase):
             step = manifest["scenarios"][0]["steps"][0]
             self.assertIsNone(step["attachment_document_item_id"])
             self.assertIsNone(step["attachment_document_item"])
+            self.assertFalse(step["is_terminal"])
+
+    def test_export_import_round_trip_preserves_terminal_step_flag(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            source_db = root / "source.db"
+            target_db = root / "target.db"
+            export_dir = root / "package"
+            storage_root = root / "storage"
+
+            _create_portability_schema(source_db)
+            _create_portability_schema(target_db)
+            for db_path in (source_db, target_db):
+                connection = sqlite3.connect(str(db_path))
+                try:
+                    connection.execute("ALTER TABLE flow_step_templates ADD COLUMN is_terminal INTEGER NOT NULL DEFAULT 0")
+                    connection.execute("ALTER TABLE flow_step_templates ADD COLUMN return_to_step_key TEXT")
+                    connection.commit()
+                finally:
+                    connection.close()
+
+            source = sqlite3.connect(str(source_db))
+            try:
+                source.execute(
+                    """
+                    INSERT INTO scenario_templates (
+                        scenario_key, title, sort_order, scenario_kind, role_scope, employee_scope, recipient_mode, trigger_mode, target_employee_id, description
+                    ) VALUES ('scenario_terminal', 'Terminal scenario', 10, 'scenario', 'all', 'employees', 'self', 'manual_only', NULL, NULL)
+                    """
+                )
+                source.execute(
+                    """
+                    INSERT INTO flow_step_templates (
+                        flow_key, step_key, parent_step_id, branch_option_index, step_title, sort_order, default_text, custom_text, response_type, button_options,
+                        send_mode, send_time, day_offset_workdays, target_field, launch_scenario_key, return_to_step_key, is_terminal, attachment_path, attachment_filename,
+                        send_employee_card, notify_on_send_text, notify_on_send_recipient_ids, notify_on_send_recipient_scope
+                    ) VALUES ('scenario_terminal', 'final_step', NULL, NULL, 'Final step', 10, 'Done', NULL, 'none', NULL, 'immediate', NULL, 0, NULL, NULL, NULL, 1, NULL, NULL, 0, NULL, NULL, NULL)
+                    """
+                )
+                source.commit()
+            finally:
+                source.close()
+
+            export_scenarios(source_db, export_dir, ["scenario_terminal"])
+
+            manifest = json.loads((export_dir / "manifest.json").read_text(encoding="utf-8"))
+            self.assertTrue(manifest["scenarios"][0]["steps"][0]["is_terminal"])
+
+            import_scenarios(target_db, export_dir, storage_root)
+
+            target = sqlite3.connect(str(target_db))
+            try:
+                row = target.execute(
+                    "SELECT is_terminal FROM flow_step_templates WHERE flow_key = 'scenario_terminal'"
+                ).fetchone()
+            finally:
+                target.close()
+
+            self.assertEqual(row[0], 1)
 
     def test_import_clears_library_attachment_when_same_id_is_mismatched(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:

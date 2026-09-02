@@ -666,6 +666,12 @@ class FlowStepTemplate(Base):
         nullable=True,
         doc="Ключ root-step того же сценария, к которому ветка должна вернуться после завершения.",
     )
+    is_terminal: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        doc="Если true, сценарий завершается после отправки шага или после ответа на него.",
+    )
     attachment_path: Mapped[Optional[str]] = mapped_column(
         String(1024),
         nullable=True,
