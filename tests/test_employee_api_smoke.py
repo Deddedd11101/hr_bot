@@ -4626,6 +4626,49 @@ class EmployeeApiSmokeTests(unittest.TestCase):
                 0,
             )
 
+    def test_reset_employee_bot_linkage_api_keeps_completed_recipient_progress(self) -> None:
+        scenario_key = f"codex-reset-completed-recipient-{self.unique_tag}"
+        now = datetime.now(UTC).replace(tzinfo=None)
+        with SessionLocal() as db:
+            recipient = db.get(Employee, self.employee_id)
+            self.assertIsNotNone(recipient)
+            subject = Employee(
+                full_name="Completed Context Employee",
+                employee_stage="adaptation",
+                first_workday=now.date(),
+                created_at=now,
+            )
+            db.add(subject)
+            db.flush()
+            progress = ScenarioProgress(
+                employee_id=subject.id,
+                scenario_key=scenario_key,
+                recipient_mode="manager",
+                recipient_employee_id=recipient.id,
+                recipient_chat_id="777333445",
+                current_step_key="done",
+                waiting_for_response=False,
+                is_completed=True,
+                started_at=now,
+                updated_at=now,
+                completed_at=now,
+            )
+            db.add(progress)
+            db.commit()
+            progress_id = progress.id
+
+        response = self.client.post(
+            f"/api/employees/{self.employee_id}/bot-link/reset",
+            headers={"Accept": "application/json"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        with SessionLocal() as db:
+            progress = db.get(ScenarioProgress, progress_id)
+            self.assertIsNotNone(progress)
+            self.assertEqual(progress.recipient_employee_id, self.employee_id)
+            self.assertTrue(progress.is_completed)
+
     def test_delete_employee_api_removes_active_messenger_accounts(self) -> None:
         now = datetime.now(UTC).replace(tzinfo=None)
         with SessionLocal() as db:
@@ -4707,6 +4750,47 @@ class EmployeeApiSmokeTests(unittest.TestCase):
                 .count(),
                 0,
             )
+
+    def test_delete_employee_api_keeps_completed_recipient_progress(self) -> None:
+        scenario_key = f"codex-delete-completed-recipient-{self.unique_tag}"
+        now = datetime.now(UTC).replace(tzinfo=None)
+        with SessionLocal() as db:
+            recipient = db.get(Employee, self.employee_id)
+            self.assertIsNotNone(recipient)
+            subject = Employee(
+                full_name="Completed Context Employee",
+                employee_stage="adaptation",
+                first_workday=now.date(),
+                created_at=now,
+            )
+            db.add(subject)
+            db.flush()
+            progress = ScenarioProgress(
+                employee_id=subject.id,
+                scenario_key=scenario_key,
+                recipient_mode="manager",
+                recipient_employee_id=recipient.id,
+                recipient_chat_id="777444556",
+                current_step_key="done",
+                waiting_for_response=False,
+                is_completed=True,
+                started_at=now,
+                updated_at=now,
+                completed_at=now,
+            )
+            db.add(progress)
+            db.commit()
+            progress_id = progress.id
+
+        response = self.client.delete(f"/api/employees/{self.employee_id}", headers={"Accept": "application/json"})
+
+        self.assertEqual(response.status_code, 200)
+        with SessionLocal() as db:
+            self.assertIsNone(db.get(Employee, self.employee_id))
+            progress = db.get(ScenarioProgress, progress_id)
+            self.assertIsNotNone(progress)
+            self.assertEqual(progress.recipient_employee_id, self.employee_id)
+            self.assertTrue(progress.is_completed)
 
     def test_bulk_actions_preview_api_uses_candidate_stage_split(self) -> None:
         response = self.client.post(

@@ -48,8 +48,8 @@ Usernames нормализуются одинаково перед сравне�
 
 Reset/delete contract:
 
-- Operator reset bot linkage из карточки чистит legacy Telegram поля, active `EmployeeMessengerAccount` rows для employee, active scenario progress где employee является context или recipient, pending launch requests, `current_menu_set_id` и `current_menu_path`.
-- Удаление карточки через operator API удаляет связанные messenger account rows и scenario progress где employee является context или recipient до удаления employee, чтобы app-level delete path не оставлял active orphan identity или waiting progress со старым recipient chat id.
+- Operator reset bot linkage из карточки чистит legacy Telegram поля, active `EmployeeMessengerAccount` rows для employee, незавершенный scenario runtime progress где employee является context или recipient, pending launch requests, `current_menu_set_id` и `current_menu_path`. Completed progress остается audit/history и не удаляется reset'ом.
+- Удаление карточки через operator API удаляет связанные messenger account rows, все progress rows где employee является context, и только незавершенный progress где employee является recipient. Completed recipient progress у других context-карточек сохраняется как audit/history, чтобы app-level delete path не стирал чужую завершенную историю.
 - Schema-level FK/cascade для `employee_messenger_accounts.employee_id` пока не введен; это отдельный data-model debt, а не часть текущего runtime repair.
 
 Чего runtime не делает:
