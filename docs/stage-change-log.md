@@ -34,6 +34,46 @@ source_of_truth: true
 
 ## Записи
 
+### 2026-09-02 15:57 MSK - app deploy - Telegram identity consistency
+
+- Deploy ref: `stage`.
+- Deployed commit: `ee5ac8d`.
+- GitHub Actions run: `33632686151` -> success.
+- В stage включено:
+  - `/start` и Telegram identity resolution стали детерминированнее при совпадениях по username/numeric Telegram ID;
+  - конфликт одинакового Telegram username теперь не создает новую карточку кандидата молча;
+  - reset/delete Telegram linkage чистит активные ожидания сценариев, где карточка была subject или recipient;
+  - завершенный recipient progress сохраняется как audit/history и не удаляется при reset linkage;
+  - обновлены тесты и live docs по bot identity/API/project state.
+- Локальные проверки перед deploy:
+  - `D:\HRBot\hr_bot_stage_pipeline\.venv\Scripts\python.exe -m compileall app tests tools`;
+  - `D:\HRBot\hr_bot_stage_pipeline\.venv\Scripts\python.exe -m ruff check --select F821 app tests tools`;
+  - `D:\HRBot\hr_bot_stage_pipeline\.venv\Scripts\python.exe -m unittest tests.test_p0_behaviour tests.test_employee_api_smoke tests.test_scenario_engine_smoke tests.test_messaging_identity -q` -> 185 tests OK;
+  - `D:\HRBot\hr_bot_stage_pipeline\.venv\Scripts\python.exe tools\check_docs_contracts.py`;
+  - `npm ci` in `frontend`;
+  - `npm run build` in `frontend`;
+  - `git diff --check origin/stage..HEAD`.
+- GitHub Actions preflight:
+  - backend dependencies install;
+  - `compileall`;
+  - `ruff F821`;
+  - backend smoke tests;
+  - frontend build;
+  - smoke imports.
+- Stage safety checks:
+  - verified SQLite backup created before checkout/restart: `backups/hr_bot.before-deploy.20260902-125643.db`;
+  - scenario config snapshot created: `backups/scenarios.before-deploy.20260902-125643.json`;
+  - scenario configuration fingerprint unchanged.
+- Stage smoke checks:
+  - `/app/employees` -> `303`;
+  - `/app/flows/workspace-v2` -> `303`;
+  - Telegram API reachability -> `HTTP/2 302`;
+  - worker logs since restart checked by workflow for `TelegramNetworkError`, `Request timeout`, `Traceback`, `Unclosed client session`;
+  - deploy job завершился успешно и вывел `ee5ac8d`.
+- Открытые риски:
+  - нужен ручной Telegram smoke: existing username candidate/staff, duplicate username conflict, reset linkage и повторный `/start`;
+  - username-only linking остается временным механизмом до полноценной verified identity модели.
+
 ### 2026-09-01 15:03 MSK - app deploy - first workday clear hotfix
 
 - Deploy ref: `stage`.
