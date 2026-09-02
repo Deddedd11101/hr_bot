@@ -39,8 +39,14 @@ TEMPLATE_FIELD_RE = re.compile(r"\{([a-zA-Zа-яА-ЯёЁ_][a-zA-Z0-9а-яА-Я�
 RESUME_TAG_RE = re.compile(r"\{(?:resume|резюме)\}", re.IGNORECASE)
 RESUME_DOCUMENT_TITLE = "Резюме"
 RESUME_DOCUMENT_SLOT = "resume"
+TEST_TASK_RESULT_TITLE = "Ответ на тестовое"
+TEST_TASK_RESULT_SLOT = "test_task_result"
+TEST_TASK_RESULT_FILE_CATEGORY = "test_result"
+TEST_TASK_RESULT_TARGET_FIELDS = {TEST_TASK_RESULT_SLOT, "test_assignment_answer", "test_task_answer", TEST_TASK_RESULT_FILE_CATEGORY}
+TEST_TASK_RESULT_TEXT_PROMPT = "Пришлите файл, фото, видео или ссылку http/https на выполненное тестовое задание."
 SINGLE_STEP_REQUEST_PREFIX = "__single_step__:"
 INTERACTIVE_RESPONSE_TYPES = {"text", "date", "file", "buttons", "branching"}
+HTTP_LINK_RE = re.compile(r"^https?://\S+$", re.IGNORECASE)
 DATE_WEEKDAY_LABELS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
 DATE_MONTH_LABELS = [
     "Январь",
@@ -647,26 +653,24 @@ def _capture_response_undo_snapshot(
             "file_name": survey_answer.file_name if survey_answer else None,
         }
     file_before: dict[str, Any] | None = None
-    if uploaded_file is not None:
-        file_before = {
-            "id": uploaded_file.id,
-            "stored_path": uploaded_file.stored_path,
-        }
+    if uploaded_file is not None or step.target_field == RESUME_DOCUMENT_SLOT or is_test_task_answer_step(step):
+        file_before = {}
+        if uploaded_file is not None:
+            file_before = {
+                "id": uploaded_file.id,
+                "stored_path": uploaded_file.stored_path,
+            }
         if step.target_field == RESUME_DOCUMENT_SLOT:
-            resume_slot = _get_employee_resume_slot(db, employee.id)
-            file_before["resume_slot_before"] = (
-                {
-                    "existed": True,
-                    "id": resume_slot.id,
-                    "slot_key": resume_slot.slot_key,
-                    "title": resume_slot.title,
-                    "url": resume_slot.url,
-                    "item_kind": resume_slot.item_kind,
-                    "employee_file_id": resume_slot.employee_file_id,
-                    "created_at": resume_slot.created_at.isoformat() if resume_slot.created_at else None,
-                }
-                if resume_slot
-                else {"existed": False}
+            file_before["document_slot_before"] = _capture_document_slot_snapshot(
+                _get_employee_resume_slot(db, employee.id),
+                default_slot_key=RESUME_DOCUMENT_SLOT,
+                default_title=RESUME_DOCUMENT_TITLE,
+            )
+        if is_test_task_answer_step(step):
+            file_before["document_slot_before"] = _capture_document_slot_snapshot(
+                _get_employee_document_slot(db, employee.id, TEST_TASK_RESULT_SLOT),
+                default_slot_key=TEST_TASK_RESULT_SLOT,
+                default_title=TEST_TASK_RESULT_TITLE,
             )
     return {
         "step_key": step.step_key,
@@ -703,28 +707,9 @@ def _restore_response_undo_snapshot(
 
     file_before = snapshot.get("file_before")
     if isinstance(file_before, dict):
-        resume_slot_before = file_before.get("resume_slot_before")
-        if isinstance(resume_slot_before, dict):
-            current_resume_slot = _get_employee_resume_slot(db, employee.id)
-            if not resume_slot_before.get("existed"):
-                if current_resume_slot is not None:
-                    db.delete(current_resume_slot)
-            else:
-                created_at_raw = resume_slot_before.get("created_at")
-                created_at = (
-                    datetime.fromisoformat(created_at_raw)
-                    if isinstance(created_at_raw, str) and created_at_raw.strip()
-                    else utc_now()
-                )
-                target_slot = current_resume_slot
-                if target_slot is None:
-                    target_slot = EmployeeDocumentLink(employee_id=employee.id, created_at=created_at)
-                    db.add(target_slot)
-                target_slot.slot_key = resume_slot_before.get("slot_key") or RESUME_DOCUMENT_SLOT
-                target_slot.title = resume_slot_before.get("title") or RESUME_DOCUMENT_TITLE
-                target_slot.url = resume_slot_before.get("url") or ""
-                target_slot.item_kind = resume_slot_before.get("item_kind") or "file"
-                target_slot.employee_file_id = resume_slot_before.get("employee_file_id")
+        document_slot_before = file_before.get("document_slot_before")
+        if isinstance(document_slot_before, dict):
+            _restore_document_slot_snapshot(db, employee.id, document_slot_before)
         file_id = file_before.get("id")
         db_file = db.get(EmployeeFile, file_id) if file_id is not None else None
         if db_file is not None:
@@ -1102,6 +1087,68 @@ def _get_employee_resume_slot(db: Session, employee_id: int) -> EmployeeDocument
     )
 
 
+def _get_employee_document_slot(db: Session, employee_id: int, slot_key: str) -> EmployeeDocumentLink | None:
+    return (
+        db.query(EmployeeDocumentLink)
+        .filter(
+            EmployeeDocumentLink.employee_id == employee_id,
+            EmployeeDocumentLink.slot_key == slot_key,
+        )
+        .order_by(EmployeeDocumentLink.id.asc())
+        .first()
+    )
+
+
+def _capture_document_slot_snapshot(
+    link_row: EmployeeDocumentLink | None,
+    *,
+    default_slot_key: str,
+    default_title: str,
+) -> dict[str, Any]:
+    if not link_row:
+        return {
+            "existed": False,
+            "slot_key": default_slot_key,
+            "title": default_title,
+        }
+    return {
+        "existed": True,
+        "id": link_row.id,
+        "slot_key": link_row.slot_key or default_slot_key,
+        "title": link_row.title or default_title,
+        "url": link_row.url,
+        "item_kind": link_row.item_kind,
+        "employee_file_id": link_row.employee_file_id,
+        "created_at": link_row.created_at.isoformat() if link_row.created_at else None,
+    }
+
+
+def _restore_document_slot_snapshot(db: Session, employee_id: int, snapshot: dict[str, Any]) -> None:
+    slot_key = (snapshot.get("slot_key") or "").strip()
+    if not slot_key:
+        return
+    current_slot = _get_employee_document_slot(db, employee_id, slot_key)
+    if not snapshot.get("existed"):
+        if current_slot is not None:
+            db.delete(current_slot)
+        return
+    created_at_raw = snapshot.get("created_at")
+    created_at = (
+        datetime.fromisoformat(created_at_raw)
+        if isinstance(created_at_raw, str) and created_at_raw.strip()
+        else utc_now()
+    )
+    target_slot = current_slot
+    if target_slot is None:
+        target_slot = EmployeeDocumentLink(employee_id=employee_id, created_at=created_at)
+        db.add(target_slot)
+    target_slot.slot_key = slot_key
+    target_slot.title = (snapshot.get("title") or "").strip() or slot_key
+    target_slot.url = snapshot.get("url") or ""
+    target_slot.item_kind = snapshot.get("item_kind") or "link"
+    target_slot.employee_file_id = snapshot.get("employee_file_id")
+
+
 def _mark_employee_file_as_resume_slot(db: Session, employee: Employee, employee_file: EmployeeFile) -> None:
     link_row = _get_employee_resume_slot(db, employee.id)
     if link_row:
@@ -1122,6 +1169,64 @@ def _mark_employee_file_as_resume_slot(db: Session, employee: Employee, employee
             created_at=utc_now(),
         )
     )
+
+
+def _mark_employee_file_as_test_task_result_slot(db: Session, employee: Employee, employee_file: EmployeeFile) -> None:
+    link_row = _get_employee_document_slot(db, employee.id, TEST_TASK_RESULT_SLOT)
+    if link_row:
+        link_row.slot_key = TEST_TASK_RESULT_SLOT
+        link_row.title = TEST_TASK_RESULT_TITLE
+        link_row.url = ""
+        link_row.item_kind = "file"
+        link_row.employee_file_id = employee_file.id
+        return
+    db.add(
+        EmployeeDocumentLink(
+            employee_id=employee.id,
+            slot_key=TEST_TASK_RESULT_SLOT,
+            title=TEST_TASK_RESULT_TITLE,
+            url="",
+            item_kind="file",
+            employee_file_id=employee_file.id,
+            created_at=utc_now(),
+        )
+    )
+
+
+def _mark_link_as_test_task_result_slot(db: Session, employee: Employee, url: str) -> None:
+    link_row = _get_employee_document_slot(db, employee.id, TEST_TASK_RESULT_SLOT)
+    if link_row:
+        link_row.slot_key = TEST_TASK_RESULT_SLOT
+        link_row.title = TEST_TASK_RESULT_TITLE
+        link_row.url = url
+        link_row.item_kind = "link"
+        link_row.employee_file_id = None
+        return
+    db.add(
+        EmployeeDocumentLink(
+            employee_id=employee.id,
+            slot_key=TEST_TASK_RESULT_SLOT,
+            title=TEST_TASK_RESULT_TITLE,
+            url=url,
+            item_kind="link",
+            employee_file_id=None,
+            created_at=utc_now(),
+        )
+    )
+
+
+def is_test_task_answer_step(step: FlowStepTemplate | None) -> bool:
+    if not step:
+        return False
+    return (step.target_field or "").strip() in TEST_TASK_RESULT_TARGET_FIELDS
+
+
+def normalize_test_task_answer_file_category(step: FlowStepTemplate | None, category: str) -> str:
+    return TEST_TASK_RESULT_FILE_CATEGORY if is_test_task_answer_step(step) else category
+
+
+def is_http_answer_link(value: str | None) -> bool:
+    return bool(HTTP_LINK_RE.match((value or "").strip()))
 
 
 def _split_notification_recipients(value: Optional[str]) -> list[str]:
@@ -1595,6 +1700,8 @@ def apply_response_to_employee(
         return True
     if target_field in {"resume", "candidate_file"}:
         return uploaded_file is not None
+    if target_field in TEST_TASK_RESULT_TARGET_FIELDS:
+        return uploaded_file is not None or is_http_answer_link(normalized)
     return True
 
 
@@ -1852,6 +1959,25 @@ async def handle_text_response(messenger_or_bot: Any, db: Session, employee: Emp
     if not scenario:
         return False
     step = get_step_by_key(db, scenario.scenario_key, progress.current_step_key)
+    if step and step.response_type == "file" and is_test_task_answer_step(step):
+        messenger = as_messenger(messenger_or_bot)
+        normalized_text = (message.text or "").strip()
+        if not is_http_answer_link(normalized_text):
+            chat_id = progress.recipient_chat_id or get_primary_chat_id(employee, db=db)
+            if chat_id:
+                await messenger.send_text(chat_id=chat_id, text=TEST_TASK_RESULT_TEXT_PROMPT)
+            return True
+        undo_snapshot = _capture_response_undo_snapshot(db, context_employee, scenario, step)
+        store_survey_answer(db, context_employee, scenario, step, normalized_text)
+        _mark_link_as_test_task_result_slot(db, context_employee, normalized_text)
+        if not apply_response_to_employee(db, context_employee, step, normalized_text):
+            _restore_response_undo_snapshot(db, context_employee, scenario, step, undo_snapshot)
+            return False
+        context_employee.candidate_status = step.step_key
+        _push_response_undo_snapshot(progress, undo_snapshot)
+        db.commit()
+        await advance_after_response(messenger_or_bot, db, context_employee, scenario, step)
+        return True
     if not step or step.response_type != "text":
         return False
     undo_snapshot = _capture_response_undo_snapshot(db, context_employee, scenario, step)
@@ -2030,6 +2156,9 @@ async def handle_file_response(
     if step.target_field == "resume":
         uploaded_file.category = RESUME_DOCUMENT_SLOT
         _mark_employee_file_as_resume_slot(db, context_employee, uploaded_file)
+    if is_test_task_answer_step(step):
+        uploaded_file.category = TEST_TASK_RESULT_FILE_CATEGORY
+        _mark_employee_file_as_test_task_result_slot(db, context_employee, uploaded_file)
     if not apply_response_to_employee(db, context_employee, step, uploaded_file.original_filename, uploaded_file):
         _restore_response_undo_snapshot(db, context_employee, scenario, step, undo_snapshot)
         return False

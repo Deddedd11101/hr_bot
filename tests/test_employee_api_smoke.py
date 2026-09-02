@@ -236,6 +236,9 @@ class EmployeeApiSmokeTests(unittest.TestCase):
                 synchronize_session=False
             )
             db.query(EmployeeFile).filter(EmployeeFile.employee_id == self.employee_id).delete(synchronize_session=False)
+            db.query(ScenarioProgress).filter(ScenarioProgress.employee_id == self.employee_id).delete(
+                synchronize_session=False
+            )
             db.query(EmployeeMessengerAccount).filter(EmployeeMessengerAccount.employee_id == self.employee_id).delete()
             extra_employees = db.query(Employee).filter(Employee.full_name.like(f"%{self.unique_tag}%")).all()
             for extra_employee in extra_employees:
@@ -249,6 +252,9 @@ class EmployeeApiSmokeTests(unittest.TestCase):
                     synchronize_session=False
                 )
                 db.query(EmployeeFile).filter(EmployeeFile.employee_id == extra_employee.id).delete(synchronize_session=False)
+                db.query(ScenarioProgress).filter(ScenarioProgress.employee_id == extra_employee.id).delete(
+                    synchronize_session=False
+                )
                 db.query(EmployeeMessengerAccount).filter(EmployeeMessengerAccount.employee_id == extra_employee.id).delete()
                 db.query(EmployeeAssignmentHistory).filter(
                     (EmployeeAssignmentHistory.subject_employee_id == extra_employee.id)
@@ -529,6 +535,63 @@ class EmployeeApiSmokeTests(unittest.TestCase):
         self.assertEqual(payload["kind"], "video")
         self.assertEqual(payload["employee_file_id"], file_id)
         self.assertIn(f"/employees/{self.employee_id}/files/{file_id}/download", payload["download_url"])
+
+    def test_employee_detail_payload_shows_scenario_test_task_link_answer(self) -> None:
+        scenario_key = f"codex-test-task-link-{self.unique_tag}"
+        link = "https://example.com/test-task-answer"
+        now = datetime.now(UTC).replace(tzinfo=None)
+        with SessionLocal() as db:
+            employee = db.get(Employee, self.employee_id)
+            self.assertIsNotNone(employee)
+            employee.telegram_user_id = f"777{self.unique_tag[:6]}"
+            scenario = ScenarioTemplate(
+                scenario_key=scenario_key,
+                title=f"codex-test-task-link-scenario-{self.unique_tag}",
+                sort_order=10,
+                scenario_kind="scenario",
+                role_scope="all",
+                employee_scope="all",
+                trigger_mode="manual_only",
+            )
+            step = FlowStepTemplate(
+                flow_key=scenario_key,
+                step_key=f"{scenario_key}_answer",
+                step_title="Ответ",
+                sort_order=10,
+                default_text="Пришлите ссылку",
+                response_type="file",
+                send_mode="immediate",
+                target_field="test_task_result",
+            )
+            db.add_all([scenario, step])
+            db.flush()
+            db.add(
+                ScenarioProgress(
+                    employee_id=employee.id,
+                    scenario_key=scenario_key,
+                    current_step_key=step.step_key,
+                    waiting_for_response=True,
+                    is_completed=False,
+                    started_at=now,
+                    updated_at=now,
+                    recipient_employee_id=employee.id,
+                    recipient_chat_id=employee.telegram_user_id,
+                )
+            )
+            db.commit()
+            chat_id = employee.telegram_user_id
+
+        with SessionLocal() as db:
+            result = asyncio.run(handle_text_event(DummyMessenger(), db, chat_id, None, link))
+        self.assertEqual(result, "handled")
+
+        response = self.client.get(f"/api/employees/{self.employee_id}")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["test_task_result"]["kind"], "link")
+        self.assertEqual(payload["test_task_result"]["open_url"], link)
+        self.assertEqual(payload["test_assignment_answer"], payload["test_task_result"])
 
     def test_clear_resume_document_slot_keeps_resume_files(self) -> None:
         response = self.client.post(

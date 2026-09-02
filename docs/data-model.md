@@ -106,7 +106,7 @@ source_of_truth: true
 - `resume` slot не должен попадать в generic `document_links` payload, чтобы UI не показывал destructive generic delete рядом с резюме.
 - Даже если старый клиент напрямую вызовет generic document-link delete для `slot_key=resume`, backend удаляет только link row и сохраняет `EmployeeFile` плюс физический файл.
 - Если `resume` slot пустой, runtime/API может использовать последний `employee_files.category=resume` как совместимый fallback.
-- `employee_document_links.slot_key=test_task_result` — актуальная связь ответа на тестовое; если slot отсутствует или невалиден, карточка может показать последний legacy `employee_files.category=test_result`.
+- `employee_document_links.slot_key=test_task_result` — актуальная связь ответа на тестовое; scenario runtime пишет сюда file/photo/video/video_note ответы как file-backed slot и `http://` / `https://` ответы как link-backed slot. Если slot отсутствует или невалиден, карточка может показать последний legacy `employee_files.category=test_result`.
 - Generic employee detail payload исключает semantic file categories `resume`, `test_result`, `offer_document`, чтобы карточка не смешивала текущие продуктовые документы с общими файлами.
 
 ### `employees`
