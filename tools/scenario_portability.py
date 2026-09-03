@@ -339,7 +339,6 @@ def export_scenarios(db_path: Path, output_dir: Path, scenario_keys: list[str]) 
 
     connection = _connect(db_path)
     try:
-        _ensure_flow_step_confirm_choice_column(connection)
         payload: dict[str, Any] = {
             "version": 1,
             "exported_from": str(db_path),

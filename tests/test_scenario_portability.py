@@ -378,6 +378,14 @@ class ScenarioPortabilityTests(unittest.TestCase):
             step = manifest["scenarios"][0]["steps"][0]
             self.assertIsNone(step["attachment_document_item_id"])
             self.assertIsNone(step["attachment_document_item"])
+            self.assertEqual(step["confirm_choice"], 0)
+
+            connection = sqlite3.connect(str(source_db))
+            try:
+                columns = {row[1] for row in connection.execute("PRAGMA table_info(flow_step_templates)")}
+            finally:
+                connection.close()
+            self.assertNotIn("confirm_choice", columns)
 
     def test_import_clears_library_attachment_when_same_id_is_mismatched(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
