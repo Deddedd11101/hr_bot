@@ -242,10 +242,12 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
         );
     }
 
-    function handleClearFirstWorkday() {
-        const nextForm = Object.assign({}, form, { first_workday: "" });
+    function handleFirstWorkdayChange(value: string) {
+        const nextForm = Object.assign({}, form, { first_workday: value });
         setForm(nextForm);
-        saveEmployeeForm(nextForm, "Дата очищена");
+        if (!value && form.first_workday) {
+            saveEmployeeForm(nextForm, "Дата очищена");
+        }
     }
 
     function handleHrNoteDraftChange(event: React.ChangeEvent<HTMLTextAreaElement>) {
@@ -841,7 +843,7 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
                         hrNoteDraft={hrNoteDraft}
                         hrNotesHistory={hrNotesHistory}
                         onHrNoteDraftChange={handleHrNoteDraftChange}
-                        onClearFirstWorkday={handleClearFirstWorkday}
+                        onFirstWorkdayChange={handleFirstWorkdayChange}
                     />
                     <AssignmentHistorySection items={assignmentHistory} />
                 </div>

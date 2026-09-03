@@ -50,6 +50,11 @@ function hasScenarioRouteParam() {
   return new URL(window.location.href).searchParams.has("scenario_id");
 }
 
+function scenarioRouteIdFromLocation() {
+  const value = Number(new URL(window.location.href).searchParams.get("scenario_id") || 0);
+  return Number.isInteger(value) && value > 0 ? value : null;
+}
+
 function normalizeStepNotificationRules(rules: WorkspaceStepSendNotificationRule[] = []) {
   return rules
     .map((rule) => ({
@@ -95,7 +100,8 @@ function normalizeScenarioRoleScopes(roleScopes: string[] | undefined, legacyRol
 
 export function ScenarioWorkspacePage() {
   const apiUrl = rootElement?.getAttribute("data-api-url") || "/api/flows/workspace";
-  const initialScenarioId = Number(rootElement?.getAttribute("data-selected-scenario-id") || 0) || null;
+  const initialRouteScenarioId = scenarioRouteIdFromLocation();
+  const initialScenarioId = initialRouteScenarioId ?? (Number(rootElement?.getAttribute("data-selected-scenario-id") || 0) || null);
   const workspaceKind = rootElement?.getAttribute("data-workspace-kind") === "survey" ? "survey" : "scenario";
   const initialFlashMessage = rootElement?.getAttribute("data-flash-message") || "";
   const initialFlashType = rootElement?.getAttribute("data-flash-type") || "success";
@@ -114,8 +120,9 @@ export function ScenarioWorkspacePage() {
   const [error, setError] = React.useState("");
   const [payload, setPayload] = React.useState<WorkspacePayload | null>(null);
   const [selectedScenarioId, setSelectedScenarioId] = React.useState<number | null>(initialScenarioId);
+  const [routeScenarioId, setRouteScenarioId] = React.useState<number | null>(initialRouteScenarioId);
   const [workspaceRouteMode, setWorkspaceRouteMode] = React.useState<"catalog" | "editor">(
-    initialScenarioId && hasScenarioRouteParam() ? "editor" : "catalog",
+    initialRouteScenarioId && hasScenarioRouteParam() ? "editor" : "catalog",
   );
   const [search, setSearch] = React.useState("");
   const [audienceFilter, setAudienceFilter] = React.useState<"all" | "employees" | "candidates">("all");
@@ -144,7 +151,7 @@ export function ScenarioWorkspacePage() {
     isSurveyWorkspace && payload?.workspace?.scenario?.id ? `/surveys/${payload.workspace.scenario.id}/export` : "";
 
   const currentContainer = stack[stack.length - 1] || null;
-  const isCatalogRoute = workspaceRouteMode === "catalog";
+  const isCatalogRoute = workspaceRouteMode === "catalog" && !routeScenarioId;
   const currentItems = currentContainer?.items || [];
   const selectedItem = currentItems.find((item) => itemKey(item) === selectedItemKey) || currentItems[0] || null;
   const detailTarget = detailTargetFromItem(selectedItem);
@@ -285,6 +292,7 @@ export function ScenarioWorkspacePage() {
       nextUrl.searchParams.delete("scenario_id");
     }
     window.history.pushState({ scenarioWorkspaceMode: mode, scenarioId }, "", nextUrl);
+    setRouteScenarioId(scenarioId && mode === "editor" ? scenarioId : null);
     setWorkspaceRouteMode(mode);
   }, []);
 
@@ -318,6 +326,7 @@ export function ScenarioWorkspacePage() {
     const handlePopState = () => {
       const params = new URL(window.location.href).searchParams;
       const scenarioId = Number(params.get("scenario_id") || 0) || null;
+      setRouteScenarioId(scenarioId);
       setWorkspaceRouteMode(scenarioId ? "editor" : "catalog");
       if (scenarioId) {
         setSelectedScenarioId(scenarioId);
@@ -335,9 +344,10 @@ export function ScenarioWorkspacePage() {
   React.useEffect(() => {
     const params = new URLSearchParams();
     params.set("kind", workspaceKind);
-    const cleanCatalogRequest = workspaceRouteMode === "catalog";
-    if (selectedScenarioId) {
-      params.set("scenario_id", String(selectedScenarioId));
+    const requestedScenarioId = routeScenarioId ?? (workspaceRouteMode === "editor" ? selectedScenarioId : null);
+    const cleanCatalogRequest = workspaceRouteMode === "catalog" && !routeScenarioId;
+    if (requestedScenarioId) {
+      params.set("scenario_id", String(requestedScenarioId));
     }
     const url = `${apiUrl}?${params.toString()}`;
     setLoading(true);
@@ -356,17 +366,18 @@ export function ScenarioWorkspacePage() {
           setSelectedItemKey("");
           return;
         }
-        if (nextPayload.workspace && selectedScenarioId === nextPayload.selected_scenario_id && stackRef.current.length) {
+        const nextSelectedScenarioId = nextPayload.selected_scenario_id ?? requestedScenarioId ?? null;
+        if (nextPayload.workspace && nextSelectedScenarioId === selectedScenarioId && stackRef.current.length) {
           applyPayload(nextPayload);
         } else if (nextPayload.workspace) {
           setPayload(nextPayload);
-          setSelectedScenarioId(nextPayload.selected_scenario_id ?? null);
+          setSelectedScenarioId(nextSelectedScenarioId);
           const root = makeRootContainer(nextPayload.workspace);
           setStack([root]);
           setSelectedItemKey(itemKey(root.items[0]));
         } else {
           setPayload(nextPayload);
-          setSelectedScenarioId(nextPayload.selected_scenario_id ?? null);
+          setSelectedScenarioId(nextSelectedScenarioId);
           setStack([]);
           setSelectedItemKey("");
         }
@@ -377,7 +388,7 @@ export function ScenarioWorkspacePage() {
       .finally(() => {
         setLoading(false);
       });
-  }, [apiUrl, applyPayload, isSurveyWorkspace, itemLabelGenitive, selectedScenarioId, workspaceKind, workspaceRouteMode]);
+  }, [apiUrl, applyPayload, isSurveyWorkspace, itemLabelGenitive, routeScenarioId, selectedScenarioId, workspaceKind, workspaceRouteMode]);
 
   const scenarios = React.useMemo(() => {
     const items = payload?.scenarios || [];
