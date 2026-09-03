@@ -34,6 +34,34 @@ source_of_truth: true
 
 ## Записи
 
+### 2026-09-04 01:55 MSK - app deploy - scenario graph first-open fix
+
+- Deploy ref: `stage`.
+- Deployed commit: `972ba05`.
+- GitHub Actions run: `33815064364` -> success.
+- В stage включено:
+  - `view=graph` сохраняется в URL/state сразу при первом клике `Схема`;
+  - lazy-load graph component больше не должен возвращать экран к списку шагов после первой загрузки;
+  - `scenario_id` из URL удерживает editor route.
+- Локальные проверки перед deploy:
+  - `npm run build` in `frontend` -> passed;
+  - repeated `npm run build` in `frontend` -> passed, worktree clean;
+  - `git diff --check` -> passed.
+- GitHub Actions preflight:
+  - checkout `ref=stage` -> `972ba05`;
+  - backend dependencies install;
+  - `compileall`;
+  - `ruff F821`;
+  - backend smoke tests;
+  - frontend build;
+  - smoke import application modules.
+- Stage smoke checks:
+  - `https://hr.zephyrlab.ru/app/employees` -> `303`;
+  - `https://hr.zephyrlab.ru/app/flows/workspace-v2` -> `303`;
+  - external `http://92.51.38.32:8000/app/employees` -> connection failed as expected.
+- Open risks:
+  - browser/product smoke for first graph click remains manual; operator should verify in the real UI.
+
 ### 2026-09-03 22:26 MSK - app deploy - frontend cleanup pack
 
 - Deploy ref: `stage`.
