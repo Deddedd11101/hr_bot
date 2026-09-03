@@ -803,10 +803,6 @@ export function BotMenuPage({ apiUrl }: BotMenuPageProps) {
                 <CardTitle className="text-sm font-semibold">Навигация</CardTitle>
               </CardHeader>
               <CardContent className="grid gap-3 pt-3">
-                <Button variant="secondary" className="justify-start" onClick={() => navigateToMenuSet(null)}>
-                  <FolderOpen data-icon="inline-start" />
-                  Все наборы
-                </Button>
                 <div className="grid gap-2">
                   <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Родители</div>
                   {parentMenuSets(workspace, selectedMenuSet.id).length ? (

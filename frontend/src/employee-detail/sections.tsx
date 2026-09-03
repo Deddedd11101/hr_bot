@@ -12,7 +12,6 @@ import {
     ShieldAlert,
     Trash2,
     Upload,
-    X,
 } from "lucide-react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -676,7 +675,7 @@ export function EmployeeProfileSection(props: any) {
         hrNoteDraft,
         hrNotesHistory,
         onHrNoteDraftChange,
-        onClearFirstWorkday,
+        onFirstWorkdayChange,
     } = props;
     return (
         <form className="employee-profile-form" onSubmit={handleSubmit}>
@@ -709,35 +708,16 @@ export function EmployeeProfileSection(props: any) {
                         </Field>
                         <Field>
                             <FieldLabel>{isCandidate ? "Плановая дата выхода" : "Первый день сотрудника"}</FieldLabel>
-                            <div className="flex items-center gap-2">
-                                <DatePicker
-                                    value={form.first_workday}
-                                    onValueChange={function (value) {
+                            <DatePicker
+                                value={form.first_workday}
+                                onValueChange={function (value) {
+                                    if (onFirstWorkdayChange) {
+                                        onFirstWorkdayChange(value);
+                                    } else {
                                         changeFieldValue(handleChange, "first_workday", value);
-                                    }}
-                                />
-                                {form.first_workday ? (
-                                    <Button
-                                        type="button"
-                                        variant="outline"
-                                        size="icon"
-                                        onClick={onClearFirstWorkday}
-                                        disabled={saveState.saving}
-                                        aria-label={
-                                            isCandidate
-                                                ? "Очистить плановую дату выхода"
-                                                : "Очистить первый день сотрудника"
-                                        }
-                                        title={
-                                            isCandidate
-                                                ? "Очистить плановую дату выхода"
-                                                : "Очистить первый день сотрудника"
-                                        }
-                                    >
-                                        <X />
-                                    </Button>
-                                ) : null}
-                            </div>
+                                    }
+                                }}
+                            />
                         </Field>
                         <Field>
                             <FieldLabel htmlFor="employee-position">
