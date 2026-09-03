@@ -34,6 +34,37 @@ source_of_truth: true
 
 ## Записи
 
+### 2026-09-03 22:26 MSK - app deploy - frontend cleanup pack
+
+- Deploy ref: `stage`.
+- Deployed commit: `52fa9bf`.
+- GitHub Actions run: `33796265956` -> success.
+- В stage включено:
+  - исправлен первый заход в scenario graph view: `scenario_id` из URL удерживает editor route во время lazy-load graph view;
+  - catalog открывается только по явному клику `К списку`;
+  - убрана глобальная кнопка `Все наборы` из навигационной карточки bot menu;
+  - убрана внешняя кнопка очистки `first_workday`, очистка остается внутри `DatePicker` и сохраняет значение через existing save flow;
+  - обновлен воспроизводимый Vite output `app/static/workspace_v2/*`.
+- Локальные проверки перед deploy:
+  - `npm ci` in `frontend` -> passed, existing 6 vulnerabilities;
+  - `npm run build` in `frontend` -> passed;
+  - repeated `npm run build` in `frontend` -> passed, worktree clean;
+  - `git diff --check` -> passed.
+- GitHub Actions preflight:
+  - checkout `ref=stage` -> `52fa9bf`;
+  - backend dependencies install;
+  - `compileall`;
+  - `ruff F821`;
+  - backend smoke tests;
+  - frontend build;
+  - smoke import application modules.
+- Stage smoke checks:
+  - `https://hr.zephyrlab.ru/app/employees` -> `303`;
+  - `https://hr.zephyrlab.ru/app/flows/workspace-v2` -> `303`;
+  - external `http://92.51.38.32:8000/app/employees` -> connection failed as expected.
+- Open risks:
+  - browser/product smoke for scenario graph first-open remains manual; operator should verify in the real UI.
+
 ### 2026-09-03 19:04 MSK - infra - HTTPS domain for stage admin
 
 - Stage domain added: `https://hr.zephyrlab.ru`.
