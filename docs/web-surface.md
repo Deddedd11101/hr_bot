@@ -57,7 +57,7 @@ source_of_truth: true
 | `GET` | `/candidates` | Redirect route | Legacy operator entrypoint; теперь ведет на `/app/employees?list_kind=candidates` |
 | `GET` | `/employees` | Redirect route | Legacy operator entrypoint; теперь ведет на `/app/employees` |
 | `GET` | `/app/employees` | React bootstrap page | Default employee/candidate list; поддерживает query `list_kind=candidates` |
-| `GET` | `/app/employees/{employee_id}` | React bootstrap page | Новый employee detail screen; показывает отдельные document slots для оффера и актуального резюме, отдельно от generic files |
+| `GET` | `/app/employees/{employee_id}` | React bootstrap page | Новый employee detail screen |
 | `GET` | `/employees/{employee_id}/edit` | Redirect route | Legacy employee entrypoint; теперь ведет на React detail `/app/employees/{employee_id}` |
 | `POST` | `/employees` | Form action | Создать employee/candidate из classic UI |
 | `POST` | `/employees/{employee_id}` | Form action | Обновить employee/candidate из classic UI |
@@ -78,8 +78,9 @@ source_of_truth: true
 
 | Method | Path | Surface | Примечания |
 | --- | --- | --- | --- |
-| `GET` | `/bulk-actions` | Redirect route | Legacy operator entrypoint; теперь ведет на `/app/bulk-actions` |
-| `GET` | `/app/bulk-actions` | React bootstrap page | React bulk actions; default sidebar entry, classic `/bulk-actions` остается fallback |
+| `GET` | `/bulk-actions` | Redirect route | Legacy operator entrypoint; ведет на `/app/messages` |
+| `GET` | `/app/bulk-actions` | Redirect route | Прежний адрес страницы массовых действий; ведет на `/app/messages` |
+| `GET` | `/app/messages` | React bootstrap page | Страница массовых сообщений. Рассылка сценариев/опросов — диалог в детали записи, общий журнал — на дашборде |
 | `POST` | `/bulk-actions/scenarios/schedule` | Form action | Запланировать mass scenario |
 | `POST` | `/bulk-actions/surveys/schedule` | Form action | Запланировать mass survey |
 | `POST` | `/bulk-actions/scenarios/launch` | Form action | Запустить mass scenario сразу |
@@ -114,7 +115,7 @@ source_of_truth: true
 | `POST` | `/flows/steps/{step_id}/attachment/delete` | Form action | Удалить step attachment |
 | `GET` | `/app/flows/workspace` | Redirect route | Legacy redirect в React workspace |
 | `GET` | `/app/flows/workspace-v2` | React bootstrap page | Текущий scenario workspace |
-| `GET` | `/app/surveys/workspace` | React bootstrap page | React survey workspace; sidebar default для опросов, использует `/api/flows/workspace?kind=survey` |
+| `GET` | `/app/surveys/workspace` | React bootstrap page | React survey workspace; каталог опросов, `?scenario_id=` открывает редактор, использует `/api/flows/workspace?kind=survey` |
 
 ## Общая библиотека документов
 

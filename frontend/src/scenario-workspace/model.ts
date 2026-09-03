@@ -34,6 +34,30 @@ export function payloadLabel(kind: "scenario" | "survey") {
   return kind === "survey" ? "опрос" : "сценарий";
 }
 
+/*
+ * Родительный падеж для подписей вида «Настройки сценария». Одной формы
+ * не хватает: «Создать сценарий» и «Настройки сценария» требуют разных,
+ * и заголовок диалога читался как «Настройки сценарий».
+ */
+export function payloadLabelGenitive(kind: "scenario" | "survey") {
+  return kind === "survey" ? "опроса" : "сценария";
+}
+
+/*
+ * Счётчик записей внутри карточки. Форма слова выбирается по числу: до этого
+ * подпись всегда стояла в родительном множественном, и опрос с одним вопросом
+ * подписывался «1 вопросов».
+ */
+export function stepsCountLabel(count: number, isSurvey: boolean) {
+  const forms = isSurvey ? ["вопрос", "вопроса", "вопросов"] : ["шаг", "шага", "шагов"];
+  const tail = Math.abs(count) % 100;
+  const last = tail % 10;
+  if (tail > 10 && tail < 20) return `${count} ${forms[2]}`;
+  if (last === 1) return `${count} ${forms[0]}`;
+  if (last >= 2 && last <= 4) return `${count} ${forms[1]}`;
+  return `${count} ${forms[2]}`;
+}
+
 export function itemKey(item: WorkspaceItem | null | undefined) {
   return item?.id ? String(item.id) : "";
 }

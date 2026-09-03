@@ -48,20 +48,29 @@ def bulk_actions_page(request: Request):
     auth_redirect = require_auth(request)
     if auth_redirect:
         return auth_redirect
-    return RedirectResponse(url="/app/bulk-actions", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(url="/app/messages", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @router.get("/app/bulk-actions")
 def react_bulk_actions_page(request: Request):
+    """Прежний адрес страницы массовых действий: страница переименована."""
+    auth_redirect = require_auth(request)
+    if auth_redirect:
+        return auth_redirect
+    return RedirectResponse(url="/app/messages", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.get("/app/messages")
+def react_messages_page(request: Request):
     auth_redirect = require_auth(request)
     if auth_redirect:
         return auth_redirect
     return render_template(
         request,
         templates,
-        "react_bulk_actions.html",
+        "react_messages.html",
         {
-            "active_tab": "bulk_actions",
+            "active_tab": "messages",
             "react_api_url": "/api/bulk-actions/workspace",
             "classic_page_url": "/bulk-actions",
         },

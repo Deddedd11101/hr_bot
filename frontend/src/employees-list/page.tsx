@@ -9,14 +9,19 @@ import {
   List,
   MessageCircle,
   Plus,
-  Search,
   Users,
   X,
 } from "lucide-react";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
+import { PageHeader } from "@/components/ui/page-header";
+import { RecordCardTag } from "@/components/ui/record-card";
+import {
+  PageFilters,
+  PageFiltersSearch,
+  PageFiltersSegments,
+} from "@/components/ui/page-filters";
 import {
   Empty,
   EmptyDescription,
@@ -32,11 +37,21 @@ import {
   employeeStageCreateOptions,
   kindCreateOptions,
   listKindOptions,
-  sortOptions,
+  COLUMNS_STORAGE_KEY,
+  VIEW_STORAGE_KEY,
+  parseSort,
+  readStoredColumns,
+  readStoredView,
+  sortOptionsWithCurrent,
   statusOptions,
 } from "./data";
-import { EmployeeCard, EmployeeTableRow, MetaChip, SinglePicker } from "./components";
-import type { CreatePayload, EmployeesPayload, ListKind, ViewMode } from "./types";
+import {
+  EmployeeCard,
+  EmployeeColumnsPicker,
+  EmployeeTable,
+  SinglePicker,
+} from "./components";
+import type { CreatePayload, EmployeeItem, EmployeesPayload, ListKind, ViewMode } from "./types";
 
 export function EmployeesListPage({
   apiBaseUrl,
@@ -54,7 +69,21 @@ export function EmployeesListPage({
   const [search, setSearch] = React.useState("");
   const [statusFilter, setStatusFilter] = React.useState("all");
   const [sortMode, setSortMode] = React.useState("id_desc");
-  const [viewMode, setViewMode] = React.useState<ViewMode>("cards");
+  /*
+   * Вид и набор колонок читаются из хранилища прямо в инициализаторе.
+   * В эффекте было бы поздно: первый кадр отрисовался бы значением
+   * по умолчанию, и раскладка прыгнула бы на глазах.
+   */
+  const [viewMode, setViewMode] = React.useState<ViewMode>(readStoredView);
+  const [visibleColumns, setVisibleColumns] = React.useState(readStoredColumns);
+  React.useEffect(() => {
+    window.localStorage.setItem(VIEW_STORAGE_KEY, viewMode);
+  }, [viewMode]);
+
+  React.useEffect(() => {
+    window.localStorage.setItem(COLUMNS_STORAGE_KEY, JSON.stringify(visibleColumns));
+  }, [visibleColumns]);
+
   const [creating, setCreating] = React.useState(false);
   const [submitting, setSubmitting] = React.useState(false);
   const [submitError, setSubmitError] = React.useState("");
@@ -129,14 +158,43 @@ export function EmployeesListPage({
       return matchesStatus && matchesSearch;
     });
 
+    /*
+     * Одно сравнение на все поля вместо шести веток по строковому режиму:
+     * колонок стало пять, и перечислять их парами «поле_направление»
+     * пришлось бы двенадцатью строками.
+     *
+     * Пустое значение всегда уезжает вниз, независимо от направления:
+     * запись без даты не «самая ранняя» и не «самая поздняя», её просто
+     * нет смысла показывать первой.
+     */
+    const { field, direction } = parseSort(sortMode);
+    const isCandidates = payloadListKind === "candidates";
+
+    const ключ = (item: EmployeeItem): string => {
+      if (field === "name") return item.full_name || "";
+      if (field === "position") return item.position || "";
+      if (field === "status") return (isCandidates ? item.candidate_work_stage_label : item.status_label) || "";
+      if (field === "channel") return item.chat_id || item.chat_handle || "";
+      if (field === "date") return (isCandidates ? item.test_task_due_at : item.first_workday) || "";
+      if (field === "scenario") return item.planned_scenario_title === "—" ? "" : item.planned_scenario_title || "";
+      return "";
+    };
+
     next = next.slice().sort((left, right) => {
-      if (sortMode === "name_asc") return (left.full_name || "").localeCompare(right.full_name || "", "ru");
-      if (sortMode === "name_desc") return (right.full_name || "").localeCompare(left.full_name || "", "ru");
-      if (sortMode === "deadline_asc") return (left.test_task_due_at || "9999-12-31").localeCompare(right.test_task_due_at || "9999-12-31");
-      if (sortMode === "deadline_desc") return (right.test_task_due_at || "").localeCompare(left.test_task_due_at || "");
-      if (sortMode === "workday_asc") return (left.first_workday || "9999-12-31").localeCompare(right.first_workday || "9999-12-31");
-      if (sortMode === "workday_desc") return (right.first_workday || "").localeCompare(left.first_workday || "");
-      return (right.id || 0) - (left.id || 0);
+      if (field === "id") {
+        const порядок = (right.id || 0) - (left.id || 0);
+        return direction === "desc" ? порядок : -порядок;
+      }
+
+      const слева = ключ(left);
+      const справа = ключ(right);
+      if (!слева && !справа) return (right.id || 0) - (left.id || 0);
+      if (!слева) return 1;
+      if (!справа) return -1;
+
+      const сравнение =
+        field === "date" ? слева.localeCompare(справа) : слева.localeCompare(справа, "ru");
+      return direction === "asc" ? сравнение : -сравнение;
     });
 
     return next;
@@ -202,36 +260,99 @@ export function EmployeesListPage({
   };
 
   return (
-    <div className="admin-page-shell">
-      <Card className="admin-page-surface flex min-h-0 flex-col overflow-hidden border border-border bg-card p-4 shadow-none ring-0">
-        <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-          <div className="flex flex-wrap gap-2">
-            {listKindOptions().map((option) => {
-              const active = option.value === listKind;
-              return (
-                <Button
-                  key={option.value}
-                  variant={active ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setListKind(option.value as ListKind)}
-                >
-                  {option.value === "employees" ? <Users data-icon="inline-start" /> : <FileClock data-icon="inline-start" />}
-                  {option.label}
-                </Button>
-              );
-            })}
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <MetaChip icon={<Users className="size-3.5" />} label={`${stats.total} всего`} />
-            <MetaChip icon={<MessageCircle className="size-3.5" />} label={`${stats.withChannel} с каналом`} />
-            <MetaChip icon={<ListFilter className="size-3.5" />} label={`${visibleItems.length} в выдаче`} />
+    <>
+      <PageHeader
+        /*
+         * Раздел называется «Люди», а не «Сотрудники»: ниже в полосе
+         * фильтров стоят чипы «Сотрудники» и «Кандидаты», и имя раздела,
+         * совпадающее с одним из чипов, читалось как выбранный набор.
+         */
+        title="Люди"
+        actions={
+          <>
+            <RecordCardTag icon={<Users className="size-3.5" />} label={`${stats.total} всего`} />
+            <RecordCardTag icon={<MessageCircle className="size-3.5" />} label={`${stats.withChannel} с каналом`} />
+            <RecordCardTag icon={<ListFilter className="size-3.5" />} label={`${visibleItems.length} в выдаче`} />
             <Button size="sm" onClick={() => setCreating((prev) => !prev)}>
               {creating ? <X data-icon="inline-start" /> : <Plus data-icon="inline-start" />}
               {creating ? "Закрыть" : "Добавить"}
             </Button>
-          </div>
-        </div>
+          </>
+        }
+      />
+      <div className="admin-page-shell">
 
+        <PageFilters
+          className="mb-4"
+          scope={
+            <PageFiltersSegments
+              label="Набор списка"
+              value={listKind}
+              options={listKindOptions().map((option) => ({
+                value: option.value,
+                label: option.label,
+                icon:
+                  option.value === "employees" ? (
+                    <Users data-icon="inline-start" />
+                  ) : (
+                    <FileClock data-icon="inline-start" />
+                  ),
+              }))}
+              onValueChange={(next) => setListKind(next as ListKind)}
+            />
+          }
+          search={
+            <PageFiltersSearch
+              value={search}
+              onValueChange={setSearch}
+              placeholder={listKind === "candidates" ? "Поиск по кандидатам" : "Поиск по сотрудникам"}
+            />
+          }
+          controls={
+            <>
+              <SinglePicker
+                value={statusFilter}
+                options={statusOptions(listKind)}
+                onChange={setStatusFilter}
+                icon={listKind === "candidates" ? <FileClock className="size-4 opacity-70" /> : <BadgeCheck className="size-4 opacity-70" />}
+              />
+              {/*
+                * В табличном виде сортируют заголовки колонок, и селект
+                * прячется: два контрола одного и того же состояния на одном
+                * экране заставляют гадать, какой из них главный.
+                */}
+              {viewMode === "cards" ? (
+                <SinglePicker
+                  value={sortMode}
+                  options={sortOptionsWithCurrent(listKind, sortMode)}
+                  onChange={setSortMode}
+                  icon={<ArrowUpDown className="size-4 opacity-70" />}
+                />
+              ) : (
+                <EmployeeColumnsPicker
+                  listKind={listKind}
+                  columns={visibleColumns}
+                  onChange={setVisibleColumns}
+                />
+              )}
+            </>
+          }
+          view={
+            <PageFiltersSegments
+              label="Представление выдачи"
+              iconOnly
+              value={viewMode}
+              /* Таблица первая: она же вид по умолчанию. */
+              options={[
+                { value: "table", label: "Таблица", icon: <List /> },
+                { value: "cards", label: "Карточки", icon: <LayoutGrid /> },
+              ]}
+              onValueChange={(next) => setViewMode(next as ViewMode)}
+            />
+          }
+        />
+
+        {/* Создание записи — не фильтр, поэтому идёт под полосой, а не над ней. */}
         {creating ? (
           <div
             className="mb-4 flex flex-wrap items-end gap-2 rounded-lg border border-border bg-muted/45 p-3"
@@ -273,7 +394,7 @@ export function EmployeesListPage({
               {submitting ? "Создаю..." : "Готово"}
             </Button>
             {submitError ? (
-              <Alert variant="destructive" className="md:col-span-4">
+              <Alert variant="destructive">
                 <AlertTitle>Не удалось создать запись</AlertTitle>
                 <AlertDescription>{submitError}</AlertDescription>
               </Alert>
@@ -281,52 +402,14 @@ export function EmployeesListPage({
           </div>
         ) : null}
 
-        <div className="mb-4 flex flex-wrap items-center gap-3">
-          <div className="relative min-w-[280px] flex-1">
-            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              className="pl-9"
-              placeholder={listKind === "candidates" ? "Поиск по кандидатам" : "Поиск по сотрудникам"}
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-            />
-          </div>
-          <SinglePicker
-            value={statusFilter}
-            options={statusOptions(listKind)}
-            onChange={setStatusFilter}
-            icon={listKind === "candidates" ? <FileClock className="size-4 opacity-70" /> : <BadgeCheck className="size-4 opacity-70" />}
-          />
-          <SinglePicker
-            value={sortMode}
-            options={sortOptions(listKind)}
-            onChange={setSortMode}
-            icon={<ArrowUpDown className="size-4 opacity-70" />}
-          />
-          <div className="flex items-center gap-1 rounded-lg border border-border bg-background p-1">
-            <Button
-              variant={viewMode === "cards" ? "secondary" : "ghost"}
-              size="icon-sm"
-              onClick={() => setViewMode("cards")}
-              title="Карточки"
-              aria-label="Карточки"
-            >
-              <LayoutGrid />
-            </Button>
-            <Button
-              variant={viewMode === "table" ? "secondary" : "ghost"}
-              size="icon-sm"
-              onClick={() => setViewMode("table")}
-              title="Таблица"
-              aria-label="Таблица"
-            >
-              <List />
-            </Button>
-          </div>
-        </div>
-
-        <div className="min-h-0 flex-1 overflow-auto">
-          <div className="relative pr-2">
+        {/*
+          * Прокручивается страница целиком, поэтому собственного скролла
+          * у выдачи нет. Прежние min-h-0 flex-1 overflow-auto и pr-2 обещали
+          * его, но не работали: родитель .admin-page-shell — блок, flex-1
+          * к нему не применяется, и высота оставалась auto.
+          */}
+        <div>
+          <div className="relative">
             {loading ? (
               <div className="grid gap-3">
                 {Array.from({ length: 5 }).map((_, index) => (
@@ -353,32 +436,27 @@ export function EmployeesListPage({
                 className="transition-opacity duration-200"
                 data-view={viewMode}
               >
-                {viewMode === "table" ? (
-                  <div className="sticky top-0 z-[1] flex items-center gap-3 rounded-lg border border-border bg-card px-4 py-2 text-[0.72rem] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                    <div className="min-w-0 flex-[1.6]">ФИО</div>
-                    <div className="min-w-0 flex-1">Статус</div>
-                    <div className="min-w-0 flex-1">Канал</div>
-                    <div className="min-w-0 flex-[0.9]">{listKind === "candidates" ? "Дедлайн" : "Выход"}</div>
-                    <div className="min-w-0 flex-[1.2]">Сценарий</div>
-                    <div className="w-[88px] shrink-0 text-right">Действия</div>
+                {viewMode === "cards" ? (
+                  /* Без items-start: сетка растягивает карточки полосы до самой высокой. */
+                  <div className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(420px,1fr))]">
+                    {visibleItems.map((item) => (
+                      <EmployeeCard key={item.id} item={item} />
+                    ))}
                   </div>
-                ) : null}
-                <div
-                  className={
-                    viewMode === "cards"
-                      ? "grid items-start gap-3 [grid-template-columns:repeat(auto-fit,minmax(420px,1fr))]"
-                      : "flex flex-col gap-2.5"
-                  }
-                >
-                  {visibleItems.map((item) =>
-                    viewMode === "cards" ? <EmployeeCard key={item.id} item={item} /> : <EmployeeTableRow key={item.id} item={item} />
-                  )}
-                </div>
+                ) : (
+                  <EmployeeTable
+                    items={visibleItems}
+                    listKind={listKind}
+                    sortMode={sortMode}
+                    columns={visibleColumns}
+                    onSortChange={setSortMode}
+                  />
+                )}
               </div>
             )}
           </div>
         </div>
-      </Card>
-    </div>
+      </div>
+    </>
   );
 }

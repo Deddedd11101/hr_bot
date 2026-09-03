@@ -6,8 +6,16 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ConfirmAction } from "@/components/ui/confirm-action";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Field, FieldContent, FieldGroup, FieldLabel, FieldTitle } from "@/components/ui/field";
+import {
+  Field,
+  FieldContent,
+  FieldDescription,
+  FieldGroup,
+  FieldLabel,
+  FieldTitle,
+} from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { PageHeader } from "@/components/ui/page-header";
 import {
   Select,
   SelectContent,
@@ -16,6 +24,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { ThemeSwitch } from "@/components/ui/theme-switch";
 import { cn } from "@/lib/utils";
 
 type HrSettings = {
@@ -518,13 +527,25 @@ export function SettingsPage({ apiUrl }: SettingsPageProps) {
   const orderedPositions = sortedPositions(workspace.positions);
 
   return (
-    <div className="admin-page-stack gap-5">
-      <header className="admin-page-surface border border-border/80 bg-card p-5 shadow-none ring-0">
-        <h1 className="text-3xl font-semibold tracking-tight">Настройки</h1>
-      </header>
+    <>
+      <PageHeader title="Настройки" />
+      <div className="admin-page-stack gap-5">
 
       <StatusAlert type="success" message={message} />
       <StatusAlert type="error" message={error} />
+
+      <SettingsCard
+        title="Интерфейс"
+        description="Вид админки. Настройка личная и хранится в этом браузере."
+      >
+        <Field orientation="horizontal">
+          <FieldContent>
+            <FieldTitle>Тёмная тема</FieldTitle>
+            <FieldDescription>Переключатель переехал сюда из бокового меню.</FieldDescription>
+          </FieldContent>
+          <ThemeSwitch />
+        </Field>
+      </SettingsCard>
 
       <SettingsCard title="HR-настройки">
         <FieldGroup className="grid gap-4 md:grid-cols-2">
@@ -762,6 +783,7 @@ export function SettingsPage({ apiUrl }: SettingsPageProps) {
           </div>
         </SettingsCard>
       ) : null}
-    </div>
+      </div>
+    </>
   );
 }

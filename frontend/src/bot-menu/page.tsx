@@ -1,5 +1,5 @@
 import React from "react";
-import { ArrowLeft, FolderOpen, Plus, Save, Trash2, X } from "lucide-react";
+import { FolderOpen, Plus, Save, Trash2, X } from "lucide-react";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/dialog";
 import { Field, FieldContent, FieldGroup, FieldLabel, FieldTitle } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { PageHeader } from "@/components/ui/page-header";
 import {
   Popover,
   PopoverContent,
@@ -668,10 +669,9 @@ export function BotMenuPage({ apiUrl }: BotMenuPageProps) {
     },
   );
   return (
-    <div className="admin-page-stack gap-5">
-      <header className="admin-page-surface border border-border/80 bg-card p-5 shadow-none ring-0">
-        <h1 className="text-3xl font-semibold tracking-tight">Меню бота</h1>
-      </header>
+    <>
+      <PageHeader title="Меню бота" />
+      <div className="admin-page-stack gap-5">
 
       <StatusAlert type="success" message={message} />
       <StatusAlert type="error" message={error} />
@@ -750,11 +750,12 @@ export function BotMenuPage({ apiUrl }: BotMenuPageProps) {
           <div className="flex min-w-0 items-center gap-2 text-sm text-muted-foreground">
             {selectedMenuSet ? (
               <>
+                {/* Тот же ключ, что у шапок деталей: крошка вместо кнопки «назад». */}
                 <Button variant="ghost" size="sm" onClick={() => navigateToMenuSet(null)}>
-                  <ArrowLeft data-icon="inline-start" />
                   Все наборы
                 </Button>
-                <span className="truncate">/ {selectedMenuSet.title}</span>
+                <span aria-hidden="true">/</span>
+                <span className="truncate text-foreground">{selectedMenuSet.title}</span>
               </>
             ) : (
               <span>Выбери набор, чтобы редактировать его отдельно от общей карты меню.</span>
@@ -1190,6 +1191,7 @@ export function BotMenuPage({ apiUrl }: BotMenuPageProps) {
           </div>
         )}
       </SettingsCard>
-    </div>
+      </div>
+    </>
   );
 }

@@ -1,15 +1,5 @@
 {% extends "react_base.html" %}
 
-{% block extra_head %}
-    <style>
-        .main > .container:has(#react-design-system-root) {
-            width: 100%;
-            max-width: var(--admin-page-max-width);
-            transition: width 0.28s ease, max-width 0.28s ease;
-        }
-    </style>
-{% endblock %}
-
 {% block content %}
 <section class="react-page">
     <div id="react-design-system-root"></div>
@@ -17,5 +7,5 @@
 {% endblock %}
 
 {% block scripts %}
-    <script type="module" src="/static/workspace_v2/design-system.js?v=24"></script>
+    <script type="module" src="/static/workspace_v2/design-system.js?v=71"></script>
 {% endblock %}

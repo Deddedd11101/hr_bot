@@ -1926,7 +1926,8 @@ class EmployeeApiSmokeTests(unittest.TestCase):
         expected_redirects = {
             "/candidates": "/app/employees?list_kind=candidates",
             "/employees": "/app/employees",
-            "/bulk-actions": "/app/bulk-actions",
+            "/bulk-actions": "/app/messages",
+            "/app/bulk-actions": "/app/messages",
             "/flows": "/app/flows/workspace-v2",
             "/surveys": "/app/surveys/workspace",
             "/settings": "/app/settings",

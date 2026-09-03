@@ -1,15 +1,5 @@
 {% extends "react_base.html" %}
 
-{% block extra_head %}
-    <style>
-        .main > .container:has(#react-bot-menu-root) {
-            width: 100%;
-            max-width: var(--admin-page-max-width);
-            transition: width 0.28s ease, max-width 0.28s ease;
-        }
-    </style>
-{% endblock %}
-
 {% block content %}
 <section class="react-page">
     <div
@@ -20,5 +10,5 @@
 {% endblock %}
 
 {% block scripts %}
-    <script type="module" src="/static/workspace_v2/bot-menu.js?v=2"></script>
+    <script type="module" src="/static/workspace_v2/bot-menu.js?v=37"></script>
 {% endblock %}

@@ -1,5 +1,5 @@
 import * as React from "react";
-import { ArrowRight, ChevronRight, Copy, FileStack, MoreHorizontal, PanelLeft, Paperclip, Plus, Search, Trash2, X } from "lucide-react";
+import { ChevronRight, Copy, PanelLeft, Paperclip, Plus, Send, Trash2, X } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -7,8 +7,6 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   Card,
   CardContent,
-  CardHeader,
-  CardTitle,
 } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -22,10 +20,13 @@ import {
 import { ConfirmAction } from "@/components/ui/confirm-action";
 import { EmojiPickerPopover } from "@/components/ui/emoji-picker-popover";
 import { Input } from "@/components/ui/input";
+import { PageFilters, PageFiltersSearch, PageFiltersSegments } from "@/components/ui/page-filters";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { TelegramFormatToolbar } from "@/components/ui/telegram-format-toolbar";
 import { Textarea } from "@/components/ui/textarea";
+import { RecordCard, type RecordCardTagSpec } from "@/components/ui/record-card";
+import { ПРОЯВЛЕНИЕ } from "@/lib/reveal";
 import { cn } from "@/lib/utils";
 
 import {
@@ -37,6 +38,7 @@ import {
   parseRecipientIds,
   responseTypeWaitState,
   ROLE_NOTIFICATION_RECIPIENT_LABELS,
+  stepsCountLabel,
   summarizeItem,
   workspaceItemTitle,
 } from "./model";
@@ -79,7 +81,7 @@ export function WorkspaceFlashNotice(props: { message: string; error: boolean })
 
 export function ScenarioSettingsDialog(props: {
   open: boolean;
-  itemLabel: string;
+  itemLabelGenitive: string;
   scenarioTitle: string;
   isSurveyWorkspace: boolean;
   scenarioSettingsForm: ScenarioSettingsForm | null;
@@ -96,7 +98,7 @@ export function ScenarioSettingsDialog(props: {
 }) {
   const {
     open,
-    itemLabel,
+    itemLabelGenitive,
     scenarioTitle,
     isSurveyWorkspace,
     scenarioSettingsForm,
@@ -114,9 +116,10 @@ export function ScenarioSettingsDialog(props: {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex h-[min(760px,calc(100vh-40px))] w-[min(560px,calc(100vw-32px))] flex-col gap-0 overflow-hidden p-0">
+      {/* sm:max-w-[560px] перебивает sm:max-w-sm базового DialogContent — без него диалог сжимался до 384px. */}
+      <DialogContent className="flex h-[min(760px,calc(100vh-40px))] w-[min(560px,calc(100vw-32px))] flex-col gap-0 overflow-hidden p-0 sm:max-w-[560px]">
         <DialogHeader className="shrink-0 border-b border-border px-5 py-4">
-          <DialogTitle>Настройки {itemLabel}</DialogTitle>
+          <DialogTitle>Настройки {itemLabelGenitive}</DialogTitle>
           <DialogDescription>{scenarioTitle || "Загружаю данные"}</DialogDescription>
         </DialogHeader>
         {!scenarioSettingsForm ? (
@@ -292,11 +295,8 @@ function setWorkspaceDragImage(
   window.setTimeout(() => dragImage.remove(), 0);
 }
 
-export function WorkspaceSidebarSection(props: {
-  variant?: "sidebar" | "catalog";
-  sidebarTitle: string;
+export function WorkspaceCatalogSection(props: {
   isSurveyWorkspace: boolean;
-  createItemLabel: string;
   itemNamePlaceholder: string;
   creatingScenario: boolean;
   newScenarioTitle: string;
@@ -304,31 +304,27 @@ export function WorkspaceSidebarSection(props: {
   audienceFilter: "all" | "employees" | "candidates";
   sortMode: "updated_desc" | "created_desc" | "created_asc" | "title_asc";
   scenarios: ScenarioSummary[];
-  selectedScenarioId: number | null;
   selectedScenarioIds: number[];
   dragScenarioId: number | null;
   sidebarState: { message: string; error: boolean };
   onNewScenarioTitleChange: (value: string) => void;
   onCreateScenario: () => void;
-  onOpenCreateScenario: () => void;
   onCancelCreateScenario: () => void;
   onSearchChange: (value: string) => void;
   onAudienceFilterChange: (value: "all" | "employees" | "candidates") => void;
   onSortModeChange: (value: "updated_desc" | "created_desc" | "created_asc" | "title_asc") => void;
   onToggleSelectAllVisibleScenarios: () => void;
   onBulkScenarioAction: (action: "bulk-copy" | "bulk-delete") => void;
+  onSendSelectedScenario: () => void;
+  onClearScenarioSelection: () => void;
   onSelectScenario: (scenarioId: number) => void;
   onScenarioDragStart: (scenarioId: number) => void;
   onScenarioDrop: (scenarioId: number) => void;
   onScenarioDragEnd: () => void;
   onToggleScenarioSelection: (scenarioId: number) => void;
-  onOpenScenarioSettings?: (scenarioId: number) => void;
 }) {
   const {
-    variant = "sidebar",
-    sidebarTitle,
     isSurveyWorkspace,
-    createItemLabel,
     itemNamePlaceholder,
     creatingScenario,
     newScenarioTitle,
@@ -336,267 +332,259 @@ export function WorkspaceSidebarSection(props: {
     audienceFilter,
     sortMode,
     scenarios,
-    selectedScenarioId,
     selectedScenarioIds,
     dragScenarioId,
     sidebarState,
     onNewScenarioTitleChange,
     onCreateScenario,
-    onOpenCreateScenario,
     onCancelCreateScenario,
     onSearchChange,
     onAudienceFilterChange,
     onSortModeChange,
     onToggleSelectAllVisibleScenarios,
     onBulkScenarioAction,
+    onSendSelectedScenario,
+    onClearScenarioSelection,
     onSelectScenario,
     onScenarioDragStart,
     onScenarioDrop,
     onScenarioDragEnd,
     onToggleScenarioSelection,
-    onOpenScenarioSettings,
   } = props;
   const [dropTargetId, setDropTargetId] = React.useState<number | null>(null);
-  const isCatalog = variant === "catalog";
+  /* Подпись действия называет запись: у иконки другого текста нет. */
+  const открытьПодпись = isSurveyWorkspace ? "Открыть опрос" : "Открыть сценарий";
 
-  return (
-    <Card className={cn("flex min-h-0 flex-col overflow-hidden border border-border bg-card shadow-none ring-0", isCatalog ? "h-full p-5" : "p-4")}>
-      <CardHeader className="gap-2 border-b border-border/70 p-0 pb-3">
-        <div className="flex min-w-0 items-center justify-between gap-2">
-          <div className="flex min-w-0 items-center gap-2">
-            <CardTitle className={cn("truncate font-semibold", isCatalog ? "text-[1.75rem]" : "text-[1.35rem]")}>
-              {isCatalog ? `Каталог: ${sidebarTitle.toLowerCase()}` : sidebarTitle}
-            </CardTitle>
-            <Badge variant="secondary" className="shrink-0">
-              {scenarios.length}
-            </Badge>
-          </div>
-          {!creatingScenario ? (
-            <Button size="sm" onClick={onOpenCreateScenario} title={createItemLabel} aria-label={createItemLabel}>
-              <Plus data-icon="inline-start" />
-              Создать
-            </Button>
-          ) : null}
-        </div>
-      </CardHeader>
-      <div className={cn("mt-3 flex gap-2 rounded-lg border border-border bg-muted/35 p-2", isCatalog ? "flex-row flex-wrap items-center" : "flex-col")}>
-        {creatingScenario ? (
-          <div className="flex items-center gap-2">
-            <Input
-              value={newScenarioTitle}
-              onChange={(event) => onNewScenarioTitleChange(event.target.value)}
-              placeholder={itemNamePlaceholder}
-              className="h-8 text-sm"
-            />
-            <Button size="sm" onClick={onCreateScenario} className="px-3">
-              Готово
-            </Button>
-            <Button size="icon-sm" variant="ghost" onClick={onCancelCreateScenario} aria-label="Отменить создание">
-              <X />
-            </Button>
-          </div>
-        ) : null}
-        <div className={cn("relative", isCatalog ? "min-w-[260px] flex-1" : "")}>
-          <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            placeholder={isSurveyWorkspace ? "Найти" : "Найти сценарий"}
-            value={search}
-            onChange={(e) => onSearchChange(e.target.value)}
-            className="h-8 pl-8 text-sm"
-          />
-        </div>
-        <div className={isCatalog ? "min-w-[260px]" : ""}>
-        <SingleSelectPicker
-          options={[
-            { value: "updated_desc", label: "Сначала недавно изменённые" },
-            { value: "created_desc", label: "Сначала новые" },
-            { value: "created_asc", label: "Сначала старые" },
-            { value: "title_asc", label: "По алфавиту" },
-          ]}
-          value={sortMode}
-          placeholder="Сортировка"
-          onChange={(value) => onSortModeChange(value as "updated_desc" | "created_desc" | "created_asc" | "title_asc")}
-        />
-        </div>
-        <div className="flex flex-wrap items-center gap-1.5">
-          {!isSurveyWorkspace ? (
-            <div className="flex items-center gap-1 rounded-lg border border-border bg-background p-1">
-              <Button
-                size="xs"
-                variant={audienceFilter === "all" ? "secondary" : "ghost"}
-                onClick={() => onAudienceFilterChange("all")}
-              >
-                Все
-              </Button>
-              <Button
-                size="xs"
-                variant={audienceFilter === "employees" ? "secondary" : "ghost"}
-                onClick={() => onAudienceFilterChange("employees")}
-              >
-                Сотрудники
-              </Button>
-              <Button
-                size="xs"
-                variant={audienceFilter === "candidates" ? "secondary" : "ghost"}
-                onClick={() => onAudienceFilterChange("candidates")}
-              >
-                Кандидаты
-              </Button>
-            </div>
-          ) : null}
-          <label className="inline-flex h-7 items-center gap-2 rounded-lg border border-border bg-background px-2.5 text-xs font-semibold text-muted-foreground">
-            <Checkbox
-              checked={scenarios.length > 0 && scenarios.every((scenario) => selectedScenarioIds.includes(scenario.id))}
-              onCheckedChange={onToggleSelectAllVisibleScenarios}
-              aria-label="Выбрать все сценарии"
-            />
-            Все
-          </label>
-          <Button
-            size="icon-sm"
-            variant="secondary"
-            title="Копировать выбранные"
-            aria-label="Копировать выбранные"
-            onClick={() => onBulkScenarioAction("bulk-copy")}
-            disabled={!selectedScenarioIds.length}
-          >
-            <Copy />
+  /*
+   * Каталог — это страница, которая состоит ровно из фильтров и карточек,
+   * поэтому внешней карточки у неё нет: обёртка ради фильтров даёт ощущение
+   * карточки в карточке, когда ниже начинаются карточки записей. Полоса
+   * фильтров идёт сразу под заголовком, без фона и без рамки.
+   *
+   * Раскладка одна и та же для сценариев и для опросов: раньше опросы рисовали
+   * список боковой панелью рядом с редактором, и выбор записи менял две панели
+   * справа, не меняя адреса. Теперь запись открывается своей страницей.
+   */
+  const формаСоздания = creatingScenario ? (
+    <div className="flex items-center gap-2">
+      <Input
+        value={newScenarioTitle}
+        onChange={(event) => onNewScenarioTitleChange(event.target.value)}
+        placeholder={itemNamePlaceholder}
+        className="h-8 text-sm"
+      />
+      <Button size="sm" onClick={onCreateScenario} className="px-3">
+        Готово
+      </Button>
+      <Button size="icon-sm" variant="ghost" onClick={onCancelCreateScenario} aria-label="Отменить создание">
+        <X />
+      </Button>
+    </div>
+  ) : null;
+
+  const поиск = (
+    <PageFiltersSearch
+      value={search}
+      onValueChange={onSearchChange}
+      placeholder={isSurveyWorkspace ? "Найти" : "Найти сценарий"}
+    />
+  );
+
+  const сортировка = (
+    <SingleSelectPicker
+      options={[
+        { value: "updated_desc", label: "Сначала недавно изменённые" },
+        { value: "created_desc", label: "Сначала новые" },
+        { value: "created_asc", label: "Сначала старые" },
+        { value: "title_asc", label: "По алфавиту" },
+      ]}
+      value={sortMode}
+      placeholder="Сортировка"
+      onChange={(value) => onSortModeChange(value as "updated_desc" | "created_desc" | "created_asc" | "title_asc")}
+    />
+  );
+
+  const аудитория = !isSurveyWorkspace ? (
+    <PageFiltersSegments
+      label="Аудитория сценариев"
+      value={audienceFilter}
+      onValueChange={(value) => onAudienceFilterChange(value as "all" | "employees" | "candidates")}
+      options={[
+        { value: "all", label: "Все" },
+        { value: "employees", label: "Сотрудники" },
+        { value: "candidates", label: "Кандидаты" },
+      ]}
+    />
+  ) : null;
+
+  /* Высоты выровнены по 32px — как у поиска и селектов в полосе фильтров. */
+  const выделение = (
+    <label className="inline-flex h-8 items-center gap-2 rounded-lg border border-border bg-background px-2.5 text-xs font-semibold text-muted-foreground">
+      <Checkbox
+        checked={scenarios.length > 0 && scenarios.every((scenario) => selectedScenarioIds.includes(scenario.id))}
+        onCheckedChange={onToggleSelectAllVisibleScenarios}
+        aria-label={isSurveyWorkspace ? "Выбрать все опросы" : "Выбрать все сценарии"}
+      />
+      Все
+    </label>
+  );
+
+  /*
+   * Действия над выбранным живут в плавающей панели у нижнего края, а не в
+   * полосе фильтров: они появляются вместе с выделением и исчезают с ним,
+   * поэтому полоса не возит постоянно выключенные кнопки. Панель — sticky
+   * внутри прокрутки страницы: перекрывает карточки, пока список длинный,
+   * и встаёт после них у конца прокрутки, не пряча последний ряд.
+   *
+   * Рассылка идёт по одной записи — так работает её API и её диалог, —
+   * поэтому «Разослать» гаснет, пока выбрано больше одного.
+   */
+  const панельВыделения = selectedScenarioIds.length ? (
+    <div className="pointer-events-none sticky bottom-4 z-20 mt-4 flex justify-center">
+      <div className="admin-selection-bar pointer-events-auto flex flex-wrap items-center gap-1.5 rounded-xl bg-card py-1.5 pl-3.5 pr-1.5">
+        <span className="text-sm font-semibold text-foreground/75">Выбрано: {selectedScenarioIds.length}</span>
+        <Separator orientation="vertical" className="mx-1 !h-5" />
+        <Button
+          size="sm"
+          title={selectedScenarioIds.length === 1 ? "Разослать выбранное" : "Рассылка идёт по одной записи — оставьте одну"}
+          onClick={onSendSelectedScenario}
+          disabled={selectedScenarioIds.length !== 1}
+        >
+          <Send data-icon="inline-start" />
+          Разослать
+        </Button>
+        <Button size="sm" variant="secondary" onClick={() => onBulkScenarioAction("bulk-copy")}>
+          <Copy data-icon="inline-start" />
+          Копировать
+        </Button>
+        <ConfirmAction
+          title={`Удалить выбранные ${isSurveyWorkspace ? "опросы" : "сценарии"}?`}
+          description={`Будет удалено: ${selectedScenarioIds.length}. Это действие нельзя отменить.`}
+          actionLabel="Удалить"
+          onConfirm={() => onBulkScenarioAction("bulk-delete")}
+        >
+          <Button size="sm" variant="outline">
+            <Trash2 data-icon="inline-start" />
+            Удалить
           </Button>
-          <ConfirmAction
-            title={`Удалить выбранные ${isSurveyWorkspace ? "опросы" : "сценарии"}?`}
-            description={`Будет удалено: ${selectedScenarioIds.length}. Это действие нельзя отменить.`}
-            actionLabel="Удалить"
-            onConfirm={() => onBulkScenarioAction("bulk-delete")}
-          >
-            <Button
-              size="icon-sm"
-              variant="outline"
-              title="Удалить выбранные"
-              aria-label="Удалить выбранные"
-              disabled={!selectedScenarioIds.length}
-            >
-              <Trash2 />
-            </Button>
-          </ConfirmAction>
-        </div>
+        </ConfirmAction>
+        <Button size="icon-sm" variant="ghost" aria-label="Снять выделение" onClick={onClearScenarioSelection}>
+          <X />
+        </Button>
       </div>
-      {sidebarState.message ? (
-        <p className={`mt-3 text-sm ${sidebarState.error ? "text-destructive" : "text-muted-foreground"}`}>
-          {sidebarState.message}
-        </p>
-      ) : null}
-      <ScrollArea className="mt-4 min-h-0 flex-1 rounded-lg">
-        <div className={cn("grid gap-2 pr-3 pb-1", isCatalog && "grid-cols-[repeat(auto-fill,minmax(320px,1fr))] gap-3")}>
-          {scenarios.map((scenario) => {
-            const isDragging = dragScenarioId === scenario.id;
-            const isDropTarget = dropTargetId === scenario.id && !isDragging;
-            return (
-              <article
-              key={scenario.id}
-              role={isCatalog ? undefined : "button"}
-              tabIndex={isCatalog ? undefined : 0}
-              onClick={isCatalog ? undefined : () => onSelectScenario(scenario.id)}
-              onKeyDown={
-                isCatalog
-                  ? undefined
-                  : (event) => {
-                      if (event.key === "Enter" || event.key === " ") {
-                        event.preventDefault();
-                        onSelectScenario(scenario.id);
-                      }
-                    }
+    </div>
+  ) : null;
+
+  /*
+   * Сообщение панели — Alert, а не абзац: текст, лежащий прямо на фоне
+   * страницы, не принадлежит ни одному блоку.
+   */
+  const сообщение = sidebarState.message ? (
+    <Alert variant={sidebarState.error ? "destructive" : "default"} className="mb-4">
+      <AlertDescription>{sidebarState.message}</AlertDescription>
+    </Alert>
+  ) : null;
+
+  /*
+   * Адрес записи настоящий: карточка — ссылка, поэтому средняя кнопка мыши
+   * и «копировать адрес» работают, а сервер такой маршрут уже понимает.
+   * Простой левый клик перехватывается и уходит в pushState, чтобы не
+   * перезагружать страницу ради смены панели.
+   */
+  const адресЗаписи = (scenarioId: number) => {
+    const url = new URL(window.location.href);
+    url.searchParams.set("scenario_id", String(scenarioId));
+    return `${url.pathname}${url.search}`;
+  };
+
+  const карточки = (
+    <div className="grid grid-cols-[repeat(auto-fill,minmax(320px,1fr))] gap-3 pb-1">
+      {scenarios.map((scenario) => {
+        const isDragging = dragScenarioId === scenario.id;
+        const isDropTarget = dropTargetId === scenario.id && !isDragging;
+        const теги: RecordCardTagSpec[] = [
+          { label: scenario.role_scope_label },
+          { label: scenario.employee_scope_label },
+        ];
+        if (!isSurveyWorkspace) {
+          /*
+           * Адресата бэкенд в выдаче каталога сейчас не отдаёт, и тег выходит
+           * пустым. Убирает его RecordCard, отбрасывая теги без подписи;
+           * строка остаётся, чтобы тег вернулся сам, когда поле появится.
+           */
+          теги.push({ label: scenario.recipient_mode_label });
+        }
+        теги.push({ label: scenario.trigger_mode_label });
+        теги.push({ label: stepsCountLabel(scenario.steps_count, isSurveyWorkspace), variant: "outline" });
+
+        return (
+          <RecordCard
+            key={scenario.id}
+            title={scenario.title}
+            subtitle={scenario.description || "Без описания"}
+            tags={теги}
+            href={адресЗаписи(scenario.id)}
+            onOpen={(event) => {
+              if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+              event.preventDefault();
+              onSelectScenario(scenario.id);
+            }}
+            selectable
+            checked={selectedScenarioIds.includes(scenario.id)}
+            onCheckedChange={() => onToggleScenarioSelection(scenario.id)}
+            dragging={isDragging}
+            dropTarget={isDropTarget}
+            draggable
+            onDragStart={(event) => {
+              event.dataTransfer.effectAllowed = "move";
+              setWorkspaceDragImage(event, {
+                title: scenario.title,
+                meta: isSurveyWorkspace ? "Перемещение опроса" : "Перемещение сценария",
+              });
+              onScenarioDragStart(scenario.id);
+            }}
+            onDragOver={(event) => {
+              event.preventDefault();
+              setDropTargetId(scenario.id);
+            }}
+            onDragLeave={(event) => {
+              if (!event.currentTarget.contains(event.relatedTarget as Node)) {
+                setDropTargetId((current) => (current === scenario.id ? null : current));
               }
-              draggable
-              onDragStart={(event) => {
-                event.dataTransfer.effectAllowed = "move";
-                setWorkspaceDragImage(event, {
-                  title: scenario.title,
-                  meta: isSurveyWorkspace ? "Перемещение опроса" : "Перемещение сценария",
-                });
-                onScenarioDragStart(scenario.id);
-              }}
-              onDragOver={(event) => {
-                event.preventDefault();
-                setDropTargetId(scenario.id);
-              }}
-              onDragLeave={(event) => {
-                if (!event.currentTarget.contains(event.relatedTarget as Node)) {
-                  setDropTargetId((current) => (current === scenario.id ? null : current));
-                }
-              }}
-              onDrop={() => {
-                setDropTargetId(null);
-                onScenarioDrop(scenario.id);
-              }}
-              onDragEnd={() => {
-                setDropTargetId(null);
-                onScenarioDragEnd();
-              }}
-              className={cn(
-                "relative flex w-full min-w-0 flex-col rounded-lg border text-left transition-[border-color,background-color,opacity,transform,box-shadow]",
-                isCatalog ? "gap-3 p-4" : "gap-2 p-3",
-                isCatalog ? "cursor-default" : "cursor-pointer",
-                !isCatalog && scenario.id === selectedScenarioId
-                  ? "border-primary/70 bg-muted/50"
-                  : "border-border bg-card hover:bg-accent/60",
-                isDragging && "scale-[0.985] border-primary/40 bg-muted/70 opacity-50",
-                isDropTarget && "border-primary bg-primary/5 ring-2 ring-primary/20",
-              )}
-            >
-              {isDropTarget ? <span className="pointer-events-none absolute inset-x-3 -top-1 h-0.5 rounded-full bg-primary" /> : null}
-              <div className="flex items-start justify-between gap-3">
-                <div
-                  className="inline-flex min-w-0 items-center gap-2"
-                  onClick={(event) => event.stopPropagation()}
-                  onMouseDown={(event) => event.stopPropagation()}
-                >
-                  <Checkbox
-                    checked={selectedScenarioIds.includes(scenario.id)}
-                    onCheckedChange={() => onToggleScenarioSelection(scenario.id)}
-                    aria-label={`Выбрать ${scenario.title}`}
-                  />
-                  <span className="min-w-0 truncate text-[0.95rem] font-semibold">{scenario.title}</span>
-                </div>
-                <div className="flex shrink-0 items-center gap-1">
-                  {onOpenScenarioSettings && !isSurveyWorkspace ? (
-                    <Button
-                      size="icon-sm"
-                      variant="ghost"
-                      title="Настройки"
-                      aria-label={`Настройки ${scenario.title}`}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        onOpenScenarioSettings(scenario.id);
-                      }}
-                    >
-                      <MoreHorizontal />
-                    </Button>
-                  ) : null}
-                  {!isCatalog ? <FileStack className="size-4 text-muted-foreground" /> : null}
-                </div>
-              </div>
-              <p className="text-[0.83rem] leading-5 text-muted-foreground">{scenario.description || "Без описания"}</p>
-              <div className="flex flex-wrap gap-1.5">
-                <Badge variant="secondary">{scenario.role_scope_label}</Badge>
-                <Badge variant="secondary">{scenario.employee_scope_label}</Badge>
-                {!isSurveyWorkspace ? <Badge variant="secondary">{scenario.recipient_mode_label}</Badge> : null}
-                <Badge variant="secondary">{scenario.trigger_mode_label}</Badge>
-                <Badge variant="outline">{scenario.steps_count} шагов</Badge>
-              </div>
-              {isCatalog ? (
-                <div className="flex justify-end pt-1">
-                  <Button size="sm" variant="secondary" onClick={() => onSelectScenario(scenario.id)}>
-                    Открыть
-                    <ArrowRight data-icon="inline-end" />
-                  </Button>
-                </div>
-              ) : null}
-            </article>
-            );
-          })}
-        </div>
-      </ScrollArea>
-    </Card>
+            }}
+            onDrop={() => {
+              setDropTargetId(null);
+              onScenarioDrop(scenario.id);
+            }}
+            onDragEnd={() => {
+              setDropTargetId(null);
+              onScenarioDragEnd();
+            }}
+          />
+        );
+      })}
+    </div>
+  );
+
+  /*
+   * Заголовка у каталога нет: раздел назван в полосе заголовка страницы,
+   * а счётчик переехал туда же. Любая подпись здесь читалась бы как дубль.
+   */
+  return (
+    <div className="admin-page-shell">
+      <PageFilters
+        className="mb-4"
+        scope={аудитория}
+        search={поиск}
+        controls={сортировка}
+        view={выделение}
+      />
+      {/* Создание записи — не фильтр, поэтому идёт под полосой, а не в ней. */}
+      {формаСоздания ? <div className="mb-4">{формаСоздания}</div> : null}
+      {сообщение}
+      {карточки}
+      {панельВыделения}
+    </div>
   );
 }
 
@@ -735,13 +723,59 @@ export function WorkspaceCanvasSection(props: {
               const active = itemKey(item) === selectedItemKey;
               const isDragging = dragStepId === item.id;
               const isDropTarget = dropTargetId === item.id && !isDragging;
+              const перетаскиваемый = currentContainer?.type === "root" && item.kind !== "branch_slot";
+              const теги: RecordCardTagSpec[] = [
+                { label: item.kind === "branch_slot" ? "Ветка" : item.response_label },
+              ];
+              if ("response_type" in item) {
+                теги.push({
+                  label: responseTypeWaitState(item.response_type).badge,
+                  variant: responseTypeWaitState(item.response_type).tone === "waiting" ? "default" : "outline",
+                });
+              }
+              if ("is_terminal" in item && item.is_terminal) {
+                теги.push({ label: "Финал", variant: "destructive" });
+              }
+              if ("button_options" in item && item.button_options.length) {
+                теги.push({
+                  label: isSurveyWorkspace
+                    ? `Ответы: ${item.button_options.length}`
+                    : `Кнопки: ${item.button_options.length}`,
+                });
+              }
               return (
-                <article
+                <RecordCard
                   key={itemKey(item) || `${currentContainer?.key}-${index}`}
-                  onClick={() => onSelectItem(itemKey(item))}
-                  draggable={currentContainer?.type === "root" && item.kind !== "branch_slot"}
+                  density="compact"
+                  title={workspaceItemTitle(item, index)}
+                  subtitle={summarizeItem(item)}
+                  tags={теги}
+                  selected={active}
+                  onOpen={() => onSelectItem(itemKey(item))}
+                  /*
+                   * Переход внутрь — иконка справа сверху, а не кнопка со словом
+                   * в подвале: подвал занимал у каждой карточки отдельную строку,
+                   * а само слово уезжает в подсказку и доступное имя.
+                   */
+                  actions={
+                    openChildLabel ? (
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className={ПРОЯВЛЕНИЕ.card}
+                        title={openChildLabel}
+                        aria-label={openChildLabel}
+                        onClick={() => onOpenItem(item)}
+                      >
+                        {openChildLabel.startsWith("Создать") ? <Plus /> : <PanelLeft />}
+                      </Button>
+                    ) : null
+                  }
+                  dragging={isDragging}
+                  dropTarget={isDropTarget}
+                  draggable={перетаскиваемый}
                   onDragStart={(event) => {
-                    if (currentContainer?.type === "root" && item.kind !== "branch_slot") {
+                    if (перетаскиваемый) {
                       event.dataTransfer.effectAllowed = "move";
                       setWorkspaceDragImage(event, {
                         title: workspaceItemTitle(item, index),
@@ -751,7 +785,7 @@ export function WorkspaceCanvasSection(props: {
                     }
                   }}
                   onDragOver={(event) => {
-                    if (currentContainer?.type === "root" && item.kind !== "branch_slot") {
+                    if (перетаскиваемый) {
                       event.preventDefault();
                       setDropTargetId(item.id);
                     }
@@ -762,7 +796,7 @@ export function WorkspaceCanvasSection(props: {
                     }
                   }}
                   onDrop={() => {
-                    if (currentContainer?.type === "root" && item.kind !== "branch_slot") {
+                    if (перетаскиваемый) {
                       setDropTargetId(null);
                       onDragStepDrop(item.id);
                     }
@@ -771,52 +805,7 @@ export function WorkspaceCanvasSection(props: {
                     setDropTargetId(null);
                     onDragStepEnd();
                   }}
-                  className={cn(
-                    "relative flex w-full min-w-0 cursor-pointer flex-col gap-2 rounded-lg border p-3 transition-[border-color,background-color,opacity,transform,box-shadow]",
-                    active ? "border-primary/70 bg-muted/50" : "border-border bg-card hover:bg-accent/60",
-                    isDragging && "scale-[0.985] border-primary/40 bg-muted/70 opacity-50",
-                    isDropTarget && "border-primary bg-primary/5 ring-2 ring-primary/20",
-                  )}
-                >
-                  {isDropTarget ? <span className="pointer-events-none absolute inset-x-3 -top-1 h-0.5 rounded-full bg-primary" /> : null}
-                  <div className="flex flex-col gap-1">
-                    <h4 className="text-[0.95rem] font-semibold">{workspaceItemTitle(item, index)}</h4>
-                    <p className="text-[0.83rem] leading-5 text-muted-foreground">{summarizeItem(item)}</p>
-                  </div>
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="flex flex-wrap gap-1.5">
-                      <Badge variant="secondary">{item.kind === "branch_slot" ? "Ветка" : item.response_label}</Badge>
-                      {"response_type" in item ? (
-                        <Badge variant={responseTypeWaitState(item.response_type).tone === "waiting" ? "default" : "outline"}>
-                          {responseTypeWaitState(item.response_type).badge}
-                        </Badge>
-                      ) : null}
-                      {"is_terminal" in item && item.is_terminal ? <Badge variant="destructive">Финал</Badge> : null}
-                      {"button_options" in item && item.button_options.length ? (
-                        <Badge variant="secondary">
-                          {isSurveyWorkspace ? `Ответы: ${item.button_options.length}` : `Кнопки: ${item.button_options.length}`}
-                        </Badge>
-                      ) : null}
-                    </div>
-                    {openChildLabel ? (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          onOpenItem(item);
-                        }}
-                      >
-                        {openChildLabel.startsWith("Создать") ? (
-                          <Plus data-icon="inline-start" />
-                        ) : (
-                          <PanelLeft data-icon="inline-start" />
-                        )}
-                        {openChildLabel}
-                      </Button>
-                    ) : null}
-                  </div>
-                </article>
+                />
               );
             })}
           </div>

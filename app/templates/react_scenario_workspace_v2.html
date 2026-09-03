@@ -2,32 +2,39 @@
 
 {% block extra_head %}
     <style>
+        /*
+         * Рабочая область занимает высоту экрана целиком. Ограничение снято
+         * с .container и перенесено на саму область: раньше контейнер сужался
+         * под «плавающую карточку», и полоса заголовка страницы оказывалась
+         * зажата вместе с ним — разделитель не доходил до краёв поля.
+         */
         .main:has(#react-scenario-workspace-v2-root) {
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            padding-block: 24px;
+            padding-bottom: 0;
         }
 
-        .main > .container:has(#react-scenario-workspace-v2-root) {
-            width: min(1760px, calc(100vw - var(--sidebar-width, 86px) - 32px));
-            max-width: min(1760px, calc(100vw - var(--sidebar-width, 86px) - 32px));
-            height: min(94vh, calc(100vh - 32px));
-            max-height: min(94vh, calc(100vh - 32px));
-            overflow: hidden;
-            transition: width 0.28s ease, max-width 0.28s ease;
-        }
-
+        /*
+         * Переполнение здесь не режем: полоса заголовка выходит за отступ
+         * контейнера отрицательным полем, и overflow: hidden обрезал бы её
+         * видимую часть на 20px с каждой стороны. По раскладке она при этом
+         * оставалась бы на месте — getBoundingClientRect обрезку не видит.
+         *
+         * Канва ниже полосы обрезает себя сама.
+         */
         .react-page:has(#react-scenario-workspace-v2-root),
         #react-scenario-workspace-v2-root {
-            height: 100%;
+            height: 100vh;
             min-height: 0;
-            overflow: hidden;
         }
 
-        #react-scenario-workspace-v2-root {
-            display: flex;
-            flex-direction: column;
+        /*
+         * Единственная страница, где документ не прокручивается: высота
+         * ровно в экран, а прокрутка живёт внутри панелей. Глобальный
+         * overflow-y: scroll на html (index.css) резервирует здесь дорожку,
+         * которой никогда не будет чем пользоваться, и она вставала рядом
+         * с полосой внутреннего скроллера — 30px справа, из них 15 мёртвые.
+         */
+        html:has(#react-scenario-workspace-v2-root) {
+            overflow-y: hidden;
         }
     </style>
 {% endblock %}
@@ -46,5 +53,5 @@
 {% endblock %}
 
 {% block scripts %}
-    <script type="module" src="/static/workspace_v2/scenario-workspace.js?v=51"></script>
+    <script type="module" src="/static/workspace_v2/scenario-workspace.js?v=98"></script>
 {% endblock %}

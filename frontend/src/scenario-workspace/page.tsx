@@ -1,9 +1,10 @@
 import React from "react";
-import { X } from "lucide-react";
+import { Plus, Send, Settings, X } from "lucide-react";
 
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PageDetailHeader, PageHeader } from "@/components/ui/page-header";
 import { Textarea } from "@/components/ui/textarea";
 import {
   buildChildContainer,
@@ -16,16 +17,18 @@ import {
   normalizeNotificationRecipientIds,
   openActionLabel,
   payloadLabel,
+  payloadLabelGenitive,
   rebuildWorkspaceState,
   supportsButtonOptions,
   supportsTargetField,
 } from "./model";
+import { BroadcastDialog } from "@/mass-broadcast/broadcast-dialog";
 import {
   ScenarioSettingsDialog,
   WorkspaceCanvasSection,
   WorkspaceDetailSection,
   WorkspaceFlashNotice,
-  WorkspaceSidebarSection,
+  WorkspaceCatalogSection,
   WorkspaceStepDetailPane,
 } from "./sections";
 import type {
@@ -98,11 +101,12 @@ export function ScenarioWorkspacePage() {
   const initialFlashType = rootElement?.getAttribute("data-flash-type") || "success";
   const isSurveyWorkspace = workspaceKind === "survey";
   const itemLabel = payloadLabel(workspaceKind);
-  const sidebarTitle = isSurveyWorkspace ? "Опросы" : "Сценарии";
+  const itemLabelGenitive = payloadLabelGenitive(workspaceKind);
   const stepTitle = isSurveyWorkspace ? "Вопросы" : "Шаги сценария";
-  const createItemLabel = isSurveyWorkspace ? "Создать" : "Создать сценарий";
+  const createItemLabel = isSurveyWorkspace ? "Создать опрос" : "Создать сценарий";
   const itemNamePlaceholder = isSurveyWorkspace ? "Название опроса" : "Название сценария";
   const newItemTitle = isSurveyWorkspace ? "Новый опрос" : "Новый сценарий";
+  const sectionTitle = isSurveyWorkspace ? "Опросы" : "Сценарии";
   const newStepTitle = isSurveyWorkspace ? "Новый вопрос" : "Новый шаг";
   const stepLabel = isSurveyWorkspace ? "вопрос" : "шаг";
 
@@ -140,7 +144,7 @@ export function ScenarioWorkspacePage() {
     isSurveyWorkspace && payload?.workspace?.scenario?.id ? `/surveys/${payload.workspace.scenario.id}/export` : "";
 
   const currentContainer = stack[stack.length - 1] || null;
-  const isCatalogRoute = !isSurveyWorkspace && workspaceRouteMode === "catalog";
+  const isCatalogRoute = workspaceRouteMode === "catalog";
   const currentItems = currentContainer?.items || [];
   const selectedItem = currentItems.find((item) => itemKey(item) === selectedItemKey) || currentItems[0] || null;
   const detailTarget = detailTargetFromItem(selectedItem);
@@ -300,13 +304,15 @@ export function ScenarioWorkspacePage() {
     setScenarioSettingsOpen(false);
   }, [replaceRouteScenario]);
 
-  const openScenarioSettings = React.useCallback((scenarioId: number) => {
-    if (payload?.workspace?.scenario?.id !== scenarioId) {
-      setScenarioSettingsForm(null);
-      setSelectedScenarioId(scenarioId);
-    }
+  const openScenarioSettings = React.useCallback(() => {
     setScenarioSettingsOpen(true);
-  }, [payload?.workspace?.scenario?.id]);
+  }, []);
+
+  /*
+   * Цель рассылки, а не булев флаг: диалог открывается и из шапки детали,
+   * и из панели выделения в каталоге, где открытой записи нет.
+   */
+  const [broadcastTarget, setBroadcastTarget] = React.useState<{ flowKey: string; title: string } | null>(null);
 
   React.useEffect(() => {
     const handlePopState = () => {
@@ -329,7 +335,7 @@ export function ScenarioWorkspacePage() {
   React.useEffect(() => {
     const params = new URLSearchParams();
     params.set("kind", workspaceKind);
-    const cleanCatalogRequest = !isSurveyWorkspace && workspaceRouteMode === "catalog" && !scenarioSettingsOpen;
+    const cleanCatalogRequest = workspaceRouteMode === "catalog";
     if (selectedScenarioId) {
       params.set("scenario_id", String(selectedScenarioId));
     }
@@ -339,7 +345,7 @@ export function ScenarioWorkspacePage() {
 
     fetch(url, { credentials: "same-origin", headers: { Accept: "application/json" } })
       .then((response) => {
-        if (!response.ok) throw new Error(`Не удалось загрузить workspace ${itemLabel}`);
+        if (!response.ok) throw new Error(`Не удалось загрузить workspace ${itemLabelGenitive}`);
         return response.json() as Promise<WorkspacePayload>;
       })
       .then((nextPayload) => {
@@ -366,12 +372,12 @@ export function ScenarioWorkspacePage() {
         }
       })
       .catch((loadError) => {
-        setError(loadError.message || `Не удалось загрузить workspace ${itemLabel}`);
+        setError(loadError.message || `Не удалось загрузить workspace ${itemLabelGenitive}`);
       })
       .finally(() => {
         setLoading(false);
       });
-  }, [apiUrl, applyPayload, isSurveyWorkspace, itemLabel, scenarioSettingsOpen, selectedScenarioId, workspaceKind, workspaceRouteMode]);
+  }, [apiUrl, applyPayload, isSurveyWorkspace, itemLabelGenitive, selectedScenarioId, workspaceKind, workspaceRouteMode]);
 
   const scenarios = React.useMemo(() => {
     const items = payload?.scenarios || [];
@@ -534,7 +540,7 @@ export function ScenarioWorkspacePage() {
       .then(async (response) => {
         if (!response.ok) {
           const payload = await response.json().catch(() => ({}));
-          throw new Error(payload.detail || `Не удалось сохранить настройки ${itemLabel}`);
+          throw new Error(payload.detail || `Не удалось сохранить настройки ${itemLabelGenitive}`);
         }
         return response.json();
       })
@@ -546,7 +552,7 @@ export function ScenarioWorkspacePage() {
       .catch((settingsError: Error) => {
         setScenarioSettingsState({
           saving: false,
-          message: settingsError.message || `Не удалось сохранить настройки ${itemLabel}`,
+          message: settingsError.message || `Не удалось сохранить настройки ${itemLabelGenitive}`,
           error: true,
         });
       });
@@ -872,16 +878,16 @@ export function ScenarioWorkspacePage() {
     [payload?.workspace],
   );
 
-  const renderScenarioListSection = (
-    variant: "sidebar" | "catalog",
-    onSelectScenario: (scenarioId: number) => void,
-    onOpenScenarioSettings?: (scenarioId: number) => void,
-  ) => (
-    <WorkspaceSidebarSection
-      variant={variant}
-      sidebarTitle={sidebarTitle}
+  const handleSendSelectedScenario = () => {
+    if (selectedScenarioIds.length !== 1) return;
+    const scenario = (payload?.scenarios || []).find((item) => item.id === selectedScenarioIds[0]);
+    if (!scenario?.scenario_key) return;
+    setBroadcastTarget({ flowKey: scenario.scenario_key, title: scenario.title });
+  };
+
+  const renderScenarioCatalogSection = () => (
+    <WorkspaceCatalogSection
       isSurveyWorkspace={isSurveyWorkspace}
-      createItemLabel={createItemLabel}
       itemNamePlaceholder={itemNamePlaceholder}
       creatingScenario={creatingScenario}
       newScenarioTitle={newScenarioTitle}
@@ -889,13 +895,11 @@ export function ScenarioWorkspacePage() {
       audienceFilter={audienceFilter}
       sortMode={sortMode}
       scenarios={scenarios}
-      selectedScenarioId={selectedScenarioId}
       selectedScenarioIds={selectedScenarioIds}
       dragScenarioId={dragScenarioId}
       sidebarState={sidebarState}
       onNewScenarioTitleChange={setNewScenarioTitle}
       onCreateScenario={handleCreateScenario}
-      onOpenCreateScenario={() => setCreatingScenario(true)}
       onCancelCreateScenario={() => {
         setCreatingScenario(false);
         setNewScenarioTitle("");
@@ -905,12 +909,13 @@ export function ScenarioWorkspacePage() {
       onSortModeChange={setSortMode}
       onToggleSelectAllVisibleScenarios={toggleSelectAllVisibleScenarios}
       onBulkScenarioAction={handleBulkScenarioAction}
-      onSelectScenario={onSelectScenario}
+      onSendSelectedScenario={handleSendSelectedScenario}
+      onClearScenarioSelection={() => setSelectedScenarioIds([])}
+      onSelectScenario={openScenarioEditor}
       onScenarioDragStart={setDragScenarioId}
       onScenarioDrop={handleScenarioDrop}
       onScenarioDragEnd={() => setDragScenarioId(null)}
       onToggleScenarioSelection={toggleScenarioSelection}
-      onOpenScenarioSettings={onOpenScenarioSettings}
     />
   );
 
@@ -1007,10 +1012,78 @@ export function ScenarioWorkspacePage() {
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-4">
+      {isCatalogRoute ? (
+        <PageHeader
+          title={sectionTitle}
+          /* Счётчик стоит там же, где выдача: в детали числу нечего считать. */
+          counter={scenarios.length}
+          actions={
+            !creatingScenario ? (
+              <Button size="sm" onClick={() => setCreatingScenario(true)} title={createItemLabel}>
+                <Plus data-icon="inline-start" />
+                Создать
+              </Button>
+            ) : undefined
+          }
+        />
+      ) : (
+        <PageDetailHeader
+          title={payload?.workspace?.scenario?.title || (isSurveyWorkspace ? "Без опроса" : "Без сценария")}
+          sectionTitle={sectionTitle}
+          onBack={openScenarioCatalog}
+          /*
+           * Настройки — свойство открытой записи, поэтому вход в них здесь,
+           * а не на карточке каталога: там они правили запись, которую
+           * пользователь ещё не открыл.
+           *
+           * У опросов кнопки нет: диалог показывает поле «Кому отправлять
+           * сценарий» независимо от вида, и на опросах оно говорило бы
+           * чужим языком.
+           */
+          actions={
+            <>
+              {/*
+                Рассылка — действие над открытой записью, поэтому живёт здесь,
+                а не на отдельной странице массовых действий: там запись
+                приходилось искать в селекте заново, не видя её содержимого.
+              */}
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={!payload?.workspace?.scenario?.scenario_key}
+                onClick={() =>
+                  setBroadcastTarget({
+                    flowKey: payload?.workspace?.scenario?.scenario_key || "",
+                    title: payload?.workspace?.scenario?.title || "",
+                  })
+                }
+              >
+                <Send data-icon="inline-start" />
+                Разослать
+              </Button>
+              {!isSurveyWorkspace ? (
+                <Button size="sm" variant="outline" onClick={openScenarioSettings}>
+                  <Settings data-icon="inline-start" />
+                  Настройки
+                </Button>
+              ) : null}
+            </>
+          }
+        />
+      )}
+      <BroadcastDialog
+        open={broadcastTarget !== null}
+        flowKey={broadcastTarget?.flowKey || ""}
+        itemTitle={broadcastTarget?.title || ""}
+        kind={isSurveyWorkspace ? "survey" : "scenario"}
+        onOpenChange={(open) => {
+          if (!open) setBroadcastTarget(null);
+        }}
+      />
       <WorkspaceFlashNotice message={flashState.message} error={flashState.error} />
       <ScenarioSettingsDialog
         open={scenarioSettingsOpen}
-        itemLabel={itemLabel}
+        itemLabelGenitive={itemLabelGenitive}
         scenarioTitle={payload?.workspace?.scenario?.title || ""}
         isSurveyWorkspace={isSurveyWorkspace}
         scenarioSettingsForm={scenarioSettingsForm}
@@ -1026,7 +1099,13 @@ export function ScenarioWorkspacePage() {
         onFormChange={setScenarioSettingsForm}
       />
       <div
-        className="relative min-h-0 flex-1 overflow-hidden"
+        /*
+         * У каталога больше нет собственной ScrollArea: он стал обычной
+         * страницей — полоса фильтров и карточки в потоке, — и прокручивается
+         * этим контейнером. Редактор остаётся раскладкой фиксированной высоты
+         * и режет переполнение внутри своих панелей.
+         */
+        className={`relative min-h-0 flex-1 ${isCatalogRoute ? "overflow-auto" : "overflow-hidden"}`}
       >
         {loading ? (
           <div className="pointer-events-none absolute inset-x-0 top-0 z-10 flex justify-center">
@@ -1036,32 +1115,13 @@ export function ScenarioWorkspacePage() {
           </div>
         ) : null}
         {isCatalogRoute ? (
-          renderScenarioListSection("catalog", openScenarioEditor, openScenarioSettings)
-        ) : isSurveyWorkspace ? (
+          renderScenarioCatalogSection()
+        ) : (
           <div
-            className={`grid h-full grid-cols-[392px_minmax(0,1fr)_488px] gap-4 transition-opacity max-[1400px]:grid-cols-[320px_minmax(0,1fr)_400px] ${loading ? "opacity-80" : "opacity-100"}`}
+            className={`grid h-full min-h-0 grid-cols-[minmax(420px,1fr)_minmax(420px,0.72fr)] gap-4 transition-opacity max-[1400px]:grid-cols-[minmax(360px,1fr)_minmax(380px,0.78fr)] ${loading ? "opacity-80" : "opacity-100"}`}
           >
-            {renderScenarioListSection("sidebar", setSelectedScenarioId)}
             {renderCanvasSection()}
             {renderDetailSection()}
-          </div>
-        ) : (
-          <div className={`flex h-full min-h-0 flex-col gap-3 transition-opacity ${loading ? "opacity-80" : "opacity-100"}`}>
-            <div className="flex shrink-0 items-center justify-between gap-3 rounded-lg border border-border bg-card px-4 py-3">
-              <div className="min-w-0">
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">{sidebarTitle}</p>
-                <h2 className="truncate text-[1.35rem] font-semibold">{payload?.workspace?.scenario?.title || "Без сценария"}</h2>
-              </div>
-              <Button variant="secondary" onClick={openScenarioCatalog}>
-                К списку
-              </Button>
-            </div>
-            <div
-              className="grid min-h-0 flex-1 grid-cols-[minmax(420px,1fr)_minmax(420px,0.72fr)] gap-4 max-[1400px]:grid-cols-[minmax(360px,1fr)_minmax(380px,0.78fr)]"
-            >
-              {renderCanvasSection()}
-              {renderDetailSection()}
-            </div>
           </div>
         )}
       </div>

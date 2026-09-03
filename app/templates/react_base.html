@@ -14,10 +14,29 @@
             } catch (error) {
                 document.documentElement.dataset.theme = "light";
             }
+
+            /*
+             * Состояние сайдбара тоже восстанавливается до первой отрисовки.
+             *
+             * Раньше атрибут ставил React после монтирования: страница успевала
+             * нарисоваться со свёрнутым рельсом, а потом ширина менялась, и
+             * transition доигрывал переход на глазах. При переходе между
+             * страницами с раскрытым меню это давало смещение раскладки 0.14
+             * по метрике CLS при пороге 0.1.
+             *
+             * Ключ обязан совпадать с OPEN_KEY в shell-sidebar/page.tsx.
+             */
+            try {
+                if (window.localStorage.getItem("app-shell-sidebar-open") === "1") {
+                    document.documentElement.setAttribute("data-shell-sidebar-open", "");
+                }
+            } catch (error) {
+                /* Хранилище недоступно — остаётся свёрнутое состояние по умолчанию. */
+            }
         })();
     </script>
-    <link rel="stylesheet" href="/static/react_shell.css?v=6">
-    <link rel="stylesheet" href="/static/workspace_v2/app.css?v=45">
+    <link rel="stylesheet" href="/static/react_shell.css?v=18">
+    <link rel="stylesheet" href="/static/workspace_v2/app.css?v=93">
     {% block extra_head %}{% endblock %}
 </head>
 <body>
@@ -30,7 +49,7 @@
 
     <div class="app-shell-content">
         <main class="main">
-            <div class="container">
+            <div class="app-shell-container">
                 {% block content %}{% endblock %}
             </div>
         </main>
@@ -38,6 +57,6 @@
 </div>
 
 {% block scripts %}{% endblock %}
-    <script type="module" src="/static/workspace_v2/shell-sidebar.js?v=5"></script>
+    <script type="module" src="/static/workspace_v2/shell-sidebar.js?v=30"></script>
 </body>
 </html>

@@ -1,0 +1,1 @@
+import{c as o}from"./createLucideIcon-EjPmQ_Rm.js";const e=[["path",{d:"m18 16 4-4-4-4",key:"1inbqp"}],["path",{d:"m6 8-4 4 4 4",key:"15zrgr"}],["path",{d:"m14.5 4-5 16",key:"e7oirm"}]],t=o("code-xml",e);const a=[["path",{d:"M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z",key:"10ikf1"}]],d=o("play",a);export{t as C,d as P};

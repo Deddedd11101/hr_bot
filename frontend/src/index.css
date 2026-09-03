@@ -1,5 +1,13 @@
 @import "tailwindcss";
 
+/*
+ * scripts/ — инструменты разработки, а не исходники интерфейса.
+ * Tailwind 4 сканирует проект автоматически и вытаскивал оттуда слова,
+ * совпадающие с именами утилит: строка "visible" в проверках привела
+ * к появлению .visible в продовом CSS.
+ */
+@source not "../scripts";
+
 @custom-variant dark (&:where(.dark, .dark *));
 
 @keyframes theme-switch-reveal {
@@ -88,6 +96,10 @@
   :root {
     --radius: 0.875rem;
     --admin-page-max-width: 1820px;
+    /* Шаг между полосами страницы и между модулями внутри полосы. Один на всё:
+       раньше это были gap-5 в обычном состоянии, gap-4 в состоянии ошибки,
+       gap-0 в каталоге и жёсткие 18px в .react-page. */
+    --admin-page-gap: 1.25rem;
     --admin-page-radius: var(--radius-xl);
     --select-content-max-height: 18rem;
 
@@ -99,7 +111,7 @@
     --popover: oklch(1 0 89.9);
     --popover-foreground: oklch(0.213 0.006 91.6);
 
-    --primary: oklch(0.588 0.116 156.9);
+    --primary: oklch(0.548 0.116 156.9);
     --primary-foreground: oklch(1 0 0);
     --secondary: oklch(0.967 0.003 84.6);
     --secondary-foreground: oklch(0.213 0.006 91.6);
@@ -113,7 +125,7 @@
     --destructive-foreground: oklch(1 0 0);
     --border: oklch(0.925 0.007 88.6);
     --input: oklch(0.925 0.007 88.6);
-    --ring: oklch(0.588 0.116 156.9);
+    --ring: oklch(0.548 0.116 156.9);
 
     --success: oklch(0.627 0.194 145.6);
     --success-foreground: oklch(1 0 0);
@@ -137,6 +149,17 @@
     --sidebar-ring: var(--ring);
 
     --shadow-soft: none;
+
+    /*
+     * Возвышение всплывающего слоя. Тень здесь не декорация: слой висит над
+     * страницей, и её отсутствие оставляло выпадающий список отделённым
+     * только цветом --popover, который к фону страницы даёт 1.03:1.
+     * Поверхности в потоке — карточки, модули, панели — теней по-прежнему
+     * не имеют.
+     */
+    --shadow-overlay:
+      0 10px 28px -8px rgb(0 0 0 / 0.14),
+      0 2px 8px -3px rgb(0 0 0 / 0.1);
 
     /* Legacy aliases used by existing React pages. Prefer semantic tokens above for new work. */
     --color-panel: transparent;
@@ -194,12 +217,42 @@
 
     --shadow-soft: none;
 
+    /*
+     * В тёмной теме тень той же силы не читается: она смешивается с уже
+     * тёмным фоном. Поэтому плотнее и глубже, и считается от чистого чёрного,
+     * а не от --foreground, который здесь почти белый.
+     */
+    --shadow-overlay:
+      0 14px 36px -10px rgb(0 0 0 / 0.66),
+      0 3px 10px -4px rgb(0 0 0 / 0.5);
+
     --color-panel: transparent;
     --color-panel-muted: var(--card);
   }
 
   * {
     @apply border-border outline-ring/50;
+  }
+
+  html {
+    /*
+     * Место под полосу прокрутки резервируется всегда.
+     *
+     * Скроллер админки — сам документ: ни один контейнер в цепочке
+     * html → .app-shell → .main → .app-shell-container не ограничивает
+     * высоту. Нативная полоса на Windows занимает место в вьюпорте, поэтому
+     * без резерва она отнимала у колонки контента около 15px, а margin-inline
+     * раздавал эту разницу. Стоило фильтру укоротить список настолько, что
+     * документ переставал переполняться, — полоса исчезала, и весь интерфейс
+     * прыгал вбок вместе с перекладкой сетки карточек.
+     *
+     * Здесь именно overflow-y: scroll, а не напрашивающийся
+     * scrollbar-gutter: stable. Замер: у корня гаттер места не резервирует
+     * ни сам по себе, ни в паре с overflow-y: auto — documentElement.clientWidth
+     * в обоих случаях гулял между 1189 и 1204. Ноль разницы даёт только
+     * overflow-y: scroll. Ценой всегда видимой дорожки полосы.
+     */
+    overflow-y: scroll;
   }
 
   body {
@@ -233,6 +286,7 @@
 
   .admin-page-stack {
     display: grid;
+    gap: var(--admin-page-gap);
     width: 100%;
     max-width: var(--admin-page-max-width);
     margin-inline: auto;
@@ -240,6 +294,37 @@
 
   .admin-page-surface {
     border-radius: var(--admin-page-radius);
+  }
+
+  /*
+   * Плавающая панель действий над выбранными записями каталога.
+   *
+   * Это всплывающий слой, поэтому по контракту он несёт тень и рамку
+   * одновременно. Тень задана здесь, а не утилитой: запрет
+   * [class*="shadow"] гасит любую shadow-утилиту, а это имя класса под
+   * селектор не попадает — исключение не нужно.
+   */
+  .admin-selection-bar {
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow-overlay);
+    animation: admin-selection-bar-in 160ms ease-out;
+  }
+
+  @keyframes admin-selection-bar-in {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .admin-selection-bar {
+      animation: none;
+    }
   }
 
   [data-slot="select-content"] {
@@ -333,7 +418,51 @@
 }
 
 @layer utilities {
+  /*
+   * Запрет теней у поверхностей в потоке.
+   *
+   * Правило грубее, чем кажется, и это надо знать, прежде чем на него
+   * опираться: селектор матчит атрибут class целиком, а не конкретную
+   * утилиту. Любой элемент, у которого в списке классов встретилось слово
+   * shadow — включая тех, кто явно просит shadow-none, — теряет весь
+   * box-shadow. А поскольку Tailwind v4 строит ring-* тоже на box-shadow,
+   * вместе с тенью гаснет и кольцо.
+   *
+   * Этим уже молча сломаны две вещи вне оверлеев: drop-индикатор при
+   * перетаскивании в настройках (shadow-[0_0_0_3px_var(--card)]) и подсветка
+   * выбранной ноды графа сценариев — .scenario-graph-node-selected проигрывает
+   * утилите shadow-sm на том же элементе. Обе оставлены сознательно, чтобы
+   * снятие запрета не оживило разом два десятка теней по всему коду.
+   */
   [class*="shadow"] {
     box-shadow: none !important;
+  }
+
+  /*
+   * Исключение — слои, всплывающие над страницей.
+   *
+   * Тень для них не механизм глубины ради красоты, а единственное, что
+   * отделяет слой от интерфейса под ним: собственного фона не хватает,
+   * --popover и --card совпадают в обеих темах. Рамка идёт вместе с тенью:
+   * тень задаёт отрыв, рамка — край.
+   *
+   * Tooltip в список не входит: он отделён инверсией фона и стрелкой.
+   */
+  [data-slot="select-content"],
+  [data-slot="popover-content"],
+  [data-slot="dropdown-menu-content"],
+  [data-slot="dropdown-menu-sub-content"],
+  [data-slot="context-menu-content"],
+  [data-slot="context-menu-sub-content"],
+  [data-slot="menubar-content"],
+  [data-slot="menubar-sub-content"],
+  [data-slot="navigation-menu-content"],
+  [data-slot="hover-card-content"],
+  [data-slot="dialog-content"],
+  [data-slot="alert-dialog-content"],
+  [data-slot="sheet-content"],
+  [data-slot="drawer-content"] {
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow-overlay) !important;
   }
 }

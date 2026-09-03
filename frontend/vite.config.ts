@@ -25,7 +25,7 @@ export default defineConfig({
         settings: path.resolve(__dirname, "./src/settings/main.tsx"),
         "bot-menu": path.resolve(__dirname, "./src/bot-menu/main.tsx"),
         documents: path.resolve(__dirname, "./src/documents/main.tsx"),
-        "bulk-actions": path.resolve(__dirname, "./src/bulk-actions/main.tsx"),
+        messages: path.resolve(__dirname, "./src/messages/main.tsx"),
         "design-system": path.resolve(__dirname, "./src/design-system/main.tsx"),
         login: path.resolve(__dirname, "./src/login/main.tsx"),
       },

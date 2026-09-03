@@ -48,3 +48,5 @@ export type Option = {
 
 export type ListKind = "employees" | "candidates";
 export type ViewMode = "cards" | "table";
+
+export type { ColumnKey, SortDirection, SortField } from "./data";

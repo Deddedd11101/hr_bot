@@ -140,7 +140,7 @@ function TimeSelect({
       items={items}
       value={value || EMPTY_TIME_VALUE}
       onValueChange={(nextValue) => {
-        onValueChange(nextValue === EMPTY_TIME_VALUE ? "" : nextValue);
+        onValueChange(!nextValue || nextValue === EMPTY_TIME_VALUE ? "" : nextValue);
       }}
     >
       <SelectTrigger className="w-full" disabled={disabled}>

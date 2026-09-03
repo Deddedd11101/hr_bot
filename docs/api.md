@@ -340,7 +340,7 @@ Routes ниже требуют role `admin`.
 
 ## API bulk actions workspace
 
-Этот API добавлен для React bulk actions page. Classic `/bulk-actions` form routes пока сохранены как fallback.
+React-поверхность этого API теперь живет на странице сообщений `/app/messages`, в диалогах массового запуска из карточек сценариев/опросов и в журнале на дашборде. Classic `/bulk-actions` form routes пока сохранены как fallback, а прежняя React-страница `/app/bulk-actions` редиректит на `/app/messages`.
 
 Immediate endpoints требуют `confirmed=true`; без него возвращают `400`, чтобы React не мог случайно отправить массовое действие без явного подтверждения оператора.
 
