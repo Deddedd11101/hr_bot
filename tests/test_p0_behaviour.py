@@ -11,7 +11,15 @@ from app.database import SessionLocal, init_db
 from app.mass_targeting import deserialize_target_values, mass_target_employee_query
 from app.messaging.identity import set_primary_chat_id
 from app.messaging.service import resolve_inbound_access, save_incoming_file, handle_text_event
-from app.models import Employee, EmployeeFile, EmployeeMessengerAccount, FlowStepTemplate, ScenarioProgress, ScenarioTemplate
+from app.models import (
+    Employee,
+    EmployeeDocumentLink,
+    EmployeeFile,
+    EmployeeMessengerAccount,
+    FlowStepTemplate,
+    ScenarioProgress,
+    ScenarioTemplate,
+)
 
 
 class _FakeMessenger:
@@ -21,6 +29,15 @@ class _FakeMessenger:
 
     async def send_text(self, *args, **kwargs):
         self.texts.append({"args": args, "kwargs": kwargs})
+        return None
+
+    async def send_photo_path(self, *args, **kwargs):
+        return None
+
+    async def send_photo_bytes(self, *args, **kwargs):
+        return None
+
+    async def send_document_path(self, *args, **kwargs):
         return None
 
     async def close(self):
@@ -42,6 +59,7 @@ class P0BehaviourTests(unittest.IsolatedAsyncioTestCase):
 
     def setUp(self) -> None:
         self.employee_ids: list[int] = []
+        self.scenario_keys: list[str] = []
         unique_suffix = uuid4().hex[:8]
         self.candidate_chat_id = f"tg-{unique_suffix}"
         self.blocked_chat_id = f"blocked-{unique_suffix}"
@@ -110,7 +128,11 @@ class P0BehaviourTests(unittest.IsolatedAsyncioTestCase):
         with SessionLocal() as db:
             db.query(ScenarioProgress).filter(ScenarioProgress.employee_id.in_(self.employee_ids)).delete(synchronize_session=False)
             db.query(EmployeeFile).filter(EmployeeFile.employee_id.in_(self.employee_ids)).delete(synchronize_session=False)
+            db.query(EmployeeDocumentLink).filter(EmployeeDocumentLink.employee_id.in_(self.employee_ids)).delete(synchronize_session=False)
             db.query(EmployeeMessengerAccount).filter(EmployeeMessengerAccount.employee_id.in_(self.employee_ids)).delete(synchronize_session=False)
+            if self.scenario_keys:
+                db.query(FlowStepTemplate).filter(FlowStepTemplate.flow_key.in_(self.scenario_keys)).delete(synchronize_session=False)
+                db.query(ScenarioTemplate).filter(ScenarioTemplate.scenario_key.in_(self.scenario_keys)).delete(synchronize_session=False)
             for employee_id in self.employee_ids:
                 employee = db.get(Employee, employee_id)
                 if employee is not None:
@@ -202,7 +224,8 @@ class P0BehaviourTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNotNone(employee)
         self.assertIsNotNone(db_file)
 
-    def _create_waiting_file_scenario(self, db, scenario_key: str) -> None:
+    def _create_waiting_file_scenario(self, db, scenario_key: str, *, target_field: str = "candidate_file") -> None:
+        self.scenario_keys.append(scenario_key)
         scenario = ScenarioTemplate(
             scenario_key=scenario_key,
             title=f"Video answer {scenario_key}",
@@ -220,7 +243,7 @@ class P0BehaviourTests(unittest.IsolatedAsyncioTestCase):
             default_text="Пришлите файл",
             response_type="file",
             send_mode="immediate",
-            target_field="candidate_file",
+            target_field=target_field,
         )
         db.add_all([scenario, step])
         db.flush()
@@ -282,6 +305,265 @@ class P0BehaviourTests(unittest.IsolatedAsyncioTestCase):
             finally:
                 bot_runner.create_telegram_messenger = previous_factory
                 settings.FILE_STORAGE_DIR = previous_storage_dir
+
+    async def test_test_task_document_answer_without_caption_saves_slot_and_counts_as_file_response(self) -> None:
+        fake_messenger = _FakeMessenger()
+        previous_factory = bot_runner.create_telegram_messenger
+        previous_storage_dir = settings.FILE_STORAGE_DIR
+        scenario_key = f"test_task_document_{uuid4().hex[:8]}"
+        with TemporaryDirectory() as tmpdir:
+            settings.FILE_STORAGE_DIR = tmpdir
+            bot_runner.create_telegram_messenger = lambda _token: fake_messenger
+            try:
+                with SessionLocal() as db:
+                    self._create_waiting_file_scenario(db, scenario_key, target_field="test_task_result")
+                message = SimpleNamespace(
+                    from_user=SimpleNamespace(id=self.candidate_chat_id, username=None),
+                    caption=None,
+                    document=SimpleNamespace(
+                        file_id="test-doc-id",
+                        file_unique_id="test-doc-unique",
+                        file_name="analytics-answer.pdf",
+                        mime_type="application/pdf",
+                        file_size=321,
+                    ),
+                )
+
+                await bot_runner.on_document(message, _FakeTelegramBot())
+
+                with SessionLocal() as db:
+                    file_row = (
+                        db.query(EmployeeFile)
+                        .filter(EmployeeFile.employee_id == self.candidate_testing_id)
+                        .order_by(EmployeeFile.id.desc())
+                        .first()
+                    )
+                    slot = (
+                        db.query(EmployeeDocumentLink)
+                        .filter(
+                            EmployeeDocumentLink.employee_id == self.candidate_testing_id,
+                            EmployeeDocumentLink.slot_key == "test_task_result",
+                        )
+                        .first()
+                    )
+                    progress = db.query(ScenarioProgress).filter_by(employee_id=self.candidate_testing_id, scenario_key=scenario_key).first()
+                self.assertIsNotNone(file_row)
+                self.assertEqual(file_row.category, "test_result")
+                self.assertEqual(file_row.original_filename, "analytics-answer.pdf")
+                self.assertIsNotNone(slot)
+                self.assertEqual(slot.item_kind, "file")
+                self.assertEqual(slot.employee_file_id, file_row.id)
+                self.assertIsNotNone(progress)
+                self.assertTrue(progress.is_completed)
+            finally:
+                bot_runner.create_telegram_messenger = previous_factory
+                settings.FILE_STORAGE_DIR = previous_storage_dir
+
+    async def test_test_task_photo_answer_saves_slot_and_counts_as_file_response(self) -> None:
+        fake_messenger = _FakeMessenger()
+        previous_factory = bot_runner.create_telegram_messenger
+        previous_storage_dir = settings.FILE_STORAGE_DIR
+        scenario_key = f"test_task_photo_{uuid4().hex[:8]}"
+        with TemporaryDirectory() as tmpdir:
+            settings.FILE_STORAGE_DIR = tmpdir
+            bot_runner.create_telegram_messenger = lambda _token: fake_messenger
+            try:
+                with SessionLocal() as db:
+                    self._create_waiting_file_scenario(db, scenario_key, target_field="test_task_result")
+                message = SimpleNamespace(
+                    from_user=SimpleNamespace(id=self.candidate_chat_id, username=None),
+                    caption=None,
+                    photo=[
+                        SimpleNamespace(
+                            file_id="photo-id",
+                            file_unique_id="photo-unique",
+                            file_size=111,
+                        )
+                    ],
+                )
+
+                await bot_runner.on_photo(message, _FakeTelegramBot())
+
+                with SessionLocal() as db:
+                    file_row = (
+                        db.query(EmployeeFile)
+                        .filter(EmployeeFile.employee_id == self.candidate_testing_id)
+                        .order_by(EmployeeFile.id.desc())
+                        .first()
+                    )
+                    slot = (
+                        db.query(EmployeeDocumentLink)
+                        .filter(
+                            EmployeeDocumentLink.employee_id == self.candidate_testing_id,
+                            EmployeeDocumentLink.slot_key == "test_task_result",
+                        )
+                        .first()
+                    )
+                    progress = db.query(ScenarioProgress).filter_by(employee_id=self.candidate_testing_id, scenario_key=scenario_key).first()
+                self.assertIsNotNone(file_row)
+                self.assertEqual(file_row.category, "test_result")
+                self.assertEqual(file_row.mime_type, "image/jpeg")
+                self.assertIsNotNone(slot)
+                self.assertEqual(slot.employee_file_id, file_row.id)
+                self.assertIsNotNone(progress)
+                self.assertTrue(progress.is_completed)
+            finally:
+                bot_runner.create_telegram_messenger = previous_factory
+                settings.FILE_STORAGE_DIR = previous_storage_dir
+
+    async def test_test_task_video_answer_without_caption_saves_slot_and_counts_as_file_response(self) -> None:
+        fake_messenger = _FakeMessenger()
+        previous_factory = bot_runner.create_telegram_messenger
+        previous_storage_dir = settings.FILE_STORAGE_DIR
+        scenario_key = f"test_task_video_{uuid4().hex[:8]}"
+        with TemporaryDirectory() as tmpdir:
+            settings.FILE_STORAGE_DIR = tmpdir
+            bot_runner.create_telegram_messenger = lambda _token: fake_messenger
+            try:
+                with SessionLocal() as db:
+                    self._create_waiting_file_scenario(db, scenario_key, target_field="test_task_result")
+                message = SimpleNamespace(
+                    from_user=SimpleNamespace(id=self.candidate_chat_id, username=None),
+                    caption=None,
+                    video=SimpleNamespace(
+                        file_id="test-video-id",
+                        file_unique_id="test-video-unique",
+                        file_name=None,
+                        mime_type="video/mp4",
+                        file_size=654,
+                    ),
+                )
+
+                await bot_runner.on_video(message, _FakeTelegramBot())
+
+                with SessionLocal() as db:
+                    file_row = (
+                        db.query(EmployeeFile)
+                        .filter(EmployeeFile.employee_id == self.candidate_testing_id)
+                        .order_by(EmployeeFile.id.desc())
+                        .first()
+                    )
+                    slot = (
+                        db.query(EmployeeDocumentLink)
+                        .filter(
+                            EmployeeDocumentLink.employee_id == self.candidate_testing_id,
+                            EmployeeDocumentLink.slot_key == "test_task_result",
+                        )
+                        .first()
+                    )
+                    progress = db.query(ScenarioProgress).filter_by(employee_id=self.candidate_testing_id, scenario_key=scenario_key).first()
+                self.assertIsNotNone(file_row)
+                self.assertEqual(file_row.category, "test_result")
+                self.assertEqual(file_row.original_filename, "test-video-unique.mp4")
+                self.assertEqual(file_row.mime_type, "video/mp4")
+                self.assertIsNotNone(slot)
+                self.assertEqual(slot.employee_file_id, file_row.id)
+                self.assertIsNotNone(progress)
+                self.assertTrue(progress.is_completed)
+            finally:
+                bot_runner.create_telegram_messenger = previous_factory
+                settings.FILE_STORAGE_DIR = previous_storage_dir
+
+    async def test_test_task_video_note_answer_saves_slot_and_counts_as_file_response(self) -> None:
+        fake_messenger = _FakeMessenger()
+        previous_factory = bot_runner.create_telegram_messenger
+        previous_storage_dir = settings.FILE_STORAGE_DIR
+        scenario_key = f"test_task_video_note_{uuid4().hex[:8]}"
+        with TemporaryDirectory() as tmpdir:
+            settings.FILE_STORAGE_DIR = tmpdir
+            bot_runner.create_telegram_messenger = lambda _token: fake_messenger
+            try:
+                with SessionLocal() as db:
+                    self._create_waiting_file_scenario(db, scenario_key, target_field="test_task_result")
+                message = SimpleNamespace(
+                    from_user=SimpleNamespace(id=self.candidate_chat_id, username=None),
+                    video_note=SimpleNamespace(
+                        file_id="test-video-note-id",
+                        file_unique_id="test-video-note-unique",
+                        file_size=987,
+                    ),
+                )
+
+                await bot_runner.on_video_note(message, _FakeTelegramBot())
+
+                with SessionLocal() as db:
+                    file_row = (
+                        db.query(EmployeeFile)
+                        .filter(EmployeeFile.employee_id == self.candidate_testing_id)
+                        .order_by(EmployeeFile.id.desc())
+                        .first()
+                    )
+                    slot = (
+                        db.query(EmployeeDocumentLink)
+                        .filter(
+                            EmployeeDocumentLink.employee_id == self.candidate_testing_id,
+                            EmployeeDocumentLink.slot_key == "test_task_result",
+                        )
+                        .first()
+                    )
+                    progress = db.query(ScenarioProgress).filter_by(employee_id=self.candidate_testing_id, scenario_key=scenario_key).first()
+                self.assertIsNotNone(file_row)
+                self.assertEqual(file_row.category, "test_result")
+                self.assertEqual(file_row.original_filename, "test-video-note-unique.mp4")
+                self.assertEqual(file_row.telegram_file_unique_id, "test-video-note-unique")
+                self.assertIsNotNone(slot)
+                self.assertEqual(slot.employee_file_id, file_row.id)
+                self.assertIsNotNone(progress)
+                self.assertTrue(progress.is_completed)
+            finally:
+                bot_runner.create_telegram_messenger = previous_factory
+                settings.FILE_STORAGE_DIR = previous_storage_dir
+
+    async def test_test_task_http_link_answer_saves_slot_and_counts_as_response(self) -> None:
+        scenario_key = f"test_task_link_{uuid4().hex[:8]}"
+        link = "https://example.com/analytics-answer"
+        with SessionLocal() as db:
+            self._create_waiting_file_scenario(db, scenario_key, target_field="test_task_result")
+            result = await handle_text_event(_FakeMessenger(), db, self.candidate_chat_id, None, link)
+
+            slot = (
+                db.query(EmployeeDocumentLink)
+                .filter(
+                    EmployeeDocumentLink.employee_id == self.candidate_testing_id,
+                    EmployeeDocumentLink.slot_key == "test_task_result",
+                )
+                .first()
+            )
+            progress = db.query(ScenarioProgress).filter_by(employee_id=self.candidate_testing_id, scenario_key=scenario_key).first()
+
+        self.assertEqual(result, "handled")
+        self.assertIsNotNone(slot)
+        self.assertEqual(slot.item_kind, "link")
+        self.assertEqual(slot.url, link)
+        self.assertIsNotNone(progress)
+        self.assertTrue(progress.is_completed)
+
+    async def test_test_task_non_link_text_answer_prompts_and_keeps_waiting(self) -> None:
+        scenario_key = f"test_task_plain_text_{uuid4().hex[:8]}"
+        messenger = _FakeMessenger()
+        with SessionLocal() as db:
+            self._create_waiting_file_scenario(db, scenario_key, target_field="test_task_result")
+            result = await handle_text_event(messenger, db, self.candidate_chat_id, None, "сделал, отправлю позже")
+
+            files_count = db.query(EmployeeFile).filter(EmployeeFile.employee_id == self.candidate_testing_id).count()
+            slot = (
+                db.query(EmployeeDocumentLink)
+                .filter(
+                    EmployeeDocumentLink.employee_id == self.candidate_testing_id,
+                    EmployeeDocumentLink.slot_key == "test_task_result",
+                )
+                .first()
+            )
+            progress = db.query(ScenarioProgress).filter_by(employee_id=self.candidate_testing_id, scenario_key=scenario_key).first()
+
+        self.assertEqual(result, "handled")
+        self.assertEqual(files_count, 0)
+        self.assertIsNone(slot)
+        self.assertIsNotNone(progress)
+        self.assertTrue(progress.waiting_for_response)
+        self.assertFalse(progress.is_completed)
+        self.assertTrue(messenger.texts)
+        self.assertIn("ссылку http/https", messenger.texts[-1]["kwargs"]["text"])
 
     async def test_telegram_video_is_saved_and_counts_as_file_response(self) -> None:
         fake_messenger = _FakeMessenger()

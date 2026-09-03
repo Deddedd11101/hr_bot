@@ -111,6 +111,7 @@ TARGET_FIELD_LABELS = {
     "candidate_status": "Статус кандидата",
     "resume": "Резюме (файл)",
     "candidate_file": "Файл кандидата",
+    "test_task_result": "Ответ на тестовое",
 }
 
 NOTIFICATION_RECIPIENT_SCOPE_LABELS = {

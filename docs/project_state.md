@@ -57,6 +57,7 @@ source_of_truth: true
 - Unknown Telegram users больше не создают runtime data от stray text/file input, но `/start` снова является осознанной candidate-entry точкой: сначала идет match по numeric Telegram ID, затем по normalized public username, а при отсутствии match создается новая candidate-карточка. Если normalized username совпал с несколькими актуальными карточками, runtime fail-closed: не привязывает Telegram, не создает дубль и просит обратиться к HR.
 - Bot access можно заблокировать per employee через `is_bot_blocked`.
 - Incoming Telegram photos, videos и video notes обрабатываются как first-class inbound files вместе с documents; file-response шаги сценариев засчитывают их как валидный файл, а карточка показывает/скачивает через обычный `EmployeeFile` payload.
+- Ответ на тестовое больше не зависит от caption “тест”: scenario step с `response_type=file` и `target_field=test_task_result` принимает document/photo/video/video_note или `http://` / `https://` ссылку, пишет актуальный `test_task_result` slot и двигает сценарий дальше; обычный текст без ссылки получает подсказку и не засчитывается.
 - Mass actions могут target employee stages и candidate stages отдельно.
 - В репозитории теперь есть explicit live docs для JSON API, operator web routes, schema behavior, env/config и текущего stage deploy path.
 - Для новых и существенно обновленных docs зафиксирован frontmatter contract, doc types, LLD/ADR/runbook rules и Obsidian practices.

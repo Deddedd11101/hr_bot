@@ -109,9 +109,11 @@ Scenario engine превращает scenario templates плюс employee state 
 - В UI эти теги могут называться по-русски: `ФИО`, `Должность`, `Дата первого рабочего дня`, `Резюме`.
 - `{resume}` не раскрывает локальный storage path и не генерирует временную ссылку. В scenario step text это остается только безопасной текстовой/HTML-подстановкой; в явно настроенных step/button уведомлениях ответственным runtime дополнительно отправляет файл только для file-backed resume slot или legacy `employee_files.category=resume`, если актуального link-backed slot нет и файл существует физически.
 - File-response step с `target_field=resume` делает загруженный файл новым актуальным resume slot; кнопка `Назад` откатывает этот slot вместе с file record, созданным последним ответом.
+- File-response step с `target_field=test_task_result` / `test_assignment_answer` означает “ответ на тестовое”: runtime принимает file-like media (`document`, `photo`, `video`, `video_note`) и сохраняет его как `employee_files.category=test_result` плюс актуальный `employee_document_links.slot_key=test_task_result`.
+- Для такого же test-task шага текстовый ответ засчитывается только если это `http://` или `https://` ссылка; ссылка сохраняется в `employee_document_links.slot_key=test_task_result` как `item_kind=link`. Обычный текст без ссылки не двигает сценарий дальше: бот просит прислать файл, фото, видео или ссылку.
 - File-response step принимает входящие Telegram media как `EmployeeFile`: обычный `document`, `photo`, `video` и `video_note`. Видео, отправленное как Telegram document, тоже проходит через тот же contract.
 - Для `video` runtime сохраняет Telegram `file_id` / `file_unique_id`, filename или fallback `<file_unique_id>.mp4`, mime type и file size; для `video_note` используется fallback filename `<file_unique_id>.mp4` и `video/mp4`.
-- Если caption содержит “тест”, входящий media сохраняется как `category=test_result` и продолжает запускать отдельное HR-уведомление о полученном тестовом задании; без такого caption это обычный `candidate_file`.
+- Если caption содержит “тест”, входящий media по-прежнему сохраняется как `category=test_result` и продолжает запускать отдельное HR-уведомление о полученном тестовом задании. Но для scenario step с `target_field=test_task_result` caption больше не нужен: семантика шага имеет приоритет над caption и generic category.
 - Персональные document tags вида `{doc:Оффер}` остаются отдельной механикой: link-backed slot подставляется как ссылка, file-backed slot дополнительно отправляется файлом.
 
 ## Recipient model

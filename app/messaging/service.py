@@ -13,11 +13,13 @@ from ..scenario_engine import (
     SCENARIO_BACK_BUTTON_TEXT,
     DATE_CALLBACK_PREFIX,
     get_waiting_progress,
+    get_step_by_key,
     handle_back_response,
     handle_button_response_by_step_id,
     handle_date_response_by_step_id,
     handle_file_response,
     handle_text_response,
+    normalize_test_task_answer_file_category,
     matches_role_scope,
     start_scenario,
 )
@@ -528,6 +530,8 @@ async def save_incoming_file(
     employee = access.employee
     progress = get_waiting_progress(db, employee.id)
     context_employee = db.get(Employee, progress.employee_id) if progress and progress.employee_id else employee
+    waiting_step = get_step_by_key(db, progress.scenario_key, progress.current_step_key) if progress and progress.current_step_key else None
+    category = normalize_test_task_answer_file_category(waiting_step, category)
 
     db_file = EmployeeFile(
         employee_id=context_employee.id,
