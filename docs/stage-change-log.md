@@ -34,6 +34,52 @@ source_of_truth: true
 
 ## Записи
 
+### 2026-09-03 16:53 MSK - app deploy - hrbot-ui design refresh
+
+- Deploy ref: `stage`.
+- Deployed commit: `203def1`.
+- GitHub Actions run: `33763552336` -> success.
+- В stage включено:
+  - sync дизайн-обновления из `hrbot-ui/ui/page-layout` поверх актуального `hr_bot/stage`;
+  - новый общий page layout/header/sidebar baseline для React admin pages;
+  - `/app/messages` как React-страница сообщений, `/bulk-actions` и `/app/bulk-actions` редиректят на нее;
+  - обновлены generated Vite assets, React templates, UI registry/check scripts и UI docs;
+  - текущие scenario/runtime контракты stage сохранены: `confirm_choice`, `is_terminal`, `attachment_document_item_id`, `test_task_result` не откатывались.
+- Локальные проверки перед deploy:
+  - `npm ci` in `frontend` -> passed, existing 6 vulnerabilities;
+  - `npm run build` in `frontend` -> passed;
+  - repeated `npm run build` in `frontend` -> passed;
+  - `npm run typecheck` in `frontend` -> passed;
+  - `npm run check:registry` in `frontend` -> passed;
+  - `D:\HRBot\hr_bot_stage_pipeline\.venv\Scripts\python.exe -m compileall app tests tools` -> passed;
+  - `D:\HRBot\hr_bot_stage_pipeline\.venv\Scripts\python.exe -m unittest tests.test_scenario_engine_smoke tests.test_messaging_identity tests.test_employee_api_smoke -v` with fresh SQLite DB -> 187 tests OK;
+  - `D:\HRBot\hr_bot_stage_pipeline\.venv\Scripts\python.exe tools\check_docs_contracts.py` -> passed;
+  - `git diff --check` -> passed.
+- GitHub Actions preflight:
+  - checkout `ref=stage` -> `203def1`;
+  - backend dependencies install;
+  - `compileall`;
+  - `ruff F821`;
+  - backend smoke tests;
+  - frontend build;
+  - smoke import application modules.
+- Stage smoke checks:
+  - Deploy job created verified SQLite backup: `backups/hr_bot.before-deploy.20260903-135326.db`;
+  - scenario config snapshot: `backups/scenarios.before-deploy.20260903-135326.json`;
+  - scenario configuration fingerprint unchanged;
+  - `/app/employees` -> `303`;
+  - `/app/flows/workspace-v2` -> `303`;
+  - external smoke `/app/employees` -> `303`;
+  - external smoke `/app/flows/workspace-v2` -> `303`;
+  - external smoke `/app/messages` -> `303`;
+  - `curl -4 -I --connect-timeout 10 https://api.telegram.org/` -> `HTTP/2 302`;
+  - worker log grep in workflow did not find fresh `TelegramNetworkError`, `Request timeout`, `Traceback`, `Unclosed client session`;
+  - deploy job completed successfully and printed `203def1`.
+- Открытые риски:
+  - visual/browser smoke за оператора не выполнялся; нужен ручной просмотр основных React страниц после дизайна;
+  - `hrbot-ui/main` на момент sync still resolved to `5920ebb`, поэтому source зафиксирован как final design branch `ui/page-layout @ 9db46f7`;
+  - frontend dependencies still report existing audit findings.
+
 ### 2026-09-03 12:03 MSK - app deploy - test task scenario runtime pack
 
 - Deploy ref: `stage`.
