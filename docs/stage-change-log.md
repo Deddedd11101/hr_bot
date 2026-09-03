@@ -34,6 +34,50 @@ source_of_truth: true
 
 ## Записи
 
+### 2026-09-03 12:03 MSK - app deploy - test task scenario runtime pack
+
+- Deploy ref: `stage`.
+- Deployed commit: `0be626c`.
+- GitHub Actions run: `33736518293` -> success.
+- В stage включено:
+  - шаг тестового задания принимает Telegram file/video/video_note и `http/https` ссылку как ответ для `test_task_result`;
+  - обычный текст без ссылки на файловом шаге не двигает сценарий дальше и просит файл/видео/ссылку;
+  - `confirm_choice=true` для `buttons/branching` включает подтверждение выбора через Telegram edit-message с fallback на новое сообщение;
+  - добавлено состояние pending confirmation в `scenario_progress`;
+  - добавлен explicit terminal step `is_terminal`, чтобы финальный/отказной шаг завершал сценарий и не проваливался в основной хвост;
+  - scenario portability переносит `confirm_choice`, `return_to_step_key`, `is_terminal` и document-library attachment contract вместе;
+  - React scenario workspace и generated Vite assets обновлены под новые настройки.
+- Локальные проверки перед deploy:
+  - `D:\HRBot\hr_bot_stage_pipeline\.venv\Scripts\python.exe -m compileall app tests tools`;
+  - `D:\HRBot\hr_bot_stage_pipeline\.venv\Scripts\python.exe -m ruff check --select F821 app tests tools`;
+  - `D:\HRBot\hr_bot_stage_pipeline\.venv\Scripts\python.exe -m unittest tests.test_p0_behaviour tests.test_employee_api_smoke tests.test_scenario_engine_smoke tests.test_messaging_identity tests.test_scenario_portability tests.test_scheduler_smoke -q` -> 219 tests OK;
+  - `D:\HRBot\hr_bot_stage_pipeline\.venv\Scripts\python.exe tools\check_docs_contracts.py`;
+  - `npm ci` in `frontend`;
+  - `npm run build` in `frontend`;
+  - repeated `npm run build` in `frontend`;
+  - `git diff --check`.
+- GitHub Actions preflight:
+  - backend dependencies install;
+  - `compileall`;
+  - `ruff F821`;
+  - backend smoke tests;
+  - frontend build;
+  - smoke imports.
+- Stage safety checks:
+  - verified SQLite backup created before checkout/restart: `backups/hr_bot.before-deploy.20260903-090***5.db` in masked GitHub log;
+  - scenario config snapshot created: `backups/scenarios.before-deploy.20260903-090***5.json` in masked GitHub log;
+  - scenario configuration fingerprint unchanged.
+- Stage smoke checks:
+  - `/app/employees` -> `303`;
+  - `/app/flows/workspace-v2` -> `303`;
+  - Telegram API reachability -> `HTTP/2 302`;
+  - worker logs since restart checked by workflow for `TelegramNetworkError`, `Request timeout`, `Traceback`, `Unclosed client session`;
+  - deploy job завершился успешно и вывел `0be626c`.
+- Открытые риски:
+  - нужен ручной Telegram smoke на сценариях `Тестовое ПМ` и `Тестовое аналитик`: видео, video_note, ссылка, plain text rejection;
+  - нужно вручную проверить `Изменить выбор`/`Подтвердить` и terminal step на отказной/финальной ветке;
+  - `video_note` засчитывается как file-answer, но удобство UX надо проверить с HR.
+
 ### 2026-09-02 15:57 MSK - app deploy - Telegram identity consistency
 
 - Deploy ref: `stage`.
