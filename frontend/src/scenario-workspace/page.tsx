@@ -55,6 +55,10 @@ function scenarioRouteIdFromLocation() {
   return Number.isInteger(value) && value > 0 ? value : null;
 }
 
+function viewModeFromLocation(): "list" | "graph" {
+  return new URL(window.location.href).searchParams.get("view") === "graph" ? "graph" : "list";
+}
+
 function normalizeStepNotificationRules(rules: WorkspaceStepSendNotificationRule[] = []) {
   return rules
     .map((rule) => ({
@@ -129,7 +133,7 @@ export function ScenarioWorkspacePage() {
   const [sortMode, setSortMode] = React.useState<"updated_desc" | "created_desc" | "created_asc" | "title_asc">("updated_desc");
   const [stack, setStack] = React.useState<Container[]>([]);
   const [selectedItemKey, setSelectedItemKey] = React.useState("");
-  const [viewMode, setViewMode] = React.useState<"list" | "graph">("list");
+  const [viewMode, setViewMode] = React.useState<"list" | "graph">(viewModeFromLocation);
   const [form, setForm] = React.useState<WorkspaceStepForm | null>(null);
   const [saveState, setSaveState] = React.useState({ saving: false, message: "", error: false });
   const [scenarioSettingsForm, setScenarioSettingsForm] = React.useState<ScenarioSettingsForm | null>(null);
@@ -290,6 +294,7 @@ export function ScenarioWorkspacePage() {
       nextUrl.searchParams.set("scenario_id", String(scenarioId));
     } else {
       nextUrl.searchParams.delete("scenario_id");
+      nextUrl.searchParams.delete("view");
     }
     window.history.pushState({ scenarioWorkspaceMode: mode, scenarioId }, "", nextUrl);
     setRouteScenarioId(scenarioId && mode === "editor" ? scenarioId : null);
@@ -316,6 +321,17 @@ export function ScenarioWorkspacePage() {
     setScenarioSettingsOpen(true);
   }, []);
 
+  const updateViewMode = React.useCallback((nextViewMode: "list" | "graph") => {
+    setViewMode(nextViewMode);
+    const nextUrl = new URL(window.location.href);
+    if (nextViewMode === "graph") {
+      nextUrl.searchParams.set("view", "graph");
+    } else {
+      nextUrl.searchParams.delete("view");
+    }
+    window.history.replaceState(window.history.state, "", nextUrl);
+  }, []);
+
   /*
    * Цель рассылки, а не булев флаг: диалог открывается и из шапки детали,
    * и из панели выделения в каталоге, где открытой записи нет.
@@ -328,6 +344,7 @@ export function ScenarioWorkspacePage() {
       const scenarioId = Number(params.get("scenario_id") || 0) || null;
       setRouteScenarioId(scenarioId);
       setWorkspaceRouteMode(scenarioId ? "editor" : "catalog");
+      setViewMode(viewModeFromLocation());
       if (scenarioId) {
         setSelectedScenarioId(scenarioId);
       } else {
@@ -952,7 +969,7 @@ export function ScenarioWorkspacePage() {
       onAddRootStep={handleAddRootStep}
       onAddChainStep={handleAddChainStep}
       onSelectItem={setSelectedItemKey}
-      onViewModeChange={setViewMode}
+      onViewModeChange={updateViewMode}
       onSelectGraphStep={handleSelectGraphStep}
       onDragStepStart={setDragStepId}
       onDragStepDrop={handleRootStepDrop}
