@@ -34,6 +34,32 @@ source_of_truth: true
 
 ## Записи
 
+### 2026-09-03 19:04 MSK - infra - HTTPS domain for stage admin
+
+- Stage domain added: `https://hr.zephyrlab.ru`.
+- DNS:
+  - `hr.zephyrlab.ru` resolves to `92.51.38.32`.
+- Stage server changes:
+  - installed Caddy on `92.51.38.32`;
+  - configured Caddy reverse proxy `hr.zephyrlab.ru -> 127.0.0.1:8000`;
+  - Caddy obtained a Let's Encrypt certificate for `hr.zephyrlab.ru`;
+  - enabled `ADMIN_SESSION_COOKIE_SECURE=true` for `hr-bot-web`;
+  - changed `hr-bot-web` bind address from `0.0.0.0:8000` to `127.0.0.1:8000`.
+- Stage smoke checks:
+  - `hr-bot-web`, `hr-bot-worker`, `caddy` -> `active`;
+  - `https://hr.zephyrlab.ru/app/employees` -> `303`;
+  - `https://hr.zephyrlab.ru/app/flows/workspace-v2` -> `303`;
+  - `https://hr.zephyrlab.ru/app/messages` -> `303`;
+  - `POST https://hr.zephyrlab.ru/login` with stage admin credentials -> `303`;
+  - auth cookie includes `Secure`;
+  - `http://127.0.0.1:8000/app/employees` -> `303`;
+  - external `http://92.51.38.32:8000/app/employees` -> connection failed as expected.
+- User smoke:
+  - operator manually clicked through the app on the domain and confirmed it works.
+- Open risks:
+  - direct IP access without port is not configured as an application entrypoint; use `https://hr.zephyrlab.ru`.
+  - `hr-bot-web` systemd override now owns localhost bind; future infra/deploy changes must preserve reverse-proxy topology.
+
 ### 2026-09-03 16:53 MSK - app deploy - hrbot-ui design refresh
 
 - Deploy ref: `stage`.
