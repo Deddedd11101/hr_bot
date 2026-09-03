@@ -10,17 +10,32 @@
     --shell-muted: #6b6963;
     --shell-border: #e8e6e1;
     --shell-border-strong: rgba(26, 25, 22, 0.08);
-    --shell-accent: #339160;
+    --shell-accent: #248555;
+    /*
+     * Для текста нужен свой оттенок: --shell-accent выравнивался по белому
+     * и даёт на фоне сайдбара #fafaf9 только 4.41:1. Этот — 4.73:1.
+     */
+    --shell-accent-text: #1d8050;
     --shell-accent-foreground: #ffffff;
     --shell-accent-soft: #f0faf4;
-    --shell-accent-soft-strong: rgba(51, 145, 96, 0.14);
+    --shell-accent-soft-strong: rgba(36, 133, 85, 0.14);
     --shell-hover: #f5f4f2;
     --shell-surface: rgba(255, 255, 255, 0.92);
     --shell-surface-strong: #ffffff;
     --shell-sidebar-background: rgba(250, 250, 249, 0.94);
-    --shell-sidebar-width: 86px;
+    --shell-sidebar-width: 72px;
     --shell-sidebar-expanded-width: 252px;
     --shell-radius: 16px;
+    /*
+     * Отступ подобран так, чтобы бокс иконки 32px стоял ровно по центру
+     * полезной ширины свёрнутого рельса: (72 - 10*2 - 32) / 2 = 10.
+     * Менять его в отрыве от --shell-sidebar-width нельзя — иконки уедут
+     * из центра.
+     */
+    --shell-rail-inset: 10px;
+    --shell-rail-pad-y: 10px;
+    --shell-rail-row: 52px;
+    --shell-collapse-size: 26px;
     --shell-pill-radius: 999px;
     --shell-ease: cubic-bezier(0.22, 1, 0.36, 1);
     --admin-page-max-width: 1820px;
@@ -35,6 +50,7 @@
     --shell-border: #2e2c28;
     --shell-border-strong: rgba(245, 243, 239, 0.08);
     --shell-accent: #4aad7a;
+    --shell-accent-text: #4aad7a;
     --shell-accent-foreground: #ffffff;
     --shell-accent-soft: rgba(17, 56, 36, 0.94);
     --shell-accent-soft-strong: rgba(74, 173, 122, 0.18);
@@ -52,18 +68,38 @@ body {
     line-height: 1.5;
 }
 
+/*
+ * Две разные величины, которые раньше были одной:
+ *
+ *   --shell-rail-current  фактическая ширина рельса;
+ *   --sidebar-width       сколько места контент уступает слева.
+ *
+ * На широком экране они совпадают — рельс раздвигает контент. В режиме
+ * накладки (см. медиазапрос внизу) рельс растёт, а --sidebar-width остаётся
+ * свёрнутой, поэтому контент не сдвигается и рельс ложится поверх.
+ *
+ * --sidebar-width наследуется вниз до .main и .app-shell-container, поэтому
+ * раскладка следует за раскрытием сама. Постраничные обходы через
+ * `:has(#react-*-root)` больше не нужны и удалены.
+ */
 .app-shell {
-    --sidebar-width: var(--shell-sidebar-width);
+    --shell-rail-current: var(--shell-sidebar-width);
+    --sidebar-width: var(--shell-rail-current);
     display: block;
     min-height: 100vh;
     padding-left: var(--sidebar-width);
+    transition: padding-left 0.28s var(--shell-ease);
+}
+
+:root[data-shell-sidebar-open] .app-shell {
+    --shell-rail-current: var(--shell-sidebar-expanded-width);
 }
 
 .app-shell-sidebar-root {
     position: fixed;
     inset: 0 auto 0 0;
     z-index: 40;
-    width: var(--sidebar-width);
+    width: var(--shell-rail-current);
     pointer-events: none;
 }
 
@@ -72,137 +108,237 @@ body {
     inset: 0 auto 0 0;
     display: flex;
     height: 100vh;
-    width: var(--sidebar-width);
+    width: var(--shell-rail-current);
     flex-direction: column;
     justify-content: space-between;
     gap: 16px;
+    overflow-x: hidden;
     border-right: 1px solid var(--shell-border);
-    background:
-        radial-gradient(circle at top left, var(--shell-accent-soft-strong), transparent 34%),
-        linear-gradient(180deg, var(--shell-sidebar-background) 0%, var(--shell-background) 100%);
-    padding: 14px 10px;
+    /*
+     * Плоская заливка. Радиальный градиент давал пятно сверху слева, а
+     * линейный не был виден вообще: он шёл от --shell-sidebar-background
+     * к --shell-background, а это один и тот же цвет с точностью до альфы.
+     */
+    background: var(--shell-sidebar-background);
+    padding: var(--shell-rail-pad-y) 10px;
     pointer-events: auto;
+    transition: width 0.28s var(--shell-ease);
 }
 
 .app-shell-sidebar-rail-group,
 .app-shell-rail-nav {
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 7px;
 }
 
-.app-shell-trigger,
-.app-shell-brand,
-.app-shell-rail-button,
-.app-shell-rail-chip,
-.app-shell-nav-link {
+/*
+ * Единая ось иконок.
+ *
+ * Иконки прыгали при раскрытии: в свёрнутом виде ссылка центрировала
+ * содержимое, в раскрытом — прижимала его к левому краю с отступом 14px,
+ * и глиф переезжал на 9px. Теперь горизонтальное положение не зависит от
+ * состояния вовсе: фиксированный бокс иконки 32px и один и тот же отступ
+ * слева. В свёрнутом виде это ровно центр (по 17px с каждой стороны от
+ * 66px полезной ширины), в раскрытом — та же самая точка.
+ */
+.app-shell-nav-link,
+.app-shell-role-card {
     display: flex;
-    min-height: 52px;
+    min-height: var(--shell-rail-row);
     width: 100%;
     align-items: center;
-    gap: 14px;
-    border: 1px solid transparent;
+    gap: 12px;
+    padding-left: var(--shell-rail-inset);
+    padding-right: 10px;
     border-radius: var(--shell-radius);
     background: transparent;
     color: var(--shell-foreground);
     text-decoration: none;
-    transition:
-        transform 0.18s ease,
-        background-color 0.22s ease,
-        border-color 0.22s ease,
-        color 0.22s ease,
-        opacity 0.18s ease;
 }
 
-.app-shell-trigger,
-.app-shell-rail-button,
-.app-shell-rail-chip {
-    justify-content: center;
-    padding: 0;
-}
-
-.app-shell-brand,
-.app-shell-nav-link {
-    padding: 0 14px;
-}
-
-.app-shell-brand {
-    justify-content: center;
-    background: var(--shell-surface);
-    border-color: var(--shell-border-strong);
-}
-
-.app-shell-brand-icon,
 .app-shell-nav-icon {
     display: inline-flex;
+    height: 32px;
+    width: 32px;
     flex: 0 0 auto;
     align-items: center;
     justify-content: center;
 }
 
-.app-shell-brand-icon {
-    height: 32px;
-    width: 32px;
-    border-radius: 12px;
-    background: var(--shell-accent-soft);
-    color: var(--shell-accent);
+.app-shell-nav-link {
+    transition:
+        opacity 0.18s ease,
+        color 0.22s ease;
 }
 
-.app-shell-trigger:hover,
-.app-shell-brand:hover,
-.app-shell-rail-button:hover,
-.app-shell-nav-link:hover,
-.app-shell-trigger:focus-visible,
-.app-shell-brand:focus-visible,
-.app-shell-rail-button:focus-visible,
+/*
+ * По наведению меняется только прозрачность: ни заливки, ни обводки.
+ * Активный раздел красится в зелёный целиком — иконкой и текстом.
+ * Вес шрифта добавлен как признак помимо цвета: различать состояние
+ * одним лишь цветом ненадёжно.
+ */
+/*
+ * Активный раздел из гашения исключён: он и так текущая страница, а зелёный
+ * текст при opacity 0.62 падает до 2.36:1 — вдвое ниже порога.
+ */
+.app-shell-nav-link:not(.is-active):hover {
+    opacity: 0.62;
+}
+
 .app-shell-nav-link:focus-visible {
-    background: var(--shell-surface);
-    border-color: var(--shell-border-strong);
-    outline: none;
+    outline: 2px solid var(--shell-accent);
+    outline-offset: -2px;
 }
 
-.app-shell-nav-link.is-compact {
-    justify-content: center;
-    padding: 0;
-}
-
-.app-shell-brand.is-active,
-.app-shell-brand.is-active:hover,
-.app-shell-nav-link.is-active,
-.app-shell-nav-link.is-active:hover {
-    background: var(--shell-accent-soft);
-    border-color: var(--shell-accent-soft-strong);
+.app-shell-nav-link.is-active {
+    color: var(--shell-accent-text);
 }
 
 .app-shell-nav-text {
     font-size: 14px;
     font-weight: 600;
+    /* Пока рельс расширяется, подпись не должна переноситься по словам. */
+    white-space: nowrap;
 }
 
-.app-shell-rail-chip {
+/*
+ * Карточка роли — единственное, что осталось внизу. Выход живёт внутри неё.
+ * В свёрнутом виде карточка становится вертикальной: обе иконки должны
+ * оставаться доступными, а не прятаться до раскрытия.
+ */
+.app-shell-role-card {
+    border: 1px solid var(--shell-border-strong);
     background: var(--shell-surface);
-    border-color: var(--shell-border-strong);
-    color: var(--shell-accent);
+    padding-right: 6px;
 }
 
-.app-shell-sidebar-overlay {
-    pointer-events: none;
+/* В свёрнутом виде внизу остаётся одна кнопка выхода. */
+:root:not([data-shell-sidebar-open]) .app-shell-role-mark {
+    display: none;
+}
+
+:root:not([data-shell-sidebar-open]) .app-shell-role-card {
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 0;
+}
+
+.app-shell-role-name {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    font-size: 14px;
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.app-shell-logout-form {
+    margin: 0;
+}
+
+.app-shell-logout-button {
+    display: inline-flex;
+    height: 32px;
+    width: 32px;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid transparent;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--shell-foreground);
+    transition:
+        opacity 0.18s ease,
+        color 0.22s ease;
+}
+
+.app-shell-logout-button:hover {
+    opacity: 0.62;
+}
+
+.app-shell-logout-button:focus-visible {
+    outline: 2px solid var(--shell-accent);
+    outline-offset: 2px;
+}
+
+
+/*
+ * Кнопка сворачивания сидит на линии, отделяющей сайдбар от контента,
+ * напротив первого пункта меню. Отрицательный отступ ровно в половину
+ * её ширины ставит центр кнопки на границу, а top — на середину первой
+ * строки: отступ рельса сверху плюс половина высоты строки.
+ *
+ * Появляется по наведению на сайдбар. Условие показа включает наведение
+ * на саму кнопку — иначе она гаснет ровно в тот момент, когда курсор
+ * переходит с рельса на неё, и нажать становится нечем.
+ *
+ * pointer-events остаётся auto всегда: без этого кнопка не поймает
+ * собственное наведение. Невидимой ловушкой для кликов это не делает —
+ * любой указатель, дошедший до неё, сразу её и проявляет.
+ */
+.app-shell-collapse-toggle {
+    position: absolute;
+    top: calc(var(--shell-rail-pad-y) + var(--shell-rail-row) / 2);
+    right: calc(var(--shell-collapse-size) / -2);
+    z-index: 1;
+    display: inline-flex;
+    height: var(--shell-collapse-size);
+    width: var(--shell-collapse-size);
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--shell-border);
+    border-radius: 999px;
+    background: var(--shell-surface-strong);
+    color: var(--shell-muted);
+    opacity: 0;
+    pointer-events: auto;
+    transform: translateY(-50%);
+    transition:
+        opacity 0.18s ease,
+        background-color 0.22s ease,
+        color 0.22s ease;
+}
+
+.app-shell-sidebar-rail:hover ~ .app-shell-collapse-toggle,
+.app-shell-sidebar-rail:focus-within ~ .app-shell-collapse-toggle,
+.app-shell-collapse-toggle:hover,
+.app-shell-collapse-toggle:focus-visible {
+    opacity: 1;
+}
+
+/* Где наведения нет, управление обязано быть видно всегда. */
+@media (hover: none) {
+    .app-shell-collapse-toggle {
+        opacity: 1;
+    }
+}
+
+.app-shell-collapse-toggle:hover {
+    background: var(--shell-hover);
+    color: var(--shell-foreground);
+}
+
+.app-shell-collapse-toggle:focus-visible {
+    outline: 2px solid var(--shell-accent);
+    outline-offset: 2px;
+}
+
+/*
+ * Затемнение существует только в режиме накладки: на широком экране рельс
+ * раздвигает контент и перекрывать его нечем. Разметка затемнения там
+ * вообще не рендерится.
+ */
+.app-shell-sidebar-backdrop {
     position: fixed;
     inset: 0;
-    z-index: 50;
-}
-
-.app-shell-sidebar-root.is-open .app-shell-sidebar-overlay {
-    pointer-events: auto;
-}
-
-.app-shell-sidebar-backdrop {
-    position: absolute;
-    inset: 0;
+    z-index: -1;
     border: 0;
     background: rgba(15, 19, 16, 0.08);
     opacity: 0;
     visibility: hidden;
+    pointer-events: none;
     transition: opacity 0.22s ease;
 }
 
@@ -210,138 +346,10 @@ body {
     background: rgba(0, 0, 0, 0.24);
 }
 
-.app-shell-sidebar-panel {
-    position: absolute;
-    top: 14px;
-    bottom: 14px;
-    left: calc(var(--sidebar-width) + 6px);
-    display: flex;
-    width: min(284px, calc(100vw - var(--sidebar-width) - 28px));
-    flex-direction: column;
-    border: 1px solid var(--shell-border);
-    border-radius: 24px;
-    background: color-mix(in srgb, var(--shell-surface-strong) 96%, transparent);
-    backdrop-filter: blur(18px);
-    opacity: 0;
-    visibility: hidden;
-    transform: translateX(-14px) scale(0.985);
-    transform-origin: left center;
-    transition:
-        opacity 0.2s ease,
-        transform 0.26s var(--shell-ease);
-}
-
 .app-shell-sidebar-root.is-open .app-shell-sidebar-backdrop {
     opacity: 1;
     visibility: visible;
-}
-
-.app-shell-sidebar-root.is-open .app-shell-sidebar-panel {
-    opacity: 1;
-    visibility: visible;
-    transform: translateX(0) scale(1);
-}
-
-.app-shell-sidebar-panel-head,
-.app-shell-sidebar-panel-foot {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 14px;
-}
-
-.app-shell-sidebar-panel-head {
-    justify-content: space-between;
-    border-bottom: 1px solid var(--shell-border);
-}
-
-.app-shell-sidebar-panel-foot {
-    margin-top: auto;
-    flex-direction: column;
-    align-items: stretch;
-    border-top: 1px solid var(--shell-border);
-}
-
-.app-shell-panel-brand {
-    display: flex;
-    min-width: 0;
-    align-items: center;
-    gap: 12px;
-    border: 1px solid transparent;
-    border-radius: 16px;
-    padding: 8px;
-    text-decoration: none;
-    color: var(--shell-foreground);
-}
-
-.app-shell-panel-brand.is-active {
-    background: var(--shell-accent-soft);
-    border-color: var(--shell-accent-soft-strong);
-}
-
-.app-shell-panel-brand-copy {
-    display: flex;
-    min-width: 0;
-    flex-direction: column;
-}
-
-.app-shell-panel-brand-title {
-    font-size: 15px;
-    font-weight: 700;
-    letter-spacing: -0.02em;
-}
-
-.app-shell-panel-brand-subtitle,
-.app-shell-panel-section-label {
-    color: var(--shell-muted);
-    font-size: 12px;
-    font-weight: 600;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-}
-
-.app-shell-panel-close {
-    display: inline-flex;
-    height: 40px;
-    width: 40px;
-    align-items: center;
-    justify-content: center;
-    border: 1px solid transparent;
-    border-radius: 999px;
-    background: transparent;
-    color: var(--shell-foreground);
-}
-
-.app-shell-panel-close:hover,
-.app-shell-panel-close:focus-visible {
-    background: var(--shell-hover);
-    border-color: var(--shell-border-strong);
-    outline: none;
-}
-
-.app-shell-sidebar-panel-body,
-.app-shell-panel-nav {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-}
-
-.app-shell-sidebar-panel-body {
-    padding: 14px;
-}
-
-.app-shell-role-pill {
-    display: inline-flex;
-    min-height: 44px;
-    align-items: center;
-    justify-content: center;
-    gap: 10px;
-    border: 1px solid var(--shell-border-strong);
-    border-radius: 999px;
-    background: var(--shell-surface);
-    color: var(--shell-muted);
-    font-size: 14px;
-    font-weight: 600;
+    pointer-events: auto;
 }
 
 .app-shell-logout-form {
@@ -350,17 +358,48 @@ body {
 
 .app-shell-content,
 .main,
-.container,
+.app-shell-container,
 .react-page {
     min-width: 0;
 }
 
-.main {
-    padding: 22px 0 34px;
+/*
+ * Поле контента того же цвета, что и сайдбар: --shell-sidebar-background
+ * складывается со страницей в тот же --shell-background, поэтому граница
+ * между ними держится разделителем, а не разницей заливок.
+ *
+ * Раньше поле было --shell-surface-strong, то есть на тон светлее. Карточки
+ * при этом совпадали с ним цветом и читались только рамкой; теперь они
+ * отделяются и заливкой тоже.
+ */
+.app-shell-content {
+    background: var(--shell-background);
 }
 
-.container {
-    max-width: 1100px;
+/*
+ * Сверху отступа нет: полоса заголовка страницы должна начинаться от самого
+ * края поля контента, её нижняя граница и задаёт верх страницы. Страницам без
+ * такой полосы отступ возвращается у них самих.
+ */
+.main {
+    padding: 0 0 34px;
+}
+
+/*
+ * Контейнер занимает всё поле контента. Предел ширины наложен не здесь,
+ * а на самом содержимом — .admin-page-shell и .admin-page-stack в index.css.
+ *
+ * Раньше предел стоял и тут, и там: контейнер сужался вместе с контентом,
+ * и полоса заголовка страницы оказывалась зажата вместе с ним. На 2200px
+ * это давало по 147px пустоты с каждой стороны от разделителя.
+ *
+ * Имя намеренно не `container`: так называется утилита Tailwind, она
+ * объявлена в app.css, который подключается после этого файла, и молча
+ * ограничивала колонку 80rem. Совпадение имён обнаружилось только после
+ * удаления постраничных обходов, которые её перебивали.
+ */
+.app-shell-container {
+    width: 100%;
     margin: 0 auto;
     padding: 0 20px;
 }
@@ -432,20 +471,28 @@ body {
     background: rgba(217, 45, 32, 0.08);
 }
 
-@media (max-width: 560px) {
-    .app-shell {
-        padding-left: var(--sidebar-width);
+/*
+ * Режим накладки. Рельс 86px плюс раскрытие до 252px на телефоне 375px
+ * не оставляет контенту ничего, да и планшет 768px сдвиг на 166px переживает
+ * плохо. Поэтому здесь рельс растёт, а --sidebar-width остаётся свёрнутой:
+ * контент не сдвигается, рельс ложится поверх него.
+ *
+ * Порог совпадает с OVERLAY_QUERY в frontend/src/shell-sidebar/page.tsx —
+ * там по нему включаются затемнение и закрытие по Escape.
+ */
+@media (max-width: 900px) {
+    :root[data-shell-sidebar-open] .app-shell {
+        --sidebar-width: var(--shell-sidebar-width);
     }
 
     .app-shell-sidebar-rail {
-        padding-inline: 8px;
+        z-index: 1;
     }
+}
 
-    .app-shell-sidebar-panel {
-        top: 10px;
-        bottom: 10px;
-        left: calc(var(--sidebar-width) + 4px);
-        width: min(284px, calc(100vw - var(--sidebar-width) - 18px));
+@media (max-width: 560px) {
+    .app-shell-sidebar-rail {
+        padding-inline: 8px;
     }
 
     .main {

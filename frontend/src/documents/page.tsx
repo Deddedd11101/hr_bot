@@ -8,6 +8,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { ConfirmAction } from "@/components/ui/confirm-action";
 import { Field, FieldContent, FieldGroup, FieldLabel, FieldTitle } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { PageHeader } from "@/components/ui/page-header";
 import { Textarea } from "@/components/ui/textarea";
 
 type DocumentItem = {
@@ -125,54 +126,50 @@ export function DocumentsPage({ apiUrl }: DocumentsPageProps) {
   }
 
   return (
-    <div className="admin-page-stack gap-5">
-      <header className="admin-page-surface border border-border/80 bg-card p-5 shadow-none ring-0">
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-          <div>
-            <h1 className="text-3xl font-semibold tracking-tight">Документы</h1>
-          </div>
-          <div className="grid gap-3 rounded-xl border border-border bg-muted/30 p-3 xl:min-w-[420px] xl:grid-cols-[minmax(0,1fr)_auto]">
-            <Field>
-              <FieldLabel>Собрать раздел меню бота</FieldLabel>
-              <Input value={menuScaffoldTitle} onChange={(event) => setMenuScaffoldTitle(event.target.value)} autoComplete="off" />
-            </Field>
-            <div className="flex gap-2 xl:self-end">
-              <Button
-                variant="secondary"
-                onClick={() =>
-                  refreshFromApi(
-                    requestJson<{ workspace: Workspace }>("/api/documents/menu-scaffold", {
-                      method: "POST",
-                      body: JSON.stringify({ root_title: menuScaffoldTitle, mode: "create" }),
-                    }).then((result) => result.workspace),
-                    "Раздел меню бота собран из категорий документов",
-                  )
-                }
-              >
-                <Plus data-icon="inline-start" />
-                Собрать
-              </Button>
-              <Button
-                onClick={() =>
-                  refreshFromApi(
-                    requestJson<{ workspace: Workspace }>("/api/documents/menu-scaffold", {
-                      method: "POST",
-                      body: JSON.stringify({ root_title: menuScaffoldTitle, mode: "rebuild" }),
-                    }).then((result) => result.workspace),
-                    "Сгенерированный раздел меню пересобран",
-                  )
-                }
-              >
-                <Save data-icon="inline-start" />
-                Пересобрать
-              </Button>
-            </div>
-          </div>
-        </div>
-      </header>
+    <>
+      <PageHeader title="Документы" />
+      <div className="admin-page-stack gap-5">
 
       <StatusAlert type="success" message={message} />
       <StatusAlert type="error" message={error} />
+
+      <div className="grid gap-3 rounded-xl border border-border bg-muted/30 p-3 xl:grid-cols-[minmax(0,1fr)_auto]">
+        <Field>
+          <FieldLabel>Собрать раздел меню бота</FieldLabel>
+          <Input value={menuScaffoldTitle} onChange={(event) => setMenuScaffoldTitle(event.target.value)} autoComplete="off" />
+        </Field>
+        <div className="flex gap-2 xl:self-end">
+          <Button
+            variant="secondary"
+            onClick={() =>
+              refreshFromApi(
+                requestJson<{ workspace: Workspace }>("/api/documents/menu-scaffold", {
+                  method: "POST",
+                  body: JSON.stringify({ root_title: menuScaffoldTitle, mode: "create" }),
+                }).then((result) => result.workspace),
+                "Раздел меню бота собран из категорий документов",
+              )
+            }
+          >
+            <Plus data-icon="inline-start" />
+            Собрать
+          </Button>
+          <Button
+            onClick={() =>
+              refreshFromApi(
+                requestJson<{ workspace: Workspace }>("/api/documents/menu-scaffold", {
+                  method: "POST",
+                  body: JSON.stringify({ root_title: menuScaffoldTitle, mode: "rebuild" }),
+                }).then((result) => result.workspace),
+                "Сгенерированный раздел меню пересобран",
+              )
+            }
+          >
+            <Save data-icon="inline-start" />
+            Пересобрать
+          </Button>
+        </div>
+      </div>
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
         <Card className="border border-border/80 bg-card shadow-none ring-0">
@@ -475,6 +472,7 @@ export function DocumentsPage({ apiUrl }: DocumentsPageProps) {
           )}
         </CardContent>
       </Card>
-    </div>
+      </div>
+    </>
   );
 }

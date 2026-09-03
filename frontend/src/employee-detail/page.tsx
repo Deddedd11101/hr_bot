@@ -7,11 +7,11 @@ import {
     parseWorkHours,
     updatePayloadState,
 } from "./helpers";
+import { PageDetailHeader } from "@/components/ui/page-header";
 import {
     AssignmentHistorySection,
     EmployeeDetailError,
     EmployeeFlashNotice,
-    EmployeeDetailHeader,
     EmployeeDetailLoading,
     EmployeeOperationsSection,
     EmployeeProfileSection,
@@ -577,9 +577,6 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
     }
 
     function handleResetBotLinkage() {
-        if (!window.confirm("Сбросить привязку к боту и очистить активные сценарии и ожидающие отправки?")) {
-            return;
-        }
         setOpsState({ message: "", error: false, working: true });
         fetch(apiUrl + "/bot-link/reset", {
             method: "POST",
@@ -808,23 +805,27 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
 
     return (
         <div className="react-detail-page">
-            <EmployeeDetailHeader meta={meta} />
-            <EmployeeFlashNotice message={flashState.message} error={flashState.error} />
-            <section className="employee-detail-hero">
-                <div>
-                    <h1>{form.full_name || "Сотрудник #" + form.id}</h1>
-                    <div className="employee-detail-badges">
+            {/*
+              Статус и этап — свойства записи, а не действия, но полоса
+              заголовка — единственное место, где они видны без прокрутки;
+              компактные бейджи в слоте действий разрешены самой полосой.
+            */}
+            <PageDetailHeader
+                title={form.full_name || "Сотрудник #" + form.id}
+                sectionTitle={meta.list_title || (isCandidate ? "Кандидаты" : "Сотрудники")}
+                backHref={meta.list_url || listUrl}
+                actions={
+                    <>
                         <Badge variant="secondary">{meta.status_label || "Без статуса"}</Badge>
                         {isCandidate ? (
-                            <Badge variant="outline">
-                                {meta.candidate_work_stage_label || "Без этапа"}
-                            </Badge>
+                            <Badge variant="outline">{meta.candidate_work_stage_label || "Без этапа"}</Badge>
                         ) : (
                             <Badge variant="outline">{"Стаж: " + meta.tenure_years + " лет"}</Badge>
                         )}
-                    </div>
-                </div>
-            </section>
+                    </>
+                }
+            />
+            <EmployeeFlashNotice message={flashState.message} error={flashState.error} />
             <section className="employee-detail-grid">
                 <div className="employee-detail-main">
                     <EmployeeProfileSection

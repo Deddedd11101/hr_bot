@@ -2,27 +2,19 @@ import React from "react";
 import {
   BadgeCheck,
   Bot,
-  ClipboardList,
+  ChevronLeft,
+  ChevronRight,
   FolderOpen,
   FileCheck2,
   LayoutDashboard,
   LogOut,
-  Moon,
-  PanelLeft,
+  Send,
   Settings,
-  Sun,
   Users,
   Workflow,
-  X,
 } from "lucide-react";
 
-import {
-  applyDocumentTheme,
-  readDocumentTheme,
-  readStoredTheme,
-  THEME_CHANGE_EVENT,
-  type AppTheme,
-} from "@/lib/theme";
+import { applyDocumentTheme, readStoredTheme, THEME_CHANGE_EVENT } from "@/lib/theme";
 
 type SidebarPageProps = {
   activeTab: string;
@@ -31,14 +23,23 @@ type SidebarPageProps = {
 
 const OPEN_KEY = "app-shell-sidebar-open";
 
-const primaryItems = [
-  { key: "employees", label: "Сотрудники", href: "/app/employees", icon: Users },
-  { key: "bulk_actions", label: "Массовые действия", href: "/app/bulk-actions", icon: ClipboardList },
+/**
+ * Ниже этой ширины раздвигать контент некуда: рельс 86px плюс раскрытие
+ * до 252px не оставляет места. Там раскрытый рельс ложится поверх контента,
+ * и только там уместны затемнение и закрытие по Escape.
+ */
+const OVERLAY_QUERY = "(max-width: 900px)";
+
+/**
+ * Один список: системные разделы стоят вместе с остальными, отдельной группы
+ * внизу больше нет. Снизу остаётся только карточка роли.
+ */
+const navItems = [
+  { key: "dashboard", label: "Дашборд", href: "/app/dashboard", icon: LayoutDashboard },
+  { key: "employees", label: "Люди", href: "/app/employees", icon: Users },
+  { key: "messages", label: "Сообщения", href: "/app/messages", icon: Send },
   { key: "flows", label: "Сценарии", href: "/app/flows/workspace-v2", icon: Workflow },
   { key: "surveys", label: "Опросы", href: "/app/surveys/workspace", icon: FileCheck2 },
-] as const;
-
-const secondaryItems = [
   { key: "bot_menu", label: "Меню бота", href: "/app/bot-menu", icon: Bot },
   { key: "documents", label: "Документы", href: "/app/documents", icon: FolderOpen },
   { key: "settings", label: "Настройки", href: "/app/settings", icon: Settings },
@@ -49,26 +50,50 @@ function normalizeActiveTab(activeTab: string) {
   return activeTab;
 }
 
+/**
+ * Состояние живёт в localStorage, а не в sessionStorage: раскрытое меню —
+ * это предпочтение пользователя, оно не должно сбрасываться в новой вкладке.
+ */
 function useInitialOpenState() {
   return React.useMemo(() => {
     if (typeof window === "undefined") return false;
-    return window.sessionStorage.getItem(OPEN_KEY) === "1";
+    return window.localStorage.getItem(OPEN_KEY) === "1";
   }, []);
 }
 
-function useShellTheme() {
-  const [theme, setTheme] = React.useState<AppTheme>(() => {
-    if (typeof window === "undefined") return "light";
-    return readStoredTheme();
+function useOverlayMode() {
+  const [overlay, setOverlay] = React.useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.matchMedia(OVERLAY_QUERY).matches;
   });
 
   React.useEffect(() => {
-    const nextTheme = readStoredTheme();
-    applyDocumentTheme(nextTheme, { persist: false });
-    setTheme(nextTheme);
+    const query = window.matchMedia(OVERLAY_QUERY);
+    setOverlay(query.matches);
+
+    function handleChange(event: MediaQueryListEvent) {
+      setOverlay(event.matches);
+    }
+
+    query.addEventListener("change", handleChange);
+    return () => query.removeEventListener("change", handleChange);
+  }, []);
+
+  return overlay;
+}
+
+/**
+ * Переключатель темы переехал в «Настройки», но синхронизация осталась здесь:
+ * сайдбар есть на каждой странице, и без него смена темы в одной вкладке
+ * не доезжала бы до остальных до перезагрузки. UI тут больше нет — только
+ * применение чужого изменения.
+ */
+function useThemeSync() {
+  React.useEffect(() => {
+    applyDocumentTheme(readStoredTheme(), { persist: false });
 
     function handleThemeChange() {
-      setTheme(readDocumentTheme());
+      applyDocumentTheme(readStoredTheme(), { persist: false });
     }
 
     window.addEventListener(THEME_CHANGE_EVENT, handleThemeChange);
@@ -78,16 +103,6 @@ function useShellTheme() {
       window.removeEventListener("storage", handleThemeChange);
     };
   }, []);
-
-  const toggleTheme = React.useCallback(() => {
-    setTheme((currentTheme) => {
-      const nextTheme = currentTheme === "dark" ? "light" : "dark";
-      applyDocumentTheme(nextTheme);
-      return nextTheme;
-    });
-  }, []);
-
-  return { theme, toggleTheme };
 }
 
 function SidebarNavLink({
@@ -109,7 +124,7 @@ function SidebarNavLink({
     <a
       href={href}
       title={label}
-      className={`app-shell-nav-link${compact ? " is-compact" : ""}${active ? " is-active" : ""}`}
+      className={`app-shell-nav-link${active ? " is-active" : ""}`}
       aria-current={active ? "page" : undefined}
       onClick={onNavigate}
     >
@@ -123,19 +138,26 @@ function SidebarNavLink({
 
 export function ShellSidebarPage({ activeTab, roleLabel }: SidebarPageProps) {
   const normalizedActiveTab = normalizeActiveTab(activeTab);
-  const dashboardActive = normalizedActiveTab === "dashboard";
   const initialOpen = useInitialOpenState();
   const [open, setOpen] = React.useState(initialOpen);
-  const { theme, toggleTheme } = useShellTheme();
-  const ThemeIcon = theme === "dark" ? Sun : Moon;
-  const themeLabel = theme === "dark" ? "Включить светлую тему" : "Включить темную тему";
+  const overlayMode = useOverlayMode();
+  const compact = !open;
+
+  useThemeSync();
 
   React.useEffect(() => {
     document.documentElement.toggleAttribute("data-shell-sidebar-open", open);
-    window.sessionStorage.setItem(OPEN_KEY, open ? "1" : "0");
+    window.localStorage.setItem(OPEN_KEY, open ? "1" : "0");
   }, [open]);
 
+  /**
+   * Escape закрывает меню только в режиме накладки. На широком экране это
+   * постоянная навигация, а не модалка: там Escape из любого поля или диалога
+   * не должен схлопывать её.
+   */
   React.useEffect(() => {
+    if (!overlayMode || !open) return;
+
     function handleKeydown(event: KeyboardEvent) {
       if (event.key === "Escape") {
         setOpen(false);
@@ -144,191 +166,81 @@ export function ShellSidebarPage({ activeTab, roleLabel }: SidebarPageProps) {
 
     window.addEventListener("keydown", handleKeydown);
     return () => window.removeEventListener("keydown", handleKeydown);
-  }, []);
+  }, [overlayMode, open]);
 
   const handleClose = React.useCallback(() => setOpen(false), []);
   const handleToggle = React.useCallback(() => setOpen((value) => !value), []);
 
+  /** Переход по ссылке уводит со страницы: состояние фиксируем до ухода. */
   const persistCurrentState = React.useCallback(() => {
-    window.sessionStorage.setItem(OPEN_KEY, open ? "1" : "0");
+    window.localStorage.setItem(OPEN_KEY, open ? "1" : "0");
   }, [open]);
-
-  const persistOpenState = React.useCallback(() => {
-    window.sessionStorage.setItem(OPEN_KEY, "1");
-  }, []);
 
   return (
     <div className={`app-shell-sidebar-root${open ? " is-open" : ""}`}>
-      <div className="app-shell-sidebar-rail">
-        <div className="app-shell-sidebar-rail-group">
-          <button
-            type="button"
-            className="app-shell-trigger"
-            onClick={handleToggle}
-            aria-label={open ? "Закрыть навигацию" : "Открыть навигацию"}
-            aria-expanded={open}
-          >
-            {open ? <X className="size-5" /> : <PanelLeft className="size-5" />}
-          </button>
-
-          <a
-            href="/app/dashboard"
-            className={`app-shell-brand${dashboardActive ? " is-active" : ""}`}
-            aria-label="HR Bot Admin"
-            onClick={persistCurrentState}
-            aria-current={dashboardActive ? "page" : undefined}
-          >
-            <span className="app-shell-brand-icon" aria-hidden="true">
-              <LayoutDashboard className="size-5" />
-            </span>
-          </a>
-
-          <nav className="app-shell-rail-nav" aria-label="Основная навигация">
-            {primaryItems.map((item) => (
-              <SidebarNavLink
-                key={item.key}
-                href={item.href}
-                label={item.label}
-                icon={item.icon}
-                compact
-                active={normalizedActiveTab === item.key}
-                onNavigate={persistCurrentState}
-              />
-            ))}
-          </nav>
-        </div>
-
-        <div className="app-shell-sidebar-rail-group">
-          <nav className="app-shell-rail-nav" aria-label="Системная навигация">
-            {secondaryItems.map((item) => (
-              <SidebarNavLink
-                key={item.key}
-                href={item.href}
-                label={item.label}
-                icon={item.icon}
-                compact
-                active={normalizedActiveTab === item.key}
-                onNavigate={persistCurrentState}
-              />
-            ))}
-          </nav>
-
-          <div className="app-shell-rail-chip" title={roleLabel}>
-            <BadgeCheck className="size-5" />
-          </div>
-
-          <button
-            type="button"
-            className="app-shell-rail-button"
-            aria-label={themeLabel}
-            title={themeLabel}
-            onClick={toggleTheme}
-          >
-            <ThemeIcon className="size-5" />
-          </button>
-
-          <form method="post" action="/logout" className="app-shell-logout-form">
-            <button type="submit" className="app-shell-rail-button" aria-label="Выйти">
-              <LogOut className="size-5" />
-            </button>
-          </form>
-        </div>
-      </div>
-
-      <div className="app-shell-sidebar-overlay" aria-hidden={!open}>
+      {overlayMode ? (
         <button
           type="button"
           className="app-shell-sidebar-backdrop"
           onClick={handleClose}
           aria-label="Закрыть навигацию"
           tabIndex={open ? 0 : -1}
+          aria-hidden={!open}
         />
+      ) : null}
 
-        <aside className="app-shell-sidebar-panel" aria-label="Навигация">
-          <div className="app-shell-sidebar-panel-head">
-            <a
-              href="/app/dashboard"
-              className={`app-shell-panel-brand${dashboardActive ? " is-active" : ""}`}
-              aria-label="HR Bot Admin"
-              onClick={persistOpenState}
-              aria-current={dashboardActive ? "page" : undefined}
-            >
-              <span className="app-shell-brand-icon" aria-hidden="true">
-                <LayoutDashboard className="size-5" />
-              </span>
-              <span className="app-shell-panel-brand-copy">
-                <span className="app-shell-panel-brand-title">HR Bot Admin</span>
-                <span className="app-shell-panel-brand-subtitle">Operator shell</span>
-              </span>
-            </a>
+      <div className="app-shell-sidebar-rail">
+        <div className="app-shell-sidebar-rail-group">
+          <nav className="app-shell-rail-nav" aria-label="Основная навигация">
+            {navItems.map((item) => (
+              <SidebarNavLink
+                key={item.key}
+                href={item.href}
+                label={item.label}
+                icon={item.icon}
+                compact={compact}
+                active={normalizedActiveTab === item.key}
+                onNavigate={persistCurrentState}
+              />
+            ))}
+          </nav>
+        </div>
 
-            <button
-              type="button"
-              className="app-shell-panel-close"
-              onClick={handleClose}
-              aria-label="Закрыть навигацию"
-            >
-              <X className="size-5" />
-            </button>
-          </div>
+        {/*
+          Снизу только роль. Выход живёт внутри её карточки: в свёрнутом виде
+          карточка становится вертикальной, чтобы обе иконки остались доступны.
+        */}
+        <div className="app-shell-role-card">
+          <span className="app-shell-nav-icon app-shell-role-mark" aria-hidden="true">
+            <BadgeCheck className="size-5" />
+          </span>
+          {open ? <span className="app-shell-role-name">{roleLabel}</span> : null}
 
-          <div className="app-shell-sidebar-panel-body">
-            <nav className="app-shell-panel-nav" aria-label="Основная навигация">
-              {primaryItems.map((item) => (
-                <SidebarNavLink
-                  key={item.key}
-                  href={item.href}
-                  label={item.label}
-                  icon={item.icon}
-                  active={normalizedActiveTab === item.key}
-                  onNavigate={persistOpenState}
-                />
-              ))}
-            </nav>
-
-            <div className="app-shell-panel-section-label">System</div>
-
-            <nav className="app-shell-panel-nav" aria-label="Системная навигация">
-              {secondaryItems.map((item) => (
-                <SidebarNavLink
-                  key={item.key}
-                  href={item.href}
-                  label={item.label}
-                  icon={item.icon}
-                  active={normalizedActiveTab === item.key}
-                  onNavigate={persistOpenState}
-                />
-              ))}
-            </nav>
-          </div>
-
-          <div className="app-shell-sidebar-panel-foot">
-            <div className="app-shell-role-pill">
-              <BadgeCheck className="size-4" />
-              <span>{roleLabel}</span>
-            </div>
-
-            <button type="button" className="app-shell-nav-link" onClick={toggleTheme}>
+          <form method="post" action="/logout" className="app-shell-logout-form">
+            <button type="submit" className="app-shell-logout-button" aria-label="Выйти" title="Выйти">
               <span className="app-shell-nav-icon" aria-hidden="true">
-                <ThemeIcon className="size-5" />
-              </span>
-              <span className="app-shell-nav-text">
-                {theme === "dark" ? "Светлая тема" : "Темная тема"}
+                <LogOut className="size-5" />
               </span>
             </button>
-
-            <form method="post" action="/logout" className="app-shell-logout-form">
-              <button type="submit" className="app-shell-nav-link">
-                <span className="app-shell-nav-icon" aria-hidden="true">
-                  <LogOut className="size-5" />
-                </span>
-                <span className="app-shell-nav-text">Выйти</span>
-              </button>
-            </form>
-          </div>
-        </aside>
+          </form>
+        </div>
       </div>
 
+      {/*
+        Кнопка сидит на линии, отделяющей сайдбар от контента, напротив первого
+        пункта меню. Вынесена из рельса намеренно: у рельса overflow-x: hidden,
+        который прячет подписи во время анимации ширины, и внутри он обрезал бы
+        кнопку, выступающую за границу.
+      */}
+      <button
+        type="button"
+        className="app-shell-collapse-toggle"
+        onClick={handleToggle}
+        aria-label={open ? "Свернуть навигацию" : "Развернуть навигацию"}
+        aria-expanded={open}
+      >
+        {open ? <ChevronLeft className="size-4" /> : <ChevronRight className="size-4" />}
+      </button>
     </div>
   );
 }

@@ -1,0 +1,1 @@
+const o="opacity-0 transition-opacity duration-200 focus-visible:opacity-100 [@media(hover:none)]:opacity-100",i={card:`${o} group-focus-within/card:opacity-100 group-hover/card:opacity-100`,row:`${o} group-focus-within/row:opacity-100 group-hover/row:opacity-100`};export{i as П};

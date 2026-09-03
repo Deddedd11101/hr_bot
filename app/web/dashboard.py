@@ -139,6 +139,8 @@ def _serialize_employee_launch_event(
         "date_label": _event_date_label(launch_request.requested_at),
         "recipient_count": 1,
         "href": f"/app/employees/{employee.id}",
+        "action_id": None,
+        "deletable": False,
     }
 
 
@@ -167,7 +169,16 @@ def _serialize_mass_scenario_event(
         "scheduled_at_label": _format_dt(action.requested_at),
         "date_label": _event_date_label(action.requested_at),
         "recipient_count": action.recipient_count,
-        "href": "/app/bulk-actions",
+        # Событие ведёт в деталь записи: страницы массовых действий больше нет.
+        "href": (
+            f"/app/surveys/workspace?scenario_id={scenario.id}"
+            if scenario and action.scenario_kind == "survey"
+            else f"/app/flows/workspace-v2?scenario_id={scenario.id}"
+            if scenario
+            else "/app/messages"
+        ),
+        "action_id": action.id,
+        "deletable": action.processed_at is None,
     }
 
 
@@ -193,7 +204,9 @@ def _serialize_mass_message_event(db: Session, action: MassMessageAction) -> dic
         "scheduled_at_label": _format_dt(action.requested_at),
         "date_label": _event_date_label(action.requested_at),
         "recipient_count": action.recipient_count,
-        "href": "/app/bulk-actions",
+        "href": "/app/messages",
+        "action_id": action.id,
+        "deletable": action.processed_at is None,
     }
 
 
@@ -301,19 +314,61 @@ def _attention_items(db: Session, candidates_without_channel: list[Employee], no
     return items[:12]
 
 
+def _sent_history(db: Session, limit: int = 15) -> list[dict]:
+    """Последние выполненные массовые отправки, все три типа одной лентой.
+
+    Журнал жил на странице массовых действий; страница сжалась до сообщений,
+    и общая история переехала на дашборд — оператору нужен один список,
+    а не три, разнесённых по страницам записей.
+    """
+    scenario_by_key = _scenario_title_map(db)
+    entries: list[dict] = []
+
+    scenario_actions = (
+        db.query(MassScenarioAction)
+        .filter(MassScenarioAction.processed_at.isnot(None))
+        .order_by(MassScenarioAction.processed_at.desc(), MassScenarioAction.id.desc())
+        .limit(limit)
+        .all()
+    )
+    for action in scenario_actions:
+        event = _serialize_mass_scenario_event(db, action, scenario_by_key)
+        event["id"] = f"sent-scenario-{action.id}"
+        event["processed_at"] = action.processed_at.isoformat() if action.processed_at else ""
+        event["processed_at_label"] = _format_dt(action.processed_at)
+        entries.append(event)
+
+    message_actions = (
+        db.query(MassMessageAction)
+        .filter(MassMessageAction.processed_at.isnot(None))
+        .order_by(MassMessageAction.processed_at.desc(), MassMessageAction.id.desc())
+        .limit(limit)
+        .all()
+    )
+    for action in message_actions:
+        event = _serialize_mass_message_event(db, action)
+        event["id"] = f"sent-message-{action.id}"
+        event["processed_at"] = action.processed_at.isoformat() if action.processed_at else ""
+        event["processed_at_label"] = _format_dt(action.processed_at)
+        entries.append(event)
+
+    entries.sort(key=lambda item: item["processed_at"], reverse=True)
+    return entries[:limit]
+
+
 def _module_links() -> list[dict]:
     return [
         {
             "key": "employees",
-            "title": "Сотрудники",
+            "title": "Люди",
             "description": "Карточки сотрудников и кандидатов",
             "href": "/app/employees?list_kind=candidates",
         },
         {
-            "key": "bulk_actions",
-            "title": "Массовые действия",
-            "description": "Запуски сценариев, опросов и сообщений",
-            "href": "/app/bulk-actions",
+            "key": "messages",
+            "title": "Сообщения",
+            "description": "Массовые сообщения в Telegram",
+            "href": "/app/messages",
         },
         {
             "key": "flows",
@@ -397,4 +452,5 @@ def dashboard_workspace_payload(db: Session) -> dict:
         "inbound_files": inbound_files,
         "attention_items": _attention_items(db, candidates_without_channel, now),
         "module_links": _module_links(),
+        "sent_history": _sent_history(db),
     }

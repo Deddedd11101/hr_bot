@@ -1,5 +1,6 @@
 export type ScenarioSummary = {
   id: number;
+  scenario_key: string;
   title: string;
   description: string;
   employee_scope: string;
@@ -150,6 +151,7 @@ export type WorkspaceDocumentLibraryItem = {
 export type WorkspaceData = {
   scenario: {
     id: number;
+    scenario_key: string;
     scenario_kind: "scenario" | "survey";
     title: string;
     description: string;

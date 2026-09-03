@@ -1,43 +1,9 @@
-.main > .container:has(#react-employee-edit-root) {
-    width: 100%;
-    max-width: var(--admin-page-max-width);
-}
-
 .react-detail-page {
     display: flex;
     flex-direction: column;
     gap: 18px;
     padding-bottom: 28px;
     color: var(--foreground);
-}
-
-.employee-detail-topline {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-}
-
-.employee-detail-hero {
-    display: block;
-    border: 1px solid var(--border);
-    border-radius: var(--admin-page-radius, var(--radius-xl));
-    background: color-mix(in srgb, var(--card) 92%, transparent);
-    padding: 22px 24px;
-}
-
-.employee-detail-hero h1 {
-    margin: 0;
-    font-size: clamp(2rem, 3vw, 3.25rem);
-    font-weight: 650;
-    letter-spacing: -0.055em;
-    line-height: 0.95;
-}
-
-.employee-detail-badges {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    margin-top: 16px;
 }
 
 .employee-detail-grid {
@@ -393,15 +359,6 @@
 }
 
 @media (max-width: 760px) {
-    .main > .container:has(#react-employee-edit-root) {
-        width: min(100%, calc(100vw - 24px));
-        max-width: min(100%, calc(100vw - 24px));
-    }
-
-    .employee-detail-hero {
-        grid-template-columns: 1fr;
-    }
-
     .employee-field-grid,
     .employee-assignment-history-row,
     .employee-document-row {

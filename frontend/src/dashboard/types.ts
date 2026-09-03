@@ -16,6 +16,14 @@ export type DashboardEvent = {
   date_label: string;
   recipient_count: number;
   href: string;
+  /** id записи в mass_*_actions; null у запусков по конкретному человеку. */
+  action_id: number | null;
+  deletable: boolean;
+};
+
+export type SentHistoryItem = DashboardEvent & {
+  processed_at: string;
+  processed_at_label: string;
 };
 
 export type TelegramLink = {
@@ -67,4 +75,5 @@ export type DashboardPayload = {
   inbound_files: InboundFile[];
   attention_items: AttentionItem[];
   module_links: ModuleLink[];
+  sent_history: SentHistoryItem[];
 };

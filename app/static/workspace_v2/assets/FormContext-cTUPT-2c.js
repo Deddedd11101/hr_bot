@@ -1,0 +1,1 @@
+import{c as t,r as e}from"./createLucideIcon-EjPmQ_Rm.js";import{V as r}from"./useBaseUiId-CqCs0Om_.js";const o=[["path",{d:"M20 6 9 17l-5-5",key:"1gmf2c"}]],a=t("check",o),c=e.createContext({formRef:{current:{fields:new Map}},errors:{},clearErrors:r,validationMode:"onSubmit",submitAttemptedRef:{current:!1}});function m(){return e.useContext(c)}export{a as C,m as u};

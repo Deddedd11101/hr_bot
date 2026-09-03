@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "typecheck": "tsc --noEmit",
+    "check:registry": "node scripts/check-registry.mjs",
     "build": "vite build",
     "preview": "vite preview"
   },

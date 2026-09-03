@@ -1,0 +1,22 @@
+{% extends "react_base.html" %}
+
+{% block extra_head %}
+    <style>
+        #react-messages-root {
+            width: 100%;
+        }
+    </style>
+{% endblock %}
+
+{% block content %}
+<section class="react-page">
+    <div
+        id="react-messages-root"
+        data-api-url="{{ react_api_url }}"
+    ></div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+    <script type="module" src="/static/workspace_v2/messages.js?v=8"></script>
+{% endblock %}

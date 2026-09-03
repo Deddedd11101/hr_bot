@@ -177,7 +177,7 @@ function SelectField(props: {
             items={selectItems}
             value={props.value || EMPTY_SELECT_VALUE}
             onValueChange={function (value) {
-                changeFieldValue(props.onChange, props.name, value === EMPTY_SELECT_VALUE ? "" : value);
+                changeFieldValue(props.onChange, props.name, !value || value === EMPTY_SELECT_VALUE ? "" : value);
             }}
         >
             <SelectTrigger className="w-full">
@@ -432,18 +432,6 @@ export function EmployeeFlashNotice(props: { message: string; error: boolean }) 
         <Alert variant={props.error ? "destructive" : "default"}>
             <AlertDescription>{props.message}</AlertDescription>
         </Alert>
-    );
-}
-
-export function EmployeeDetailHeader(props: { meta: any }) {
-    const { meta } = props;
-    return (
-        <div className="employee-detail-topline">
-            <a href={meta.list_url} className={buttonVariants({ variant: "ghost", size: "sm" })}>
-                <ArrowLeft data-icon="inline-start" />
-                {meta.list_title}
-            </a>
-        </div>
     );
 }
 
@@ -1376,10 +1364,17 @@ export function EmployeeOperationsSection(props: any) {
                     </CardTitle>
                 </CardHeader>
                 <CardFooter className="employee-action-row">
-                    <Button type="button" variant="outline" onClick={handleResetBotLinkage}>
-                        <RefreshCcw data-icon="inline-start" />
-                        Сбросить привязку к боту
-                    </Button>
+                    <ConfirmAction
+                        title="Сбросить привязку к боту?"
+                        description="Активные сценарии и ожидающие отправки будут очищены. Сотруднику придётся привязать бот заново."
+                        actionLabel="Сбросить"
+                        onConfirm={handleResetBotLinkage}
+                    >
+                        <Button type="button" variant="outline">
+                            <RefreshCcw data-icon="inline-start" />
+                            Сбросить привязку к боту
+                        </Button>
+                    </ConfirmAction>
                     <ConfirmAction
                         title="Удалить сотрудника?"
                         description="Карточка сотрудника будет удалена. Это действие нельзя отменить."
