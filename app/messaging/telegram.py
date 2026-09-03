@@ -16,6 +16,14 @@ class TelegramMessenger:
     async def send_text(self, chat_id: str, text: str, reply_markup: Any | None = None) -> None:
         await self.bot.send_message(chat_id=chat_id, text=text, reply_markup=reply_markup)
 
+    async def edit_text(self, chat_id: str, message_id: int, text: str, reply_markup: Any | None = None) -> None:
+        await self.bot.edit_message_text(
+            chat_id=chat_id,
+            message_id=message_id,
+            text=text,
+            reply_markup=reply_markup,
+        )
+
     async def send_menu(self, chat_id: str, text: str, buttons: list[str]) -> None:
         if not buttons:
             await self.send_text(chat_id=chat_id, text=text)

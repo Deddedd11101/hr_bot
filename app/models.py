@@ -634,6 +634,12 @@ class FlowStepTemplate(Base):
         nullable=True,
         doc="Кнопки через перевод строки, если response_type=buttons.",
     )
+    confirm_choice: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        doc="Запрашивать подтверждение выбранной кнопки перед сохранением ответа.",
+    )
     send_mode: Mapped[str] = mapped_column(
         String(32),
         nullable=False,
@@ -762,6 +768,21 @@ class ScenarioProgress(Base):
         String(16384),
         nullable=True,
         doc="JSON-стек снимков последнего подтвержденного ответа для rollback по кнопке назад.",
+    )
+    pending_confirmation_value: Mapped[Optional[str]] = mapped_column(
+        String(4096),
+        nullable=True,
+        doc="Снимок выбранного значения кнопки, ожидающий подтверждения кандидатом.",
+    )
+    pending_confirmation_option_index: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        nullable=True,
+        doc="Индекс выбранной кнопки для best-effort уведомлений после подтверждения.",
+    )
+    pending_confirmation_message_id: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        nullable=True,
+        doc="Telegram message_id сообщения, которое runtime пытался отредактировать для подтверждения.",
     )
     waiting_for_response: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     is_completed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)

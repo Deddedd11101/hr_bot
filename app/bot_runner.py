@@ -21,6 +21,7 @@ from .messaging.service import (
     detect_category_from_caption,
     handle_back_event,
     handle_button_event,
+    handle_choice_confirmation_event,
     handle_date_event,
     handle_saved_document,
     handle_start_command,
@@ -28,7 +29,7 @@ from .messaging.service import (
     resolve_inbound_access,
     save_incoming_file,
 )
-from .scenario_engine import CALLBACK_PREFIX
+from .scenario_engine import CALLBACK_PREFIX, CHOICE_CONFIRM_CALLBACK_PREFIX
 from .scheduler import schedule_all_employees
 
 
@@ -219,6 +220,16 @@ async def on_scenario_button(callback: CallbackQuery) -> None:
                 _telegram_username(user),
                 callback.data,
             )
+        elif callback.data.startswith(CHOICE_CONFIRM_CALLBACK_PREFIX):
+            handled = await handle_choice_confirmation_event(
+                messenger,
+                db,
+                str(user.id),
+                _telegram_username(user),
+                callback.data,
+                callback.message.message_id if callback.message else None,
+            )
+            date_result = None
         else:
             _, step_id, option_index = callback.data.split(":", 2)
             handled = await handle_button_event(
@@ -228,6 +239,7 @@ async def on_scenario_button(callback: CallbackQuery) -> None:
                 _telegram_username(user),
                 int(step_id),
                 int(option_index),
+                callback.message.message_id if callback.message else None,
             )
             date_result = None
         await messenger.close()

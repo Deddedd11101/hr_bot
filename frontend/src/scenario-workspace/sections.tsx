@@ -1401,6 +1401,7 @@ export function WorkspaceStepDetailPane(props: {
                                 ...prev,
                                 response_type: nextValue,
                                 button_options: supportsButtonOptions(nextValue) ? prev.button_options : "",
+                                confirm_choice: supportsButtonOptions(nextValue) ? prev.confirm_choice : false,
                                 button_notifications: supportsButtonOptions(nextValue) ? prev.button_notifications : [],
                                 target_field: supportsTargetField(nextValue) ? prev.target_field : "",
                                 launch_scenario_key: nextValue === "launch_scenario" ? prev.launch_scenario_key : "",
@@ -1451,6 +1452,23 @@ export function WorkspaceStepDetailPane(props: {
                       }
                       placeholder={isSurveyWorkspace ? "Каждая строка = отдельный вариант ответа" : "Каждая строка = отдельная кнопка"}
                     />
+                  </label>
+                ) : null}
+
+                {!isSurveyWorkspace && supportsButtonOptions(form?.response_type || "") ? (
+                  <label className="flex items-start gap-3 rounded-lg border border-border bg-muted/40 p-3">
+                    <Checkbox
+                      checked={Boolean(form?.confirm_choice)}
+                      onCheckedChange={(checked) =>
+                        onFormChange((prev) => (prev ? { ...prev, confirm_choice: checked === true } : prev))
+                      }
+                    />
+                    <span className="grid gap-1 text-sm">
+                      <span className="font-semibold text-foreground/80">Запрашивать подтверждение выбора</span>
+                      <span className="text-muted-foreground">
+                        Бот отредактирует сообщение с кнопками, покажет выбранный вариант и даст подтвердить или изменить ответ.
+                      </span>
+                    </span>
                   </label>
                 ) : null}
 

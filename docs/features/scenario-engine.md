@@ -68,7 +68,19 @@ Scenario engine превращает scenario templates плюс employee state 
 6. Сохранить progress в `scenario_progress`, включая короткую историю предыдущих интерактивных шагов и resolved recipient (`recipient_mode`, `recipient_employee_id`, `recipient_chat_id`).
 7. Если user response не нужен, auto-advance к следующему step или schedule follow-up delivery.
 8. Если response нужен, ждать text/file/button input от resolved recipient и применить result к employee state context employee.
-9. Для активного интерактивного шага runtime поддерживает default `Назад`: для text/file это reply button, для button/branching — inline button. Откат возвращает только на предыдущий интерактивный шаг в рамках текущего незавершенного сценария.
+9. Для button/branching step с `confirm_choice=true` первый click не сохраняет ответ: runtime редактирует исходное inline-сообщение в confirmation state, хранит выбранное значение в `ScenarioProgress.pending_confirmation_value` и применяет его только после `Подтвердить`.
+10. Для активного интерактивного шага runtime поддерживает default `Назад`: для text/file это reply button, для button/branching — inline button. Откат возвращает только на предыдущий интерактивный шаг в рамках текущего незавершенного сценария; если есть pending confirmation, `Назад` сначала очищает неподтвержденный выбор и возвращает текущий шаг к выбору.
+
+## Choice confirmation
+
+- `flow_step_templates.confirm_choice` включает подтверждение только для обычных scenario steps с `response_type=buttons` или `response_type=branching`.
+- После выбора варианта runtime пытается отредактировать исходное Telegram-сообщение: добавляет строку `Вы выбрали: <вариант>` и заменяет inline-кнопки на `Подтвердить` / `Изменить выбор`.
+- Если Telegram edit недоступен или отклонен, runtime отправляет отдельное fallback-сообщение подтверждения; business state остается тем же.
+- До `Подтвердить` значение не пишется в карточку, survey answer, `candidate_status` и не запускает button notifications.
+- `pending_confirmation_value` является source of truth. Если администратор изменил порядок/текст кнопок между выбором и подтверждением, runtime сохраняет именно pending value, не пересчитывает ответ по текущему индексу.
+- `pending_confirmation_option_index` используется только best-effort для button-specific notification rules; если индекс устарел, confirmation не блокируется, notifications по этой кнопке пропускаются с warning log.
+- `Изменить выбор` очищает pending state и пытается отредактировать то же сообщение обратно к исходному шагу с исходными кнопками; при ошибке edit отправляет fallback-сообщение с выбором.
+- Для survey question options confirmation не включается: survey flow остается быстрым текстовым question/answer flow без branching semantics.
 
 ## Scenario Notifications
 
