@@ -36,6 +36,8 @@ FLOW_STEP_FIELDS = [
     "day_offset_workdays",
     "target_field",
     "launch_scenario_key",
+    "return_to_step_key",
+    "is_terminal",
     "attachment_document_item_id",
     "attachment_filename",
     "send_employee_card",
@@ -85,6 +87,14 @@ def _ensure_flow_step_confirm_choice_column(connection: sqlite3.Connection) -> N
         connection.execute("ALTER TABLE flow_step_templates ADD COLUMN confirm_choice INTEGER NOT NULL DEFAULT 0")
 
 
+def _ensure_flow_step_terminal_columns(connection: sqlite3.Connection) -> None:
+    columns = _table_columns(connection, "flow_step_templates")
+    if "return_to_step_key" not in columns:
+        connection.execute("ALTER TABLE flow_step_templates ADD COLUMN return_to_step_key TEXT")
+    if "is_terminal" not in columns:
+        connection.execute("ALTER TABLE flow_step_templates ADD COLUMN is_terminal BOOLEAN NOT NULL DEFAULT 0")
+
+
 def _normalize_scenario_keys(raw_values: list[str]) -> list[str]:
     result: list[str] = []
     for raw_value in raw_values:
@@ -110,16 +120,19 @@ def _load_scenario_row(connection: sqlite3.Connection, scenario_key: str) -> dic
 
 
 def _load_step_rows(connection: sqlite3.Connection, scenario_key: str) -> list[dict[str, Any]]:
+    flow_step_columns = _table_columns(connection, "flow_step_templates")
     attachment_document_item_column = (
         "attachment_document_item_id"
-        if "attachment_document_item_id" in _table_columns(connection, "flow_step_templates")
+        if "attachment_document_item_id" in flow_step_columns
         else "NULL AS attachment_document_item_id"
     )
     confirm_choice_column = (
         "confirm_choice"
-        if "confirm_choice" in _table_columns(connection, "flow_step_templates")
+        if "confirm_choice" in flow_step_columns
         else "0 AS confirm_choice"
     )
+    return_to_step_key_column = "return_to_step_key" if "return_to_step_key" in flow_step_columns else "NULL AS return_to_step_key"
+    is_terminal_column = "is_terminal" if "is_terminal" in flow_step_columns else "0 AS is_terminal"
     return connection.execute(
         f"""
         SELECT
@@ -140,6 +153,8 @@ def _load_step_rows(connection: sqlite3.Connection, scenario_key: str) -> list[d
             day_offset_workdays,
             target_field,
             launch_scenario_key,
+            {return_to_step_key_column},
+            {is_terminal_column},
             {attachment_document_item_column},
             attachment_path,
             attachment_filename,
@@ -498,6 +513,7 @@ def import_scenarios(db_path: Path, input_dir: Path, storage_root: Path) -> None
     try:
         _ensure_flow_step_attachment_document_column(connection)
         _ensure_flow_step_confirm_choice_column(connection)
+        _ensure_flow_step_terminal_columns(connection)
         for scenario_item in payload.get("scenarios", []):
             template = scenario_item["template"]
             scenario_key = template["scenario_key"]
@@ -542,6 +558,8 @@ def import_scenarios(db_path: Path, input_dir: Path, storage_root: Path) -> None
                             day_offset_workdays,
                             target_field,
                             launch_scenario_key,
+                            return_to_step_key,
+                            is_terminal,
                             attachment_document_item_id,
                             attachment_path,
                             attachment_filename,
@@ -549,7 +567,7 @@ def import_scenarios(db_path: Path, input_dir: Path, storage_root: Path) -> None
                             notify_on_send_text,
                             notify_on_send_recipient_ids,
                             notify_on_send_recipient_scope
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                         (
                             scenario_key,
@@ -568,6 +586,8 @@ def import_scenarios(db_path: Path, input_dir: Path, storage_root: Path) -> None
                             step.get("day_offset_workdays"),
                             step.get("target_field"),
                             step.get("launch_scenario_key"),
+                            step.get("return_to_step_key"),
+                            int(bool(step.get("is_terminal"))),
                             attachment_document_item_id,
                             attachment_path,
                             attachment_filename,

@@ -278,6 +278,9 @@ def resolve_followup_step(
     scenario_key: str,
     current_step: FlowStepTemplate,
 ) -> Optional[FlowStepTemplate]:
+    if bool(getattr(current_step, "is_terminal", False)):
+        return None
+
     def resolve_after_parent(step: Optional[FlowStepTemplate]) -> Optional[FlowStepTemplate]:
         if not step:
             return None
@@ -1747,6 +1750,9 @@ async def send_step_buttons(messenger_or_bot: Any, chat_id: str, step: FlowStepT
 
 
 def is_terminal_step(db: Session, scenario_key: str, step_key: str) -> bool:
+    step = get_step_by_key(db, scenario_key, step_key)
+    if step and bool(getattr(step, "is_terminal", False)):
+        return True
     steps = get_scenario_steps(db, scenario_key)
     if not steps:
         return False
@@ -2199,6 +2205,13 @@ async def _apply_confirmed_button_choice(
         progress.waiting_for_response = False
         progress.is_completed = True
         progress.completed_at = utc_now()
+        db.commit()
+        return True
+    if bool(getattr(step, "is_terminal", False)):
+        progress.waiting_for_response = False
+        progress.is_completed = True
+        progress.completed_at = utc_now()
+        progress.updated_at = utc_now()
         db.commit()
         return True
     if step.response_type == "branching" and not stale_option_index:

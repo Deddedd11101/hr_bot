@@ -40,6 +40,7 @@ export type WorkspaceStep = {
   target_field_label: string;
   launch_scenario_key: string;
   return_to_step_key: string;
+  is_terminal: boolean;
   notify_on_send: boolean;
   notify_on_send_text: string;
   notify_on_send_recipient_ids: string;
@@ -98,6 +99,7 @@ export type WorkspaceGraphNode = {
   launch_scenario_key: string;
   is_placeholder: boolean;
   is_terminal: boolean;
+  is_explicit_terminal?: boolean;
 };
 
 export type WorkspaceGraphEdge = {
@@ -235,6 +237,7 @@ export type WorkspaceStepForm = {
   target_field: string;
   launch_scenario_key: string;
   return_to_step_key: string;
+  is_terminal: boolean;
   attachment_document_item_id: string;
   send_employee_card: boolean;
   notify_on_send_text: string;

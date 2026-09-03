@@ -117,6 +117,7 @@ function ScenarioGraphNode({ data }: NodeProps<ScenarioFlowNode>) {
       className={cn(
         "scenario-graph-node min-w-[210px] max-w-[238px] rounded-lg border bg-card p-3 text-card-foreground shadow-sm",
         data.selected && "scenario-graph-node-selected",
+        data.is_explicit_terminal && "border-destructive/45 bg-destructive/5",
         isPlaceholder && "scenario-graph-node-placeholder border-dashed bg-muted/45",
         isLaunchTarget && "scenario-graph-node-launch bg-secondary/65",
       )}
@@ -124,13 +125,14 @@ function ScenarioGraphNode({ data }: NodeProps<ScenarioFlowNode>) {
       <Handle type="target" position={Position.Left} className="scenario-graph-handle" />
       <div className="flex min-w-0 items-start justify-between gap-2">
         <h4 className="line-clamp-2 text-sm font-semibold leading-5">{data.title || "Без названия"}</h4>
-        {data.is_terminal ? <CircleDotDashed className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" /> : null}
+        {data.is_terminal ? <CircleDotDashed className="mt-0.5 size-3.5 shrink-0 text-destructive" /> : null}
       </div>
       <div className="mt-2 flex flex-wrap items-center gap-1.5">
         <Badge variant={data.waits_for_response ? "default" : "secondary"} className="max-w-full truncate">
           {isPlaceholder ? "Пустая ветка" : isLaunchTarget ? "Внешний сценарий" : data.response_label || compactResponseType(data.response_type)}
         </Badge>
         {data.send_mode ? <Badge variant="outline">{data.send_mode}</Badge> : null}
+        {data.is_explicit_terminal ? <Badge variant="destructive">Финал</Badge> : null}
       </div>
       {data.text_preview ? (
         <p className="mt-2 line-clamp-2 text-xs leading-5 text-muted-foreground">{data.text_preview}</p>

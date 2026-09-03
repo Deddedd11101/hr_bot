@@ -2602,6 +2602,223 @@ class ScenarioEngineSmokeTests(unittest.IsolatedAsyncioTestCase):
             self.assertIn("Общий поток после ветки", sent_texts)
             self.assertNotIn("Сюда не должны попасть", sent_texts)
 
+    async def test_terminal_branch_step_completes_without_falling_through_to_root(self) -> None:
+        init_db()
+        now = datetime.now(UTC).replace(tzinfo=None)
+        scenario_key = f"test_terminal_branch_{int(datetime.now(UTC).timestamp() * 1000000)}"
+
+        with SessionLocal() as db:
+            scenario = ScenarioTemplate(
+                scenario_key=scenario_key,
+                title="Terminal branch",
+                role_scope="all",
+                scenario_kind="scenario",
+                sort_order=0,
+                trigger_mode="manual_only",
+            )
+            root_step = FlowStepTemplate(
+                flow_key=scenario_key,
+                step_key="start",
+                step_title="Start",
+                sort_order=10,
+                default_text="Готов?",
+                response_type="branching",
+                button_options="Готов\nНе готов",
+                send_mode="immediate",
+                day_offset_workdays=0,
+            )
+            rejection_root = FlowStepTemplate(
+                flow_key=scenario_key,
+                step_key="rejection_root",
+                step_title="Refusal final",
+                sort_order=20,
+                default_text="Отказной финал",
+                response_type="none",
+                send_mode="immediate",
+                day_offset_workdays=0,
+                is_terminal=True,
+            )
+            employee = Employee(
+                full_name="Tester",
+                telegram_user_id="123456790",
+                created_at=now,
+                is_flow_scheduled=False,
+                employee_stage="candidate",
+            )
+            second_employee = Employee(
+                full_name="Second Tester",
+                telegram_user_id="123456793",
+                created_at=now,
+                is_flow_scheduled=False,
+                employee_stage="candidate",
+            )
+            db.add_all([scenario, root_step, rejection_root, employee, second_employee])
+            db.commit()
+            db.refresh(root_step)
+            db.refresh(employee)
+            db.refresh(second_employee)
+            ready_branch = FlowStepTemplate(
+                flow_key=scenario_key,
+                step_key="ready_branch",
+                parent_step_id=root_step.id,
+                branch_option_index=0,
+                step_title="Ready branch",
+                sort_order=1001,
+                default_text="Готовая ветка завершена",
+                response_type="none",
+                send_mode="immediate",
+                day_offset_workdays=0,
+                is_terminal=True,
+            )
+            not_ready_branch = FlowStepTemplate(
+                flow_key=scenario_key,
+                step_key="not_ready_branch",
+                parent_step_id=root_step.id,
+                branch_option_index=1,
+                step_title="Not ready branch",
+                sort_order=1002,
+                default_text="Не готов, сценарий остановлен",
+                response_type="none",
+                send_mode="immediate",
+                day_offset_workdays=0,
+                is_terminal=True,
+            )
+            db.add_all([ready_branch, not_ready_branch])
+            db.commit()
+
+            messenger = FakeMessenger()
+            await send_step(messenger, db, employee, scenario, root_step)
+
+            handled = await handle_button_response(messenger, db, employee, scenario_key, root_step.step_key, 0)
+
+            self.assertTrue(handled)
+            sent_texts = [item["text"] for item in messenger.texts]
+            self.assertIn("Готовая ветка завершена", sent_texts)
+            self.assertNotIn("Отказной финал", sent_texts)
+            progress = db.query(ScenarioProgress).filter(ScenarioProgress.employee_id == employee.id).one()
+            self.assertTrue(progress.is_completed)
+            self.assertFalse(progress.waiting_for_response)
+
+            second_messenger = FakeMessenger()
+            await send_step(second_messenger, db, second_employee, scenario, root_step)
+
+            second_handled = await handle_button_response(second_messenger, db, second_employee, scenario_key, root_step.step_key, 1)
+
+            self.assertTrue(second_handled)
+            second_sent_texts = [item["text"] for item in second_messenger.texts]
+            self.assertIn("Не готов, сценарий остановлен", second_sent_texts)
+            self.assertNotIn("Отказной финал", second_sent_texts)
+
+    async def test_terminal_main_text_step_closes_progress_after_response(self) -> None:
+        init_db()
+        now = datetime.now(UTC).replace(tzinfo=None)
+        scenario_key = f"test_terminal_text_{int(datetime.now(UTC).timestamp() * 1000000)}"
+
+        with SessionLocal() as db:
+            scenario = ScenarioTemplate(
+                scenario_key=scenario_key,
+                title="Terminal text",
+                role_scope="all",
+                scenario_kind="scenario",
+                sort_order=0,
+                trigger_mode="manual_only",
+            )
+            terminal_step = FlowStepTemplate(
+                flow_key=scenario_key,
+                step_key="terminal_text",
+                step_title="Terminal text",
+                sort_order=10,
+                default_text="Оставь ответ",
+                response_type="text",
+                send_mode="immediate",
+                day_offset_workdays=0,
+                is_terminal=True,
+            )
+            next_step = FlowStepTemplate(
+                flow_key=scenario_key,
+                step_key="must_not_send",
+                step_title="Must not send",
+                sort_order=20,
+                default_text="Этот шаг не должен отправиться",
+                response_type="none",
+                send_mode="immediate",
+                day_offset_workdays=0,
+            )
+            employee = Employee(
+                full_name="Tester",
+                telegram_user_id="123456791",
+                created_at=now,
+                is_flow_scheduled=False,
+                employee_stage="candidate",
+            )
+            db.add_all([scenario, terminal_step, next_step, employee])
+            db.commit()
+            db.refresh(employee)
+
+            messenger = FakeMessenger()
+            await send_step(messenger, db, employee, scenario, terminal_step)
+
+            handled = await handle_text_response(messenger, db, employee, SimpleNamespace(text="Ответ"))
+
+            self.assertTrue(handled)
+            sent_texts = [item["text"] for item in messenger.texts]
+            self.assertNotIn("Этот шаг не должен отправиться", sent_texts)
+            progress = db.query(ScenarioProgress).filter(ScenarioProgress.employee_id == employee.id).one()
+            self.assertTrue(progress.is_completed)
+            self.assertFalse(progress.waiting_for_response)
+
+    async def test_non_terminal_steps_continue_as_before(self) -> None:
+        init_db()
+        now = datetime.now(UTC).replace(tzinfo=None)
+        scenario_key = f"test_non_terminal_continue_{int(datetime.now(UTC).timestamp() * 1000000)}"
+
+        with SessionLocal() as db:
+            scenario = ScenarioTemplate(
+                scenario_key=scenario_key,
+                title="Non terminal",
+                role_scope="all",
+                scenario_kind="scenario",
+                sort_order=0,
+                trigger_mode="manual_only",
+            )
+            first_step = FlowStepTemplate(
+                flow_key=scenario_key,
+                step_key="first",
+                step_title="First",
+                sort_order=10,
+                default_text="Первый",
+                response_type="none",
+                send_mode="immediate",
+                day_offset_workdays=0,
+            )
+            second_step = FlowStepTemplate(
+                flow_key=scenario_key,
+                step_key="second",
+                step_title="Second",
+                sort_order=20,
+                default_text="Второй",
+                response_type="none",
+                send_mode="immediate",
+                day_offset_workdays=0,
+            )
+            employee = Employee(
+                full_name="Tester",
+                telegram_user_id="123456792",
+                created_at=now,
+                is_flow_scheduled=False,
+                employee_stage="candidate",
+            )
+            db.add_all([scenario, first_step, second_step, employee])
+            db.commit()
+            db.refresh(employee)
+
+            messenger = FakeMessenger()
+            await send_step(messenger, db, employee, scenario, first_step)
+
+            sent_texts = [item["text"] for item in messenger.texts]
+            self.assertIn("Первый", sent_texts)
+            self.assertIn("Второй", sent_texts)
+
 
 if __name__ == "__main__":
     unittest.main()

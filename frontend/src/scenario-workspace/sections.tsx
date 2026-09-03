@@ -791,6 +791,7 @@ export function WorkspaceCanvasSection(props: {
                           {responseTypeWaitState(item.response_type).badge}
                         </Badge>
                       ) : null}
+                      {"is_terminal" in item && item.is_terminal ? <Badge variant="destructive">Финал</Badge> : null}
                       {"button_options" in item && item.button_options.length ? (
                         <Badge variant="secondary">
                           {isSurveyWorkspace ? `Ответы: ${item.button_options.length}` : `Кнопки: ${item.button_options.length}`}
@@ -1414,6 +1415,19 @@ export function WorkspaceStepDetailPane(props: {
                       <AlertTitle>{waitState.title}</AlertTitle>
                       <AlertDescription>{waitState.description}</AlertDescription>
                     </Alert>
+                    <label className="flex items-start gap-3 rounded-lg border border-border bg-muted/35 p-3">
+                      <Checkbox
+                        checked={Boolean(form?.is_terminal)}
+                        onCheckedChange={(checked) => onFormChange((prev) => (prev ? { ...prev, is_terminal: Boolean(checked) } : prev))}
+                        className="mt-0.5"
+                      />
+                      <span className="grid gap-1">
+                        <span className="text-sm font-semibold text-foreground/85">Завершить сценарий после этого шага</span>
+                        <span className="text-xs leading-5 text-muted-foreground">
+                          Бот не пойдёт к следующему шагу и не поставит follow-up после отправки шага или после ответа пользователя.
+                        </span>
+                      </span>
+                    </label>
                   </div>
                 ) : null}
 

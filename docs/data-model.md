@@ -70,7 +70,7 @@ source_of_truth: true
 | Таблица | Назначение | Ключевые поля | Связи и примечания |
 | --- | --- | --- | --- |
 | `scenario_templates` | Metadata сценариев и опросов | `scenario_key`, `title`, `scenario_kind`, `role_scope`, `employee_scope`, `recipient_mode`, `trigger_mode`, `target_employee_id`, `description`, `sort_order` | Parent entity для steps и runtime launches; `role_scope` хранит `all` или CSV position slug'ов для multi-position targeting; `recipient_mode` отделяет context employee от фактического Telegram-получателя |
-| `flow_step_templates` | Step definitions | `flow_key`, `step_key`, `parent_step_id`, `branch_option_index`, `response_type`, `button_options`, `confirm_choice`, scheduling fields, target field, `attachment_path`, `attachment_filename`, `attachment_document_item_id`, notification fields | Root steps имеют `parent_step_id = NULL`; branches и chains вложены через `parent_step_id`; `confirm_choice` включает подтверждение button/branching ответа; `attachment_document_item_id` ссылается на shared `document_library_items` |
+| `flow_step_templates` | Step definitions | `flow_key`, `step_key`, `parent_step_id`, `branch_option_index`, `response_type`, `button_options`, `confirm_choice`, scheduling fields, target field, `return_to_step_key`, `is_terminal`, `attachment_path`, `attachment_filename`, `attachment_document_item_id`, notification fields | Root steps имеют `parent_step_id = NULL`; branches и chains вложены через `parent_step_id`; `confirm_choice` включает подтверждение button/branching ответа; `return_to_step_key` возвращает branch chain в root-flow; `is_terminal` явно завершает сценарий на этом шаге; `attachment_document_item_id` ссылается на shared `document_library_items` |
 | `step_button_notifications` | Notification overrides для button options | `flow_key`, `step_id`, `option_index`, `message_text`, recipient fields | Дополнительная notification model для конкретной button option |
 | `step_send_notifications` | Notification rules при показе шага | `flow_key`, `step_id`, `rule_index`, `message_text`, recipient fields | Новая множественная модель step-level notifications; legacy `notify_on_send_*` остается compatibility seam |
 | `scenario_progress` | Runtime position сценария по context employee | `employee_id`, `scenario_key`, `recipient_mode`, `recipient_employee_id`, `recipient_chat_id`, `current_step_key`, `pending_confirmation_value`, `pending_confirmation_option_index`, `pending_confirmation_message_id`, `waiting_for_response`, `is_completed`, `last_delivery_error`, timestamps | Tracks active/completed scenario state, отдельно хранит resolved recipient для reply-flow/audit и временный неподтвержденный button choice |
@@ -193,6 +193,10 @@ source_of_truth: true
   - chain nodes;
   - launch-another-scenario nodes.
 - Nested structure кодируется через `parent_step_id` и `branch_option_index`, а не через отдельную graph model.
+- `is_terminal=true` на step является явной runtime-остановкой:
+  - send-only step закрывает progress после отправки;
+  - interactive step закрывает progress после валидного ответа;
+  - follow-up и следующий root/chain step не запускаются.
 - Вложения шага имеют два совместимых источника:
   - legacy uploaded file через `attachment_path` / `attachment_filename`;
   - reusable shared document через nullable `attachment_document_item_id`.
@@ -218,6 +222,7 @@ SQLite schema guard делает больше, чем “создать табл
   - `scenario_progress.last_delivery_error`;
 - добавляет `flow_step_templates.confirm_choice` для button/branching confirmation flow;
 - добавляет `flow_step_templates.attachment_document_item_id` и index `ix_flow_step_templates_attachment_document_item_id` для reusable вложений из shared document library;
+- добавляет `flow_step_templates.is_terminal` для explicit terminal steps;
 - создает целые таблицы, если они отсутствуют:
   - `employee_assignment_history`;
   - `employee_manual_bot_messages`;

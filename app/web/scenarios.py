@@ -387,7 +387,8 @@ def _workspace_graph_node_from_step(
         "send_mode": step_payload.get("send_mode", "immediate") or "immediate",
         "launch_scenario_key": step_payload.get("launch_scenario_key", "") or "",
         "is_placeholder": False,
-        "is_terminal": False,
+        "is_terminal": bool(step_payload.get("is_terminal")),
+        "is_explicit_terminal": bool(step_payload.get("is_terminal")),
     }
 
 
@@ -412,6 +413,7 @@ def _workspace_graph_slot_node(
         "launch_scenario_key": "",
         "is_placeholder": True,
         "is_terminal": False,
+        "is_explicit_terminal": False,
     }
 
 
@@ -436,6 +438,7 @@ def _workspace_graph_launch_node(
         "launch_scenario_key": scenario_key,
         "is_placeholder": True,
         "is_terminal": True,
+        "is_explicit_terminal": True,
     }
 
 
@@ -506,6 +509,8 @@ def _build_workspace_graph(
         if not serialized_step:
             continue
         source_id = _workspace_graph_node_id(step_id)
+        if bool(getattr(actual_step, "is_terminal", False)):
+            continue
         if actual_step.response_type == "branching":
             existing_branch_steps = {
                 child.branch_option_index: child
@@ -679,6 +684,7 @@ def _serialize_workspace_step(
         "target_field_label": TARGET_FIELD_LABELS.get(step.target_field or "", "Не сохранять"),
         "launch_scenario_key": step.launch_scenario_key or "",
         "return_to_step_key": getattr(step, "return_to_step_key", None) or "",
+        "is_terminal": bool(getattr(step, "is_terminal", False)),
         "notify_on_send": bool(
             step_send_rules
             or
@@ -873,6 +879,7 @@ def _apply_workspace_step_update(db: Session, step: FlowStepTemplate, payload: d
         step.target_field = None
         step.launch_scenario_key = None
         step.return_to_step_key = None
+        step.is_terminal = False
         step.attachment_document_item_id = None
         step.confirm_choice = False
         step.send_employee_card = False
@@ -904,6 +911,7 @@ def _apply_workspace_step_update(db: Session, step: FlowStepTemplate, payload: d
         step,
         str(payload.get("return_to_step_key") or ""),
     )
+    step.is_terminal = str(payload.get("is_terminal") or "").strip().lower() in {"1", "true", "yes", "on"}
     raw_attachment_document_item_id = str(payload.get("attachment_document_item_id") or "").strip()
     attachment_document_item_id = int(raw_attachment_document_item_id) if raw_attachment_document_item_id.isdigit() else None
     attachment_document_item = (
@@ -1249,6 +1257,7 @@ def _copy_template_entity(db: Session, scenario: ScenarioTemplate) -> ScenarioTe
             target_field=original_step.target_field,
             launch_scenario_key=original_step.launch_scenario_key,
             return_to_step_key=getattr(original_step, "return_to_step_key", None),
+            is_terminal=bool(getattr(original_step, "is_terminal", False)),
             attachment_document_item_id=getattr(original_step, "attachment_document_item_id", None),
             send_employee_card=getattr(original_step, "send_employee_card", False),
             notify_on_send_text=getattr(original_step, "notify_on_send_text", None),
