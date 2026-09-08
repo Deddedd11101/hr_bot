@@ -6,6 +6,7 @@ from typing import Literal, NamedTuple, Optional
 from sqlalchemy.orm import Session
 
 from ..flow_templates import CANDIDATE_WORK_STAGE_LABELS, EMPLOYEE_SCOPE_CANDIDATES, EMPLOYEE_SCOPE_EMPLOYEES
+from ..hr_linking import consume_hr_link_token, normalize_telegram_username
 from ..models import BotMenuButton, BotMenuSet, DocumentLibraryItem, Employee, EmployeeFile, HrSettings, ScenarioTemplate
 from ..notifications import notify_hr_test_task_received
 from ..positions import position_matches_scope
@@ -44,8 +45,11 @@ logger = logging.getLogger(__name__)
 
 UNKNOWN_USER_TEXT = "Не удалось автоматически привязать Telegram, обратитесь к HR."
 BLOCKED_USER_TEXT = "Доступ к HR-боту отключен. Обратитесь в HR."
+HR_LINK_SUCCESS_TEXT = "Telegram успешно подключен к HR-настройкам."
+HR_LINK_INVALID_TEXT = "Ссылка подключения HR недействительна или уже истекла. Запросите новую ссылку в админке."
 MENU_BACK_BUTTON_TEXT = "Назад"
 MENU_HOME_BUTTON_TEXT = "Главное меню"
+MENU_CALLBACK_PREFIX = "menu:"
 INITIAL_CANDIDATE_STAGE: str | None = None
 
 
@@ -316,14 +320,59 @@ def menu_button_labels(db: Session, employee: Employee) -> list[str]:
     return labels
 
 
-async def send_menu(messenger: MessengerClient, db: Session, employee: Employee, text: str) -> None:
+def menu_button_options(db: Session, employee: Employee) -> list[tuple[str, str]]:
+    menu_set = current_menu_set(db, employee)
+    if not menu_set:
+        return []
+    buttons = (
+        db.query(BotMenuButton)
+        .filter(BotMenuButton.menu_set_id == menu_set.id)
+        .order_by(BotMenuButton.sort_order, BotMenuButton.id)
+        .all()
+    )
+    options = [(button.label.strip(), f"{MENU_CALLBACK_PREFIX}button:{button.id}") for button in buttons if button.label.strip()]
+    root_set = resolve_root_menu_set(db, employee)
+    current_path = _deserialize_menu_path(employee)
+    if len(current_path) > 1:
+        options.append((MENU_BACK_BUTTON_TEXT, f"{MENU_CALLBACK_PREFIX}back"))
+    if root_set and menu_set.id != root_set.id:
+        options.append((MENU_HOME_BUTTON_TEXT, f"{MENU_CALLBACK_PREFIX}home"))
+    return options
+
+
+async def send_menu(
+    messenger: MessengerClient,
+    db: Session,
+    employee: Employee,
+    text: str,
+    *,
+    edit_message_id: Optional[int] = None,
+) -> None:
     chat_id = get_primary_chat_id(employee, db=db)
     if not chat_id:
         return
-    labels = menu_button_labels(db, employee)
-    if not labels:
+    options = menu_button_options(db, employee)
+    if not options:
         return
-    await messenger.send_menu(chat_id=chat_id, text=text, buttons=labels)
+    inline_sender = getattr(messenger, "send_inline_menu", None)
+    inline_editor = getattr(messenger, "edit_inline_menu", None)
+    if edit_message_id and inline_editor is not None:
+        try:
+            await inline_editor(chat_id, edit_message_id, text, options)
+            employee.current_menu_message_id = edit_message_id
+            db.commit()
+            return
+        except Exception:
+            # A stale/deleted Telegram message is recoverable by sending a fresh menu.
+            pass
+    if inline_sender is not None:
+        message = await inline_sender(chat_id, text, options)
+        message_id = getattr(message, "message_id", None)
+        employee.current_menu_message_id = int(message_id) if message_id is not None else None
+        db.commit()
+        return
+    # Compatibility fallback for lightweight test clients and older adapters.
+    await messenger.send_menu(chat_id=chat_id, text=text, buttons=[label for label, _ in options])
 
 
 async def show_main_menu(messenger: MessengerClient, db: Session, employee: Employee, text: str) -> bool:
@@ -331,7 +380,13 @@ async def show_main_menu(messenger: MessengerClient, db: Session, employee: Empl
     if not root_set:
         return False
     set_current_menu_set(db, employee, root_set, path_ids=[root_set.id])
-    await send_menu(messenger, db, employee, text)
+    await send_menu(
+        messenger,
+        db,
+        employee,
+        root_set.description or root_set.title or text,
+        edit_message_id=employee.current_menu_message_id,
+    )
     return True
 
 
@@ -359,45 +414,42 @@ async def handle_menu_navigation(messenger: MessengerClient, db: Session, employ
             "Предыдущий раздел больше недоступен. Открываю главное меню.",
         )
     set_current_menu_set(db, employee, previous_set, path_ids=path_ids[:-1])
-    await send_menu(messenger, db, employee, previous_set.description or f"Открыт раздел «{previous_set.title}».")
+    await send_menu(
+        messenger,
+        db,
+        employee,
+        previous_set.description or previous_set.title or f"Открыт раздел «{previous_set.title}».",
+        edit_message_id=employee.current_menu_message_id,
+    )
     return True
 
 
-async def handle_menu_button(messenger: MessengerClient, db: Session, employee: Employee, text: str) -> bool:
+async def _handle_menu_button_record(
+    messenger: MessengerClient,
+    db: Session,
+    employee: Employee,
+    menu_set: BotMenuSet,
+    button: BotMenuButton,
+) -> bool:
     if employee.is_bot_blocked:
         return False
-    menu_set = current_menu_set(db, employee)
-    if not menu_set:
-        return False
-    button = (
-        db.query(BotMenuButton)
-        .filter(
-            BotMenuButton.menu_set_id == menu_set.id,
-            BotMenuButton.label == text.strip(),
-        )
-        .order_by(BotMenuButton.sort_order, BotMenuButton.id)
-        .first()
-    )
-    if not button:
-        return False
-
     if button.action_type == "launch_scenario" and button.scenario_key:
         scenario = db.query(ScenarioTemplate).filter(ScenarioTemplate.scenario_key == button.scenario_key).first()
         if not scenario:
-            await send_menu(messenger, db, employee, "Этот сценарий сейчас недоступен.")
+            await send_menu(messenger, db, employee, "Этот сценарий сейчас недоступен.", edit_message_id=employee.current_menu_message_id)
             return True
         started = await start_scenario(messenger, db, employee, scenario.scenario_key)
         if not started:
-            await send_menu(messenger, db, employee, "Не удалось запустить этот сценарий.")
+            await send_menu(messenger, db, employee, "Не удалось запустить этот сценарий.", edit_message_id=employee.current_menu_message_id)
         return True
 
     if button.action_type == "open_set" and button.target_menu_set_id:
         target_set = db.get(BotMenuSet, button.target_menu_set_id)
         if not target_set:
-            await send_menu(messenger, db, employee, "Этот раздел меню сейчас недоступен.")
+            await send_menu(messenger, db, employee, "Этот раздел меню сейчас недоступен.", edit_message_id=employee.current_menu_message_id)
             return True
         if not menu_set_matches_employee(employee, target_set):
-            await send_menu(messenger, db, employee, "Этот раздел меню вам недоступен.")
+            await send_menu(messenger, db, employee, "Этот раздел меню вам недоступен.", edit_message_id=employee.current_menu_message_id)
             return True
         current_path = _deserialize_menu_path(employee)
         if not current_path or current_path[-1] != menu_set.id:
@@ -407,13 +459,19 @@ async def handle_menu_button(messenger: MessengerClient, db: Session, employee: 
         else:
             next_path = current_path + [target_set.id]
         set_current_menu_set(db, employee, target_set, path_ids=next_path)
-        await send_menu(messenger, db, employee, target_set.description or f"Открыт раздел «{target_set.title}».")
+        await send_menu(
+            messenger,
+            db,
+            employee,
+            target_set.description or target_set.title or f"Открыт раздел «{target_set.title}».",
+            edit_message_id=employee.current_menu_message_id,
+        )
         return True
 
     if button.action_type == "send_document" and button.document_item_id:
         item = db.get(DocumentLibraryItem, button.document_item_id)
         if not item or not item.is_active:
-            await send_menu(messenger, db, employee, "Этот документ сейчас недоступен.")
+            await send_menu(messenger, db, employee, "Этот документ сейчас недоступен.", edit_message_id=employee.current_menu_message_id)
             return True
         chat_id = get_primary_chat_id(employee, db=db)
         if not chat_id:
@@ -421,7 +479,7 @@ async def handle_menu_button(messenger: MessengerClient, db: Session, employee: 
         if (item.item_kind or "").strip() == "link":
             link = (item.external_url or "").strip()
             if not link:
-                await send_menu(messenger, db, employee, "Ссылка для этого документа не настроена.")
+                await send_menu(messenger, db, employee, "Ссылка для этого документа не настроена.", edit_message_id=employee.current_menu_message_id)
                 return True
             message_parts = [item.title.strip()]
             if (item.description or "").strip():
@@ -431,13 +489,61 @@ async def handle_menu_button(messenger: MessengerClient, db: Session, employee: 
             return True
         path_value = (item.stored_path or "").strip()
         if not path_value:
-            await send_menu(messenger, db, employee, "Файл для этого документа не найден.")
+            await send_menu(messenger, db, employee, "Файл для этого документа не найден.", edit_message_id=employee.current_menu_message_id)
             return True
         await messenger.send_document_path(chat_id=chat_id, path=path_value, filename=item.original_filename or None)
         return True
 
-    await send_menu(messenger, db, employee, "Эта кнопка пока неактивна.")
+    await send_menu(messenger, db, employee, "Эта кнопка пока неактивна.", edit_message_id=employee.current_menu_message_id)
     return True
+
+
+async def handle_menu_button(messenger: MessengerClient, db: Session, employee: Employee, text: str) -> bool:
+    menu_set = current_menu_set(db, employee)
+    if not menu_set:
+        return False
+    button = (
+        db.query(BotMenuButton)
+        .filter(BotMenuButton.menu_set_id == menu_set.id, BotMenuButton.label == text.strip())
+        .order_by(BotMenuButton.sort_order, BotMenuButton.id)
+        .first()
+    )
+    return await _handle_menu_button_record(messenger, db, employee, menu_set, button) if button else False
+
+
+async def handle_menu_callback(
+    messenger: MessengerClient,
+    db: Session,
+    chat_user_id: str,
+    username: Optional[str],
+    callback_data: str,
+    message_id: Optional[int],
+) -> Literal["handled", "ignored", "unknown", "blocked"]:
+    access = resolve_inbound_access(db, chat_user_id, username)
+    if access.state != "ok" or access.employee is None:
+        return access.state
+    employee = access.employee
+    if callback_data == f"{MENU_CALLBACK_PREFIX}back":
+        handled = await handle_menu_navigation(messenger, db, employee, MENU_BACK_BUTTON_TEXT)
+        return "handled" if handled else "ignored"
+    if callback_data == f"{MENU_CALLBACK_PREFIX}home":
+        handled = await handle_menu_navigation(messenger, db, employee, MENU_HOME_BUTTON_TEXT)
+        return "handled" if handled else "ignored"
+    prefix = f"{MENU_CALLBACK_PREFIX}button:"
+    if not callback_data.startswith(prefix):
+        return "ignored"
+    raw_id = callback_data[len(prefix) :]
+    if not raw_id.isdigit():
+        return "ignored"
+    menu_set = current_menu_set(db, employee)
+    button = db.get(BotMenuButton, int(raw_id))
+    if not menu_set or not button or button.menu_set_id != menu_set.id:
+        return "ignored"
+    handled = await _handle_menu_button_record(messenger, db, employee, menu_set, button)
+    if handled and message_id and employee.current_menu_message_id is None:
+        employee.current_menu_message_id = message_id
+        db.commit()
+    return "handled" if handled else "ignored"
 
 
 def resolve_inbound_access(db: Session, chat_user_id: str, username: Optional[str]) -> InboundAccess:
@@ -499,7 +605,28 @@ async def send_access_state_message(
     await messenger.send_text(chat_id=chat_user_id, text=UNKNOWN_USER_TEXT)
 
 
-async def handle_start_command(messenger: MessengerClient, db: Session, chat_user_id: str, username: Optional[str]) -> None:
+async def handle_start_command(
+    messenger: MessengerClient,
+    db: Session,
+    chat_user_id: str,
+    username: Optional[str],
+    start_parameter: Optional[str] = None,
+) -> None:
+    if start_parameter and start_parameter.startswith("hr_link_"):
+        hr_settings = db.get(HrSettings, 1)
+        token = start_parameter[len("hr_link_") :]
+        if hr_settings and consume_hr_link_token(hr_settings, token, utc_now()):
+            hr_settings.telegram_user_id = chat_user_id.strip()
+            hr_settings.telegram_username = normalize_telegram_username(username)
+            hr_settings.telegram_link_token_hash = None
+            hr_settings.telegram_link_expires_at = None
+            hr_settings.updated_at = utc_now()
+            db.commit()
+            await messenger.send_text(chat_id=chat_user_id, text=HR_LINK_SUCCESS_TEXT)
+        else:
+            await messenger.send_text(chat_id=chat_user_id, text=HR_LINK_INVALID_TEXT)
+        return
+
     access = resolve_start_access(db, chat_user_id, username)
     if access.state != "ok" or access.employee is None:
         await send_access_state_message(messenger, chat_user_id, access.state)

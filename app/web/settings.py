@@ -1,6 +1,7 @@
 from sqlalchemy.orm import Session
 
 from ..auth import ROLE_LABELS
+from ..hr_linking import hr_connection_state
 from ..flow_templates import EMPLOYEE_SCOPE_LABELS
 from ..messaging.service import MENU_BACK_BUTTON_TEXT, MENU_HOME_BUTTON_TEXT
 from ..models import AdminAccount, BotMenuButton, BotMenuSet, DocumentLibraryItem, Employee, HrSettings, ScenarioTemplate
@@ -19,6 +20,9 @@ def _get_or_create_hr_settings(db: Session) -> HrSettings:
         id=1,
         hr_name=None,
         telegram_user_id=None,
+        telegram_username=None,
+        telegram_link_token_hash=None,
+        telegram_link_expires_at=None,
         notification_recipient_ids=None,
         notify_scenario_completed=True,
         notify_test_task_received=True,
@@ -36,10 +40,18 @@ def _get_or_create_hr_settings(db: Session) -> HrSettings:
 
 
 def _serialize_hr_settings(settings_row: HrSettings) -> dict:
+    now = utc_now()
     return {
         "id": settings_row.id,
         "hr_name": settings_row.hr_name or "",
         "telegram_user_id": settings_row.telegram_user_id or "",
+        "telegram_username": settings_row.telegram_username or "",
+        "telegram_connection_state": hr_connection_state(settings_row, now),
+        "telegram_link_expires_at": (
+            settings_row.telegram_link_expires_at.isoformat()
+            if settings_row.telegram_link_expires_at
+            else None
+        ),
         "notification_recipient_ids": settings_row.notification_recipient_ids or "",
         "notify_scenario_completed": bool(settings_row.notify_scenario_completed),
         "notify_test_task_received": bool(settings_row.notify_test_task_received),
@@ -68,6 +80,7 @@ def _serialize_menu_set(menu_set: BotMenuSet, buttons: list[BotMenuButton]) -> d
         "id": menu_set.id,
         "title": menu_set.title,
         "description": menu_set.description or "",
+        "menu_text": menu_set.description or "",
         "sort_order": menu_set.sort_order,
         "role_scope": menu_set.role_scope or "all",
         "employee_scope": menu_set.employee_scope or "all",
@@ -172,7 +185,7 @@ def _menu_target_conflicts(db: Session, menu_set_id: int | None, target_employee
 
 def _apply_menu_set_payload(menu_set: BotMenuSet, payload: dict) -> list[int]:
     title = str(payload.get("title") or "").strip()
-    description = str(payload.get("description") or "").strip()
+    description = str(payload.get("menu_text") or payload.get("description") or "").strip()
     target_employee_ids = _normalize_menu_target_employee_ids(
         [str(value) for value in payload.get("target_employee_ids") or []]
     )
@@ -282,6 +295,10 @@ def _delete_menu_set_relations(db: Session, menu_set_id: int) -> None:
         synchronize_session=False,
     )
     db.query(Employee).filter(Employee.current_menu_set_id == menu_set_id).update(
-        {Employee.current_menu_set_id: None, Employee.current_menu_path: None},
+        {
+            Employee.current_menu_set_id: None,
+            Employee.current_menu_path: None,
+            Employee.current_menu_message_id: None,
+        },
         synchronize_session=False,
     )

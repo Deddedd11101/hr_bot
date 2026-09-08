@@ -25,6 +25,10 @@ source_of_truth: true
 - Legacy flag `notify_scenario_completed` остается в `hr_settings` для совместимости, но scenario runtime больше не отправляет Telegram-сообщения о прохождении шага/этапа с техническими `scenario_key` / `step_key`.
 - Технические ключи сценариев и шагов допустимы только в logs/audit, не в пользовательских Telegram-уведомлениях.
 - `telegram_user_id` — основной HR Telegram для role token `hr`.
+- Для нового подключения HR numeric ID записывается только после открытия
+  одноразовой deep-link ссылки владельцем Telegram; username без подтверждения
+  не используется как адресат. Состояние подключения доступно в settings
+  workspace, отключение выполняется через HR Telegram-link API.
 - `notification_recipient_ids` — legacy/additional recipients для глобальных `app.notifications` events; scenario notification rules не используют этот список как расширение `hr`.
 
 ### Уведомления на уровне шага

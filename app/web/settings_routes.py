@@ -1,4 +1,5 @@
-from datetime import datetime
+from datetime import datetime, timedelta
+import secrets
 
 from fastapi import APIRouter, Body, Depends, Form, HTTPException, Request, status
 from fastapi.responses import RedirectResponse
@@ -13,6 +14,7 @@ from ..messaging.service import show_main_menu
 from ..models import AdminAccount, BotMenuButton, BotMenuSet, Employee, Position
 from ..positions import ensure_position_exists, normalize_position_slug
 from ..config import settings
+from ..hr_linking import hash_hr_link_token, normalize_telegram_username
 from ..time_utils import utc_now
 from .settings import (
     _apply_menu_button_payload,
@@ -589,7 +591,10 @@ def update_hr_settings_api(
     default_employee_menu_set_id = payload.get("default_employee_menu_set_id")
     default_candidate_menu_set_id = payload.get("default_candidate_menu_set_id")
     hr_settings.hr_name = str(payload.get("hr_name") or "").strip() or None
-    hr_settings.telegram_user_id = str(payload.get("telegram_user_id") or "").strip() or None
+    # Keep the legacy numeric field compatible, but never treat a username as
+    # a confirmed HR Telegram recipient. Confirmation happens through the link flow.
+    raw_telegram_id = str(payload.get("telegram_user_id") or "").strip()
+    hr_settings.telegram_user_id = raw_telegram_id or None
     hr_settings.notification_recipient_ids = str(payload.get("notification_recipient_ids") or "").strip() or None
     hr_settings.default_menu_set_id = int(default_menu_set_id) if str(default_menu_set_id or "").isdigit() else None
     hr_settings.default_employee_menu_set_id = (
@@ -601,6 +606,46 @@ def update_hr_settings_api(
     hr_settings.notify_scenario_completed = bool(payload.get("notify_scenario_completed"))
     hr_settings.notify_test_task_received = bool(payload.get("notify_test_task_received"))
     hr_settings.notify_user_actions = bool(payload.get("notify_user_actions"))
+    hr_settings.updated_at = utc_now()
+    db.commit()
+    return _settings_workspace_payload(db, current_user)
+
+
+@router.post("/api/settings/hr/telegram-link")
+def create_hr_telegram_link(
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    current_user = require_api_auth(request)
+    hr_settings = _get_or_create_hr_settings(db)
+    raw_token = secrets.token_urlsafe(32)
+    expires_at = utc_now() + timedelta(minutes=15)
+    hr_settings.telegram_link_token_hash = hash_hr_link_token(raw_token)
+    hr_settings.telegram_link_expires_at = expires_at
+    hr_settings.updated_at = utc_now()
+    db.commit()
+    bot_username = settings.TELEGRAM_BOT_USERNAME.strip().lstrip("@")
+    start_parameter = f"hr_link_{raw_token}"
+    return {
+        "workspace": _settings_workspace_payload(db, current_user),
+        "start_parameter": start_parameter,
+        "deep_link": f"https://t.me/{bot_username}?start={start_parameter}" if bot_username else None,
+        "expires_at": expires_at.isoformat(),
+        "requires_telegram_bot_username": not bool(bot_username),
+    }
+
+
+@router.delete("/api/settings/hr/telegram-link")
+def disconnect_hr_telegram(
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    current_user = require_api_auth(request)
+    hr_settings = _get_or_create_hr_settings(db)
+    hr_settings.telegram_user_id = None
+    hr_settings.telegram_username = None
+    hr_settings.telegram_link_token_hash = None
+    hr_settings.telegram_link_expires_at = None
     hr_settings.updated_at = utc_now()
     db.commit()
     return _settings_workspace_payload(db, current_user)
