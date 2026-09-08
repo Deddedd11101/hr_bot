@@ -8,16 +8,35 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from .database import SessionLocal
-from .models import Employee, Position
+from .models import Position
 from .time_utils import utc_now
 
 ROLE_SCOPE_ALL = "all"
 
-DEFAULT_POSITIONS = [
-    {"title": "Дизайнер", "slug": "designer", "sort_order": 10},
-    {"title": "Project manager", "slug": "project_manager", "sort_order": 20},
-    {"title": "Аналитик", "slug": "analyst", "sort_order": 30},
-]
+CANONICAL_POSITION_TITLES = (
+    "CEO",
+    "Генеральный директор",
+    "Коммерческий директор",
+    "Операционный директор",
+    "Руководитель отдела по работе с персоналом",
+    "Офис-менеджер",
+    "Менеджер по внешним коммуникациям",
+    "Специалист по делопроизводству",
+    "Экономист",
+    "Юрист",
+    "Руководитель по развитию бизнеса",
+    "РПО",
+    "Руководитель проектного офиса",
+    'Руководитель направления "Гос.проекты"',
+    "Руководитель проектов",
+    "Арт директор",
+    "Старший дизайнер",
+    "Дизайнер",
+    "Старший аналитик",
+    "Бизнес-аналитик",
+    "Аналитик",
+    "Системный администратор",
+)
 
 _CYRILLIC_TRANSLIT = {
     "а": "a",
@@ -100,6 +119,12 @@ def canonical_position_title(value: str) -> str:
     if normalized_slug in _LEGACY_SCOPE_TITLES:
         return _LEGACY_SCOPE_TITLES[normalized_slug]
     return (value or "").strip()
+
+
+DEFAULT_POSITIONS = [
+    {"title": title, "slug": normalize_position_slug(title), "sort_order": index * 10}
+    for index, title in enumerate(CANONICAL_POSITION_TITLES, start=1)
+]
 
 
 def build_role_scope_labels(db: Session, *, include_inactive: bool = False) -> dict[str, str]:
@@ -263,7 +288,6 @@ def resolve_employee_position_value(db: Session, value: str) -> Optional[str]:
     if position is not None:
         return position.title
 
-    ensure_position_exists(db, title=normalized_value, slug=normalized_slug or None)
     return canonical_position_title(normalized_value)
 
 
@@ -279,18 +303,6 @@ def seed_positions_catalog() -> None:
                 sort_order=item["sort_order"],
             )
             if db.query(Position).count() != before_count:
-                changed = True
-
-        distinct_titles = [
-            (row[0] or "").strip()
-            for row in db.query(Employee.desired_position).distinct().all()
-            if (row[0] or "").strip()
-        ]
-        for index, title in enumerate(distinct_titles, start=1):
-            slug = normalize_position_slug(title)
-            existing = db.query(Position).filter(Position.slug == slug).first() if slug else None
-            if existing is None:
-                ensure_position_exists(db, title=title, slug=slug or None, sort_order=1000 + index)
                 changed = True
 
         if changed:
