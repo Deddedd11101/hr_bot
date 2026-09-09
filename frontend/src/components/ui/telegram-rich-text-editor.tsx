@@ -289,6 +289,8 @@ export function TelegramRichTextEditor({
         heading: false,
         horizontalRule: false,
         orderedList: false,
+        link: false,
+        underline: false,
       }),
       Underline,
       Link.configure({
@@ -300,6 +302,7 @@ export function TelegramRichTextEditor({
       Placeholder.configure({ placeholder }),
     ],
     content: value || "",
+    parseOptions: { preserveWhitespace: "full" },
     editable: !disabled,
     onUpdate: ({ editor: nextEditor }) => {
       const nextValue = normalizeEditorContent(serializeTelegramDocument(nextEditor.getJSON()));
@@ -317,7 +320,10 @@ export function TelegramRichTextEditor({
     if (!editor || value === lastEmittedValue.current) return;
     const currentValue = normalizeEditorContent(serializeTelegramDocument(editor.getJSON()));
     if (currentValue !== value) {
-      editor.commands.setContent(value || "", { emitUpdate: false });
+      editor.commands.setContent(value || "", {
+        emitUpdate: false,
+        parseOptions: { preserveWhitespace: "full" },
+      });
     }
     lastEmittedValue.current = value;
   }, [editor, value]);

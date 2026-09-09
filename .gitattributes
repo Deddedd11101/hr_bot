@@ -1,0 +1,2 @@
+# Tiptap embeds Markdown hard-break spaces inside a generated template literal.
+app/static/workspace_v2/assets/telegram-rich-text-editor-*.js whitespace=-blank-at-eol

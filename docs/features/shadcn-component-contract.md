@@ -76,6 +76,7 @@ source_of_truth: true
 ## Rich text boundary
 
 - The visual editor is used in scenario step text and step/button notification text.
+- Existing Telegram text keeps line breaks and empty lines when loaded or replaced in the editor (`preserveWhitespace: full`); Link and Underline are registered only once.
 - Surveys do not receive this primitive.
 - Employee manual bot messages are not wired to the visual editor until `POST /api/employees/{id}/bot-message` passes the text through the same safe HTML renderer. The current endpoint sends the submitted string directly to Telegram; connecting the editor before that backend change would expose literal markup to recipients.
 
