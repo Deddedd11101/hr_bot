@@ -6,7 +6,15 @@ from typing import Any
 from aiogram import Bot
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
-from aiogram.types import BufferedInputFile, FSInputFile, KeyboardButton, ReplyKeyboardMarkup
+from aiogram.types import (
+    BufferedInputFile,
+    FSInputFile,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    KeyboardButton,
+    ReplyKeyboardMarkup,
+    ReplyKeyboardRemove,
+)
 
 
 class TelegramMessenger:
@@ -33,6 +41,34 @@ class TelegramMessenger:
             resize_keyboard=True,
         )
         await self.bot.send_message(chat_id=chat_id, text=text, reply_markup=keyboard)
+
+    @staticmethod
+    def _inline_markup(buttons: list[tuple[str, str]]) -> InlineKeyboardMarkup | None:
+        rows = [
+            [InlineKeyboardButton(text=label, callback_data=callback_data)]
+            for label, callback_data in buttons
+            if label.strip() and callback_data.strip()
+        ]
+        return InlineKeyboardMarkup(inline_keyboard=rows) if rows else None
+
+    async def send_inline_menu(self, chat_id: str, text: str, buttons: list[tuple[str, str]]) -> Any:
+        # A separate invisible cleanup message removes reply keyboards sent by older versions.
+        await self.bot.send_message(chat_id=chat_id, text="\u2063", reply_markup=ReplyKeyboardRemove())
+        return await self.bot.send_message(
+            chat_id=chat_id,
+            text=text,
+            reply_markup=self._inline_markup(buttons),
+        )
+
+    async def edit_inline_menu(
+        self, chat_id: str, message_id: int, text: str, buttons: list[tuple[str, str]]
+    ) -> Any:
+        return await self.bot.edit_message_text(
+            chat_id=chat_id,
+            message_id=message_id,
+            text=text,
+            reply_markup=self._inline_markup(buttons),
+        )
 
     async def send_photo_path(
         self,

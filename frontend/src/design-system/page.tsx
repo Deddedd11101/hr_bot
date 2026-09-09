@@ -119,6 +119,7 @@ import {
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { TelegramRichTextEditor } from "@/components/ui/telegram-rich-text-editor";
 import { ThemeSwitch } from "@/components/ui/theme-switch";
 import {
   Tooltip,
@@ -1148,6 +1149,23 @@ function FoundationsSection() {
   );
 }
 
+function TelegramRichTextEditorSpecimen() {
+  const [value, setValue] = React.useState("Привет, {employee_full_name}! Ваш первый рабочий день — {first_workday}.");
+
+  return (
+    <div className="grid gap-2">
+      <TelegramRichTextEditor
+        value={value}
+        onChange={setValue}
+        placeholder="Введите текст сообщения"
+      />
+      <p className="text-xs text-muted-foreground">
+        Сохраняются только TelegramSafeHTML-теги: <code>&lt;b&gt;</code>, <code>&lt;i&gt;</code>, <code>&lt;u&gt;</code>, <code>&lt;s&gt;</code>, <code>&lt;code&gt;</code> и безопасные ссылки.
+      </p>
+    </div>
+  );
+}
+
 function PrimitivesSection() {
   const [selectValue, setSelectValue] = React.useState("review");
   const [longSelectValue, setLongSelectValue] = React.useState("item-01");
@@ -1403,6 +1421,19 @@ function PrimitivesSection() {
                     ]}
                   />
                 ),
+              },
+            ]}
+          />
+        </ExampleBlock>
+
+        <ExampleBlock id="telegram-rich-text-editor" title="Telegram rich text editor" playground>
+          <Playground
+            tabs={[
+              {
+                id: "editor",
+                label: "Editor",
+                caption: "Визуальное форматирование не показывает HTML-теги. Теги и документы вставляются в сохраненную позицию курсора.",
+                render: () => <TelegramRichTextEditorSpecimen />,
               },
             ]}
           />

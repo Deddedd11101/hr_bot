@@ -36,6 +36,7 @@ source_of_truth: true
 - Do not create page-local imitations of controls when a shared primitive exists.
 - Use `Button`, `Input`, `Textarea`, `Select`, `Checkbox`, `Switch`, `Field`, `Card`, `Table`, `Badge`, `Alert`, `Empty`, `Popover`, `Dialog`, `AlertDialog`, `DropdownMenu`, `Tooltip` from `frontend/src/components/ui`.
 - Emoji insertion uses `EmojiPickerPopover` from `frontend/src/components/ui/emoji-picker-popover.tsx`: trigger is the shared `Button`, overlay is the shared `Popover`, `emoji-picker-react` is lazy-loaded, and the public API is only `onEmojiSelect(emoji: string)`.
+- Telegram message editing uses `TelegramRichTextEditor` from `frontend/src/components/ui/telegram-rich-text-editor.tsx`: the editor is visual, but its public value is still a TelegramSafeHTML-compatible string. Its serializer emits only `<b>`, `<i>`, `<u>`, `<s>`, `<code>`, safe `<a href>` links, text and line breaks. Template tags remain plain text and are inserted at the editor's saved selection.
 - Destructive confirmations use `ConfirmAction` from `frontend/src/components/ui/confirm-action.tsx`; do not use `window.confirm` in React admin pages. Keep destructive color on the confirmation action inside the dialog, not on every delete icon in dense page grids.
 
 ## Token Policy
@@ -71,6 +72,13 @@ source_of_truth: true
 - Run `npm run build` after shared UI changes.
 - Browser smoke at minimum: `/app/design-system` plus the page that consumes the changed primitive.
 - Update `docs/handoffs/frontend-structure-reset-handoff.md` with touched screens, shared UI API changes, checks, and known issues.
+
+## Rich text boundary
+
+- The visual editor is used in scenario step text and step/button notification text.
+- Existing Telegram text keeps line breaks and empty lines when loaded or replaced in the editor (`preserveWhitespace: full`); Link and Underline are registered only once.
+- Surveys do not receive this primitive.
+- Employee manual bot messages are not wired to the visual editor until `POST /api/employees/{id}/bot-message` passes the text through the same safe HTML renderer. The current endpoint sends the submitted string directly to Telegram; connecting the editor before that backend change would expose literal markup to recipients.
 
 ## Current Migration Debt
 

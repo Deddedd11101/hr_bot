@@ -37,6 +37,7 @@ source_of_truth: true
 | `DATABASE_URL`           | `sqlite:///./hr_bot.db`          | SQLAlchemy database URL                           | SQLite сейчас основной и наиболее проверенный путь    |
 | `DOTENV_OVERRIDE`        | `false`                          | Разрешить `.env` перекрывать runtime env          | Нормально только для локального демо                  |
 | `TELEGRAM_BOT_TOKEN`     | пусто                            | Telegram bot token                                | Обязателен для bot worker и любых отправок в Telegram |
+| `TELEGRAM_BOT_USERNAME`  | пусто                            | Username бота без `@` для HR deep-link             | Нужен, чтобы settings API сформировал готовую ссылку подключения HR |
 | `TELEGRAM_PROXY_URL`     | пусто                            | HTTP/SOCKS proxy для Telegram API                  | Использовать, если stage-сеть не имеет прямого доступа к `api.telegram.org:443` |
 | `TIMEZONE`               | `Europe/Moscow`                  | Таймзона scheduler                                | Используется APScheduler и date-based scenario timing |
 | `DEMO_MODE`              | `false`                          | Ускоренный режим расписания для демо              | Существенно меняет semantics scheduler                |

@@ -29,6 +29,8 @@ Stage candidate: персональный slot `offer` поддерживает 
 
 Deploy safety: `Deploy Stage` создаёт проверенный SQLite backup, сохраняет JSON snapshot scenario config tables и при неожиданном изменении сценариев во время restart восстанавливает pre-deploy scenario config перед намеренным failure.
 
+Frontend editor: `TelegramRichTextEditor` используется в scenario step/notification text; manual bot-message остаётся отдельным backend compatibility gap до safe HTML renderer.
+
 Словарь статусов:
 
 - `todo` — согласовано, но не начато
@@ -55,6 +57,7 @@ Deploy safety: `Deploy Stage` создаёт проверенный SQLite backu
 | `HRB-P0-04` | `done` | Прием входящих файлов и медиа без потерь | Входящий прием расширен до `document`, `photo`, `video` и `video_note`, а файлы неизвестных и заблокированных пользователей больше не сохраняются. |
 | `HRB-P0-05` | `done` | Корректный массовый таргетинг кандидатов и сотрудников | Массовые действия переведены на split-targeting по `employee_stage` и `candidate_work_stage` с чтением legacy `target_statuses`. |
 | `HRB-P0-06` | `done` | Исправление сохранения карточки сотрудника/кандидата | Общие поля карточки, включая `salary_expectation`, теперь сохраняются одинаково из обеих админских поверхностей. |
+| `HRB-P0-07` | `done` | Подтвержденная HR Telegram-привязка и inline-меню | HR получает role-only уведомления после owner-confirmed одноразовой deep-link привязки без карточки сотрудника; bot menu использует редактируемое inline-сообщение с отдельным текстом каждого набора и совместимостью старых reply keyboards. |
 
 ## P1
 

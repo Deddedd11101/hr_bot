@@ -54,10 +54,12 @@ def _ensure_sqlite_schema() -> None:
     with engine.begin() as conn:
         table_info = conn.execute(text("PRAGMA table_info(employees)")).fetchall()
         columns = {row[1] for row in table_info}
+        original_employee_columns = set(columns)
         required = {
             "telegram_username": "TEXT",
             "current_menu_set_id": "INTEGER",
             "current_menu_path": "TEXT",
+            "current_menu_message_id": "INTEGER",
             "desired_position": "TEXT",
             "work_email": "TEXT",
             "work_hours": "TEXT",
@@ -244,6 +246,7 @@ def _ensure_sqlite_schema() -> None:
                         telegram_username TEXT,
                         current_menu_set_id INTEGER,
                         current_menu_path TEXT,
+                        current_menu_message_id INTEGER,
                         first_workday DATE,
                         birth_date DATE,
                         created_at DATETIME NOT NULL,
@@ -282,7 +285,7 @@ def _ensure_sqlite_schema() -> None:
             )
             conn.execute(
                 text(
-                    """
+                    f"""
                     INSERT INTO employees (
                         id,
                         full_name,
@@ -290,6 +293,7 @@ def _ensure_sqlite_schema() -> None:
                         telegram_username,
                         current_menu_set_id,
                         current_menu_path,
+                        current_menu_message_id,
                         first_workday,
                         birth_date,
                         created_at,
@@ -328,7 +332,8 @@ def _ensure_sqlite_schema() -> None:
                         NULLIF(telegram_user_id, ''),
                         telegram_username,
                         current_menu_set_id,
-                        NULL,
+                        {"current_menu_path" if "current_menu_path" in original_employee_columns else "NULL"},
+                        {"current_menu_message_id" if "current_menu_message_id" in original_employee_columns else "NULL"},
                         first_workday,
                         NULL,
                         created_at,
@@ -666,6 +671,9 @@ def _ensure_sqlite_schema() -> None:
         }
         hr_settings_required = {
             "notification_recipient_ids": "TEXT",
+            "telegram_username": "TEXT",
+            "telegram_link_token_hash": "TEXT",
+            "telegram_link_expires_at": "DATETIME",
             "notify_scenario_completed": "BOOLEAN NOT NULL DEFAULT 1",
             "notify_test_task_received": "BOOLEAN NOT NULL DEFAULT 1",
             "notify_user_actions": "BOOLEAN NOT NULL DEFAULT 1",

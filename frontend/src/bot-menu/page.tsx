@@ -33,6 +33,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 
 type ScenarioOption = {
@@ -57,6 +58,7 @@ type MenuSet = {
   id: number;
   title: string;
   description: string;
+  menu_text: string;
   sort_order: number;
   role_scope: string;
   employee_scope: string;
@@ -159,6 +161,8 @@ function normalizeWorkspace(workspace: Workspace): Workspace {
     document_options: workspace.document_options || [],
     menu_sets: (workspace.menu_sets || []).map((menuSet) => ({
       ...menuSet,
+      menu_text: menuSet.menu_text ?? menuSet.description ?? "",
+      description: menuSet.menu_text ?? menuSet.description ?? "",
       role_scope: menuSet.role_scope || "all",
       employee_scope: menuSet.employee_scope || "all",
       target_employee_ids: (menuSet.target_employee_ids || [])
@@ -744,7 +748,7 @@ export function BotMenuPage({ apiUrl }: BotMenuPageProps) {
           </Button>
         </div>
         <div className="rounded-lg border border-border/70 bg-background px-3 py-2 text-sm text-muted-foreground">
-          Для кандидатов и сотрудников можно задать разные главные меню. Если профильный root не указан, бот попробует взять общий fallback-набор, а затем подобрать подходящий набор по аудитории автоматически.
+          Для кандидатов и сотрудников можно задать разные главные меню. Текст root-меню редактируется в назначенном наборе: откройте его карточку и измените поле «Текст меню».
         </div>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-2 text-sm text-muted-foreground">
@@ -845,13 +849,22 @@ export function BotMenuPage({ apiUrl }: BotMenuPageProps) {
                       autoComplete="off"
                     />
                   </Field>
-                  <Field>
-                    <FieldLabel>Описание</FieldLabel>
-                    <Input
-                      value={selectedMenuSet.description}
-                      onChange={(event) => updateMenuSetLocal(selectedMenuSet.id, { description: event.target.value })}
-                      autoComplete="off"
+                  <Field className="xl:col-span-2">
+                    <FieldLabel>Текст меню</FieldLabel>
+                    <Textarea
+                      value={selectedMenuSet.menu_text}
+                      onChange={(event) =>
+                        updateMenuSetLocal(selectedMenuSet.id, {
+                          menu_text: event.target.value,
+                          description: event.target.value,
+                        })
+                      }
+                      placeholder="Текст, который увидит пользователь при открытии этого набора"
+                      rows={3}
                     />
+                    <p className="text-xs text-muted-foreground">
+                      Для root-набора это текст главного меню. Сохраняется через backend-поле menu_text.
+                    </p>
                   </Field>
                   <div className="flex gap-2 xl:justify-end">
                     <Button variant="secondary" onClick={() => saveMenuSet(selectedMenuSet)}>

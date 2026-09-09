@@ -52,6 +52,34 @@ Reset/delete contract:
 - Удаление карточки через operator API удаляет связанные messenger account rows, все progress rows где employee является context, и только незавершенный progress где employee является recipient. Completed recipient progress у других context-карточек сохраняется как audit/history, чтобы app-level delete path не стирал чужую завершенную историю.
 - Schema-level FK/cascade для `employee_messenger_accounts.employee_id` пока не введен; это отдельный data-model debt, а не часть текущего runtime repair.
 
+## Подключение HR Telegram
+
+HR может быть получателем сценарных уведомлений без карточки `Employee`. Поле
+`HrSettings.telegram_user_id` считается подтвержденным только как numeric Telegram
+ID; введенный username сам по себе не становится адресатом.
+
+Администратор запрашивает одноразовую ссылку через
+`POST /api/settings/hr/telegram-link`. Ссылка содержит ограниченный по времени
+параметр `/start hr_link_<token>`. Только открытие этой ссылки владельцем
+Telegram сохраняет numeric ID и нормализованный username в HR settings, после
+чего токен очищается. Неправильный, повторно использованный или истекший токен
+не создает кандидата и не запускает registration scenario.
+
+Если HR уже подключен, выпуск новой ссылки отклоняется до явного отключения
+через `DELETE /api/settings/hr/telegram-link`. Ссылка также не может заменить
+действующий numeric ID другим Telegram-пользователем: claim выполняется
+conditional update в одной транзакции, поэтому повторное или параллельное
+использование одного токена успешно только один раз.
+
+Обычный `POST /api/settings/hr` не принимает изменение `telegram_user_id` и
+возвращает `409 Conflict`; привязка и отключение выполняются только через
+специализированные endpoints.
+
+Workspace возвращает `telegram_connection_state` со значениями `connected`,
+`pending` или `disconnected`; `DELETE /api/settings/hr/telegram-link` отключает
+текущий HR Telegram и отменяет pending link. Обычный `/start` не может заменить
+действующего HR или изменить HR settings.
+
 Чего runtime не делает:
 
 - Не перепривязывает numeric Telegram ID к другой карточке, если он уже валидно связан с existing employee.

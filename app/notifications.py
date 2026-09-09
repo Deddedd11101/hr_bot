@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 
 from .database import SessionLocal
+from .hr_linking import is_numeric_telegram_id
 from .messaging import as_messenger
 from .models import Employee, HrSettings
 
@@ -38,7 +39,7 @@ def _notification_recipients(settings: HrSettings | None) -> list[str]:
     if not settings:
         return []
     raw_values = []
-    if settings.telegram_user_id:
+    if is_numeric_telegram_id(settings.telegram_user_id):
         raw_values.append(settings.telegram_user_id)
     if settings.notification_recipient_ids:
         raw_values.extend(
