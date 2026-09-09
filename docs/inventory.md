@@ -66,6 +66,8 @@ source_of_truth: false
 
 ## Design And History Docs
 
+- [[features/archive-reentry-proposal]]: продуктовый draft (`source_of_truth: false`) по архиву, повторному приходу и хранению данных. Предложения и открытые решения, не текущий runtime contract; статус обсуждения в [[backlog]] (`HRB-DISC-06`).
+
 | Документ/папка | Категория | Как читать |
 | --- | --- | --- |
 | [[lld/classic-to-react-admin-migration]] | Frontend/UI governance | Active LLD, но часть migration steps уже выполнена. Читать вместе с [[project_state]] и [[backlog]], а не как свежий snapshot сам по себе. |
