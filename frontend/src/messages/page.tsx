@@ -18,7 +18,7 @@ import {
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { RecordCard } from "@/components/ui/record-card";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Textarea } from "@/components/ui/textarea";
+import { TelegramRichTextEditor } from "@/components/ui/telegram-rich-text-editor";
 import { ПРОЯВЛЕНИЕ } from "@/lib/reveal";
 
 import {
@@ -94,6 +94,7 @@ function ComposeDialog({
   const [preview, setPreview] = React.useState<Preview | null>(null);
   const [requestedAt, setRequestedAt] = React.useState("");
   const [messageText, setMessageText] = React.useState("");
+  const messageInsertRef = React.useRef<((text: string) => void) | null>(null);
   const [state, setState] = React.useState({ working: false, message: "", error: false });
 
   React.useEffect(() => {
@@ -160,12 +161,11 @@ function ComposeDialog({
           <div className="grid gap-4 px-5 py-4">
             <label className="grid min-w-0 gap-2.5">
               <span className="text-sm font-semibold text-foreground/75">Текст сообщения</span>
-              <Textarea
+              <TelegramRichTextEditor
                 value={messageText}
-                onChange={(event) => setMessageText(event.target.value)}
-                rows={5}
+                onChange={setMessageText}
                 placeholder="Введите сообщение"
-                autoComplete="off"
+                insertRef={messageInsertRef}
               />
             </label>
             <div className="flex flex-wrap gap-2">
@@ -177,7 +177,8 @@ function ComposeDialog({
                     type="button"
                     variant="secondary"
                     size="xs"
-                    onClick={() => setMessageText((current) => `${current}${token}`)}
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => messageInsertRef.current?.(token)}
                   >
                     {token}
                   </Button>
