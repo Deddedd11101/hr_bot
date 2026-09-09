@@ -51,6 +51,8 @@ type HrSettings = {
   notify_test_task_received: boolean;
   notify_user_actions: boolean;
   default_menu_set_id: number | null;
+  default_employee_menu_set_id: number | null;
+  default_candidate_menu_set_id: number | null;
 };
 
 type ScenarioOption = {
@@ -450,6 +452,7 @@ export function SettingsPage({ apiUrl }: SettingsPageProps) {
     setHrLinkBusy(true);
     setError("");
     setMessage("");
+    setHrLink(null);
     try {
       const result = (await requestJson("/api/settings/hr/telegram-link", { method: "POST" })) as unknown as HrLinkResponse;
       setWorkspace(normalizeWorkspace(result.workspace));
@@ -457,12 +460,22 @@ export function SettingsPage({ apiUrl }: SettingsPageProps) {
         setHrLink({ url: result.deep_link, expiresAt: result.expires_at });
         setMessage("Ссылка подключения создана");
       } else {
-        setError("Ссылка не создана: на сервере не настроено имя Telegram-бота");
+        setError(
+          result.requires_telegram_bot_username
+            ? "Ссылка не создана: на сервере не настроено имя Telegram-бота. Обратитесь к администратору конфигурации."
+            : "Ссылка подключения не создана: backend не вернул ссылку.",
+        );
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Не удалось создать ссылку подключения");
     } finally {
       setHrLinkBusy(false);
+    }
+  };
+
+  const rebindHr = async () => {
+    if (await disconnectHr()) {
+      await createHrLink();
     }
   };
 
@@ -475,8 +488,10 @@ export function SettingsPage({ apiUrl }: SettingsPageProps) {
       setWorkspace(normalizeWorkspace(nextWorkspace));
       setHrLink(null);
       setMessage("HR отключен от Telegram");
+      return true;
     } catch (err) {
       setError(err instanceof Error ? err.message : "Не удалось отключить HR");
+      return false;
     } finally {
       setHrLinkBusy(false);
     }
@@ -492,6 +507,17 @@ export function SettingsPage({ apiUrl }: SettingsPageProps) {
       setError("Не удалось скопировать ссылку. Откройте ее и скопируйте вручную.");
     }
   };
+
+  const editableHrSettingsPayload = (settings: HrSettings) => ({
+    hr_name: settings.hr_name,
+    notification_recipient_ids: settings.notification_recipient_ids,
+    notify_scenario_completed: settings.notify_scenario_completed,
+    notify_test_task_received: settings.notify_test_task_received,
+    notify_user_actions: settings.notify_user_actions,
+    default_menu_set_id: settings.default_menu_set_id,
+    default_employee_menu_set_id: settings.default_employee_menu_set_id,
+    default_candidate_menu_set_id: settings.default_candidate_menu_set_id,
+  });
 
   const savePositionOrder = async (nextPositions: Position[]) => {
     if (!workspace || positionsReordering) return;
@@ -626,13 +652,9 @@ export function SettingsPage({ apiUrl }: SettingsPageProps) {
             <FieldLabel>Имя HR</FieldLabel>
             <Input value={workspace.hr_settings.hr_name} onChange={(event) => updateHrSettings({ hr_name: event.target.value })} placeholder="Иван Петров" autoComplete="name" />
           </Field>
-          <Field>
-            <FieldLabel>Основной ID получателя</FieldLabel>
-            <Input value={workspace.hr_settings.telegram_user_id} onChange={(event) => updateHrSettings({ telegram_user_id: event.target.value })} placeholder="123456789" inputMode="numeric" autoComplete="off" />
-          </Field>
         </FieldGroup>
         <div className="flex justify-end">
-          <Button onClick={() => setWorkspaceFromApi(requestJson("/api/settings/hr", { method: "POST", body: JSON.stringify(workspace.hr_settings) }), "HR-настройки сохранены")}>
+          <Button onClick={() => setWorkspaceFromApi(requestJson("/api/settings/hr", { method: "POST", body: JSON.stringify(editableHrSettingsPayload(workspace.hr_settings)) }), "HR-настройки сохранены")}>
             <Save data-icon="inline-start" />
             Сохранить настройки
           </Button>
@@ -675,9 +697,15 @@ export function SettingsPage({ apiUrl }: SettingsPageProps) {
                   : `Telegram ID: ${workspace.hr_settings.telegram_user_id}`}
               </span>
               <div className="flex flex-wrap gap-2">
-                <Button variant="outline" size="sm" disabled={hrLinkBusy} onClick={createHrLink}>
-                  <RefreshCw data-icon="inline-start" /> Перепривязать
-                </Button>
+                <ConfirmAction
+                  title="Перепривязать HR к другому Telegram?"
+                  description="Текущий HR будет отключен сразу. После этого создастся новая одноразовая ссылка подключения. До подтверждения нового аккаунта HR-уведомления отправляться не будут."
+                  onConfirm={rebindHr}
+                >
+                  <Button variant="outline" size="sm" disabled={hrLinkBusy}>
+                    <RefreshCw data-icon="inline-start" /> Перепривязать
+                  </Button>
+                </ConfirmAction>
                 <ConfirmAction
                   title="Отключить HR от Telegram?"
                   description="Уведомления HR перестанут отправляться, пока аккаунт не будет подключен снова."
