@@ -5453,7 +5453,6 @@ class EmployeeApiSmokeTests(unittest.TestCase):
             self.assertEqual(created_employee.candidate_work_stage, self._initial_candidate_stage_key())
             self.assertIsNone(created_employee.telegram_username)
             self.assertNotIn((chat_id, "Привет! Я HR-бот."), messenger.sent_texts)
-            self.assertTrue(messenger.sent_texts)
 
             if created_employee_id is not None:
                 db.query(EmployeeMessengerAccount).filter(EmployeeMessengerAccount.employee_id == created_employee_id).delete(

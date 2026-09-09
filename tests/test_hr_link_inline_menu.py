@@ -2,6 +2,7 @@ import asyncio
 import unittest
 from datetime import timedelta
 from types import SimpleNamespace
+from unittest.mock import patch
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
@@ -62,10 +63,13 @@ class HrLinkAndInlineMenuTests(unittest.TestCase):
             settings.telegram_link_token_hash = None
             settings.telegram_link_expires_at = None
             db.commit()
-        response = self.client.post("/api/settings/hr/telegram-link")
+        with patch("app.web.settings_routes.settings.TELEGRAM_BOT_USERNAME", ""):
+            response = self.client.post("/api/settings/hr/telegram-link")
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertTrue(payload["start_parameter"].startswith("hr_link_"))
+        self.assertIsNone(payload["deep_link"])
+        self.assertTrue(payload["requires_telegram_bot_username"])
         self.assertEqual(payload["workspace"]["hr_settings"]["telegram_connection_state"], "pending")
 
         disconnected = self.client.delete("/api/settings/hr/telegram-link")
