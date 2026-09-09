@@ -1512,7 +1512,7 @@ class EmployeeApiSmokeTests(unittest.TestCase):
             set_primary_chat_id(employee, "700005", db=db)
             db.commit()
 
-        source_text = '<b>Важно</b>\nСравнение: < и &\n<a href="javascript:alert(1)">опасно</a>'
+        source_text = '<b>Важно</b>\nСравнение: < и &\n<a href="javascript:alert(1)">опасно</a>\n{employee_full_name}'
         messenger = DummyMessenger()
         with (
             patch("app.web.employees.settings.TELEGRAM_BOT_TOKEN", "test-token"),
@@ -1527,9 +1527,9 @@ class EmployeeApiSmokeTests(unittest.TestCase):
         create_messenger.assert_called_once_with("test-token", parse_mode="HTML")
         self.assertEqual(
             messenger.sent_texts,
-            [("700005", '<b>Важно</b>\nСравнение: &lt; и &amp;\nопасно')],
+            [("700005", '<b>Важно</b>\nСравнение: &lt; и &amp;\nопасно\n{employee_full_name}')],
         )
-        self.assertNotIn("{employee_full_name}", messenger.sent_texts[0][1])
+        self.assertIn("{employee_full_name}", messenger.sent_texts[0][1])
         self.assertNotIn("javascript:", messenger.sent_texts[0][1])
         self.assertEqual(response.json()["manual_bot_message_history"][0]["message_text"], source_text)
 
@@ -1618,7 +1618,7 @@ class EmployeeApiSmokeTests(unittest.TestCase):
         ):
             response = self.client.post(
                 f"/api/employees/{self.employee_id}/bot-message",
-                json={"text": "Упади, пожалуйста"},
+                json={"text": "<b>Упади</b>, пожалуйста & {employee_full_name}"},
             )
 
         self.assertEqual(response.status_code, 400)
@@ -1634,6 +1634,7 @@ class EmployeeApiSmokeTests(unittest.TestCase):
             self.assertEqual(len(history_rows), 1)
             self.assertEqual(history_rows[0].status, "failed")
             self.assertEqual(history_rows[0].error_text, "telegram send failed")
+            self.assertEqual(history_rows[0].message_text, "<b>Упади</b>, пожалуйста & {employee_full_name}")
             self.assertIsNone(history_rows[0].sent_at)
 
     def test_employee_detail_api_includes_manual_bot_message_history_newest_first(self) -> None:
