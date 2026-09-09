@@ -66,6 +66,8 @@ source_of_truth: false
 
 ## Design And History Docs
 
+- [[features/archive-reentry-tasks]]: задачи согласованного первого выпуска с критериями приёмки и зависимостями; не runtime contract. Статусы ведутся в [[backlog]], политика удаления в scope не входит.
+
 - [[features/archive-reentry-proposal]]: продуктовый draft (`source_of_truth: false`) по архиву, повторному приходу и хранению данных. Предложения и открытые решения, не текущий runtime contract; статус обсуждения в [[backlog]] (`HRB-DISC-06`).
 
 | Документ/папка | Категория | Как читать |
