@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 
 from app.auth import authenticate_account, create_admin_session_token
 from app.database import SessionLocal, init_db
-from app.hr_linking import hash_hr_link_token
+from app.hr_linking import consume_hr_link_token, hash_hr_link_token
 from app.main import AUTH_COOKIE_NAME, app
 from app.messaging.service import handle_menu_callback, handle_start_command
 from app.models import BotMenuButton, BotMenuSet, Employee, HrSettings
@@ -102,6 +102,53 @@ class HrLinkAndInlineMenuTests(unittest.TestCase):
             messenger.sent_texts.clear()
             asyncio.run(handle_start_command(messenger, db, chat_id, username, f"hr_link_{token}"))
             self.assertIn((chat_id, "Ссылка подключения HR недействительна или уже истекла. Запросите новую ссылку в админке."), messenger.sent_texts)
+
+    def test_existing_hr_binding_cannot_be_replaced_or_changed_via_settings(self) -> None:
+        token = f"token-{uuid4().hex}"
+        with SessionLocal() as db:
+            settings = _get_or_create_hr_settings(db)
+            settings.telegram_user_id = "100000000001"
+            settings.telegram_username = "owner"
+            settings.telegram_link_token_hash = hash_hr_link_token(token)
+            settings.telegram_link_expires_at = utc_now() + timedelta(minutes=5)
+            db.commit()
+            messenger = InlineMessenger()
+
+            asyncio.run(handle_start_command(messenger, db, "100000000002", "other", f"hr_link_{token}"))
+
+            db.refresh(settings)
+            self.assertEqual(settings.telegram_user_id, "100000000001")
+            self.assertEqual(settings.telegram_username, "owner")
+            self.assertEqual(settings.telegram_link_token_hash, hash_hr_link_token(token))
+
+        link_response = self.client.post("/api/settings/hr/telegram-link")
+        self.assertEqual(link_response.status_code, 409)
+        response = self.client.post("/api/settings/hr", json={"telegram_user_id": "100000000002"})
+        self.assertEqual(response.status_code, 409)
+        with SessionLocal() as db:
+            settings = _get_or_create_hr_settings(db)
+            self.assertEqual(settings.telegram_user_id, "100000000001")
+
+        self.client.delete("/api/settings/hr/telegram-link")
+
+    def test_hr_link_claim_is_one_time_and_rejects_reuse(self) -> None:
+        token = f"token-{uuid4().hex}"
+        now = utc_now()
+        with SessionLocal() as db:
+            settings = _get_or_create_hr_settings(db)
+            settings.telegram_user_id = None
+            settings.telegram_username = None
+            settings.telegram_link_token_hash = hash_hr_link_token(token)
+            settings.telegram_link_expires_at = now + timedelta(minutes=5)
+            db.commit()
+
+            self.assertTrue(consume_hr_link_token(db, token, "100000000003", "first", now))
+            self.assertFalse(consume_hr_link_token(db, token, "100000000004", "second", now))
+            db.refresh(settings)
+            self.assertEqual(settings.telegram_user_id, "100000000003")
+            self.assertIsNone(settings.telegram_link_token_hash)
+
+        self.client.delete("/api/settings/hr/telegram-link")
 
     def test_hr_notification_role_requires_numeric_confirmed_id(self) -> None:
         with SessionLocal() as db:

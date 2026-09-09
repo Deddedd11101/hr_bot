@@ -54,6 +54,7 @@ def _ensure_sqlite_schema() -> None:
     with engine.begin() as conn:
         table_info = conn.execute(text("PRAGMA table_info(employees)")).fetchall()
         columns = {row[1] for row in table_info}
+        original_employee_columns = set(columns)
         required = {
             "telegram_username": "TEXT",
             "current_menu_set_id": "INTEGER",
@@ -284,7 +285,7 @@ def _ensure_sqlite_schema() -> None:
             )
             conn.execute(
                 text(
-                    """
+                    f"""
                     INSERT INTO employees (
                         id,
                         full_name,
@@ -331,8 +332,8 @@ def _ensure_sqlite_schema() -> None:
                         NULLIF(telegram_user_id, ''),
                         telegram_username,
                         current_menu_set_id,
-                        NULL,
-                        NULL,
+                        {"current_menu_path" if "current_menu_path" in original_employee_columns else "NULL"},
+                        {"current_menu_message_id" if "current_menu_message_id" in original_employee_columns else "NULL"},
                         first_workday,
                         NULL,
                         created_at,

@@ -14,7 +14,7 @@ from ..messaging.service import show_main_menu
 from ..models import AdminAccount, BotMenuButton, BotMenuSet, Employee, Position
 from ..positions import ensure_position_exists, normalize_position_slug
 from ..config import settings
-from ..hr_linking import hash_hr_link_token, normalize_telegram_username
+from ..hr_linking import hash_hr_link_token, is_numeric_telegram_id, normalize_telegram_username
 from ..time_utils import utc_now
 from .settings import (
     _apply_menu_button_payload,
@@ -29,6 +29,16 @@ from .support import render_template, require_admin, require_api_admin, require_
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
+
+
+def _reject_telegram_binding_change(current_value: str | None, proposed_value: str | None) -> None:
+    current = (current_value or "").strip()
+    proposed = (proposed_value or "").strip()
+    if current != proposed:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Telegram HR нельзя менять через общие настройки. Используйте подключение или отключение Telegram.",
+        )
 
 
 def get_db():
@@ -63,8 +73,8 @@ def update_settings(
     if auth_redirect:
         return auth_redirect
     hr_settings = _get_or_create_hr_settings(db)
+    _reject_telegram_binding_change(hr_settings.telegram_user_id, telegram_user_id)
     hr_settings.hr_name = hr_name.strip() or None
-    hr_settings.telegram_user_id = telegram_user_id.strip() or None
     hr_settings.notification_recipient_ids = notification_recipient_ids.strip() or None
     hr_settings.default_menu_set_id = int(default_menu_set_id) if default_menu_set_id.strip().isdigit() else None
     hr_settings.notify_scenario_completed = notify_scenario_completed == "on"
@@ -587,14 +597,12 @@ def update_hr_settings_api(
 ):
     current_user = require_api_auth(request)
     hr_settings = _get_or_create_hr_settings(db)
+    if "telegram_user_id" in payload:
+        _reject_telegram_binding_change(hr_settings.telegram_user_id, payload.get("telegram_user_id"))
     default_menu_set_id = payload.get("default_menu_set_id")
     default_employee_menu_set_id = payload.get("default_employee_menu_set_id")
     default_candidate_menu_set_id = payload.get("default_candidate_menu_set_id")
     hr_settings.hr_name = str(payload.get("hr_name") or "").strip() or None
-    # Keep the legacy numeric field compatible, but never treat a username as
-    # a confirmed HR Telegram recipient. Confirmation happens through the link flow.
-    raw_telegram_id = str(payload.get("telegram_user_id") or "").strip()
-    hr_settings.telegram_user_id = raw_telegram_id or None
     hr_settings.notification_recipient_ids = str(payload.get("notification_recipient_ids") or "").strip() or None
     hr_settings.default_menu_set_id = int(default_menu_set_id) if str(default_menu_set_id or "").isdigit() else None
     hr_settings.default_employee_menu_set_id = (
@@ -618,6 +626,11 @@ def create_hr_telegram_link(
 ):
     current_user = require_api_auth(request)
     hr_settings = _get_or_create_hr_settings(db)
+    if is_numeric_telegram_id(hr_settings.telegram_user_id):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="HR уже подключен. Сначала отключите текущий Telegram, затем создайте новую ссылку.",
+        )
     raw_token = secrets.token_urlsafe(32)
     expires_at = utc_now() + timedelta(minutes=15)
     hr_settings.telegram_link_token_hash = hash_hr_link_token(raw_token)

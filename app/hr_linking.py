@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import hashlib
-import hmac
 from datetime import datetime
+
+from sqlalchemy import and_, or_, update
+from sqlalchemy.orm import Session
 
 from .models import HrSettings
 
@@ -29,10 +31,43 @@ def hr_connection_state(settings: HrSettings | None, now: datetime) -> str:
     return "disconnected"
 
 
-def consume_hr_link_token(settings: HrSettings, token: str, now: datetime) -> bool:
-    if not token or not settings.telegram_link_token_hash:
+def consume_hr_link_token(
+    db: Session,
+    token: str,
+    chat_user_id: str,
+    username: str | None,
+    now: datetime,
+) -> bool:
+    """Atomically claim a live HR link without replacing another connection."""
+    normalized_chat_id = (chat_user_id or "").strip()
+    token_hash = hash_hr_link_token(token) if token else ""
+    if not normalized_chat_id or not token_hash:
         return False
-    expires_at = settings.telegram_link_expires_at
-    if not expires_at or expires_at <= now:
+
+    result = db.execute(
+        update(HrSettings)
+        .where(
+            and_(
+                HrSettings.id == 1,
+                HrSettings.telegram_link_token_hash == token_hash,
+                HrSettings.telegram_link_expires_at.is_not(None),
+                HrSettings.telegram_link_expires_at > now,
+                or_(
+                    HrSettings.telegram_user_id.is_(None),
+                    HrSettings.telegram_user_id == normalized_chat_id,
+                ),
+            )
+        )
+        .values(
+            telegram_user_id=normalized_chat_id,
+            telegram_username=normalize_telegram_username(username),
+            telegram_link_token_hash=None,
+            telegram_link_expires_at=None,
+            updated_at=now,
+        )
+    )
+    if result.rowcount != 1:
+        db.rollback()
         return False
-    return hmac.compare_digest(settings.telegram_link_token_hash, hash_hr_link_token(token))
+    db.commit()
+    return True

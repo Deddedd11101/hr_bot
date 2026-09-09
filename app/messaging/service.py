@@ -613,15 +613,8 @@ async def handle_start_command(
     start_parameter: Optional[str] = None,
 ) -> None:
     if start_parameter and start_parameter.startswith("hr_link_"):
-        hr_settings = db.get(HrSettings, 1)
         token = start_parameter[len("hr_link_") :]
-        if hr_settings and consume_hr_link_token(hr_settings, token, utc_now()):
-            hr_settings.telegram_user_id = chat_user_id.strip()
-            hr_settings.telegram_username = normalize_telegram_username(username)
-            hr_settings.telegram_link_token_hash = None
-            hr_settings.telegram_link_expires_at = None
-            hr_settings.updated_at = utc_now()
-            db.commit()
+        if consume_hr_link_token(db, token, chat_user_id, username, utc_now()):
             await messenger.send_text(chat_id=chat_user_id, text=HR_LINK_SUCCESS_TEXT)
         else:
             await messenger.send_text(chat_id=chat_user_id, text=HR_LINK_INVALID_TEXT)

@@ -65,6 +65,16 @@ Telegram сохраняет numeric ID и нормализованный usernam
 чего токен очищается. Неправильный, повторно использованный или истекший токен
 не создает кандидата и не запускает registration scenario.
 
+Если HR уже подключен, выпуск новой ссылки отклоняется до явного отключения
+через `DELETE /api/settings/hr/telegram-link`. Ссылка также не может заменить
+действующий numeric ID другим Telegram-пользователем: claim выполняется
+conditional update в одной транзакции, поэтому повторное или параллельное
+использование одного токена успешно только один раз.
+
+Обычный `POST /api/settings/hr` не принимает изменение `telegram_user_id` и
+возвращает `409 Conflict`; привязка и отключение выполняются только через
+специализированные endpoints.
+
 Workspace возвращает `telegram_connection_state` со значениями `connected`,
 `pending` или `disconnected`; `DELETE /api/settings/hr/telegram-link` отключает
 текущий HR Telegram и отменяет pending link. Обычный `/start` не может заменить

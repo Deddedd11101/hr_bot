@@ -242,6 +242,8 @@ SQLite schema guard делает больше, чем “создать табл
   - `desired_position`;
   - `employee_stage`;
 - пересоздает `employees` в SQLite, если старые файлы еще держат obsolete `NOT NULL` constraints;
+- при таком rebuild сохраняет `current_menu_path` и `current_menu_message_id`, если
+  они были в исходной таблице; для старой схемы без этих колонок переносит `NULL`;
 - backfill `employee_messenger_accounts` из legacy employee Telegram fields.
 
 Именно поэтому data-model docs нельзя строить только по `models.py`.

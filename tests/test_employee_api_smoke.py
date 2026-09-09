@@ -5036,7 +5036,6 @@ class EmployeeApiSmokeTests(unittest.TestCase):
             "/api/settings/hr",
             json={
                 "hr_name": f"codex-hr-{self.unique_tag}",
-                "telegram_user_id": f"tg-{self.unique_tag}",
                 "notification_recipient_ids": f"tg-a-{self.unique_tag},tg-b-{self.unique_tag}",
                 "default_menu_set_id": None,
                 "default_employee_menu_set_id": employee_menu_id,
@@ -5054,7 +5053,7 @@ class EmployeeApiSmokeTests(unittest.TestCase):
             hr_settings = db.query(HrSettings).first()
             self.assertIsNotNone(hr_settings)
             self.assertEqual(hr_settings.hr_name, f"codex-hr-{self.unique_tag}")
-            self.assertEqual(hr_settings.telegram_user_id, f"tg-{self.unique_tag}")
+            self.assertEqual(hr_settings.telegram_user_id, self.hr_settings_snapshot["telegram_user_id"])
             self.assertEqual(hr_settings.default_employee_menu_set_id, employee_menu_id)
             self.assertEqual(hr_settings.default_candidate_menu_set_id, candidate_menu_id)
             self.assertFalse(hr_settings.notify_scenario_completed)
