@@ -17,6 +17,7 @@ class Settings:
 
     # Telegram
     TELEGRAM_BOT_TOKEN: str = os.getenv("TELEGRAM_BOT_TOKEN", "")
+    TELEGRAM_BOT_USERNAME: str = os.getenv("TELEGRAM_BOT_USERNAME", "")
     TELEGRAM_PROXY_URL: str = os.getenv("TELEGRAM_PROXY_URL", "")
 
     # Таймзона для расписания (для простоты — системная)

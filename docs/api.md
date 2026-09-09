@@ -171,6 +171,9 @@ source_of_truth: true
 - `current_user`
 - `role_labels`
 - `hr_settings`
+  - `telegram_connection_state`: `connected|pending|disconnected`;
+  - `telegram_username`, `telegram_link_expires_at` и текущий numeric
+    `telegram_user_id`.
 - `menu_sets`
   - `buttons[]`
 - `available_scenarios`
@@ -268,15 +271,17 @@ source_of_truth: true
 | Method | Path | Назначение | Основные inputs | Response | Side effects | Частые errors |
 | --- | --- | --- | --- | --- | --- | --- |
 | `GET` | `/api/settings/workspace` | Вернуть HR settings, menu sets/buttons, scenarios и admin accounts для React settings. | Нет | Settings workspace payload | Создает default `hr_settings` row, если его нет | `401` |
-| `POST` | `/api/settings/hr` | Обновить HR notification settings. | JSON: `hr_name`, `telegram_user_id`, `notification_recipient_ids`, `default_menu_set_id`, notification booleans | Settings workspace payload | Обновляет `hr_settings`; `telegram_user_id` является основным HR Telegram для scenario token `hr`, а `notification_recipient_ids` остается legacy/additional list только для глобальных HR events | `401` |
-| `POST` | `/api/settings/menu-sets` | Создать menu set. | JSON: `title`, optional `description` | Settings workspace payload | Создает `bot_menu_sets` | `401` |
-| `POST` | `/api/settings/menu-sets/{menu_set_id}` | Обновить menu set. | JSON: `title`, `description` | Settings workspace payload | Обновляет `bot_menu_sets` | `401`, `404` |
+| `POST` | `/api/settings/hr` | Обновить HR notification settings. | JSON: `hr_name`, `notification_recipient_ids`, `default_menu_set_id`, notification booleans; `telegram_user_id` только для чтения | Settings workspace payload | Обновляет `hr_settings`; подтвержденный `telegram_user_id` меняется только через link/disconnect endpoints, а `notification_recipient_ids` остается legacy/additional list только для глобальных HR events | `401`, `409` при попытке изменить `telegram_user_id` |
+| `POST` | `/api/settings/hr/telegram-link` | Выпустить одноразовую ссылку подтверждения HR Telegram. | Нет | `start_parameter`, optional `deep_link`, `expires_at`, settings workspace | Сохраняет только hash токена и TTL в `hr_settings`; numeric Telegram ID появится после атомарного открытия ссылки владельцем; при действующей привязке выпуск отклоняется | `401`, `409` если HR уже подключен |
+| `DELETE` | `/api/settings/hr/telegram-link` | Отключить текущий HR Telegram и отменить pending link. | Нет | Settings workspace payload | Очищает подтвержденный numeric ID, username и pending token | `401` |
+| `POST` | `/api/settings/menu-sets` | Создать menu set. | JSON: `title`, optional `description` или `menu_text` | Settings workspace payload | Создает `bot_menu_sets` | `401` |
+| `POST` | `/api/settings/menu-sets/{menu_set_id}` | Обновить menu set. | JSON: `title`, `description` или `menu_text` | Settings workspace payload | Обновляет `bot_menu_sets`; `description`/`menu_text` — текст сообщения набора, включая root | `401`, `404` |
 | `DELETE` | `/api/settings/menu-sets/{menu_set_id}` | Удалить menu set. | Path: `menu_set_id` | Settings workspace payload | Удаляет buttons внутри set, отвязывает переходы на set, очищает `employees.current_menu_set_id` и default menu setting | `401`, `404` |
 | `POST` | `/api/settings/menu-sets/{menu_set_id}/buttons` | Создать menu button. | JSON: `label`, `action_type`, optional `scenario_key`, optional `target_menu_set_id` | Settings workspace payload | Создает `bot_menu_buttons` | `401`, `404` |
 | `POST` | `/api/settings/menu-buttons/{button_id}` | Обновить menu button. | JSON: `label`, `action_type`, optional `scenario_key`, optional `target_menu_set_id` | Settings workspace payload | Обновляет `bot_menu_buttons` | `401`, `404` |
 | `POST` | `/api/settings/menu-buttons/bulk` | Bulk update menu buttons. | JSON: `buttons[]` с `id`, `label`, `action_type`, `scenario_key`, `target_menu_set_id` | Settings workspace payload | Обновляет несколько `bot_menu_buttons` | `401` |
 | `DELETE` | `/api/settings/menu-buttons/{button_id}` | Удалить menu button. | Path: `button_id` | Settings workspace payload | Удаляет одну `bot_menu_buttons` строку | `401`, `404` |
-| `POST` | `/api/settings/bot-menu/broadcast` | Переотправить главное меню всем связанным незаблокированным пользователям. | Нет | `{ workspace, refreshed_count }` | Отправляет Telegram menu через bot messenger | `401`, `400` если bot token не настроен |
+| `POST` | `/api/settings/bot-menu/broadcast` | Обновить меню всем связанным незаблокированным пользователям. | Нет | `{ workspace, refreshed_count }` | Отправляет inline-меню или редактирует сохраненное menu message; legacy reply keyboard удаляется cleanup-сообщением | `401`, `400` если bot token не настроен |
 | `GET` | `/api/settings/positions` | Вернуть каталог должностей. | Нет | `{ positions[] }` | Нет | `401` |
 | `POST` | `/api/settings/positions` | Создать должность. | JSON: `title`, optional `slug`, `is_active`, `sort_order` | `{ positions[] }` | Создает или активирует position row | `401`, `400`, `409` |
 | `POST` | `/api/settings/positions/{position_id}` | Обновить должность. | Path: `position_id`; JSON: `title`, `is_active`, `sort_order` | `{ positions[] }` | Обновляет position row | `401`, `404`, `409` |

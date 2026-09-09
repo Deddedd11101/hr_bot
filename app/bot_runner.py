@@ -22,6 +22,7 @@ from .messaging.service import (
     handle_back_event,
     handle_button_event,
     handle_choice_confirmation_event,
+    handle_menu_callback,
     handle_date_event,
     handle_saved_document,
     handle_start_command,
@@ -46,9 +47,14 @@ async def on_start(message: Message) -> None:
 
     user_id_str = str(user.id)
     username = _telegram_username(user)
+    start_parameter = None
+    if message.text:
+        parts = message.text.split(maxsplit=1)
+        if len(parts) == 2:
+            start_parameter = parts[1].strip() or None
     with SessionLocal() as db:
         messenger = create_telegram_messenger(settings.TELEGRAM_BOT_TOKEN)
-        await handle_start_command(messenger, db, user_id_str, username)
+        await handle_start_command(messenger, db, user_id_str, username, start_parameter)
         await messenger.close()
 
 
@@ -260,6 +266,31 @@ async def on_scenario_button(callback: CallbackQuery) -> None:
         await callback.answer()
 
 
+async def on_menu_button(callback: CallbackQuery) -> None:
+    user = callback.from_user
+    if not user or not callback.data or not callback.data.startswith("menu:"):
+        return
+    with SessionLocal() as db:
+        messenger = create_telegram_messenger(settings.TELEGRAM_BOT_TOKEN)
+        handled = await handle_menu_callback(
+            messenger,
+            db,
+            str(user.id),
+            _telegram_username(user),
+            callback.data,
+            callback.message.message_id if callback.message else None,
+        )
+        await messenger.close()
+    if handled == "unknown":
+        await callback.answer(UNKNOWN_USER_TEXT, show_alert=True)
+    elif handled == "blocked":
+        await callback.answer(BLOCKED_USER_TEXT, show_alert=True)
+    elif handled == "handled":
+        await callback.answer("Принято")
+    else:
+        await callback.answer()
+
+
 async def main() -> None:
     if not settings.TELEGRAM_BOT_TOKEN:
         raise RuntimeError("TELEGRAM_BOT_TOKEN не задан. Укажите его в .env")
@@ -276,6 +307,10 @@ async def main() -> None:
     dp.callback_query.register(
         on_scenario_button,
         lambda callback: callback.data is not None and callback.data.startswith(CALLBACK_PREFIX),
+    )
+    dp.callback_query.register(
+        on_menu_button,
+        lambda callback: callback.data is not None and callback.data.startswith("menu:"),
     )
     dp.message.register(
         on_candidate_text,

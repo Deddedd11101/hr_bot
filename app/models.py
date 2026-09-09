@@ -34,6 +34,11 @@ class Employee(Base):
         nullable=True,
         doc="Стек открытых наборов меню чат-бота для навигации назад.",
     )
+    current_menu_message_id: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        nullable=True,
+        doc="Telegram message_id текущего inline-меню для редактирования на месте.",
+    )
     first_workday: Mapped[Optional[date]] = mapped_column(
         Date,
         nullable=True,
@@ -418,6 +423,9 @@ class HrSettings(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     hr_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     telegram_user_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    telegram_username: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    telegram_link_token_hash: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    telegram_link_expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     notification_recipient_ids: Mapped[Optional[str]] = mapped_column(String(2048), nullable=True)
     notify_scenario_completed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     notify_test_task_received: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)

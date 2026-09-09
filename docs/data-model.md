@@ -82,8 +82,8 @@ source_of_truth: true
 
 | Таблица | Назначение | Ключевые поля | Связи и примечания |
 | --- | --- | --- | --- |
-| `hr_settings` | Глобальные HR notification settings и default menu | recipient ids, notification flags, `default_menu_set_id`, `default_employee_menu_set_id`, `default_candidate_menu_set_id` | По сути singleton-style configuration |
-| `bot_menu_sets` | Employee-facing bot menu groups | `title`, `description`, `sort_order`, `employee_scope`, `role_scope`, explicit target fields, `system_tag` | Parent table для menu buttons; `system_tag` маркирует generated document menu branches |
+| `hr_settings` | Глобальные HR notification settings и default menu | recipient ids, notification flags, HR `telegram_user_id`, `telegram_username`, hashed link token/TTL, `default_menu_set_id`, `default_employee_menu_set_id`, `default_candidate_menu_set_id` | Singleton-style configuration; HR link token хранится только в виде hash и используется один раз |
+| `bot_menu_sets` | Employee-facing bot menu groups | `title`, `description/menu_text`, `sort_order`, `employee_scope`, `role_scope`, explicit target fields, `system_tag` | `description/menu_text` — текст отправляемого набора, включая root; runtime хранит message id в `employees` и редактирует inline-меню |
 | `bot_menu_buttons` | Кнопки меню | `menu_set_id`, `label`, `action_type`, `scenario_key`, `target_menu_set_id`, `document_item_id` | Используется inbound text menu handling; `action_type=send_document` ссылается на `document_library_items` |
 | `mass_scenario_actions` | Очередь bulk scenario launches | flow key, scenario kind, targeting fields, `launch_type`, `recipient_count` | Разрешается и обрабатывается scheduler |
 | `mass_message_actions` | Очередь bulk free-text sends | message text, targeting fields, `launch_type`, `recipient_count` | Разрешается и обрабатывается scheduler |
@@ -242,6 +242,8 @@ SQLite schema guard делает больше, чем “создать табл
   - `desired_position`;
   - `employee_stage`;
 - пересоздает `employees` в SQLite, если старые файлы еще держат obsolete `NOT NULL` constraints;
+- при таком rebuild сохраняет `current_menu_path` и `current_menu_message_id`, если
+  они были в исходной таблице; для старой схемы без этих колонок переносит `NULL`;
 - backfill `employee_messenger_accounts` из legacy employee Telegram fields.
 
 Именно поэтому data-model docs нельзя строить только по `models.py`.

@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 
 from .config import settings
 from .employee_card import render_employee_card_png
+from .hr_linking import is_numeric_telegram_id
 from .messaging import MessengerClient, as_messenger, find_employee_by_channel_user_id
 from .messaging.identity import get_primary_chat_id
 from .models import DocumentLibraryItem, Employee, EmployeeDocumentLink, EmployeeFile, FlowLaunchRequest, FlowStepTemplate, HrSettings, OnboardingEvent, ScenarioProgress, ScenarioTemplate, StepButtonNotification, StepSendNotification, SurveyAnswer
@@ -535,7 +536,7 @@ def resolve_scenario_recipient(
     hr_settings = db.get(HrSettings, 1)
     hr_chat_id = (getattr(hr_settings, "telegram_user_id", None) or "").strip()
     hr_label = (getattr(hr_settings, "hr_name", None) or "").strip() or "HR"
-    if not hr_chat_id:
+    if not is_numeric_telegram_id(hr_chat_id):
         return ScenarioRecipientResolution(mode, None, None, hr_label, "В HR-настройках не указан Telegram user id.")
     hr_employee = find_employee_by_channel_user_id(db, channel="telegram", external_user_id=hr_chat_id)
     if requires_response and hr_employee is None:
@@ -1257,7 +1258,7 @@ def _resolve_explicit_notification_recipient(db: Session | None, raw_value: str)
     if normalized == "hr" and db is not None:
         hr_settings = db.get(HrSettings, 1)
         hr_chat_id = (getattr(hr_settings, "telegram_user_id", None) or "").strip()
-        return hr_chat_id or None
+        return hr_chat_id if is_numeric_telegram_id(hr_chat_id) else None
     if normalized in NOTIFICATION_SCOPE_TO_EMPLOYEE_FIELD:
         return normalized
     if normalized.startswith("employee:") and db is not None:

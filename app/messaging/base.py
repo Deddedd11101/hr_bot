@@ -11,6 +11,12 @@ class MessengerClient(Protocol):
 
     async def send_menu(self, chat_id: str, text: str, buttons: list[str]) -> None: ...
 
+    async def send_inline_menu(self, chat_id: str, text: str, buttons: list[tuple[str, str]]) -> Any: ...
+
+    async def edit_inline_menu(
+        self, chat_id: str, message_id: int, text: str, buttons: list[tuple[str, str]]
+    ) -> Any: ...
+
     async def send_photo_path(
         self,
         chat_id: str,

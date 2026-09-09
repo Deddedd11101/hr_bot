@@ -1391,6 +1391,7 @@ def _promote_candidate_to_adaptation(db: Session, employee: Employee) -> Employe
     employee.candidate_work_stage = None
     employee.current_menu_set_id = None
     employee.current_menu_path = None
+    employee.current_menu_message_id = None
     if employee.adaptation_midpoint is None:
         employee.adaptation_midpoint = add_workdays(employee.first_workday, settings.PROBATION_WORKDAYS // 2)
     if employee.adaptation_end is None:
@@ -1414,6 +1415,7 @@ def _reset_employee_bot_linkage(db: Session, employee: Employee) -> Employee:
     employee.telegram_username = None
     employee.current_menu_set_id = None
     employee.current_menu_path = None
+    employee.current_menu_message_id = None
     employee.is_flow_scheduled = False
 
     db.commit()
