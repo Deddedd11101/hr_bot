@@ -24,6 +24,7 @@ from ..scenario_engine import (
     handle_text_response,
     normalize_test_task_answer_file_category,
     matches_role_scope,
+    sanitize_telegram_safe_html,
     start_scenario,
 )
 from ..time_utils import utc_now
@@ -351,6 +352,7 @@ async def send_menu(
     chat_id = get_primary_chat_id(employee, db=db)
     if not chat_id:
         return
+    safe_text = sanitize_telegram_safe_html(text)
     options = menu_button_options(db, employee)
     if not options:
         return
@@ -358,7 +360,7 @@ async def send_menu(
     inline_editor = getattr(messenger, "edit_inline_menu", None)
     if edit_message_id and inline_editor is not None:
         try:
-            await inline_editor(chat_id, edit_message_id, text, options)
+            await inline_editor(chat_id, edit_message_id, safe_text, options)
             employee.current_menu_message_id = edit_message_id
             db.commit()
             return
@@ -366,13 +368,13 @@ async def send_menu(
             # A stale/deleted Telegram message is recoverable by sending a fresh menu.
             pass
     if inline_sender is not None:
-        message = await inline_sender(chat_id, text, options)
+        message = await inline_sender(chat_id, safe_text, options)
         message_id = getattr(message, "message_id", None)
         employee.current_menu_message_id = int(message_id) if message_id is not None else None
         db.commit()
         return
     # Compatibility fallback for lightweight test clients and older adapters.
-    await messenger.send_menu(chat_id=chat_id, text=text, buttons=[label for label, _ in options])
+    await messenger.send_menu(chat_id=chat_id, text=safe_text, buttons=[label for label, _ in options])
 
 
 async def show_main_menu(messenger: MessengerClient, db: Session, employee: Employee, text: str) -> bool:

@@ -173,7 +173,12 @@ class HrLinkAndInlineMenuTests(unittest.TestCase):
                 created_at=utc_now(),
                 is_flow_scheduled=False,
             )
-            root = BotMenuSet(title="Root", description="Главное", sort_order=1, employee_scope="employees")
+            root = BotMenuSet(
+                title="Root",
+                description='<b>Главное</b> & <script>raw</script>',
+                sort_order=1,
+                employee_scope="employees",
+            )
             child = BotMenuSet(title="Child", description="Документы", sort_order=2, employee_scope="employees")
             db.add_all([employee, root, child])
             db.commit()
@@ -194,6 +199,7 @@ class HrLinkAndInlineMenuTests(unittest.TestCase):
             from app.messaging.service import show_main_menu
 
             asyncio.run(show_main_menu(messenger, db, employee, "ignored"))
+            self.assertEqual(messenger.inline_sends[0]["text"], "<b>Главное</b> &amp; raw")
             db.refresh(employee)
             employee.current_menu_set_id = root.id
             employee.current_menu_path = str(root.id)
