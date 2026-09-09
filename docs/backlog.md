@@ -29,6 +29,8 @@ Stage candidate: персональный slot `offer` поддерживает 
 
 Deploy safety: `Deploy Stage` создаёт проверенный SQLite backup, сохраняет JSON snapshot scenario config tables и при неожиданном изменении сценариев во время restart восстанавливает pre-deploy scenario config перед намеренным failure.
 
+Frontend editor: `TelegramRichTextEditor` используется в scenario step/notification text; manual bot-message остаётся отдельным backend compatibility gap до safe HTML renderer.
+
 Словарь статусов:
 
 - `todo` — согласовано, но не начато

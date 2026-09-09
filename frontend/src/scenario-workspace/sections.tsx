@@ -23,7 +23,7 @@ import { Input } from "@/components/ui/input";
 import { PageFilters, PageFiltersSearch, PageFiltersSegments } from "@/components/ui/page-filters";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
-import { TelegramFormatToolbar } from "@/components/ui/telegram-format-toolbar";
+import { TelegramRichTextEditor } from "@/components/ui/telegram-rich-text-editor";
 import { Textarea } from "@/components/ui/textarea";
 import { RecordCard, type RecordCardTagSpec } from "@/components/ui/record-card";
 import { ПРОЯВЛЕНИЕ } from "@/lib/reveal";
@@ -958,8 +958,9 @@ export function WorkspaceStepDetailPane(props: {
     message_text: string;
     recipient_ids: string;
   }>(null);
-  const notificationTextRef = React.useRef<HTMLTextAreaElement | null>(null);
-  const stepNotificationTextRef = React.useRef<HTMLTextAreaElement | null>(null);
+  const stepTextInsertRef = React.useRef<((text: string) => void) | null>(null);
+  const notificationInsertRef = React.useRef<((text: string) => void) | null>(null);
+  const stepNotificationInsertRef = React.useRef<((text: string) => void) | null>(null);
 
   React.useEffect(() => {
     setNotificationRuleEditor(null);
@@ -1003,44 +1004,6 @@ export function WorkspaceStepDetailPane(props: {
     ? selectedLibraryDocument.download_url || selectedLibraryDocument.external_url || ""
     : "";
   const uploadedAttachmentFilename = detailTarget?.attachment_filename || "";
-
-  const insertIntoNotificationRuleText = React.useCallback((snippet: string) => {
-    setNotificationRuleEditor((prev) => {
-      if (!prev) return prev;
-      const textarea = notificationTextRef.current;
-      if (!textarea) {
-        return { ...prev, message_text: `${prev.message_text || ""}${snippet}` };
-      }
-      const start = textarea.selectionStart ?? prev.message_text.length;
-      const end = textarea.selectionEnd ?? prev.message_text.length;
-      const nextText = `${prev.message_text.slice(0, start)}${snippet}${prev.message_text.slice(end)}`;
-      requestAnimationFrame(() => {
-        textarea.focus();
-        const nextCursor = start + snippet.length;
-        textarea.setSelectionRange(nextCursor, nextCursor);
-      });
-      return { ...prev, message_text: nextText };
-    });
-  }, []);
-
-  const insertIntoStepNotificationRuleText = React.useCallback((snippet: string) => {
-    setStepNotificationRuleEditor((prev) => {
-      if (!prev) return prev;
-      const textarea = stepNotificationTextRef.current;
-      if (!textarea) {
-        return { ...prev, message_text: `${prev.message_text || ""}${snippet}` };
-      }
-      const start = textarea.selectionStart ?? prev.message_text.length;
-      const end = textarea.selectionEnd ?? prev.message_text.length;
-      const nextText = `${prev.message_text.slice(0, start)}${snippet}${prev.message_text.slice(end)}`;
-      requestAnimationFrame(() => {
-        textarea.focus();
-        const nextCursor = start + snippet.length;
-        textarea.setSelectionRange(nextCursor, nextCursor);
-      });
-      return { ...prev, message_text: nextText };
-    });
-  }, []);
 
   const updateNotificationRuleText = React.useCallback((nextValue: string) => {
     setNotificationRuleEditor((prev) => (prev ? { ...prev, message_text: nextValue } : prev));
@@ -1243,22 +1206,14 @@ export function WorkspaceStepDetailPane(props: {
 
                     <div className="grid gap-2">
                       <span className="text-sm font-semibold text-foreground/75">Текст сообщения</span>
-                      <TelegramFormatToolbar
+                      <TelegramRichTextEditor
                         value={form?.text || ""}
-                        textareaRef={textRef}
                         onChange={(nextValue) => onFormChange((prev) => (prev ? { ...prev, text: nextValue } : prev))}
+                        placeholder="Введите текст сообщения"
+                        insertRef={stepTextInsertRef}
                       />
-                      <div className="relative">
-                        <Textarea
-                          ref={textRef}
-                          className="min-h-[140px] px-3 py-3 pr-12 text-sm leading-6"
-                          value={form?.text || ""}
-                          placeholder="Введите текст сообщения"
-                          onChange={(event) => onFormChange((prev) => (prev ? { ...prev, text: event.target.value } : prev))}
-                        />
-                        <div className="absolute right-2.5 bottom-2.5">
-                          <EmojiPickerPopover onEmojiSelect={onInsertIntoText} />
-                        </div>
+                      <div className="flex justify-end">
+                        <EmojiPickerPopover onEmojiSelect={(emoji) => stepTextInsertRef.current?.(emoji)} />
                       </div>
                     </div>
                   </>
@@ -1271,7 +1226,7 @@ export function WorkspaceStepDetailPane(props: {
                       tags={payloadWorkspace?.step_template_tags || []}
                       includeDocumentTags
                       documentTagTitles={payloadWorkspace?.document_tag_titles || []}
-                      onInsert={onInsertIntoText}
+                      onInsert={(snippet) => stepTextInsertRef.current?.(snippet)}
                     />
                   </div>
                 ) : null}
@@ -1783,22 +1738,16 @@ export function WorkspaceStepDetailPane(props: {
             </label>
             <div className="grid gap-2">
               <span className="text-sm font-semibold text-foreground/75">Текст уведомления</span>
-              <TelegramFormatToolbar
+              <TelegramRichTextEditor
                 value={notificationRuleEditor?.message_text || ""}
-                textareaRef={notificationTextRef}
                 onChange={updateNotificationRuleText}
-                disabled={!notificationRuleEditor}
-              />
-              <Textarea
-                ref={notificationTextRef}
-                className="min-h-[120px] text-sm"
-                value={notificationRuleEditor?.message_text || ""}
-                onChange={(event) => updateNotificationRuleText(event.target.value)}
                 placeholder="Например: Пользователь нажал кнопку."
+                disabled={!notificationRuleEditor}
+                insertRef={notificationInsertRef}
               />
               <TemplateTagButtons
                 tags={payloadWorkspace?.notification_template_tags || []}
-                onInsert={insertIntoNotificationRuleText}
+                onInsert={(snippet) => notificationInsertRef.current?.(snippet)}
               />
             </div>
           </div>
@@ -1839,22 +1788,16 @@ export function WorkspaceStepDetailPane(props: {
             </label>
             <div className="grid gap-2">
               <span className="text-sm font-semibold text-foreground/75">Текст уведомления</span>
-              <TelegramFormatToolbar
+              <TelegramRichTextEditor
                 value={stepNotificationRuleEditor?.message_text || ""}
-                textareaRef={stepNotificationTextRef}
                 onChange={updateStepNotificationRuleText}
-                disabled={!stepNotificationRuleEditor}
-              />
-              <Textarea
-                ref={stepNotificationTextRef}
-                className="min-h-[120px] text-sm"
-                value={stepNotificationRuleEditor?.message_text || ""}
-                onChange={(event) => updateStepNotificationRuleText(event.target.value)}
                 placeholder="Например: Пользователю отправлен шаг."
+                disabled={!stepNotificationRuleEditor}
+                insertRef={stepNotificationInsertRef}
               />
               <TemplateTagButtons
                 tags={payloadWorkspace?.notification_template_tags || []}
-                onInsert={insertIntoStepNotificationRuleText}
+                onInsert={(snippet) => stepNotificationInsertRef.current?.(snippet)}
               />
             </div>
           </div>

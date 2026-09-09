@@ -43,6 +43,35 @@
   }
 }
 
+.telegram-rich-text-editor .ProseMirror {
+  min-height: 7rem;
+  outline: none;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.telegram-rich-text-editor .ProseMirror p {
+  margin: 0;
+}
+
+.telegram-rich-text-editor .ProseMirror p + p {
+  margin-top: 0.75rem;
+}
+
+.telegram-rich-text-editor .ProseMirror a {
+  color: var(--primary);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.telegram-rich-text-editor .ProseMirror p.is-editor-empty:first-child::before {
+  color: var(--muted-foreground);
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);

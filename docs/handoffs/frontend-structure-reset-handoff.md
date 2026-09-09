@@ -1251,3 +1251,31 @@ source_of_truth: false
 
 - `npm run build`
 - Browser smoke on scenarios and surveys: page identity, non-empty render, console health, screenshot, and same-item drag gesture
+
+## Telegram Rich Text Editor - 2026-09-08
+
+### Changed
+
+- Added shared `TelegramRichTextEditor` with Tiptap core, compact formatting toolbar, context menu, link popover with edit/remove, and undo/redo.
+- Connected the editor to scenario step text, step notification text, and button notification text. Surveys remain unchanged.
+- Template tags and document tags insert into the editor's saved cursor selection.
+- The editor serializes only the TelegramSafeHTML subset instead of persisting Tiptap's `<p>`, `<strong>`, or `<em>` output.
+- Added a live example to `/app/design-system#telegram-rich-text-editor`.
+
+### Shared UI API
+
+- New component: `frontend/src/components/ui/telegram-rich-text-editor.tsx`.
+- New dependencies: `@tiptap/react`, `@tiptap/starter-kit`, `@tiptap/extension-link`, `@tiptap/extension-underline`, `@tiptap/extension-placeholder`.
+
+### Backend boundary
+
+- Manual employee/candidate bot messages were intentionally not switched to the visual editor. `POST /api/employees/{id}/bot-message` currently sends raw text directly and does not use `TelegramSafeHTML`; wiring it now would send literal markup. A backend follow-up is required before connecting that surface.
+
+### Checks
+
+- `npx shadcn@latest info --json`
+- `npx shadcn@latest docs context-menu`
+- `npm ci`
+- `npm run build`
+- `npx tsc --noEmit`
+- repeated `npm run build` and `git diff --check` pending before delivery
