@@ -3,14 +3,14 @@ on:
   workflow_dispatch:
     inputs:
       ref:
-        description: Read-only HR menu diagnostics; no checkout or deploy
+        description: Configure verified bot username for the next normal deploy
         required: true
         default: stage
 jobs:
   inspect:
     runs-on: ubuntu-latest
     steps:
-      - name: Read-only stage bot identity and service checks
+      - name: Configure verified bot username without linking HR
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.STAGE_HOST }}
@@ -50,6 +50,17 @@ jobs:
                     print('Worker configured username:', worker_env.get('TELEGRAM_BOT_USERNAME', '') or 'MISSING')
                     print('Username matches:', bool(configured) and configured.lower() == me.username.lower())
                     print('Web/worker token env equal:', bool(web_env.get('TELEGRAM_BOT_TOKEN')) and web_env.get('TELEGRAM_BOT_TOKEN') == worker_env.get('TELEGRAM_BOT_TOKEN'))
+                    if me.username != 'ze_hr_bot':
+                        raise RuntimeError('Unexpected bot identity')
+                    for service in ('hr-bot-web', 'hr-bot-worker'):
+                        target = Path('/etc/systemd/system') / (service + '.service.d') / '30-bot-username.conf'
+                        content = '[Service]\nEnvironment="TELEGRAM_BOT_USERNAME=ze_hr_bot"\n'
+                        if target.exists() and target.read_text() != content:
+                            raise RuntimeError('Existing username drop-in differs; refusing overwrite')
+                        target.parent.mkdir(parents=True, exist_ok=True)
+                        target.write_text(content)
+                    subprocess.run(['systemctl', 'daemon-reload'], check=True)
+                    print('Username drop-ins configured; activation at normal deploy restart')
                 except Exception as exc:
                     print('Bot identity check failed:', type(exc).__name__)
                     raise SystemExit(1)
