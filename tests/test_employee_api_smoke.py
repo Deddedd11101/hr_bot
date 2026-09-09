@@ -1505,6 +1505,34 @@ class EmployeeApiSmokeTests(unittest.TestCase):
             self.assertEqual(history_rows[0].message_text, "Привет из HR")
             self.assertIsNotNone(history_rows[0].sent_at)
 
+    def test_manual_bot_message_sends_telegram_safe_html_without_template_substitution(self) -> None:
+        with SessionLocal() as db:
+            employee = db.get(Employee, self.employee_id)
+            self.assertIsNotNone(employee)
+            set_primary_chat_id(employee, "700005", db=db)
+            db.commit()
+
+        source_text = '<b>Важно</b>\nСравнение: < и &\n<a href="javascript:alert(1)">опасно</a>\n{employee_full_name}'
+        messenger = DummyMessenger()
+        with (
+            patch("app.web.employees.settings.TELEGRAM_BOT_TOKEN", "test-token"),
+            patch("app.web.employees.create_telegram_messenger", return_value=messenger) as create_messenger,
+        ):
+            response = self.client.post(
+                f"/api/employees/{self.employee_id}/bot-message",
+                json={"text": source_text},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        create_messenger.assert_called_once_with("test-token", parse_mode="HTML")
+        self.assertEqual(
+            messenger.sent_texts,
+            [("700005", '<b>Важно</b>\nСравнение: &lt; и &amp;\nопасно\n{employee_full_name}')],
+        )
+        self.assertIn("{employee_full_name}", messenger.sent_texts[0][1])
+        self.assertNotIn("javascript:", messenger.sent_texts[0][1])
+        self.assertEqual(response.json()["manual_bot_message_history"][0]["message_text"], source_text)
+
     def test_manual_bot_message_without_telegram_id_logs_failed(self) -> None:
         response = self.client.post(
             f"/api/employees/{self.employee_id}/bot-message",
@@ -1590,7 +1618,7 @@ class EmployeeApiSmokeTests(unittest.TestCase):
         ):
             response = self.client.post(
                 f"/api/employees/{self.employee_id}/bot-message",
-                json={"text": "Упади, пожалуйста"},
+                json={"text": "<b>Упади</b>, пожалуйста & {employee_full_name}"},
             )
 
         self.assertEqual(response.status_code, 400)
@@ -1606,6 +1634,7 @@ class EmployeeApiSmokeTests(unittest.TestCase):
             self.assertEqual(len(history_rows), 1)
             self.assertEqual(history_rows[0].status, "failed")
             self.assertEqual(history_rows[0].error_text, "telegram send failed")
+            self.assertEqual(history_rows[0].message_text, "<b>Упади</b>, пожалуйста & {employee_full_name}")
             self.assertIsNone(history_rows[0].sent_at)
 
     def test_employee_detail_api_includes_manual_bot_message_history_newest_first(self) -> None:

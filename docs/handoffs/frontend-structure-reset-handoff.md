@@ -1252,14 +1252,15 @@ source_of_truth: false
 - `npm run build`
 - Browser smoke on scenarios and surveys: page identity, non-empty render, console health, screenshot, and same-item drag gesture
 
-## Telegram Rich Text Editor - 2026-09-08
+## Telegram Rich Text Editor - 2026-09-09
 
 ### Changed
 
 - Added shared `TelegramRichTextEditor` with Tiptap core, compact formatting toolbar, context menu, link popover with edit/remove, and undo/redo.
-- Connected the editor to scenario step text, step notification text, and button notification text. Surveys remain unchanged.
+- Connected the editor to scenario step text, step/button notification text, employee manual messages, `/app/messages`, and bot menu text. Surveys remain unchanged.
 - Template tags and document tags insert into the editor's saved cursor selection.
 - The editor serializes only the TelegramSafeHTML subset instead of persisting Tiptap's `<p>`, `<strong>`, or `<em>` output.
+- Added a context-menu link dialog that restores the selection before applying or inserting a safe URL.
 - Added a live example to `/app/design-system#telegram-rich-text-editor`.
 
 ### Shared UI API
@@ -1269,7 +1270,7 @@ source_of_truth: false
 
 ### Backend boundary
 
-- Manual employee/candidate bot messages were intentionally not switched to the visual editor. `POST /api/employees/{id}/bot-message` currently sends raw text directly and does not use `TelegramSafeHTML`; wiring it now would send literal markup. A backend follow-up is required before connecting that surface.
+- Manual employee/candidate bot messages now depend on backend `feature/manual-rich-html@6f289ea`, which sanitizes the submitted safe HTML and sends with Telegram HTML parse mode. Scenario template tags remain literal for this ad-hoc message path.
 
 ### Checks
 
@@ -1278,4 +1279,4 @@ source_of_truth: false
 - `npm ci`
 - `npm run build`
 - `npx tsc --noEmit`
-- repeated `npm run build` and `git diff --check` pending before delivery
+- repeated `npm run build` and `git diff --check` passed before delivery

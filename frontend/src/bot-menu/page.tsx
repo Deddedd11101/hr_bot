@@ -33,7 +33,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
+import { TelegramRichTextEditor } from "@/components/ui/telegram-rich-text-editor";
 import { cn } from "@/lib/utils";
 
 type ScenarioOption = {
@@ -851,16 +851,15 @@ export function BotMenuPage({ apiUrl }: BotMenuPageProps) {
                   </Field>
                   <Field className="xl:col-span-2">
                     <FieldLabel>Текст меню</FieldLabel>
-                    <Textarea
+                    <TelegramRichTextEditor
                       value={selectedMenuSet.menu_text}
-                      onChange={(event) =>
+                      onChange={(value) =>
                         updateMenuSetLocal(selectedMenuSet.id, {
-                          menu_text: event.target.value,
-                          description: event.target.value,
+                          menu_text: value,
+                          description: value,
                         })
                       }
                       placeholder="Текст, который увидит пользователь при открытии этого набора"
-                      rows={3}
                     />
                     <p className="text-xs text-muted-foreground">
                       Для root-набора это текст главного меню. Сохраняется через backend-поле menu_text.

@@ -34,7 +34,14 @@ from ..models import (
     ScenarioTemplate,
 )
 from ..positions import employee_position_values, resolve_employee_position_value
-from ..scenario_engine import SINGLE_STEP_REQUEST_PREFIX, add_workdays, get_first_step, matches_role_scope, start_scenario
+from ..scenario_engine import (
+    SINGLE_STEP_REQUEST_PREFIX,
+    add_workdays,
+    get_first_step,
+    matches_role_scope,
+    sanitize_telegram_safe_html,
+    start_scenario,
+)
 from ..time_utils import utc_now
 
 OFFER_DOCUMENT_TITLE = "Оффер"
@@ -1604,9 +1611,10 @@ async def _send_manual_bot_message(
         )
         return error_message
 
-    messenger = create_telegram_messenger(settings.TELEGRAM_BOT_TOKEN)
+    rendered_text = sanitize_telegram_safe_html(message_text)
+    messenger = create_telegram_messenger(settings.TELEGRAM_BOT_TOKEN, parse_mode="HTML")
     try:
-        await messenger.send_text(chat_id=chat_id, text=message_text)
+        await messenger.send_text(chat_id=chat_id, text=rendered_text)
     except Exception as exc:
         error_message = str(exc).strip() or exc.__class__.__name__
         _append_manual_bot_message_log(
