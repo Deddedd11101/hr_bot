@@ -75,10 +75,11 @@ source_of_truth: true
 
 ## Rich text boundary
 
-- The visual editor is used in scenario step text and step/button notification text.
+- The visual editor is used in scenario step text, step/button notifications, employee manual messages, `/app/messages`, and bot menu text. All of these surfaces must use the shared primitive rather than the legacy HTML-tag toolbar.
 - Existing Telegram text keeps line breaks and empty lines when loaded or replaced in the editor (`preserveWhitespace: full`); Link and Underline are registered only once.
+- Toolbar and context-menu formatting use the same safe mark set. The context-menu link dialog restores the saved editor selection before applying or inserting a safe URL.
 - Surveys do not receive this primitive.
-- Employee manual bot messages are not wired to the visual editor until `POST /api/employees/{id}/bot-message` passes the text through the same safe HTML renderer. The current endpoint sends the submitted string directly to Telegram; connecting the editor before that backend change would expose literal markup to recipients.
+- The employee manual message endpoint passes text through the same safe HTML renderer before Telegram delivery; scenario template tags remain literal in this ad-hoc surface.
 
 ## Current Migration Debt
 
