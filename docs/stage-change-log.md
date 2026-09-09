@@ -34,6 +34,21 @@ source_of_truth: true
 
 ## Записи
 
+### 2026-09-09 16:57 MSK - app deploy / config - Telegram editor, HR linking and inline menus
+
+- Deploy ref: `stage`; deployed SHA: `8f50f9353fbff5a868c2638fc0fd74dc236ebd0e`.
+- Deploy: [34360115936](https://github.com/Deddedd11101/hr_bot/actions/runs/34360115936) -> success.
+- Интегрированы PR #10 (`fb41a70`, backend HR-link/inline-menu), #9 (`ab18618`, visual Telegram editor) и #12 (`51b64d5`, HR/menu UI) через PR #13. PR #11 с архивом исключен; ручные сообщения остаются на прежнем редакторе.
+- При integration review исправлена потеря переносов строк при загрузке текста в Tiptap и двойная регистрация Link/Underline. PR #14 исправил состояния/порядок/статусы UI registry. Generated assets пересобраны из общих исходников; значимые пробелы Markdown hard break в Tiptap bundle сохранены через узкое правило `.gitattributes`.
+- Локальные проверки: 215 tests (HR link, SQLite compatibility, employee API, identity, scenarios/branching, scheduler, portability), compileall, ruff F821, docs-check, npm ci, typecheck, check:registry (80 записей), build и repeated build с clean worktree, diff-check -> passed. Multiline parser проверен на initial load и setContent.
+- CI: [PR #13](https://github.com/Deddedd11101/hr_bot/actions/runs/34359569018) и [PR #14](https://github.com/Deddedd11101/hr_bot/actions/runs/34360009774) -> success. Первый deploy `34359705697` отменен до SSH для исправления UI registry; сервер им не менялся.
+- Config: read-only getMe подтвердил `@ze_hr_bot`; отсутствовавший `TELEGRAM_BOT_USERNAME=ze_hr_bot` добавлен в `/etc/systemd/system/hr-bot-web.service.d/30-bot-username.conf` и аналогичный worker drop-in через [config run](https://github.com/Deddedd11101/hr_bot/actions/runs/34359441390). Токены и HR connection не менялись. Значение активировано штатным deploy restart; rollback этой config-правки — удалить только эти два созданных drop-in, daemon-reload и согласованный restart.
+- Backup: `backups/hr_bot.before-deploy.20260909-135544.db` создан через SQLite backup и проверен quick_check; JSON: `backups/scenarios.before-deploy.20260909-135544.json`; scenario fingerprint unchanged.
+- [Post-deploy read-only check](https://github.com/Deddedd11101/hr_bot/actions/runs/34360369486): web/worker/WireGuard/Caddy active; runtime username web/worker совпадает с getMe; token env web/worker совпадает; свежих Telegram/network traceback в worker logs не найдено.
+- HTTPS `/app/employees`, `/app/flows/workspace-v2`, `/app/settings` -> 303; сертификат проверен обычным HTTPS-клиентом. Telegram API reachable; фактическая доставка сообщения этим не подтверждается.
+- Ручная приемка остается: войти в админку, проверить visual editor (форматирование, переносы, сохранение/повторное открытие и доставка), HR link создать/подтвердить самим владельцем, проверить submenu/Назад в одном Telegram-сообщении и fallback. Реальная HR-привязка агентом не выполнялась. Browser smoke ограничен login page без авторизованной сессии.
+- Остаточные предупреждения: npm audit 7 findings (2 low, 1 moderate, 4 high), large graph chunk; вне scope этой интеграции. Unrelated dirty docs в `D:\HRBot\hr_bot_stage_pipeline` не менялись.
+
 ### 2026-09-04 01:55 MSK - app deploy - scenario graph first-open fix
 
 - Deploy ref: `stage`.
