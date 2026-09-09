@@ -1,5 +1,18 @@
 import React from "react";
-import { BriefcaseBusiness, GripVertical, Save, Shield, Trash2 } from "lucide-react";
+import {
+  BriefcaseBusiness,
+  Check,
+  Clock3,
+  Copy,
+  ExternalLink,
+  GripVertical,
+  Link2,
+  RefreshCw,
+  Save,
+  Shield,
+  Trash2,
+  Unlink,
+} from "lucide-react";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -30,11 +43,16 @@ import { cn } from "@/lib/utils";
 type HrSettings = {
   hr_name: string;
   telegram_user_id: string;
+  telegram_username?: string;
+  telegram_connection_state: "disconnected" | "pending" | "connected";
+  telegram_link_expires_at: string | null;
   notification_recipient_ids: string;
   notify_scenario_completed: boolean;
   notify_test_task_received: boolean;
   notify_user_actions: boolean;
   default_menu_set_id: number | null;
+  default_employee_menu_set_id: number | null;
+  default_candidate_menu_set_id: number | null;
 };
 
 type ScenarioOption = {
@@ -97,6 +115,13 @@ type Workspace = {
   employee_stage_options: SelectOption[];
   candidate_stage_options: SelectOption[];
   accounts: AdminAccount[];
+};
+
+type HrLinkResponse = {
+  workspace: Workspace;
+  deep_link: string | null;
+  expires_at: string;
+  requires_telegram_bot_username: boolean;
 };
 
 type DraftButton = {
@@ -359,6 +384,9 @@ export function SettingsPage({ apiUrl }: SettingsPageProps) {
   const [draggedPositionId, setDraggedPositionId] = React.useState<number | null>(null);
   const [dragOverPositionId, setDragOverPositionId] = React.useState<number | null>(null);
   const [positionsReordering, setPositionsReordering] = React.useState(false);
+  const [hrLink, setHrLink] = React.useState<{ url: string; expiresAt: string } | null>(null);
+  const [hrLinkBusy, setHrLinkBusy] = React.useState(false);
+  const [hrLinkCopied, setHrLinkCopied] = React.useState(false);
 
   React.useEffect(() => {
     requestJson(apiUrl)
@@ -419,6 +447,77 @@ export function SettingsPage({ apiUrl }: SettingsPageProps) {
     setWorkspace(normalizeWorkspace(nextWorkspace));
     return nextWorkspace;
   };
+
+  const createHrLink = async () => {
+    setHrLinkBusy(true);
+    setError("");
+    setMessage("");
+    setHrLink(null);
+    try {
+      const result = (await requestJson("/api/settings/hr/telegram-link", { method: "POST" })) as unknown as HrLinkResponse;
+      setWorkspace(normalizeWorkspace(result.workspace));
+      if (result.deep_link) {
+        setHrLink({ url: result.deep_link, expiresAt: result.expires_at });
+        setMessage("Ссылка подключения создана");
+      } else {
+        setError(
+          result.requires_telegram_bot_username
+            ? "Ссылка не создана: на сервере не настроено имя Telegram-бота. Обратитесь к администратору конфигурации."
+            : "Ссылка подключения не создана: backend не вернул ссылку.",
+        );
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Не удалось создать ссылку подключения");
+    } finally {
+      setHrLinkBusy(false);
+    }
+  };
+
+  const rebindHr = async () => {
+    if (await disconnectHr()) {
+      await createHrLink();
+    }
+  };
+
+  const disconnectHr = async () => {
+    setHrLinkBusy(true);
+    setError("");
+    setMessage("");
+    try {
+      const nextWorkspace = await requestJson("/api/settings/hr/telegram-link", { method: "DELETE" });
+      setWorkspace(normalizeWorkspace(nextWorkspace));
+      setHrLink(null);
+      setMessage("HR отключен от Telegram");
+      return true;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Не удалось отключить HR");
+      return false;
+    } finally {
+      setHrLinkBusy(false);
+    }
+  };
+
+  const copyHrLink = async () => {
+    if (!hrLink) return;
+    try {
+      await navigator.clipboard.writeText(hrLink.url);
+      setHrLinkCopied(true);
+      window.setTimeout(() => setHrLinkCopied(false), 1800);
+    } catch {
+      setError("Не удалось скопировать ссылку. Откройте ее и скопируйте вручную.");
+    }
+  };
+
+  const editableHrSettingsPayload = (settings: HrSettings) => ({
+    hr_name: settings.hr_name,
+    notification_recipient_ids: settings.notification_recipient_ids,
+    notify_scenario_completed: settings.notify_scenario_completed,
+    notify_test_task_received: settings.notify_test_task_received,
+    notify_user_actions: settings.notify_user_actions,
+    default_menu_set_id: settings.default_menu_set_id,
+    default_employee_menu_set_id: settings.default_employee_menu_set_id,
+    default_candidate_menu_set_id: settings.default_candidate_menu_set_id,
+  });
 
   const savePositionOrder = async (nextPositions: Position[]) => {
     if (!workspace || positionsReordering) return;
@@ -553,16 +652,111 @@ export function SettingsPage({ apiUrl }: SettingsPageProps) {
             <FieldLabel>Имя HR</FieldLabel>
             <Input value={workspace.hr_settings.hr_name} onChange={(event) => updateHrSettings({ hr_name: event.target.value })} placeholder="Иван Петров" autoComplete="name" />
           </Field>
-          <Field>
-            <FieldLabel>Основной ID получателя</FieldLabel>
-            <Input value={workspace.hr_settings.telegram_user_id} onChange={(event) => updateHrSettings({ telegram_user_id: event.target.value })} placeholder="123456789" inputMode="numeric" autoComplete="off" />
-          </Field>
         </FieldGroup>
         <div className="flex justify-end">
-          <Button onClick={() => setWorkspaceFromApi(requestJson("/api/settings/hr", { method: "POST", body: JSON.stringify(workspace.hr_settings) }), "HR-настройки сохранены")}>
+          <Button onClick={() => setWorkspaceFromApi(requestJson("/api/settings/hr", { method: "POST", body: JSON.stringify(editableHrSettingsPayload(workspace.hr_settings)) }), "HR-настройки сохранены")}>
             <Save data-icon="inline-start" />
             Сохранить настройки
           </Button>
+        </div>
+
+        <div className="grid gap-4 rounded-lg border border-border bg-muted/35 p-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 text-sm font-semibold">
+                <Link2 className="size-4 text-muted-foreground" />
+                Подключение HR к Telegram
+              </div>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Подключение подтверждается переходом по одноразовой ссылке в Telegram.
+              </p>
+            </div>
+            <span
+              className={cn(
+                "inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium",
+                workspace.hr_settings.telegram_connection_state === "connected"
+                  ? "border-primary/30 bg-primary/10 text-primary"
+                  : workspace.hr_settings.telegram_connection_state === "pending"
+                    ? "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300"
+                    : "border-border bg-background text-muted-foreground",
+              )}
+            >
+              {workspace.hr_settings.telegram_connection_state === "connected"
+                ? "Подключен"
+                : workspace.hr_settings.telegram_connection_state === "pending"
+                  ? "Ожидает подключения"
+                  : "Не подключен"}
+            </span>
+          </div>
+
+          {workspace.hr_settings.telegram_connection_state === "connected" ? (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-primary/20 bg-primary/5 px-3 py-2 text-sm">
+              <span>
+                {workspace.hr_settings.telegram_username
+                  ? `@${workspace.hr_settings.telegram_username}`
+                  : `Telegram ID: ${workspace.hr_settings.telegram_user_id}`}
+              </span>
+              <div className="flex flex-wrap gap-2">
+                <ConfirmAction
+                  title="Перепривязать HR к другому Telegram?"
+                  description="Текущий HR будет отключен сразу. После этого создастся новая одноразовая ссылка подключения. До подтверждения нового аккаунта HR-уведомления отправляться не будут."
+                  onConfirm={rebindHr}
+                >
+                  <Button variant="outline" size="sm" disabled={hrLinkBusy}>
+                    <RefreshCw data-icon="inline-start" /> Перепривязать
+                  </Button>
+                </ConfirmAction>
+                <ConfirmAction
+                  title="Отключить HR от Telegram?"
+                  description="Уведомления HR перестанут отправляться, пока аккаунт не будет подключен снова."
+                  onConfirm={disconnectHr}
+                >
+                  <Button variant="outline" size="sm" disabled={hrLinkBusy}>
+                    <Unlink data-icon="inline-start" /> Отключить
+                  </Button>
+                </ConfirmAction>
+              </div>
+            </div>
+          ) : (
+            <div className="grid gap-3">
+              {workspace.hr_settings.telegram_link_expires_at && workspace.hr_settings.telegram_connection_state === "disconnected" ? (
+                <Alert variant="destructive">
+                  <Clock3 />
+                  <AlertTitle>Ссылка подключения истекла</AlertTitle>
+                  <AlertDescription>Создайте новую ссылку и откройте ее в Telegram.</AlertDescription>
+                </Alert>
+              ) : null}
+              <div className="flex flex-wrap gap-2">
+                <Button onClick={createHrLink} disabled={hrLinkBusy}>
+                  <Link2 data-icon="inline-start" /> Создать ссылку подключения
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {hrLink ? (
+            <div className="grid gap-3 rounded-md border border-amber-500/30 bg-amber-500/5 p-3">
+              <div className="text-sm font-medium">Откройте ссылку в Telegram в течение 15 минут</div>
+              <div className="flex min-w-0 flex-wrap gap-2">
+                <Input value={hrLink.url} readOnly aria-label="Ссылка подключения HR" className="min-w-0 flex-1" />
+                <Button variant="outline" onClick={copyHrLink}>
+                  {hrLinkCopied ? <Check data-icon="inline-start" /> : <Copy data-icon="inline-start" />}
+                  {hrLinkCopied ? "Скопировано" : "Копировать"}
+                </Button>
+                <Button
+                  variant="outline"
+                  render={
+                    <a href={hrLink.url} target="_blank" rel="noreferrer" />
+                  }
+                >
+                  <ExternalLink data-icon="inline-start" /> Открыть
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Действует до {new Date(hrLink.expiresAt).toLocaleString("ru-RU")}. После подтверждения обновите страницу, если статус не изменился.
+              </p>
+            </div>
+          ) : null}
         </div>
       </SettingsCard>
 
