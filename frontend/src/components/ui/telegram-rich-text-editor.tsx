@@ -24,6 +24,14 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
@@ -280,6 +288,9 @@ export function TelegramRichTextEditor({
   insertRef,
 }: TelegramRichTextEditorProps) {
   const lastEmittedValue = React.useRef(value);
+  const contextLinkSelection = React.useRef<{ from: number; to: number } | null>(null);
+  const [contextLinkOpen, setContextLinkOpen] = React.useState(false);
+  const [contextLinkHref, setContextLinkHref] = React.useState("");
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
@@ -345,6 +356,33 @@ export function TelegramRichTextEditor({
     editor.chain().focus().toggleMark(action).run();
   };
 
+  const openContextLink = () => {
+    const selection = editor.state.selection;
+    contextLinkSelection.current = { from: selection.from, to: selection.to };
+    setContextLinkHref(editor.getAttributes("link").href || "");
+    setContextLinkOpen(true);
+  };
+
+  const applyContextLink = () => {
+    const href = contextLinkHref.trim();
+    const selection = contextLinkSelection.current;
+    if (!selection || !isSafeLink(href)) return;
+
+    const chain = editor.chain().focus().setTextSelection(selection);
+    if (selection.from === selection.to) {
+      chain
+        .insertContent({
+          type: "text",
+          text: "текст ссылки",
+          marks: [{ type: "link", attrs: { href } }],
+        })
+        .run();
+    } else {
+      chain.setLink({ href }).run();
+    }
+    setContextLinkOpen(false);
+  };
+
   return (
     <div className={cn("grid min-w-0 gap-2", className)}>
       <EditorToolbar editor={editor} />
@@ -381,6 +419,10 @@ export function TelegramRichTextEditor({
             <Code2 />
             Код
           </ContextMenuItem>
+          <ContextMenuItem onClick={openContextLink}>
+            <Link2 />
+            Ссылка
+          </ContextMenuItem>
           <ContextMenuSeparator />
           <ContextMenuItem onClick={() => editor.chain().focus().undo().run()} disabled={!editor.can().undo()}>
             <Undo2 />
@@ -392,6 +434,33 @@ export function TelegramRichTextEditor({
           </ContextMenuItem>
         </ContextMenuContent>
       </ContextMenu>
+      <Dialog open={contextLinkOpen} onOpenChange={setContextLinkOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Добавить ссылку</DialogTitle>
+            <DialogDescription>
+              Выделите текст заранее или вставьте ссылку в позицию курсора.
+            </DialogDescription>
+          </DialogHeader>
+          <Input
+            value={contextLinkHref}
+            onChange={(event) => setContextLinkHref(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") applyContextLink();
+            }}
+            placeholder="https://example.com"
+            autoFocus
+          />
+          <DialogFooter>
+            <Button type="button" variant="secondary" onClick={() => setContextLinkOpen(false)}>
+              Отмена
+            </Button>
+            <Button type="button" onClick={applyContextLink} disabled={!isSafeLink(contextLinkHref.trim())}>
+              Применить
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
