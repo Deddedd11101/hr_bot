@@ -34,6 +34,19 @@ source_of_truth: true
 
 ## Записи
 
+### 2026-09-10 01:04 MSK - app deploy - manual safe HTML and shared Telegram editor
+
+- Deploy ref: `stage`; deployed SHA: `91ef6229d85196a6920954d15552f52b8ac769f0`.
+- [Deploy Stage 34410095219](https://github.com/Deddedd11101/hr_bot/actions/runs/34410095219) -> success; [integration CI](https://github.com/Deddedd11101/hr_bot/actions/runs/34409998046) -> success.
+- PR #16 (`6f289ea7`) и #17 (`8d87cfa`) объединены backend -> frontend через PR #18. Ручная отправка использует TelegramSafeHTML и explicit HTML parse mode; история sent/failed сохраняет исходный текст. Шаблонные теги ручного сообщения остаются буквальными. Текст inline-меню также sanitizes перед send/edit.
+- Shared visual editor подключен к карточке, `/app/messages` и тексту меню; context-menu link dialog сохраняет выделение. Общие Vite assets пересобраны. Schema, storage и deploy workflow не менялись.
+- Checks: 194 backend tests; дополнительно 3 целевых теста plain/safe HTML/failed history после усиления проверок; compileall app/tests/tools, ruff F821, docs-check, TypeScript, UI registry (80 записей), npm ci/build, повторная сборка с clean assets, diff-check -> passed.
+- Backup создан и quick_check пройден; JSON snapshot создан; scenario fingerprint unchanged. Пути `backups/hr_bot.before-deploy.*.db` и `backups/scenarios.before-deploy.*.json` в run частично скрыты GitHub masking; точный путь проверять на сервере, а не восстанавливать из маски.
+- [Read-only postflight 34410293277](https://github.com/Deddedd11101/hr_bot/actions/runs/34410293277) -> success: web/worker/WireGuard/Caddy active, Telegram getMe доступен, username `ze_hr_bot` совпадает с web/worker env, token env одинаковый; свежих TelegramNetworkError/Request timeout/Traceback/Unclosed client session в worker log не найдено.
+- HTTPS `/app/employees`, `/app/messages`, `/app/bot-menu`, `/app/flows/workspace-v2` -> 303. Реальное сообщение сотруднику и массовая рассылка не выполнялись.
+- Ручная приемка: отправить выбранному тестовому получателю plain и formatted message, проверить форматирование в Telegram и sent history; проверить редактор текста меню и ссылку через context menu. Автоматические failed-history кейсы проверены локально без изменения stage-данных.
+- Known warnings: npm audit 7 findings (2 low, 1 moderate, 4 high), large graph chunk; вне scope. Unrelated dirty docs основного integration worktree не менялись.
+
 ### 2026-09-09 16:57 MSK - app deploy / config - Telegram editor, HR linking and inline menus
 
 - Deploy ref: `stage`; deployed SHA: `8f50f9353fbff5a868c2638fc0fd74dc236ebd0e`.
