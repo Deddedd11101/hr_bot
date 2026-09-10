@@ -57,8 +57,8 @@ source_of_truth: true
 
 Текущее поведение deploy:
 
-1. автоматически ждет successful `CI` на `main` или запускается вручную через `workflow_dispatch`;
-2. для ручного запуска принимает `ref` — branch, tag или commit SHA;
+1. запускается только вручную через `workflow_dispatch` (проверено 2026-09-11 в `origin/main` и `origin/stage`);
+2. принимает `ref` — branch, tag или commit SHA, default `stage`; автоматического deploy после CI на main нет;
 3. перед SSH выполняет preflight на выбранном ref:
    - `python -m pip install -r requirements.txt`;
    - `python -m compileall app`;
@@ -212,11 +212,13 @@ git push origin stage
 
 ### Обычный путь
 
-1. Merge нужный код в `main`.
-2. Дождаться successful GitHub `CI`.
-3. Дать `Deploy Stage` выполниться автоматически.
-4. Подтвердить, что оба systemd services active.
-5. Выполнить smoke checks против stage HTTP surface.
+1. Исполнителям подготовить проверенные PR с зависимостями и точными SHA.
+2. Назначенному интегратору объединить согласованный пакет в `stage` и проверить CI/общий build.
+3. Интегратору запустить `Deploy Stage` вручную с `ref=stage`.
+4. Подтвердить deployed SHA, backup, состояние сервисов и smoke checks.
+5. Добавить запись в [[stage-change-log]] и отдельно указать результат пользовательского сценария либо «не проверено».
+
+Координатор читает результаты исполнителей и сверяет PR, но не получает полномочия deploy автоматически. Отчет содержит три независимых статуса: код проверен (SHA/checks), выложено (SHA/workflow), пользовательский сценарий проверен (действие/среда/результат). Сборка и HTTP availability не заменяют проверку интерфейса и Telegram-доставки.
 
 ### Ручной GitHub Actions deploy
 
@@ -229,14 +231,13 @@ git push origin stage
 5. выбрать workflow `Deploy Stage`;
 6. нажать `Run workflow`;
 7. указать `ref`, например:
-   - `main`;
    - `stage`;
    - `integration/sprint-YYYY-MM-DD`;
    - commit SHA;
 8. дождаться successful preflight и deploy jobs;
 9. добавить запись в [[stage-change-log]].
 
-Субагентам нельзя считать интерактивный SSH обязательным или нормальным deploy path. Если workflow `Deploy Stage` доступен, отсутствие root SSH у субагента не является блокером: он должен подготовить pushable ref, влить его в `stage`/integration branch и запустить/запросить запуск workflow.
+Исполнитель передает pushable ref и PR интегратору. Только назначенный интегратор объединяет пакет и запускает workflow; root SSH исполнителю не нужен.
 
 Если workflow падает на `Stage worktree is dirty`, не делать `git reset --hard` вслепую. Сначала проверить, какие ручные изменения есть на сервере, и решить, что из них надо сохранить.
 
@@ -272,7 +273,7 @@ git push origin stage
 1. открыть `Actions`;
 2. выбрать `Deploy Stage`;
 3. нажать `Run workflow`;
-4. выбрать branch, где лежит workflow file, обычно `main`;
+4. выбрать проверенную branch с workflow file; это отдельный выбор от input `ref`. На 2026-09-11 main и stage отличаются dirty-check: main учитывает untracked, stage только tracked. Не обходить отказ удалением неизвестных файлов;
 5. в input `ref` указать `stage` или нужный integration ref;
 6. нажать `Run workflow`;
 7. открыть run и дождаться двух jobs:
@@ -293,20 +294,7 @@ git push origin stage
 
 ### Ручной SSH-путь
 
-Использовать только если automation недоступна или если нужно осознанно выкатить на stage не-`main` branch.
-
-```bash
-cd /opt/hr_bot
-git fetch --prune origin
-git checkout -B stage-deploy origin/main
-.venv/bin/python -m pip install -r requirements.txt
-systemctl restart hr-bot-web
-systemctl restart hr-bot-worker
-systemctl is-active --quiet hr-bot-web
-systemctl is-active --quiet hr-bot-worker
-```
-
-Если на stage выкатывается branch кроме `main`, это explicit deviation от default deploy model и должно быть записано в handoff.
+Только аварийная операция назначенного интегратора при недоступности automation и явном разрешении пользователя. Произвольный ref поддерживается штатным workflow и сам по себе не требует SSH. Ручная операция обязана сохранить проверки dirty state, verified SQLite backup, snapshot сценариев, объединенный ref и проверки после restart. Упрощенный checkout/restart без этих защит не является допустимым deploy path.
 
 ## Smoke-проверки
 
