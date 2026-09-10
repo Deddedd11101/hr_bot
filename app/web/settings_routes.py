@@ -531,6 +531,17 @@ def create_position_api(
     slug = normalize_position_slug(str(payload.get("slug") or "").strip() or title)
     if not slug:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Не удалось определить slug должности")
+    normalized_title_slug = normalize_position_slug(title)
+    duplicate_title = next(
+        (
+            item
+            for item in db.query(Position).all()
+            if normalize_position_slug(item.title) == normalized_title_slug
+        ),
+        None,
+    )
+    if duplicate_title is not None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Должность с таким названием уже существует")
     if db.query(Position).filter(Position.slug == slug).first() is not None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Должность с таким slug уже существует")
     last_position = db.query(Position).order_by(Position.sort_order.desc(), Position.id.desc()).first()
@@ -561,6 +572,17 @@ def update_position_api(
     next_slug = normalize_position_slug(str(payload.get("slug") or "").strip() or position.slug or next_title)
     if not next_slug:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Не удалось определить slug должности")
+    normalized_title_slug = normalize_position_slug(next_title)
+    duplicate_title = next(
+        (
+            item
+            for item in db.query(Position).all()
+            if item.id != position_id and normalize_position_slug(item.title) == normalized_title_slug
+        ),
+        None,
+    )
+    if duplicate_title is not None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Должность с таким названием уже существует")
     duplicate = db.query(Position).filter(Position.slug == next_slug, Position.id != position_id).first()
     if duplicate is not None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Должность с таким slug уже существует")
