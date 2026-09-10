@@ -168,21 +168,30 @@ function ComposeDialog({
                 insertRef={messageInsertRef}
               />
             </label>
-            <div className="flex flex-wrap gap-2">
-              {["{name}", "{full_name}"]
-                .concat(workspace.document_tag_titles.map((title) => `{doc:${title}}`))
-                .map((token) => (
+            <div className="grid gap-2 rounded-lg border border-border/70 bg-muted/35 p-2">
+              <div className="text-xs font-medium text-muted-foreground">Доступные теги</div>
+              <div className="flex flex-wrap gap-1.5">
+              {[
+                ["Имя", "{first_name}"],
+                ["ФИО", "{employee_full_name}"],
+                ["Должность", "{position}"],
+                ["Первый рабочий день", "{first_workday}"],
+              ]
+                .concat(workspace.document_tag_titles.map((title) => [`Документ: ${title}`, `{doc:${title}}`]))
+                .map(([label, token]) => (
                   <Button
                     key={token}
                     type="button"
                     variant="secondary"
                     size="xs"
+                    title={token}
                     onMouseDown={(event) => event.preventDefault()}
                     onClick={() => messageInsertRef.current?.(token)}
                   >
-                    {token}
+                    {label}
                   </Button>
                 ))}
+              </div>
             </div>
             <TargetPicker workspace={workspace} targets={targets} onChange={updateTargets} />
             {preview ? (
