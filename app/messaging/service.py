@@ -23,6 +23,7 @@ from ..scenario_engine import (
     handle_file_response,
     handle_text_response,
     normalize_test_task_answer_file_category,
+    render_menu_text,
     matches_role_scope,
     sanitize_telegram_safe_html,
     start_scenario,
@@ -352,7 +353,7 @@ async def send_menu(
     chat_id = get_primary_chat_id(employee, db=db)
     if not chat_id:
         return
-    safe_text = sanitize_telegram_safe_html(text)
+    safe_text = render_menu_text(text, employee)
     options = menu_button_options(db, employee)
     if not options:
         return
@@ -377,19 +378,46 @@ async def send_menu(
     await messenger.send_menu(chat_id=chat_id, text=safe_text, buttons=[label for label, _ in options])
 
 
-async def show_main_menu(messenger: MessengerClient, db: Session, employee: Employee, text: str) -> bool:
+async def send_root_menu(messenger: MessengerClient, db: Session, employee: Employee, text: str) -> bool:
     root_set = resolve_root_menu_set(db, employee)
-    if not root_set:
+    chat_id = get_primary_chat_id(employee, db=db)
+    if not root_set or not chat_id:
         return False
     set_current_menu_set(db, employee, root_set, path_ids=[root_set.id])
-    await send_menu(
-        messenger,
-        db,
-        employee,
-        root_set.description or root_set.title or text,
-        edit_message_id=employee.current_menu_message_id,
-    )
+    buttons = [
+        button.label.strip()
+        for button in db.query(BotMenuButton)
+        .filter(BotMenuButton.menu_set_id == root_set.id)
+        .order_by(BotMenuButton.sort_order, BotMenuButton.id)
+        .all()
+        if button.label and button.label.strip()
+    ]
+    if not buttons:
+        return False
+    await messenger.send_menu(chat_id=chat_id, text=render_menu_text(root_set.description or root_set.title or text, employee), buttons=buttons)
+    employee.current_menu_message_id = None
+    db.commit()
     return True
+
+
+async def show_main_menu(messenger: MessengerClient, db: Session, employee: Employee, text: str) -> bool:
+    if employee.current_menu_message_id:
+        await clear_nested_menu(messenger, db, employee)
+    return await send_root_menu(messenger, db, employee, text)
+
+
+async def clear_nested_menu(messenger: MessengerClient, db: Session, employee: Employee) -> None:
+    chat_id = get_primary_chat_id(employee, db=db)
+    message_id = employee.current_menu_message_id
+    if chat_id and message_id:
+        deleter = getattr(messenger, "delete_message", None)
+        if deleter is not None:
+            try:
+                await deleter(chat_id, int(message_id))
+            except Exception:
+                logger.debug("Could not delete stale inline menu", exc_info=True)
+    employee.current_menu_message_id = None
+    db.commit()
 
 
 async def handle_menu_navigation(messenger: MessengerClient, db: Session, employee: Employee, text: str) -> bool:
@@ -404,7 +432,7 @@ async def handle_menu_navigation(messenger: MessengerClient, db: Session, employ
         return False
     path_ids = _deserialize_menu_path(employee)
     if len(path_ids) <= 1:
-        return await show_main_menu(messenger, db, employee, "Вы уже в главном меню.")
+        return await show_main_menu(messenger, db, employee, "Главное меню открыто.")
 
     previous_set_id = path_ids[-2]
     previous_set = db.get(BotMenuSet, previous_set_id)
@@ -416,6 +444,9 @@ async def handle_menu_navigation(messenger: MessengerClient, db: Session, employ
             "Предыдущий раздел больше недоступен. Открываю главное меню.",
         )
     set_current_menu_set(db, employee, previous_set, path_ids=path_ids[:-1])
+    root_set = resolve_root_menu_set(db, employee)
+    if root_set and previous_set.id == root_set.id:
+        return await show_main_menu(messenger, db, employee, "Главное меню открыто.")
     await send_menu(
         messenger,
         db,
@@ -511,6 +542,19 @@ async def handle_menu_button(messenger: MessengerClient, db: Session, employee: 
         .first()
     )
     return await _handle_menu_button_record(messenger, db, employee, menu_set, button) if button else False
+
+
+async def handle_root_menu_command(messenger: MessengerClient, db: Session, employee: Employee, text: str) -> bool:
+    root_set = resolve_root_menu_set(db, employee)
+    if not root_set:
+        return False
+    button = (
+        db.query(BotMenuButton)
+        .filter(BotMenuButton.menu_set_id == root_set.id, BotMenuButton.label == text.strip())
+        .order_by(BotMenuButton.sort_order, BotMenuButton.id)
+        .first()
+    )
+    return await _handle_menu_button_record(messenger, db, employee, root_set, button) if button else False
 
 
 async def handle_menu_callback(
@@ -700,6 +744,10 @@ async def handle_text_event(
     if access.state != "ok" or access.employee is None:
         return access.state
     employee = access.employee
+    # Reply-keyboard root labels are reserved commands. This check happens
+    # before free-text scenario handling so a menu label cannot be saved as an answer.
+    if await handle_root_menu_command(messenger, db, employee, text):
+        return "handled"
     if text.strip() == SCENARIO_BACK_BUTTON_TEXT:
         if await handle_back_response(messenger, db, employee):
             return "handled"

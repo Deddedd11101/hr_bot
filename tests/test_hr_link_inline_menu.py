@@ -23,6 +23,7 @@ class InlineMessenger:
         self.sent_texts: list[tuple[str, str]] = []
         self.inline_sends: list[dict] = []
         self.inline_edits: list[dict] = []
+        self.reply_menus: list[dict] = []
 
     async def send_text(self, chat_id: str, text: str, reply_markup=None) -> None:
         self.sent_texts.append((chat_id, text))
@@ -39,7 +40,7 @@ class InlineMessenger:
         return SimpleNamespace(message_id=message_id)
 
     async def send_menu(self, chat_id: str, text: str, buttons: list[str]) -> None:
-        raise AssertionError("inline menu path expected")
+        self.reply_menus.append({"chat_id": chat_id, "text": text, "buttons": buttons})
 
     async def send_document_path(self, *args, **kwargs) -> None:
         return None
@@ -199,7 +200,8 @@ class HrLinkAndInlineMenuTests(unittest.TestCase):
             from app.messaging.service import show_main_menu
 
             asyncio.run(show_main_menu(messenger, db, employee, "ignored"))
-            self.assertEqual(messenger.inline_sends[0]["text"], "<b>Главное</b> &amp; raw")
+            self.assertEqual(messenger.reply_menus[0]["text"], "<b>Главное</b> &amp; raw")
+            self.assertEqual(messenger.reply_menus[0]["buttons"], ["Документы"])
             db.refresh(employee)
             employee.current_menu_set_id = root.id
             employee.current_menu_path = str(root.id)
@@ -224,6 +226,21 @@ class HrLinkAndInlineMenuTests(unittest.TestCase):
             self.assertEqual(messenger.inline_edits[0]["message_id"], 700)
             self.assertEqual(messenger.inline_edits[0]["text"], "Документы")
             self.assertIn(("Назад", "menu:back"), messenger.inline_edits[0]["buttons"])
+
+    def test_inline_menu_does_not_send_keyboard_cleanup_message(self) -> None:
+        from app.messaging.telegram import TelegramMessenger
+
+        class Bot:
+            def __init__(self):
+                self.calls = []
+
+            async def send_message(self, **kwargs):
+                self.calls.append(kwargs)
+                return SimpleNamespace(message_id=1)
+
+        bot = Bot()
+        asyncio.run(TelegramMessenger(bot).send_inline_menu("1", "Nested", [("x", "menu:x")]))
+        self.assertEqual(len(bot.calls), 1)
 
 
 if __name__ == "__main__":

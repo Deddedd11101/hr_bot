@@ -34,6 +34,16 @@ Scenario engine превращает scenario templates плюс employee state 
 - `employee_document_links` / `employee_files` — персональные document slots для тегов вида `{doc:...}` и актуального resume slot.
 - `document_library_items` — shared documents из `/app/documents`, которые можно переиспользовать как вложение шага.
 
+## Telegram message templates
+
+Тексты шагов, уведомлений и меню используют общий безопасный Telegram HTML renderer. Старый plain text остается совместимым. В сценариях доступны `{employee_full_name}`, `{position}`, `{first_workday}` и `{first_name}`; в уведомлениях дополнительно доступен `{resume}`/`{резюме}`. В menu set `menu_text` доступны `{employee_full_name}`, `{full_name}`, `{first_name}`, `{position}` и `{first_workday}`. Значения карточки экранируются перед вставкой.
+
+`{first_name}` берет отдельное кадровое поле `employees.first_name`. Для старых карточек без этого поля используется последнее слово ФИО как legacy fallback для принятого формата `Фамилия Имя`; первое слово ФИО и Telegram display name именем не считаются. Новые формы должны заполнять отдельное поле явно.
+
+В тексте сообщений разрешен ограниченный HTML subset, включая numeric `<tg-emoji emoji-id="...">`. Custom emoji не переносится автоматически из Premium-клиента: inline-кнопки и reply-клавиатура используют обычный emoji fallback.
+
+Корневой menu set показывается постоянной reply-клавиатурой. Вложенные sets показываются inline-сообщением и редактируют его при переходах; reply-клавиатура при этом не меняется. Точные labels корневой клавиатуры зарезервированы как команды меню и обрабатываются до свободного текстового ответа сценария, чтобы label не сохранился случайно как ответ.
+
 ## Audience targeting
 
 - `employee_scope` продолжает отвечать за coarse split `кандидаты / сотрудники / все`.
