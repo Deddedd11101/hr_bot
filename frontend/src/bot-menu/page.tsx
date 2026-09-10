@@ -1,5 +1,5 @@
 import React from "react";
-import { FolderOpen, Plus, Save, Trash2, X } from "lucide-react";
+import { FolderOpen, Keyboard, MessageSquareText, Plus, Save, Tag, Trash2, X } from "lucide-react";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -80,6 +80,17 @@ type Workspace = {
   available_scenarios: ScenarioOption[];
   document_options?: SelectOption[];
   employee_options?: { id: number; label: string; audience: "employee" | "candidate" }[];
+  menu_text_tags?: TemplateTag[];
+  telegram_message_capabilities?: {
+    safe_html?: boolean;
+    custom_emoji?: Record<string, unknown>;
+  };
+};
+
+type TemplateTag = {
+  label: string;
+  template: string;
+  description?: string;
 };
 
 type DraftButton = {
@@ -159,6 +170,7 @@ function normalizeWorkspace(workspace: Workspace): Workspace {
       },
     employee_options: workspace.employee_options || [],
     document_options: workspace.document_options || [],
+    menu_text_tags: workspace.menu_text_tags || [],
     menu_sets: (workspace.menu_sets || []).map((menuSet) => ({
       ...menuSet,
       menu_text: menuSet.menu_text ?? menuSet.description ?? "",
@@ -238,6 +250,33 @@ function StatusAlert({ message, type }: { message: string; type: "success" | "er
       <AlertTitle>{type === "success" ? "Сохранено" : "Ошибка"}</AlertTitle>
       <AlertDescription>{message}</AlertDescription>
     </Alert>
+  );
+}
+
+function TemplateTagButtons({ tags, onInsert }: { tags: TemplateTag[]; onInsert: (template: string) => void }) {
+  if (!tags.length) return null;
+  return (
+    <div className="grid gap-2 rounded-lg border border-border/70 bg-muted/35 p-2">
+      <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+        <Tag className="size-3.5" />
+        Доступные теги
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {tags.map((tag) => (
+          <Button
+            key={tag.template}
+            type="button"
+            variant="outline"
+            size="xs"
+            title={tag.description || tag.template}
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => onInsert(tag.template)}
+          >
+            {tag.label}
+          </Button>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -546,6 +585,71 @@ function rootBadges(workspace: Workspace, menuSetId: number) {
   return badges;
 }
 
+function rootPreviewMenuSet(workspace: Workspace, menuSet: MenuSet): MenuSet | null {
+  if (rootBadges(workspace, menuSet.id).length) return menuSet;
+  const rootId =
+    menuSet.employee_scope === "candidates"
+      ? workspace.hr_settings.default_candidate_menu_set_id
+      : menuSet.employee_scope === "employees"
+        ? workspace.hr_settings.default_employee_menu_set_id
+        : workspace.hr_settings.default_menu_set_id || workspace.hr_settings.default_employee_menu_set_id;
+  return workspace.menu_sets.find((item) => item.id === rootId) || null;
+}
+
+function MenuPreview({ workspace, menuSet }: { workspace: Workspace; menuSet: MenuSet }) {
+  const rootSet = rootPreviewMenuSet(workspace, menuSet);
+  const nestedSet = rootBadges(workspace, menuSet.id).length ? childMenuSets(workspace, menuSet.id)[0] || null : menuSet;
+  const mainButtons = rootSet?.buttons.filter((button) => button.label.trim()) || [];
+  const nestedButtons = nestedSet?.buttons.filter((button) => button.label.trim()) || [];
+  const previewText = nestedSet?.menu_text.replace(/<[^>]+>/g, "").trim() || "Текст сообщения набора";
+
+  return (
+    <div className="grid gap-3 rounded-xl border border-border bg-muted/25 p-3 lg:grid-cols-2">
+      <div className="grid gap-2 rounded-lg border border-border bg-background p-3">
+        <div className="flex items-center gap-2 text-sm font-semibold">
+          <Keyboard className="size-4 text-muted-foreground" />
+          Главное меню под вводом
+        </div>
+        <p className="text-xs text-muted-foreground">Reply-клавиатура root-набора: {rootSet?.title || "не назначена"}</p>
+        <div className="mt-auto grid grid-cols-2 gap-2 rounded-lg bg-muted/50 p-2">
+          {mainButtons.length ? (
+            mainButtons.map((button) => (
+              <div key={button.id} className="rounded-md border border-border bg-background px-2 py-2 text-center text-xs font-medium">
+                {button.label}
+              </div>
+            ))
+          ) : (
+            <div className="col-span-2 rounded-md border border-dashed border-border px-2 py-4 text-center text-xs text-muted-foreground">
+              В root-наборе пока нет кнопок
+            </div>
+          )}
+        </div>
+      </div>
+      <div className="grid gap-2 rounded-lg border border-border bg-background p-3">
+        <div className="flex items-center gap-2 text-sm font-semibold">
+          <MessageSquareText className="size-4 text-muted-foreground" />
+          Вложенные кнопки сообщения
+        </div>
+        <p className="text-xs text-muted-foreground">{nestedSet ? `Набор: ${nestedSet.title}` : "Откройте вложенный набор, чтобы увидеть его сообщение"}</p>
+        <p className="line-clamp-2 min-h-10 whitespace-pre-wrap text-xs text-muted-foreground">{previewText}</p>
+        <div className="grid gap-2 rounded-lg border border-border/70 bg-muted/35 p-2">
+          {nestedButtons.length ? (
+            nestedButtons.map((button) => (
+              <div key={button.id} className="rounded-md border border-border bg-background px-3 py-2 text-sm font-medium">
+                {button.label}
+              </div>
+            ))
+          ) : (
+            <div className="rounded-md border border-dashed border-border px-2 py-4 text-center text-xs text-muted-foreground">
+              В этом сообщении пока нет inline-кнопок
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function BotMenuPage({ apiUrl }: BotMenuPageProps) {
   const [workspace, setWorkspace] = React.useState<Workspace | null>(null);
   const [loading, setLoading] = React.useState(true);
@@ -555,6 +659,7 @@ export function BotMenuPage({ apiUrl }: BotMenuPageProps) {
   const [createMenuSetOpen, setCreateMenuSetOpen] = React.useState(false);
   const [buttonDrafts, setButtonDrafts] = React.useState<Record<number, DraftButton>>({});
   const [selectedMenuSetId, setSelectedMenuSetId] = React.useState<number | null>(() => readSelectedMenuSetId());
+  const menuTextInsertRef = React.useRef<((text: string) => void) | null>(null);
 
   React.useEffect(() => {
     requestJson(apiUrl)
@@ -860,10 +965,13 @@ export function BotMenuPage({ apiUrl }: BotMenuPageProps) {
                         })
                       }
                       placeholder="Текст, который увидит пользователь при открытии этого набора"
+                      insertRef={menuTextInsertRef}
                     />
-                    <p className="text-xs text-muted-foreground">
-                      Для root-набора это текст главного меню. Сохраняется через backend-поле menu_text.
-                    </p>
+                    <TemplateTagButtons
+                      tags={workspace.menu_text_tags || []}
+                      onInsert={(template) => menuTextInsertRef.current?.(template)}
+                    />
+                    <p className="text-xs text-muted-foreground">Сохраняется через backend-поле `menu_text`.</p>
                   </Field>
                   <div className="flex gap-2 xl:justify-end">
                     <Button variant="secondary" onClick={() => saveMenuSet(selectedMenuSet)}>
@@ -899,6 +1007,8 @@ export function BotMenuPage({ apiUrl }: BotMenuPageProps) {
                   <Badge variant="outline">{selectedMenuSet.buttons.length} кнопок</Badge>
                   <Badge variant="outline">{childMenuSets(workspace, selectedMenuSet.id).length} вложенных наборов</Badge>
                 </div>
+
+                <MenuPreview workspace={workspace} menuSet={selectedMenuSet} />
 
                 <div className="grid gap-4 rounded-lg border border-border bg-muted/35 p-3 lg:grid-cols-2">
                   <Field>

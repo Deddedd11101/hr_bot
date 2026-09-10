@@ -78,8 +78,10 @@ source_of_truth: true
 - The visual editor is used in scenario step text, step/button notifications, employee manual messages, `/app/messages`, and bot menu text. All of these surfaces must use the shared primitive rather than the legacy HTML-tag toolbar.
 - Existing Telegram text keeps line breaks and empty lines when loaded or replaced in the editor (`preserveWhitespace: full`); Link and Underline are registered only once.
 - Toolbar and context-menu formatting use the same safe mark set. The context-menu link dialog restores the saved editor selection before applying or inserting a safe URL.
+- Bot menu text exposes backend-provided tag buttons and previews the existing button order as two distinct Telegram surfaces: root reply keyboard below the input and nested inline buttons on the message.
 - Surveys do not receive this primitive.
 - The employee manual message endpoint passes text through the same safe HTML renderer before Telegram delivery; scenario template tags remain literal in this ad-hoc surface.
+- Custom emoji must not be represented by a frontend-only numeric-ID list. A selectable admin catalog requires a backend payload/storage contract; until that exists, keyboard labels keep ordinary emoji fallback.
 
 ## Current Migration Debt
 

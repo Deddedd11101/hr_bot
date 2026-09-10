@@ -685,6 +685,18 @@ export function EmployeeProfileSection(props: any) {
                             />
                         </Field>
                         <Field>
+                            <FieldLabel htmlFor="employee-first-name">Имя</FieldLabel>
+                            <Input
+                                id="employee-first-name"
+                                type="text"
+                                name="first_name"
+                                value={form.first_name || ""}
+                                onChange={handleChange}
+                                placeholder="Например, Галина"
+                                autoComplete="given-name"
+                            />
+                        </Field>
+                        <Field>
                             <FieldLabel htmlFor="employee-chat-handle">Telegram username</FieldLabel>
                             <Input
                                 id="employee-chat-handle"
