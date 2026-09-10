@@ -646,6 +646,7 @@ def _serialize_employee_view(item: dict, list_kind: str) -> dict:
     return {
         "id": employee.id,
         "full_name": employee.full_name or "",
+        "first_name": employee.first_name or "",
         "chat_id": item.get("chat_id") or "",
         "chat_handle": item.get("chat_handle") or "",
         "chat_link": item.get("chat_link"),
@@ -766,6 +767,7 @@ def _create_employee_record(
     db: Session,
     *,
     full_name: str,
+    first_name: str = "",
     chat_id: str,
     chat_handle: str = "",
     first_workday: str,
@@ -777,6 +779,7 @@ def _create_employee_record(
     normalized_candidate_stage = normalize_candidate_work_stage(candidate_work_stage)
     employee = Employee(
         full_name=full_name.strip() or None,
+        first_name=first_name.strip() or None,
         telegram_user_id=None,
         first_workday=first_day,
         created_at=utc_now(),
@@ -812,6 +815,7 @@ def _apply_employee_update(
     employee: Employee,
     *,
     full_name: str,
+    first_name: str | None = None,
     chat_id: str,
     chat_handle: str,
     first_workday: str,
@@ -852,6 +856,8 @@ def _apply_employee_update(
     }
 
     employee.full_name = full_name.strip() or None
+    if first_name is not None:
+        employee.first_name = first_name.strip() or None
     _apply_employee_telegram_identity(employee, chat_id=chat_id, chat_handle=chat_handle, db=db)
     employee.first_workday = first_day
     employee.desired_position = resolve_employee_position_value(db, desired_position)
@@ -1734,7 +1740,8 @@ def _build_employee_detail_payload(db: Session, employee: Employee) -> dict:
         },
         "employee": {
             "id": employee.id,
-            "full_name": employee.full_name or "",
+        "full_name": employee.full_name or "",
+        "first_name": employee.first_name or "",
             "chat_id": primary_chat_id or "",
             "chat_handle": get_public_chat_handle(employee, db=db) or "",
             "first_workday": employee.first_workday.isoformat() if employee.first_workday else "",

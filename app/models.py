@@ -14,6 +14,9 @@ class Employee(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     full_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    first_name: Mapped[Optional[str]] = mapped_column(
+        String(255), nullable=True, doc="Имя сотрудника отдельно от ФИО; не подменяется Telegram display name."
+    )
     telegram_user_id: Mapped[Optional[str]] = mapped_column(
         String(64),
         nullable=True,

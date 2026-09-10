@@ -52,13 +52,14 @@ class TelegramMessenger:
         return InlineKeyboardMarkup(inline_keyboard=rows) if rows else None
 
     async def send_inline_menu(self, chat_id: str, text: str, buttons: list[tuple[str, str]]) -> Any:
-        # A separate invisible cleanup message removes reply keyboards sent by older versions.
-        await self.bot.send_message(chat_id=chat_id, text="\u2063", reply_markup=ReplyKeyboardRemove())
         return await self.bot.send_message(
             chat_id=chat_id,
             text=text,
             reply_markup=self._inline_markup(buttons),
         )
+
+    async def delete_message(self, chat_id: str, message_id: int) -> Any:
+        return await self.bot.delete_message(chat_id=chat_id, message_id=message_id)
 
     async def edit_inline_menu(
         self, chat_id: str, message_id: int, text: str, buttons: list[tuple[str, str]]

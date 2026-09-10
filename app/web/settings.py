@@ -6,6 +6,7 @@ from ..flow_templates import EMPLOYEE_SCOPE_LABELS
 from ..messaging.service import MENU_BACK_BUTTON_TEXT, MENU_HOME_BUTTON_TEXT
 from ..models import AdminAccount, BotMenuButton, BotMenuSet, DocumentLibraryItem, Employee, HrSettings, ScenarioTemplate
 from ..positions import ROLE_SCOPE_ALL, build_role_scope_labels, position_options, resolve_scope_slug
+from ..scenario_engine import MENU_TEXT_TAGS, TELEGRAM_MESSAGE_CAPABILITIES
 from ..time_utils import utc_now
 from .employees import CANDIDATE_WORK_STAGE_VALUES, EMPLOYEE_STAGE_VALUES
 from .documents import _document_option
@@ -220,6 +221,8 @@ def _settings_workspace_payload(db: Session, current_user: AdminAccount) -> dict
         "role_labels": ROLE_LABELS,
         "menu_role_scope_labels": role_scope_labels,
         "menu_employee_scope_labels": EMPLOYEE_SCOPE_LABELS,
+        "menu_text_tags": MENU_TEXT_TAGS,
+        "telegram_message_capabilities": TELEGRAM_MESSAGE_CAPABILITIES,
         "positions": [
             {
                 "id": position.id,

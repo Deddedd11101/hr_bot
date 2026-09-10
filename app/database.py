@@ -56,6 +56,7 @@ def _ensure_sqlite_schema() -> None:
         columns = {row[1] for row in table_info}
         original_employee_columns = set(columns)
         required = {
+            "first_name": "TEXT",
             "telegram_username": "TEXT",
             "current_menu_set_id": "INTEGER",
             "current_menu_path": "TEXT",
