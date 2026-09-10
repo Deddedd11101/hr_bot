@@ -37,6 +37,7 @@ source_of_truth: true
 
 ## Текущий snapshot
 
+- Координация пакетов: Product сверяет соседние задачи и актуальные PR/SHA; исполнитель заканчивает PR, DevOps/назначенный интегратор выполняет deploy. Отчеты разделяют код, выкладку и пользовательскую приемку; правила в AGENTS.md и [[stage-deploy]]. Автоматическая отправка задач другим чатам требует явного разрешения пользователя.
 - Stack: FastAPI admin + Aiogram Telegram bot + APScheduler + SQLite + React/Vite admin surfaces.
 - Production model: classic admin pages остаются рабочими fallback-экранами, пока новые React-экраны развиваются параллельно.
 - Documentation model: `docs/` — git-backed project vault; live runtime truth разделен по architecture, API, web surface, data model, stage deploy и configuration docs.
