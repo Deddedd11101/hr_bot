@@ -114,6 +114,23 @@ def _ensure_sqlite_schema() -> None:
         conn.execute(
             text(
                 """
+                CREATE TABLE IF NOT EXISTS telegram_custom_emojis (
+                    id INTEGER NOT NULL,
+                    title VARCHAR(255) NOT NULL,
+                    emoji_id VARCHAR(64) NOT NULL,
+                    fallback VARCHAR(32) NOT NULL DEFAULT '✨',
+                    is_active BOOLEAN NOT NULL DEFAULT 1,
+                    created_at DATETIME NOT NULL,
+                    updated_at DATETIME NOT NULL,
+                    PRIMARY KEY (id)
+                )
+                """
+            )
+        )
+        conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_telegram_custom_emojis_emoji_id ON telegram_custom_emojis (emoji_id)"))
+        conn.execute(
+            text(
+                """
                 CREATE TABLE IF NOT EXISTS employee_assignment_history (
                     id INTEGER NOT NULL,
                     subject_employee_id INTEGER NOT NULL,

@@ -488,6 +488,20 @@ class BotMenuSet(Base):
     )
 
 
+class TelegramCustomEmoji(Base):
+    """Explicit custom emoji catalog; keyboard labels still use fallback text."""
+
+    __tablename__ = "telegram_custom_emojis"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    emoji_id: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    fallback: Mapped[str] = mapped_column(String(32), nullable=False, default="✨")
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+
+
 class BotMenuButton(Base):
     """Кнопка внутри набора меню чат-бота."""
 

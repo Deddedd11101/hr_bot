@@ -164,6 +164,24 @@ class HrLinkAndInlineMenuTests(unittest.TestCase):
             settings.telegram_user_id = previous_id
             db.commit()
 
+    def test_custom_emoji_catalog_validates_numeric_id_and_returns_fallback(self) -> None:
+        emoji_id = str(990000000000000000 + (uuid4().int % 1000000))
+        created = self.client.post(
+            "/api/settings/custom-emojis",
+            json={"title": "HR success", "emoji_id": emoji_id, "fallback": "✅"},
+        )
+        self.assertEqual(created.status_code, 200)
+        item = next(row for row in created.json()["custom_emojis"] if row["emoji_id"] == emoji_id)
+        self.assertEqual(item["fallback"], "✅")
+        invalid = self.client.post(
+            "/api/settings/custom-emojis",
+            json={"title": "Broken", "emoji_id": "not-numeric"},
+        )
+        self.assertEqual(invalid.status_code, 400)
+        removed = self.client.delete(f"/api/settings/custom-emojis/{item['id']}")
+        self.assertEqual(removed.status_code, 200)
+        self.assertFalse(next(row for row in removed.json()["custom_emojis"] if row["id"] == item["id"])["is_active"])
+
     def test_inline_menu_navigation_edits_same_message(self) -> None:
         chat_id = str(980000000000 + (uuid4().int % 100000000000))
         with SessionLocal() as db:

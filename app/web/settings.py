@@ -4,7 +4,7 @@ from ..auth import ROLE_LABELS
 from ..hr_linking import hr_connection_state
 from ..flow_templates import EMPLOYEE_SCOPE_LABELS
 from ..messaging.service import MENU_BACK_BUTTON_TEXT, MENU_HOME_BUTTON_TEXT
-from ..models import AdminAccount, BotMenuButton, BotMenuSet, DocumentLibraryItem, Employee, HrSettings, ScenarioTemplate
+from ..models import AdminAccount, BotMenuButton, BotMenuSet, DocumentLibraryItem, Employee, HrSettings, ScenarioTemplate, TelegramCustomEmoji
 from ..positions import ROLE_SCOPE_ALL, build_role_scope_labels, position_options, resolve_scope_slug
 from ..scenario_engine import MENU_TEXT_TAGS, TELEGRAM_MESSAGE_CAPABILITIES
 from ..time_utils import utc_now
@@ -73,6 +73,18 @@ def _serialize_menu_button(button: BotMenuButton) -> dict:
         "scenario_key": button.scenario_key or "",
         "target_menu_set_id": button.target_menu_set_id,
         "document_item_id": button.document_item_id,
+    }
+
+
+def _serialize_custom_emoji(item: TelegramCustomEmoji) -> dict:
+    return {
+        "id": item.id,
+        "title": item.title,
+        "emoji_id": item.emoji_id,
+        "fallback": item.fallback or "✨",
+        "is_active": bool(item.is_active),
+        "created_at": item.created_at.isoformat() if item.created_at else "",
+        "updated_at": item.updated_at.isoformat() if item.updated_at else "",
     }
 
 
@@ -223,6 +235,10 @@ def _settings_workspace_payload(db: Session, current_user: AdminAccount) -> dict
         "menu_employee_scope_labels": EMPLOYEE_SCOPE_LABELS,
         "menu_text_tags": MENU_TEXT_TAGS,
         "telegram_message_capabilities": TELEGRAM_MESSAGE_CAPABILITIES,
+        "custom_emojis": [
+            _serialize_custom_emoji(item)
+            for item in db.query(TelegramCustomEmoji).order_by(TelegramCustomEmoji.title, TelegramCustomEmoji.id).all()
+        ],
         "positions": [
             {
                 "id": position.id,

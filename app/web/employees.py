@@ -37,9 +37,9 @@ from ..positions import employee_position_values, resolve_employee_position_valu
 from ..scenario_engine import (
     SINGLE_STEP_REQUEST_PREFIX,
     add_workdays,
+    format_message,
     get_first_step,
     matches_role_scope,
-    sanitize_telegram_safe_html,
     start_scenario,
 )
 from ..time_utils import utc_now
@@ -1617,7 +1617,9 @@ async def _send_manual_bot_message(
         )
         return error_message
 
-    rendered_text = sanitize_telegram_safe_html(message_text)
+    # Manual messages use the same employee-context renderer as scenario and
+    # menu text. The original template remains unchanged in audit history.
+    rendered_text = format_message(db, message_text, employee, utc_now().date(), None)
     messenger = create_telegram_messenger(settings.TELEGRAM_BOT_TOKEN, parse_mode="HTML")
     try:
         await messenger.send_text(chat_id=chat_id, text=rendered_text)

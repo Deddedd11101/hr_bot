@@ -1505,7 +1505,7 @@ class EmployeeApiSmokeTests(unittest.TestCase):
             self.assertEqual(history_rows[0].message_text, "Привет из HR")
             self.assertIsNotNone(history_rows[0].sent_at)
 
-    def test_manual_bot_message_sends_telegram_safe_html_without_template_substitution(self) -> None:
+    def test_manual_bot_message_renders_employee_tags_with_telegram_safe_html(self) -> None:
         with SessionLocal() as db:
             employee = db.get(Employee, self.employee_id)
             self.assertIsNotNone(employee)
@@ -1527,9 +1527,9 @@ class EmployeeApiSmokeTests(unittest.TestCase):
         create_messenger.assert_called_once_with("test-token", parse_mode="HTML")
         self.assertEqual(
             messenger.sent_texts,
-            [("700005", '<b>Важно</b>\nСравнение: &lt; и &amp;\nопасно\n{employee_full_name}')],
+            [("700005", '<b>Важно</b>\nСравнение: &lt; и &amp;\nопасно\nAPI Smoke Employee')],
         )
-        self.assertIn("{employee_full_name}", messenger.sent_texts[0][1])
+        self.assertNotIn("{employee_full_name}", messenger.sent_texts[0][1])
         self.assertNotIn("javascript:", messenger.sent_texts[0][1])
         self.assertEqual(response.json()["manual_bot_message_history"][0]["message_text"], source_text)
 
