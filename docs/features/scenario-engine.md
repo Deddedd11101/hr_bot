@@ -88,7 +88,7 @@ Scenario engine превращает scenario templates плюс employee state 
 - Для send-only step (`response_type=none`) progress закрывается сразу после отправки текста/вложения/уведомлений этого шага.
 - Для интерактивных step (`text`, `date`, `file`, `buttons`, `branching`) progress закрывается после валидного ответа пользователя и применения side effects этого ответа.
 - Terminal step не запускает следующий root/chain/follow-up step и не создает scheduled follow-up request.
-- Terminal работает одинаково в root-flow, branch-step и chain-step, потому что `resolve_followup_step()` возвращает `None` для explicit terminal step.
+- Terminal работает одинаково в root-flow, branch-step и chain-step. Для branching/chain-контейнера флаг не подавляет dispatch выбранной ветки: runtime завершает progress после последнего дочернего шага и не проваливается в следующий root-step. Для terminal интерактивного leaf-step завершение происходит после валидного ответа.
 - Практический editor contract: завершающим надо помечать последний step конкретной ветки, где сценарий должен остановиться. Если отказной step остается обычным root-step после branch parent, любой путь, который явно или неявно вернулся в root-flow до этого шага, все равно может его отправить.
 - `launch_scenario` остается отдельной transition-механикой: текущий сценарий завершается и запускает target scenario. Не использовать `is_terminal` как замену `launch_scenario`, если нужен переход в другой сценарий.
 
