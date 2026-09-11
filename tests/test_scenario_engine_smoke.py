@@ -20,6 +20,7 @@ from app.models import (
 from app.scenario_engine import (
     SCENARIO_BACK_BUTTON_TEXT,
     format_message,
+    render_menu_text,
     handle_button_response,
     handle_back_response,
     handle_choice_confirmation_response_by_step_id,
@@ -152,6 +153,26 @@ class ScenarioEngineSmokeTests(unittest.IsolatedAsyncioTestCase):
                 message,
                 "ФИО: Антон Востриков; должность: Аналитик; первый день: 01.09.2026",
             )
+
+    def test_first_name_uses_only_explicit_field(self) -> None:
+        init_db()
+        now = datetime.now(UTC).replace(tzinfo=None)
+        with SessionLocal() as db:
+            employee = Employee(
+                full_name="Тарасова Галина",
+                first_name="",
+                telegram_user_id="100003",
+                created_at=now,
+                is_flow_scheduled=False,
+                employee_stage="staff",
+            )
+            db.add(employee)
+            db.commit()
+            db.refresh(employee)
+            self.assertEqual(format_message(db, "{first_name}", employee, now.date(), None), "")
+            employee.first_name = "Галя"
+            db.commit()
+            self.assertEqual(render_menu_text("<b>{first_name}</b> {position}", employee), "<b>Галя</b> не указана")
 
     def test_format_message_uses_safe_fallbacks_for_empty_employee_tags(self) -> None:
         init_db()
@@ -349,6 +370,24 @@ class ScenarioEngineSmokeTests(unittest.IsolatedAsyncioTestCase):
                 message,
                 '<a href="http://example.com">http</a> <a href="https://example.com">https</a> <a href="mailto:hr@example.com">mail</a>',
             )
+
+    def test_telegram_custom_emoji_is_text_only_safe_entity(self) -> None:
+        init_db()
+        now = datetime.now(UTC).replace(tzinfo=None)
+        with SessionLocal() as db:
+            employee = Employee(full_name="Emoji User", telegram_user_id="100004", created_at=now)
+            db.add(employee)
+            db.commit()
+            db.refresh(employee)
+            message = format_message(
+                db,
+                '<tg-emoji emoji-id="123456789">✨</tg-emoji> <tg-emoji emoji-id="javascript">x</tg-emoji>',
+                employee,
+                now.date(),
+                None,
+            )
+            self.assertIn('<tg-emoji emoji-id="123456789">✨</tg-emoji>', message)
+            self.assertNotIn("javascript", message)
 
     def test_format_message_escapes_template_values(self) -> None:
         init_db()

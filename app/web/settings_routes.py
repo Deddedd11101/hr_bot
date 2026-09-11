@@ -11,7 +11,7 @@ from ..database import get_session
 from ..messaging import create_telegram_messenger
 from ..messaging.identity import get_primary_chat_id
 from ..messaging.service import show_main_menu
-from ..models import AdminAccount, BotMenuButton, BotMenuSet, Employee, Position
+from ..models import AdminAccount, BotMenuButton, BotMenuSet, Employee, Position, TelegramCustomEmoji
 from ..positions import ensure_position_exists, normalize_position_slug
 from ..config import settings
 from ..hr_linking import hash_hr_link_token, is_numeric_telegram_id, normalize_telegram_username
@@ -23,6 +23,9 @@ from .settings import (
     _get_or_create_hr_settings,
     _menu_target_conflicts,
     _settings_workspace_payload,
+    _serialize_custom_emoji,
+    normalize_menu_button_rows,
+    remove_menu_button_from_rows,
     _validate_menu_button_payload_refs,
 )
 from .support import render_template, require_admin, require_api_admin, require_api_auth, require_auth
@@ -589,6 +592,65 @@ def delete_position_api(
     return _settings_workspace_payload(db, current_user)
 
 
+def _custom_emoji_payload(item: TelegramCustomEmoji, payload: dict) -> None:
+    title = str(payload.get("title") or item.title or "Custom emoji").strip()
+    emoji_id = str(payload.get("emoji_id") or item.emoji_id or "").strip()
+    fallback = str(payload.get("fallback") or item.fallback or "✨").strip() or "✨"
+    if not title or not emoji_id.isdigit():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Нужны title и numeric emoji_id")
+    item.title = title
+    item.emoji_id = emoji_id
+    item.fallback = fallback[:32]
+    if "is_active" in payload:
+        item.is_active = bool(payload.get("is_active"))
+
+
+@router.get("/api/settings/custom-emojis")
+def custom_emojis_list_api(request: Request, db: Session = Depends(get_db)):
+    require_api_auth(request)
+    return {"custom_emojis": [_serialize_custom_emoji(item) for item in db.query(TelegramCustomEmoji).order_by(TelegramCustomEmoji.title, TelegramCustomEmoji.id).all()]}
+
+
+@router.post("/api/settings/custom-emojis")
+def custom_emoji_create_api(request: Request, payload: dict = Body(...), db: Session = Depends(get_db)):
+    current_user = require_api_auth(request)
+    item = TelegramCustomEmoji(title="", emoji_id="", fallback="✨", is_active=True, created_at=utc_now(), updated_at=utc_now())
+    _custom_emoji_payload(item, payload)
+    if db.query(TelegramCustomEmoji).filter(TelegramCustomEmoji.emoji_id == item.emoji_id).first():
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Такой emoji_id уже есть в каталоге")
+    db.add(item)
+    db.commit()
+    return _settings_workspace_payload(db, current_user)
+
+
+@router.post("/api/settings/custom-emojis/{emoji_id}")
+@router.patch("/api/settings/custom-emojis/{emoji_id}")
+def custom_emoji_update_api(request: Request, emoji_id: int, payload: dict = Body(...), db: Session = Depends(get_db)):
+    current_user = require_api_auth(request)
+    item = db.get(TelegramCustomEmoji, emoji_id)
+    if item is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Custom emoji не найден")
+    _custom_emoji_payload(item, payload)
+    duplicate = db.query(TelegramCustomEmoji).filter(TelegramCustomEmoji.emoji_id == item.emoji_id, TelegramCustomEmoji.id != emoji_id).first()
+    if duplicate:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Такой emoji_id уже есть в каталоге")
+    item.updated_at = utc_now()
+    db.commit()
+    return _settings_workspace_payload(db, current_user)
+
+
+@router.delete("/api/settings/custom-emojis/{emoji_id}")
+def custom_emoji_deactivate_api(request: Request, emoji_id: int, db: Session = Depends(get_db)):
+    current_user = require_api_auth(request)
+    item = db.get(TelegramCustomEmoji, emoji_id)
+    if item is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Custom emoji не найден")
+    item.is_active = False
+    item.updated_at = utc_now()
+    db.commit()
+    return _settings_workspace_payload(db, current_user)
+
+
 @router.post("/api/settings/hr")
 def update_hr_settings_api(
     request: Request,
@@ -724,6 +786,13 @@ def create_menu_set_api(
     )
     _apply_menu_set_payload(menu_set, payload)
     db.add(menu_set)
+    db.flush()
+    if "button_rows" in payload:
+        try:
+            menu_set.button_rows = normalize_menu_button_rows(db, menu_set.id, payload.get("button_rows"))
+        except ValueError as exc:
+            db.rollback()
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
     db.commit()
     return _settings_workspace_payload(db, current_user)
 
@@ -751,6 +820,11 @@ def update_menu_set_api(
             detail="Некоторые сотрудники или кандидаты уже привязаны к другим наборам меню.",
         )
     _apply_menu_set_payload(menu_set, payload)
+    if "button_rows" in payload:
+        try:
+            menu_set.button_rows = normalize_menu_button_rows(db, menu_set.id, payload.get("button_rows"))
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
     db.commit()
     return _settings_workspace_payload(db, current_user)
 
@@ -863,6 +937,7 @@ def delete_menu_button_api(
     button = db.get(BotMenuButton, button_id)
     if not button:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Кнопка не найдена")
+    remove_menu_button_from_rows(db, button.menu_set_id, button.id)
     db.delete(button)
     db.commit()
     return _settings_workspace_payload(db, current_user)

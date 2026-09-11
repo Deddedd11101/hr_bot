@@ -1,4 +1,5 @@
 import asyncio
+import json
 import unittest
 from datetime import timedelta
 from types import SimpleNamespace
@@ -11,7 +12,7 @@ from app.auth import authenticate_account, create_admin_session_token
 from app.database import SessionLocal, init_db
 from app.hr_linking import consume_hr_link_token, hash_hr_link_token
 from app.main import AUTH_COOKIE_NAME, app
-from app.messaging.service import handle_menu_callback, handle_start_command
+from app.messaging.service import handle_menu_callback, handle_start_command, menu_button_option_rows
 from app.models import BotMenuButton, BotMenuSet, Employee, HrSettings
 from app.scenario_engine import _resolve_explicit_notification_recipient
 from app.time_utils import utc_now
@@ -23,6 +24,7 @@ class InlineMessenger:
         self.sent_texts: list[tuple[str, str]] = []
         self.inline_sends: list[dict] = []
         self.inline_edits: list[dict] = []
+        self.reply_menus: list[dict] = []
 
     async def send_text(self, chat_id: str, text: str, reply_markup=None) -> None:
         self.sent_texts.append((chat_id, text))
@@ -39,7 +41,7 @@ class InlineMessenger:
         return SimpleNamespace(message_id=message_id)
 
     async def send_menu(self, chat_id: str, text: str, buttons: list[str]) -> None:
-        raise AssertionError("inline menu path expected")
+        self.reply_menus.append({"chat_id": chat_id, "text": text, "buttons": buttons})
 
     async def send_document_path(self, *args, **kwargs) -> None:
         return None
@@ -163,6 +165,24 @@ class HrLinkAndInlineMenuTests(unittest.TestCase):
             settings.telegram_user_id = previous_id
             db.commit()
 
+    def test_custom_emoji_catalog_validates_numeric_id_and_returns_fallback(self) -> None:
+        emoji_id = str(990000000000000000 + (uuid4().int % 1000000))
+        created = self.client.post(
+            "/api/settings/custom-emojis",
+            json={"title": "HR success", "emoji_id": emoji_id, "fallback": "✅"},
+        )
+        self.assertEqual(created.status_code, 200)
+        item = next(row for row in created.json()["custom_emojis"] if row["emoji_id"] == emoji_id)
+        self.assertEqual(item["fallback"], "✅")
+        invalid = self.client.post(
+            "/api/settings/custom-emojis",
+            json={"title": "Broken", "emoji_id": "not-numeric"},
+        )
+        self.assertEqual(invalid.status_code, 400)
+        removed = self.client.delete(f"/api/settings/custom-emojis/{item['id']}")
+        self.assertEqual(removed.status_code, 200)
+        self.assertFalse(next(row for row in removed.json()["custom_emojis"] if row["id"] == item["id"])["is_active"])
+
     def test_inline_menu_navigation_edits_same_message(self) -> None:
         chat_id = str(980000000000 + (uuid4().int % 100000000000))
         with SessionLocal() as db:
@@ -185,6 +205,10 @@ class HrLinkAndInlineMenuTests(unittest.TestCase):
             db.refresh(employee)
             db.refresh(root)
             db.refresh(child)
+            hr_settings = _get_or_create_hr_settings(db)
+            hr_settings.default_menu_set_id = root.id
+            hr_settings.default_employee_menu_set_id = root.id
+            db.commit()
             button = BotMenuButton(
                 menu_set_id=root.id,
                 label="Документы",
@@ -199,7 +223,8 @@ class HrLinkAndInlineMenuTests(unittest.TestCase):
             from app.messaging.service import show_main_menu
 
             asyncio.run(show_main_menu(messenger, db, employee, "ignored"))
-            self.assertEqual(messenger.inline_sends[0]["text"], "<b>Главное</b> &amp; raw")
+            self.assertEqual(messenger.reply_menus[0]["text"], "<b>Главное</b> &amp; raw")
+            self.assertEqual(messenger.reply_menus[0]["buttons"], ["Документы"])
             db.refresh(employee)
             employee.current_menu_set_id = root.id
             employee.current_menu_path = str(root.id)
@@ -224,6 +249,80 @@ class HrLinkAndInlineMenuTests(unittest.TestCase):
             self.assertEqual(messenger.inline_edits[0]["message_id"], 700)
             self.assertEqual(messenger.inline_edits[0]["text"], "Документы")
             self.assertIn(("Назад", "menu:back"), messenger.inline_edits[0]["buttons"])
+
+    def test_inline_menu_does_not_send_keyboard_cleanup_message(self) -> None:
+        from app.messaging.telegram import TelegramMessenger
+
+        class Bot:
+            def __init__(self):
+                self.calls = []
+
+            async def send_message(self, **kwargs):
+                self.calls.append(kwargs)
+                return SimpleNamespace(message_id=1)
+
+        bot = Bot()
+        asyncio.run(TelegramMessenger(bot).send_inline_menu("1", "Nested", [("x", "menu:x")]))
+        self.assertEqual(len(bot.calls), 1)
+
+    def test_menu_button_rows_are_preserved_and_rendered_as_nested_rows(self) -> None:
+        chat_id = str(981000000000 + (uuid4().int % 100000000000))
+        with SessionLocal() as db:
+            employee = Employee(
+                full_name=f"Rows {uuid4().hex[:8]}",
+                telegram_user_id=chat_id,
+                employee_stage="staff",
+                created_at=utc_now(),
+                is_flow_scheduled=False,
+            )
+            menu_set = BotMenuSet(title="Rows", sort_order=1, employee_scope="employees")
+            db.add_all([employee, menu_set])
+            db.commit()
+            first = BotMenuButton(menu_set_id=menu_set.id, label="First", sort_order=10, action_type="inactive")
+            second = BotMenuButton(menu_set_id=menu_set.id, label="Second", sort_order=20, action_type="inactive")
+            third = BotMenuButton(menu_set_id=menu_set.id, label="Third", sort_order=30, action_type="inactive")
+            db.add_all([first, second, third])
+            db.commit()
+            menu_set.button_rows = json.dumps([[second.id, first.id], [third.id]])
+            employee.current_menu_set_id = menu_set.id
+            employee.current_menu_path = str(menu_set.id)
+            db.commit()
+
+            rows = menu_button_option_rows(db, employee)
+
+            self.assertEqual(
+                rows[:2],
+                [
+                    [("Second", f"menu:button:{second.id}"), ("First", f"menu:button:{first.id}")],
+                    [("Third", f"menu:button:{third.id}")],
+                ],
+            )
+            self.assertTrue(rows[-1] == [("Главное меню", "menu:home")] or rows[-1] == rows[1])
+
+    def test_deleting_menu_button_removes_it_from_saved_rows(self) -> None:
+        with SessionLocal() as db:
+            menu_set = BotMenuSet(title=f"Delete rows {uuid4().hex[:8]}", sort_order=1, employee_scope="employees")
+            db.add(menu_set)
+            db.commit()
+            first = BotMenuButton(menu_set_id=menu_set.id, label="First", sort_order=10, action_type="inactive")
+            second = BotMenuButton(menu_set_id=menu_set.id, label="Second", sort_order=20, action_type="inactive")
+            db.add_all([first, second])
+            db.commit()
+            menu_set.button_rows = json.dumps([[first.id], [second.id]])
+            db.commit()
+            first_id, second_id, menu_set_id = first.id, second.id, menu_set.id
+
+        response = self.client.delete(f"/api/settings/menu-buttons/{first_id}")
+        self.assertEqual(response.status_code, 200)
+        with SessionLocal() as db:
+            menu_set = db.get(BotMenuSet, menu_set_id)
+            self.assertEqual(json.loads(menu_set.button_rows), [[second_id]])
+
+        response = self.client.delete(f"/api/settings/menu-buttons/{second_id}")
+        self.assertEqual(response.status_code, 200)
+        with SessionLocal() as db:
+            menu_set = db.get(BotMenuSet, menu_set_id)
+            self.assertIsNone(menu_set.button_rows)
 
 
 if __name__ == "__main__":

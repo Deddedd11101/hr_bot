@@ -56,6 +56,7 @@ def _ensure_sqlite_schema() -> None:
         columns = {row[1] for row in table_info}
         original_employee_columns = set(columns)
         required = {
+            "first_name": "TEXT",
             "telegram_username": "TEXT",
             "current_menu_set_id": "INTEGER",
             "current_menu_path": "TEXT",
@@ -110,6 +111,26 @@ def _ensure_sqlite_schema() -> None:
         )
         conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_positions_slug ON positions (slug)"))
         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_positions_id ON positions (id)"))
+        menu_set_columns = {row[1] for row in conn.execute(text("PRAGMA table_info(bot_menu_sets)")).fetchall()}
+        if "button_rows" not in menu_set_columns:
+            conn.execute(text("ALTER TABLE bot_menu_sets ADD COLUMN button_rows TEXT"))
+        conn.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS telegram_custom_emojis (
+                    id INTEGER NOT NULL,
+                    title VARCHAR(255) NOT NULL,
+                    emoji_id VARCHAR(64) NOT NULL,
+                    fallback VARCHAR(32) NOT NULL DEFAULT '✨',
+                    is_active BOOLEAN NOT NULL DEFAULT 1,
+                    created_at DATETIME NOT NULL,
+                    updated_at DATETIME NOT NULL,
+                    PRIMARY KEY (id)
+                )
+                """
+            )
+        )
+        conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_telegram_custom_emojis_emoji_id ON telegram_custom_emojis (emoji_id)"))
         conn.execute(
             text(
                 """
@@ -242,6 +263,7 @@ def _ensure_sqlite_schema() -> None:
                     CREATE TABLE employees (
                         id INTEGER NOT NULL,
                         full_name VARCHAR(255),
+                        first_name VARCHAR(255),
                         telegram_user_id VARCHAR(64),
                         telegram_username TEXT,
                         current_menu_set_id INTEGER,
@@ -289,6 +311,7 @@ def _ensure_sqlite_schema() -> None:
                     INSERT INTO employees (
                         id,
                         full_name,
+                        first_name,
                         telegram_user_id,
                         telegram_username,
                         current_menu_set_id,
@@ -329,6 +352,7 @@ def _ensure_sqlite_schema() -> None:
                     SELECT
                         id,
                         NULLIF(full_name, ''),
+                        {"first_name" if "first_name" in original_employee_columns else "NULL"},
                         NULLIF(telegram_user_id, ''),
                         telegram_username,
                         current_menu_set_id,
