@@ -205,6 +205,10 @@ class HrLinkAndInlineMenuTests(unittest.TestCase):
             db.refresh(employee)
             db.refresh(root)
             db.refresh(child)
+            hr_settings = _get_or_create_hr_settings(db)
+            hr_settings.default_menu_set_id = root.id
+            hr_settings.default_employee_menu_set_id = root.id
+            db.commit()
             button = BotMenuButton(
                 menu_set_id=root.id,
                 label="Документы",
