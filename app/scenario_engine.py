@@ -80,13 +80,18 @@ ROLE_ONLY_NOTIFICATION_TOKENS = (
     "mentor_ipr",
 )
 ROLE_ONLY_NOTIFICATION_TOKEN_SET = set(ROLE_ONLY_NOTIFICATION_TOKENS)
-TELEGRAM_SAFE_HTML_TAGS = {"b", "strong", "i", "em", "u", "s", "code", "pre", "a"}
+TELEGRAM_SAFE_HTML_TAGS = {"b", "strong", "i", "em", "u", "s", "code", "pre", "a", "tg-emoji"}
 TELEGRAM_SAFE_LINK_SCHEMES = ("http://", "https://", "mailto:")
 SCENARIO_STEP_TEMPLATE_TAGS = [
     {
         "label": "ФИО",
         "template": "{employee_full_name}",
         "description": "ФИО сотрудника или кандидата из карточки.",
+    },
+    {
+        "label": "Имя",
+        "template": "{first_name}",
+        "description": "Имя из отдельного кадрового поля; если поле пустое, тег остается пустым.",
     },
     {
         "label": "Должность",
@@ -100,13 +105,25 @@ SCENARIO_STEP_TEMPLATE_TAGS = [
     },
 ]
 SCENARIO_NOTIFICATION_TEMPLATE_TAGS = [
-    *SCENARIO_STEP_TEMPLATE_TAGS[:2],
+    *SCENARIO_STEP_TEMPLATE_TAGS[:3],
     {
         "label": "Резюме",
         "template": "{resume}",
         "description": "Имя актуального resume slot из карточки; если slot пустой, fallback на последний файл категории resume. В уведомлениях также поддерживается алиас {резюме}.",
     },
 ]
+MENU_TEXT_TAGS = [
+    *SCENARIO_STEP_TEMPLATE_TAGS,
+]
+TELEGRAM_MESSAGE_CAPABILITIES = {
+    "safe_html": True,
+    "custom_emoji": {
+        "text": "tg-emoji entity with numeric emoji-id",
+        "inline_buttons": "Bot API supports icon_custom_emoji_id; app catalog wiring is not enabled yet",
+        "reply_keyboard": "Bot API supports icon_custom_emoji_id; app catalog wiring is not enabled yet",
+        "fallback": "ordinary_emoji",
+    },
+}
 RECIPIENT_MODE_SELF = "self"
 RECIPIENT_MODE_MANAGER = "manager"
 RECIPIENT_MODE_MENTOR_ADAPTATION = "mentor_adaptation"
@@ -912,6 +929,16 @@ class TelegramSafeHTMLParser(HTMLParser):
             self.parts.append(f'<a href="{html.escape(href, quote=True)}">')
             self.open_tags.append("a")
             return
+        if normalized_tag == "tg-emoji":
+            emoji_id = next(
+                (value.strip() for name, value in attrs if name.lower() == "emoji-id" and value and value.strip().isdigit()),
+                None,
+            )
+            if not emoji_id:
+                return
+            self.parts.append(f'<tg-emoji emoji-id="{emoji_id}">')
+            self.open_tags.append("tg-emoji")
+            return
         self.parts.append(f"<{normalized_tag}>")
         self.open_tags.append(normalized_tag)
 
@@ -965,14 +992,13 @@ def _replace_template_fields(template: str, values: dict[str, str]) -> str:
     return TEMPLATE_FIELD_RE.sub(replace_field, template)
 
 
+def resolve_employee_first_name(employee: Employee) -> str:
+    explicit = (getattr(employee, "first_name", None) or "").strip()
+    return explicit
+
+
 def render_telegram_message_html(db: Session, template: str, employee: Employee, anchor_date: date, step_time: Optional[str]) -> str:
-    full_name_parts = (employee.full_name or "").strip().split()
-    if len(full_name_parts) >= 2:
-        name = full_name_parts[1]
-    elif full_name_parts:
-        name = full_name_parts[0]
-    else:
-        name = "коллега"
+    name = resolve_employee_first_name(employee)
     full_name = (employee.full_name or "").strip() or "коллега"
     employee_full_name = (employee.full_name or "").strip() or (f"Employee #{employee.id}" if getattr(employee, "id", None) else "не указано")
     position = (getattr(employee, "desired_position", None) or "").strip() or "не указана"
@@ -1009,6 +1035,7 @@ def render_telegram_message_html(db: Session, template: str, employee: Employee,
         sanitized_template,
         {
             "name": _escape_template_value(name),
+            "first_name": _escape_template_value(name),
             "full_name": _escape_template_value(full_name),
             "employee_full_name": _escape_template_value(employee_full_name),
             "position": _escape_template_value(position),
@@ -1027,6 +1054,25 @@ def render_telegram_message_html(db: Session, template: str, employee: Employee,
 
 def format_message(db: Session, template: str, employee: Employee, anchor_date: date, step_time: Optional[str]) -> str:
     return render_telegram_message_html(db, template, employee, anchor_date, step_time)
+
+
+def render_menu_text(template: str, employee: Employee) -> str:
+    """Render only the stable employee fields supported by menu_text."""
+    first_name = resolve_employee_first_name(employee)
+    full_name = (employee.full_name or "").strip() or "не указано"
+    position = (getattr(employee, "desired_position", None) or "").strip() or "не указана"
+    first_workday = employee.first_workday.strftime("%d.%m.%Y") if getattr(employee, "first_workday", None) else "не указана"
+    return _replace_template_fields(
+        sanitize_telegram_safe_html(template or ""),
+        {
+            "full_name": _escape_template_value(full_name),
+            "employee_full_name": _escape_template_value(full_name),
+            "first_name": _escape_template_value(first_name),
+            "name": _escape_template_value(first_name),
+            "position": _escape_template_value(position),
+            "first_workday": _escape_template_value(first_workday),
+        },
+    )
 
 
 def resolve_employee_resume_label(db: Session, employee: Employee) -> str:

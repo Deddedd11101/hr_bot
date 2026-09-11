@@ -117,6 +117,7 @@ def update_employee(
     request: Request,
     employee_id: int,
     full_name: str = Form(""),
+    first_name: str = Form(""),
     telegram_user_id: str = Form(""),
     telegram_username: str = Form(""),
     first_workday: str = Form(""),
@@ -155,6 +156,7 @@ def update_employee(
             db,
             employee,
             full_name=full_name,
+            first_name=first_name,
             chat_id=telegram_user_id,
             chat_handle=telegram_username,
             first_workday=first_workday,
@@ -280,6 +282,7 @@ def delete_employee(
 def create_employee(
     request: Request,
     full_name: str = Form(""),
+    first_name: str = Form(""),
     telegram_user_id: str = Form(""),
     telegram_username: str = Form(""),
     first_workday: str = Form(""),
@@ -295,6 +298,7 @@ def create_employee(
         employee = _create_employee_record(
             db,
             full_name=full_name,
+            first_name=first_name,
             chat_id=telegram_user_id,
             chat_handle=telegram_username,
             first_workday=first_workday,
@@ -545,6 +549,7 @@ def create_employee_api(
         employee = _create_employee_record(
             db,
             full_name=str(payload.get("full_name") or ""),
+            first_name=str(payload.get("first_name") or ""),
             chat_id=str(payload.get("chat_id") or ""),
             chat_handle=str(payload.get("chat_handle") or ""),
             first_workday=str(payload.get("first_workday") or ""),
@@ -604,6 +609,7 @@ def update_employee_api(
             db,
             employee,
             full_name=str(payload.get("full_name") or ""),
+            first_name=(str(payload["first_name"]) if "first_name" in payload else employee.first_name),
             chat_id=str(payload.get("chat_id") or get_primary_chat_id(employee, db=db) or ""),
             chat_handle=str(payload.get("chat_handle") or ""),
             first_workday=str(payload.get("first_workday") or ""),

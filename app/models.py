@@ -14,6 +14,9 @@ class Employee(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     full_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    first_name: Mapped[Optional[str]] = mapped_column(
+        String(255), nullable=True, doc="Имя сотрудника отдельно от ФИО; не подменяется Telegram display name."
+    )
     telegram_user_id: Mapped[Optional[str]] = mapped_column(
         String(64),
         nullable=True,
@@ -445,6 +448,9 @@ class BotMenuSet(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)
+    button_rows: Mapped[Optional[str]] = mapped_column(
+        String(4096), nullable=True, doc="JSON rows of button ids; absent means legacy sort_order layout."
+    )
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     role_scope: Mapped[str] = mapped_column(
         String(64),
@@ -483,6 +489,20 @@ class BotMenuSet(Base):
         nullable=True,
         doc="Служебный тег для системно-сгенерированных наборов меню.",
     )
+
+
+class TelegramCustomEmoji(Base):
+    """Explicit custom emoji catalog; keyboard labels still use fallback text."""
+
+    __tablename__ = "telegram_custom_emojis"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    emoji_id: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    fallback: Mapped[str] = mapped_column(String(32), nullable=False, default="✨")
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
 
 
 class BotMenuButton(Base):

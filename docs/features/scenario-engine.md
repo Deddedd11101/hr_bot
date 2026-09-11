@@ -34,6 +34,20 @@ Scenario engine превращает scenario templates плюс employee state 
 - `employee_document_links` / `employee_files` — персональные document slots для тегов вида `{doc:...}` и актуального resume slot.
 - `document_library_items` — shared documents из `/app/documents`, которые можно переиспользовать как вложение шага.
 
+## Telegram message templates
+
+Тексты шагов, уведомлений и меню используют общий безопасный Telegram HTML renderer. Старый plain text остается совместимым. В сценариях доступны `{employee_full_name}`, `{position}`, `{first_workday}` и `{first_name}`; в уведомлениях дополнительно доступен `{resume}`/`{резюме}`. В menu set `menu_text` доступны `{employee_full_name}`, `{full_name}`, `{first_name}`, `{position}` и `{first_workday}`. Значения карточки экранируются перед вставкой.
+
+`{first_name}` берет только отдельное кадровое поле `employees.first_name`. Если поле пустое, тег рендерится пустой строкой: ФИО не угадывается по словам, и Telegram display name не используется. Новые формы должны заполнять отдельное поле явно.
+
+В тексте сообщений разрешен ограниченный HTML whitelist: `<b>`, `<strong>`, `<i>`, `<em>`, `<u>`, `<s>`, `<code>`, `<pre>`, безопасные `<a href>` и numeric `<tg-emoji emoji-id="...">`. Telegram Bot API также поддерживает `icon_custom_emoji_id` у inline/reply-кнопок, но текущий редактор пока не связывает каталог с отдельными кнопками; до отдельного button-icon slice клавиатуры используют обычный emoji fallback. Custom emoji не переносится автоматически простым копированием из Premium-клиента.
+
+Корневой menu set показывается постоянной reply-клавиатурой. Вложенные sets показываются inline-сообщением и редактируют его при переходах; reply-клавиатура при этом не меняется. Точные labels корневой клавиатуры зарезервированы как команды меню и обрабатываются до свободного текстового ответа сценария, чтобы label не сохранился случайно как ответ.
+
+Порядок кнопок можно задать в `button_rows` как массив строк с ID кнопок конкретного набора. Старые наборы без layout продолжают использовать `sort_order`; runtime добавляет неуказанные актуальные кнопки в конец legacy-порядка.
+
+Ручные сообщения из карточки используют тот же renderer и employee-context tags; исходный шаблон сохраняется в audit history, а в Telegram отправляется отрендеренный безопасный HTML.
+
 ## Audience targeting
 
 - `employee_scope` продолжает отвечать за coarse split `кандидаты / сотрудники / все`.
