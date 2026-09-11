@@ -134,6 +134,28 @@ def normalize_menu_button_rows(db: Session, menu_set_id: int, raw_rows: object) 
     return json.dumps(normalized, ensure_ascii=False, separators=(",", ":")) if normalized else None
 
 
+def remove_menu_button_from_rows(db: Session, menu_set_id: int, button_id: int) -> None:
+    menu_set = db.get(BotMenuSet, menu_set_id)
+    if not menu_set or not menu_set.button_rows:
+        return
+    try:
+        raw_rows = json.loads(menu_set.button_rows)
+    except (TypeError, ValueError):
+        menu_set.button_rows = None
+        return
+    if not isinstance(raw_rows, list):
+        menu_set.button_rows = None
+        return
+    rows: list[list[int]] = []
+    for raw_row in raw_rows:
+        if not isinstance(raw_row, list):
+            continue
+        row = [int(raw_id) for raw_id in raw_row if str(raw_id).isdigit() and int(raw_id) != button_id]
+        if row:
+            rows.append(row)
+    menu_set.button_rows = json.dumps(rows, ensure_ascii=False, separators=(",", ":")) if rows else None
+
+
 def _serialize_admin_account(account: AdminAccount) -> dict:
     return {
         "id": account.id,

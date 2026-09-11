@@ -295,6 +295,31 @@ class HrLinkAndInlineMenuTests(unittest.TestCase):
             )
             self.assertTrue(rows[-1] == [("Главное меню", "menu:home")] or rows[-1] == rows[1])
 
+    def test_deleting_menu_button_removes_it_from_saved_rows(self) -> None:
+        with SessionLocal() as db:
+            menu_set = BotMenuSet(title=f"Delete rows {uuid4().hex[:8]}", sort_order=1, employee_scope="employees")
+            db.add(menu_set)
+            db.commit()
+            first = BotMenuButton(menu_set_id=menu_set.id, label="First", sort_order=10, action_type="inactive")
+            second = BotMenuButton(menu_set_id=menu_set.id, label="Second", sort_order=20, action_type="inactive")
+            db.add_all([first, second])
+            db.commit()
+            menu_set.button_rows = json.dumps([[first.id], [second.id]])
+            db.commit()
+            first_id, second_id, menu_set_id = first.id, second.id, menu_set.id
+
+        response = self.client.delete(f"/api/settings/menu-buttons/{first_id}")
+        self.assertEqual(response.status_code, 200)
+        with SessionLocal() as db:
+            menu_set = db.get(BotMenuSet, menu_set_id)
+            self.assertEqual(json.loads(menu_set.button_rows), [[second_id]])
+
+        response = self.client.delete(f"/api/settings/menu-buttons/{second_id}")
+        self.assertEqual(response.status_code, 200)
+        with SessionLocal() as db:
+            menu_set = db.get(BotMenuSet, menu_set_id)
+            self.assertIsNone(menu_set.button_rows)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -25,6 +25,7 @@ from .settings import (
     _settings_workspace_payload,
     _serialize_custom_emoji,
     normalize_menu_button_rows,
+    remove_menu_button_from_rows,
     _validate_menu_button_payload_refs,
 )
 from .support import render_template, require_admin, require_api_admin, require_api_auth, require_auth
@@ -936,6 +937,7 @@ def delete_menu_button_api(
     button = db.get(BotMenuButton, button_id)
     if not button:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Кнопка не найдена")
+    remove_menu_button_from_rows(db, button.menu_set_id, button.id)
     db.delete(button)
     db.commit()
     return _settings_workspace_payload(db, current_user)

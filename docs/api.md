@@ -174,7 +174,7 @@ source_of_truth: true
   - `telegram_connection_state`: `connected|pending|disconnected`;
   - `telegram_username`, `telegram_link_expires_at` и текущий numeric
     `telegram_user_id`.
-- `menu_text_tags`: `{employee_full_name}`, `{full_name}`, `{first_name}`, `{position}`, `{first_workday}`.
+- `menu_text_tags`: `{employee_full_name}`, `{first_name}`, `{position}`, `{first_workday}`. The renderer also accepts the compatibility alias `{full_name}`, but it is not advertised as a separate menu-tag option.
 - `telegram_message_capabilities`: safe HTML and custom emoji capability matrix. Message text supports numeric `tg-emoji`; Telegram Bot API also supports `icon_custom_emoji_id` for inline/reply keyboard buttons, but this app has not yet wired catalog IDs to individual buttons, so keyboard labels currently use ordinary emoji fallback.
 - `custom_emojis[]`: authenticated catalog rows with `title`, numeric `emoji_id`, `fallback`, `is_active`; manage through `/api/settings/custom-emojis*`. The catalog is explicit metadata, not Telegram clipboard import.
 - `menu_sets`
