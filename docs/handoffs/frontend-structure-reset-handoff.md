@@ -29,12 +29,13 @@ source_of_truth: false
 
 ### Backend dependency
 
-- Required backend contract: `feature/hybrid-bot-menu` at `c385ecd4beb848400d2cd129c6599121e898f0b8`.
-- The frontend branch must not be staged independently from that backend change because the custom emoji endpoints and manual-message `{first_name}` rendering are required.
+- Required backend contract: `feature/hybrid-bot-menu` at `b4eba5664b7f4123258dcc7afc98518c44c0373c`.
+- The frontend branch must not be staged independently from that backend change because the custom emoji endpoints, manual-message `{first_name}` rendering, and `button_rows` persistence are required.
 
-### Open questions
+### Shared menu layout contract
 
-- No row/layout constructor was added: the backend payload still exposes button order, not a keyboard-row contract. The existing order is previewed without inventing a second layout model.
+- The UI edits the backend `button_rows: number[][]` array with drag/drop and keyboard-accessible movement controls; it does not create a second ordering model.
+- `null` restores legacy `sort_order` behavior. Preview renders saved rows for root reply keyboard and nested inline buttons.
 
 ## 2026-06-10 — shared document library for bot menu
 

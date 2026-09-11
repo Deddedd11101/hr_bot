@@ -1,5 +1,20 @@
 import React from "react";
-import { FolderOpen, Keyboard, MessageSquareText, Plus, Save, Tag, Trash2, X } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  ChevronUp,
+  FolderOpen,
+  GripVertical,
+  Keyboard,
+  MessageSquareText,
+  Plus,
+  Rows3,
+  Save,
+  Tag,
+  Trash2,
+  X,
+} from "lucide-react";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -64,6 +79,7 @@ type MenuSet = {
   role_scope: string;
   employee_scope: string;
   target_employee_ids: number[];
+  button_rows?: number[][] | null;
   buttons: MenuButton[];
 };
 
@@ -183,6 +199,9 @@ function normalizeWorkspace(workspace: Workspace): Workspace {
       target_employee_ids: (menuSet.target_employee_ids || [])
         .map((value) => Number(value))
         .filter((value) => Number.isInteger(value) && value > 0),
+      button_rows: Array.isArray(menuSet.button_rows)
+        ? menuSet.button_rows.map((row) => (Array.isArray(row) ? row.map(Number).filter(Number.isInteger) : []))
+        : null,
       buttons: menuSet.buttons || [],
     })),
   };
@@ -195,6 +214,7 @@ function cloneWorkspace(workspace: Workspace): Workspace {
     menu_sets: workspace.menu_sets.map((menuSet) => ({
       ...menuSet,
       target_employee_ids: [...menuSet.target_employee_ids],
+      button_rows: menuSet.button_rows ? menuSet.button_rows.map((row) => [...row]) : menuSet.button_rows,
       buttons: menuSet.buttons.map((button) => ({ ...button })),
     })),
   };
@@ -599,11 +619,178 @@ function rootPreviewMenuSet(workspace: Workspace, menuSet: MenuSet): MenuSet | n
   return workspace.menu_sets.find((item) => item.id === rootId) || null;
 }
 
+function buttonRows(menuSet: MenuSet): number[][] {
+  const buttonIds = menuSet.buttons.map((button) => button.id);
+  const knownIds = new Set(buttonIds);
+  const rows: number[][] = [];
+  const seen = new Set<number>();
+
+  if (Array.isArray(menuSet.button_rows)) {
+    for (const row of menuSet.button_rows) {
+      const nextRow = row.filter((buttonId) => knownIds.has(buttonId) && !seen.has(buttonId));
+      if (nextRow.length) {
+        rows.push(nextRow);
+        nextRow.forEach((buttonId) => seen.add(buttonId));
+      }
+    }
+  } else if (buttonIds.length) {
+    rows.push(buttonIds);
+    buttonIds.forEach((buttonId) => seen.add(buttonId));
+  }
+
+  for (const buttonId of buttonIds) {
+    if (!seen.has(buttonId)) rows.push([buttonId]);
+  }
+  return rows;
+}
+
+function MenuButtonRowsEditor({
+  menuSet,
+  onChange,
+}: {
+  menuSet: MenuSet;
+  onChange: (rows: number[][] | null) => void;
+}) {
+  const [draggedButtonId, setDraggedButtonId] = React.useState<number | null>(null);
+  const [dragOverRow, setDragOverRow] = React.useState<number | null>(null);
+  const rows = buttonRows(menuSet);
+  const buttonsById = new Map(menuSet.buttons.map((button) => [button.id, button]));
+
+  const moveButton = (buttonId: number, targetRow: number, targetIndex: number) => {
+    const sourceRow = rows.findIndex((row) => row.includes(buttonId));
+    const nextRows = rows.map((row) => row.filter((id) => id !== buttonId)).filter((row) => row.length);
+    const adjustedTargetRow = sourceRow >= 0 && sourceRow < targetRow ? targetRow - 1 : targetRow;
+    const safeRow = Math.min(Math.max(adjustedTargetRow, 0), nextRows.length);
+    if (!nextRows[safeRow]) nextRows.splice(safeRow, 0, []);
+    nextRows[safeRow].splice(Math.max(0, targetIndex), 0, buttonId);
+    onChange(nextRows);
+  };
+
+  const moveWithinRow = (rowIndex: number, buttonIndex: number, delta: number) => {
+    const nextRows = rows.map((row) => [...row]);
+    const nextIndex = buttonIndex + delta;
+    if (nextIndex < 0 || nextIndex >= nextRows[rowIndex].length) return;
+    [nextRows[rowIndex][buttonIndex], nextRows[rowIndex][nextIndex]] = [
+      nextRows[rowIndex][nextIndex],
+      nextRows[rowIndex][buttonIndex],
+    ];
+    onChange(nextRows);
+  };
+
+  const moveBetweenRows = (rowIndex: number, buttonIndex: number, delta: number) => {
+    const targetRow = rowIndex + delta;
+    if (targetRow < 0 || targetRow >= rows.length) return;
+    moveButton(rows[rowIndex][buttonIndex], targetRow, rows[targetRow].length);
+  };
+
+  const moveToNewRow = (rowIndex: number, buttonIndex: number) => {
+    const buttonId = rows[rowIndex][buttonIndex];
+    const nextRows = rows.map((row) => row.filter((id) => id !== buttonId)).filter((row) => row.length);
+    const insertIndex = rows[rowIndex].length > 1 ? rowIndex + 1 : rowIndex;
+    nextRows.splice(Math.min(insertIndex, nextRows.length), 0, [buttonId]);
+    onChange(nextRows);
+  };
+
+  if (!menuSet.buttons.length) return null;
+
+  return (
+    <div className="grid gap-3 rounded-lg border border-border bg-background p-3">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <div className="flex items-center gap-2 text-sm font-semibold">
+            <Rows3 className="size-4 text-muted-foreground" />
+            Раскладка кнопок
+          </div>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Перетаскивайте кнопки между строками или используйте стрелки. Сохраняется вместе с набором.
+          </p>
+        </div>
+        {menuSet.button_rows ? (
+          <Button type="button" variant="ghost" size="sm" onClick={() => onChange(null)}>
+            Сбросить раскладку
+          </Button>
+        ) : null}
+      </div>
+      <div className="grid gap-2">
+        {rows.map((row, rowIndex) => (
+          <div
+            key={`row-${rowIndex}`}
+            onDragOver={(event) => {
+              if (draggedButtonId === null) return;
+              event.preventDefault();
+              setDragOverRow(rowIndex);
+            }}
+            onDragLeave={() => setDragOverRow((current) => (current === rowIndex ? null : current))}
+            onDrop={(event) => {
+              event.preventDefault();
+              if (draggedButtonId !== null) moveButton(draggedButtonId, rowIndex, row.length);
+              setDraggedButtonId(null);
+              setDragOverRow(null);
+            }}
+            className={cn(
+              "grid min-h-14 gap-2 rounded-lg border border-dashed border-border/80 bg-muted/25 p-2 transition-colors sm:grid-cols-[auto_minmax(0,1fr)] sm:items-center",
+              dragOverRow === rowIndex && "border-primary bg-primary/5",
+            )}
+          >
+            <span className="text-xs font-medium text-muted-foreground">Строка {rowIndex + 1}</span>
+            <div className="flex flex-wrap gap-2">
+              {row.map((buttonId, buttonIndex) => {
+                const button = buttonsById.get(buttonId);
+                if (!button) return null;
+                return (
+                  <div
+                    key={button.id}
+                    draggable
+                    onDragStart={() => setDraggedButtonId(button.id)}
+                    onDragEnd={() => {
+                      setDraggedButtonId(null);
+                      setDragOverRow(null);
+                    }}
+                    className={cn(
+                      "flex min-w-0 items-center gap-1 rounded-md border border-border bg-background p-1 shadow-xs",
+                      draggedButtonId === button.id && "opacity-50",
+                    )}
+                  >
+                    <span className="inline-flex size-7 items-center justify-center text-muted-foreground" title="Перетащить">
+                      <GripVertical className="size-4" />
+                    </span>
+                    <span className="max-w-40 truncate px-1 text-sm font-medium">{button.label || "Без названия"}</span>
+                    <Button type="button" variant="ghost" size="icon-xs" aria-label="Сдвинуть влево" disabled={buttonIndex === 0} onClick={() => moveWithinRow(rowIndex, buttonIndex, -1)}>
+                      <ChevronLeft />
+                    </Button>
+                    <Button type="button" variant="ghost" size="icon-xs" aria-label="Сдвинуть вправо" disabled={buttonIndex === row.length - 1} onClick={() => moveWithinRow(rowIndex, buttonIndex, 1)}>
+                      <ChevronRight />
+                    </Button>
+                    <Button type="button" variant="ghost" size="icon-xs" aria-label="Перенести выше" disabled={rowIndex === 0} onClick={() => moveBetweenRows(rowIndex, buttonIndex, -1)}>
+                      <ChevronUp />
+                    </Button>
+                    <Button type="button" variant="ghost" size="icon-xs" aria-label="Перенести ниже" disabled={rowIndex === rows.length - 1} onClick={() => moveBetweenRows(rowIndex, buttonIndex, 1)}>
+                      <ChevronDown />
+                    </Button>
+                    <Button type="button" variant="ghost" size="icon-xs" aria-label="Перенести в новую строку" title="Новая строка" onClick={() => moveToNewRow(rowIndex, buttonIndex)}>
+                      <Rows3 />
+                    </Button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function MenuPreview({ workspace, menuSet }: { workspace: Workspace; menuSet: MenuSet }) {
   const rootSet = rootPreviewMenuSet(workspace, menuSet);
   const nestedSet = rootBadges(workspace, menuSet.id).length ? childMenuSets(workspace, menuSet.id)[0] || null : menuSet;
   const mainButtons = rootSet?.buttons.filter((button) => button.label.trim()) || [];
   const nestedButtons = nestedSet?.buttons.filter((button) => button.label.trim()) || [];
+  const mainButtonRows = rootSet ? buttonRows(rootSet) : [];
+  const nestedButtonRows = nestedSet ? buttonRows(nestedSet) : [];
+  const nestedHasRuntimeNavigation = Boolean(rootSet && nestedSet && rootSet.id !== nestedSet.id);
+  const mainById = new Map(mainButtons.map((button) => [button.id, button]));
+  const nestedById = new Map(nestedButtons.map((button) => [button.id, button]));
   const previewText = nestedSet?.menu_text.replace(/<[^>]+>/g, "").trim() || "Текст сообщения набора";
 
   return (
@@ -614,15 +801,18 @@ function MenuPreview({ workspace, menuSet }: { workspace: Workspace; menuSet: Me
           Главное меню под вводом
         </div>
         <p className="text-xs text-muted-foreground">Reply-клавиатура root-набора: {rootSet?.title || "не назначена"}</p>
-        <div className="mt-auto grid grid-cols-2 gap-2 rounded-lg bg-muted/50 p-2">
+        <div className="mt-auto grid gap-2 rounded-lg bg-muted/50 p-2">
           {mainButtons.length ? (
-            mainButtons.map((button) => (
-              <div key={button.id} className="rounded-md border border-border bg-background px-2 py-2 text-center text-xs font-medium">
-                {button.label}
+            mainButtonRows.map((row, rowIndex) => (
+              <div key={`main-row-${rowIndex}`} className="grid auto-cols-fr grid-flow-col gap-2">
+                {row.map((buttonId) => {
+                  const button = mainById.get(buttonId);
+                  return button ? <div key={button.id} className="rounded-md border border-border bg-background px-2 py-2 text-center text-xs font-medium">{button.label}</div> : null;
+                })}
               </div>
             ))
           ) : (
-            <div className="col-span-2 rounded-md border border-dashed border-border px-2 py-4 text-center text-xs text-muted-foreground">
+            <div className="rounded-md border border-dashed border-border px-2 py-4 text-center text-xs text-muted-foreground">
               В root-наборе пока нет кнопок
             </div>
           )}
@@ -637,15 +827,26 @@ function MenuPreview({ workspace, menuSet }: { workspace: Workspace; menuSet: Me
         <p className="line-clamp-2 min-h-10 whitespace-pre-wrap text-xs text-muted-foreground">{previewText}</p>
         <div className="grid gap-2 rounded-lg border border-border/70 bg-muted/35 p-2">
           {nestedButtons.length ? (
-            nestedButtons.map((button) => (
-              <div key={button.id} className="rounded-md border border-border bg-background px-3 py-2 text-sm font-medium">
-                {button.label}
+            nestedButtonRows.map((row, rowIndex) => (
+              <div key={`nested-row-${rowIndex}`} className="grid auto-cols-fr grid-flow-col gap-2">
+                {row.map((buttonId) => {
+                  const button = nestedById.get(buttonId);
+                  return button ? <div key={button.id} className="rounded-md border border-border bg-background px-3 py-2 text-sm font-medium">{button.label}</div> : null;
+                })}
               </div>
             ))
-          ) : (
-            <div className="rounded-md border border-dashed border-border px-2 py-4 text-center text-xs text-muted-foreground">
-              В этом сообщении пока нет inline-кнопок
+          ) : null}
+          {nestedHasRuntimeNavigation ? (
+            <div className="grid auto-cols-fr grid-flow-col gap-2 border-t border-border/60 pt-2">
+              <div className="rounded-md border border-border bg-background px-3 py-2 text-center text-sm font-medium text-muted-foreground">Назад</div>
+              <div className="rounded-md border border-border bg-background px-3 py-2 text-center text-sm font-medium text-muted-foreground">Главное меню</div>
             </div>
+          ) : (
+            nestedButtons.length ? null : (
+              <div className="rounded-md border border-dashed border-border px-2 py-4 text-center text-xs text-muted-foreground">
+                В этом сообщении пока нет inline-кнопок
+              </div>
+            )
           )}
         </div>
       </div>
@@ -1016,6 +1217,11 @@ export function BotMenuPage({ apiUrl }: BotMenuPageProps) {
                 </div>
 
                 <MenuPreview workspace={workspace} menuSet={selectedMenuSet} />
+
+                <MenuButtonRowsEditor
+                  menuSet={selectedMenuSet}
+                  onChange={(rows) => updateMenuSetLocal(selectedMenuSet.id, { button_rows: rows })}
+                />
 
                 <div className="grid gap-4 rounded-lg border border-border bg-muted/35 p-3 lg:grid-cols-2">
                   <Field>
