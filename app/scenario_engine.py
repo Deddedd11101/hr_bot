@@ -285,17 +285,24 @@ def resolve_followup_step(
     def resolve_after_parent(step: Optional[FlowStepTemplate]) -> Optional[FlowStepTemplate]:
         if not step:
             return None
+        if bool(getattr(step, "is_terminal", False)):
+            return None
         if step.parent_step_id and step.branch_option_index is None:
             next_chain_step = get_next_chain_step(db, step)
             if next_chain_step:
                 return next_chain_step
-            return resolve_after_parent(db.get(FlowStepTemplate, step.parent_step_id))
+            parent_step = db.get(FlowStepTemplate, step.parent_step_id)
+            if parent_step and bool(getattr(parent_step, "is_terminal", False)):
+                return None
+            return resolve_after_parent(parent_step)
         if step.parent_step_id and step.branch_option_index is not None:
             branch_return_step = resolve_branch_return_step(db, scenario_key, step)
             if branch_return_step:
                 return branch_return_step
             parent_step = db.get(FlowStepTemplate, step.parent_step_id)
             if not parent_step:
+                return None
+            if bool(getattr(parent_step, "is_terminal", False)):
                 return None
             return get_next_step(db, scenario_key, parent_step)
         return get_next_step(db, scenario_key, step)
@@ -2208,7 +2215,7 @@ async def _apply_confirmed_button_choice(
         progress.completed_at = utc_now()
         db.commit()
         return True
-    if bool(getattr(step, "is_terminal", False)):
+    if bool(getattr(step, "is_terminal", False)) and step.response_type != "branching":
         progress.waiting_for_response = False
         progress.is_completed = True
         progress.completed_at = utc_now()
