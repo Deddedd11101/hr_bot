@@ -34,6 +34,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { TelegramRichTextEditor } from "@/components/ui/telegram-rich-text-editor";
+import { TelegramMessageTools, type TelegramCustomEmoji } from "@/components/ui/telegram-message-tools";
 import { cn } from "@/lib/utils";
 
 type ScenarioOption = {
@@ -85,6 +86,7 @@ type Workspace = {
     safe_html?: boolean;
     custom_emoji?: Record<string, unknown>;
   };
+  custom_emojis?: TelegramCustomEmoji[];
 };
 
 type TemplateTag = {
@@ -171,6 +173,7 @@ function normalizeWorkspace(workspace: Workspace): Workspace {
     employee_options: workspace.employee_options || [],
     document_options: workspace.document_options || [],
     menu_text_tags: workspace.menu_text_tags || [],
+    custom_emojis: workspace.custom_emojis || [],
     menu_sets: (workspace.menu_sets || []).map((menuSet) => ({
       ...menuSet,
       menu_text: menuSet.menu_text ?? menuSet.description ?? "",
@@ -660,6 +663,7 @@ export function BotMenuPage({ apiUrl }: BotMenuPageProps) {
   const [buttonDrafts, setButtonDrafts] = React.useState<Record<number, DraftButton>>({});
   const [selectedMenuSetId, setSelectedMenuSetId] = React.useState<number | null>(() => readSelectedMenuSetId());
   const menuTextInsertRef = React.useRef<((text: string) => void) | null>(null);
+  const menuEmojiInsertRef = React.useRef<((emojiId: string) => void) | null>(null);
 
   React.useEffect(() => {
     requestJson(apiUrl)
@@ -966,10 +970,13 @@ export function BotMenuPage({ apiUrl }: BotMenuPageProps) {
                       }
                       placeholder="Текст, который увидит пользователь при открытии этого набора"
                       insertRef={menuTextInsertRef}
+                      insertEmojiRef={menuEmojiInsertRef}
                     />
-                    <TemplateTagButtons
+                    <TelegramMessageTools
                       tags={workspace.menu_text_tags || []}
-                      onInsert={(template) => menuTextInsertRef.current?.(template)}
+                      customEmojis={workspace.custom_emojis}
+                      onInsertTag={(template) => menuTextInsertRef.current?.(template)}
+                      onInsertEmoji={(emojiId) => menuEmojiInsertRef.current?.(emojiId)}
                     />
                     <p className="text-xs text-muted-foreground">Сохраняется через backend-поле `menu_text`.</p>
                   </Field>

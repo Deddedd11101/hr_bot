@@ -17,6 +17,25 @@ source_of_truth: false
 
 `/app/ui-kit` удален из runtime вместе с route, sidebar entry, Vite input и template. Эксперимент признан неудачным: он не уменьшал хаос во frontend-страницах, а добавлял еще одну поверхность поддержки.
 
+## 2026-09-11 — bot menu message tools and custom emoji catalog
+
+### Changed
+
+- `/app/bot-menu` preview explicitly separates root reply-keyboard buttons from nested message inline buttons.
+- Shared `TelegramMessageTools` now renders backend-provided template tags and active custom emoji catalog entries.
+- `TelegramRichTextEditor` preserves numeric `<tg-emoji emoji-id="..."></tg-emoji>` entities through load, insertion, save, and reopen.
+- `/app/settings` adds admin CRUD UI for the backend custom emoji catalog.
+- `/app/messages` and employee manual bot messages load the same settings catalog and use the shared tag/emoji tools.
+
+### Backend dependency
+
+- Required backend contract: `feature/hybrid-bot-menu` at `c385ecd4beb848400d2cd129c6599121e898f0b8`.
+- The frontend branch must not be staged independently from that backend change because the custom emoji endpoints and manual-message `{first_name}` rendering are required.
+
+### Open questions
+
+- No row/layout constructor was added: the backend payload still exposes button order, not a keyboard-row contract. The existing order is previewed without inventing a second layout model.
+
 ## 2026-06-10 — shared document library for bot menu
 
 ### Changed

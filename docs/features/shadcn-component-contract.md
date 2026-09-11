@@ -36,7 +36,7 @@ source_of_truth: true
 - Do not create page-local imitations of controls when a shared primitive exists.
 - Use `Button`, `Input`, `Textarea`, `Select`, `Checkbox`, `Switch`, `Field`, `Card`, `Table`, `Badge`, `Alert`, `Empty`, `Popover`, `Dialog`, `AlertDialog`, `DropdownMenu`, `Tooltip` from `frontend/src/components/ui`.
 - Emoji insertion uses `EmojiPickerPopover` from `frontend/src/components/ui/emoji-picker-popover.tsx`: trigger is the shared `Button`, overlay is the shared `Popover`, `emoji-picker-react` is lazy-loaded, and the public API is only `onEmojiSelect(emoji: string)`.
-- Telegram message editing uses `TelegramRichTextEditor` from `frontend/src/components/ui/telegram-rich-text-editor.tsx`: the editor is visual, but its public value is still a TelegramSafeHTML-compatible string. Its serializer emits only `<b>`, `<i>`, `<u>`, `<s>`, `<code>`, safe `<a href>` links, text and line breaks. Template tags remain plain text and are inserted at the editor's saved selection.
+- Telegram message editing uses `TelegramRichTextEditor` from `frontend/src/components/ui/telegram-rich-text-editor.tsx`: the editor is visual, but its public value is still a TelegramSafeHTML-compatible string. Its serializer emits only `<b>`, `<i>`, `<u>`, `<s>`, `<code>`, safe `<a href>` links, numeric `<tg-emoji emoji-id>` entities, text and line breaks. Template tags and catalog emoji are inserted at the editor's saved selection.
 - Destructive confirmations use `ConfirmAction` from `frontend/src/components/ui/confirm-action.tsx`; do not use `window.confirm` in React admin pages. Keep destructive color on the confirmation action inside the dialog, not on every delete icon in dense page grids.
 
 ## Token Policy
@@ -81,7 +81,7 @@ source_of_truth: true
 - Bot menu text exposes backend-provided tag buttons and previews the existing button order as two distinct Telegram surfaces: root reply keyboard below the input and nested inline buttons on the message.
 - Surveys do not receive this primitive.
 - The employee manual message endpoint passes text through the same safe HTML renderer before Telegram delivery; scenario template tags remain literal in this ad-hoc surface.
-- Custom emoji must not be represented by a frontend-only numeric-ID list. A selectable admin catalog requires a backend payload/storage contract; until that exists, keyboard labels keep ordinary emoji fallback.
+- Custom emoji catalog is backed by `GET /api/settings/workspace` (`custom_emojis`) and the CRUD endpoints `/api/settings/custom-emojis*`. Admins create/update/deactivate entries; editors show only active catalog entries and insert numeric `emoji_id` values through the shared editor. Menu keyboard labels continue using ordinary fallback emoji because Telegram custom entities are message content, not keyboard labels.
 
 ## Current Migration Debt
 

@@ -51,6 +51,7 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 import { TelegramRichTextEditor } from "@/components/ui/telegram-rich-text-editor";
+import { TelegramMessageTools, type TelegramCustomEmoji, type TelegramTemplateTag } from "@/components/ui/telegram-message-tools";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 
@@ -488,6 +489,10 @@ export function ManualBotMessageSection(props: {
     sendState: { sending: boolean; message: string; error: boolean };
     onMessageTextChange: (value: string) => void;
     onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
+    templateTags?: TelegramTemplateTag[];
+    customEmojis?: TelegramCustomEmoji[];
+    insertRef?: React.MutableRefObject<((text: string) => void) | null>;
+    insertEmojiRef?: React.MutableRefObject<((emojiId: string) => void) | null>;
 }) {
     const hasNumericTelegramId = isNumericTelegramId(props.form?.chat_id);
     const isBlocked = !!props.form?.is_bot_blocked;
@@ -518,6 +523,14 @@ export function ManualBotMessageSection(props: {
                                 onChange={props.onMessageTextChange}
                                 placeholder="Введите сообщение"
                                 disabled={!hasNumericTelegramId || isBlocked || props.sendState.sending}
+                                insertRef={props.insertRef}
+                                insertEmojiRef={props.insertEmojiRef}
+                            />
+                            <TelegramMessageTools
+                                tags={props.templateTags || []}
+                                customEmojis={props.customEmojis}
+                                onInsertTag={(template) => props.insertRef?.current?.(template)}
+                                onInsertEmoji={(emojiId) => props.insertEmojiRef?.current?.(emojiId)}
                             />
                         </Field>
                         <Button type="submit" disabled={!canSend}>
@@ -1021,6 +1034,10 @@ export function EmployeeOperationsSection(props: any) {
         setManualBotMessageText,
         handleManualBotMessageSubmit,
         manualBotMessageHistory,
+        manualBotMessageTemplateTags,
+        manualBotMessageCustomEmojis,
+        manualBotMessageInsertRef,
+        manualBotMessageEmojiInsertRef,
         isCandidate,
     } = props;
     const canPromoteToAdaptation = isCandidate && !!String(form?.first_workday || "").trim();
@@ -1079,6 +1096,10 @@ export function EmployeeOperationsSection(props: any) {
                 sendState={manualBotMessageState}
                 onMessageTextChange={setManualBotMessageText}
                 onSubmit={handleManualBotMessageSubmit}
+                templateTags={manualBotMessageTemplateTags}
+                customEmojis={manualBotMessageCustomEmojis}
+                insertRef={manualBotMessageInsertRef}
+                insertEmojiRef={manualBotMessageEmojiInsertRef}
             />
 
             <DetailCard>

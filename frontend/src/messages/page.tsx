@@ -19,6 +19,7 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/u
 import { RecordCard } from "@/components/ui/record-card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { TelegramRichTextEditor } from "@/components/ui/telegram-rich-text-editor";
+import { DEFAULT_TELEGRAM_TEMPLATE_TAGS, TelegramMessageTools, type TelegramCustomEmoji } from "@/components/ui/telegram-message-tools";
 import { ПРОЯВЛЕНИЕ } from "@/lib/reveal";
 
 import {
@@ -56,6 +57,8 @@ type Workspace = TargetingWorkspace & {
   document_tag_titles: string[];
   scheduled_message_actions: MessageAction[];
   manual_message_history: MessageAction[];
+  menu_text_tags?: { label: string; template: string; description?: string }[];
+  custom_emojis?: TelegramCustomEmoji[];
 };
 
 export type MessagesPageProps = {
@@ -95,6 +98,7 @@ function ComposeDialog({
   const [requestedAt, setRequestedAt] = React.useState("");
   const [messageText, setMessageText] = React.useState("");
   const messageInsertRef = React.useRef<((text: string) => void) | null>(null);
+  const messageEmojiInsertRef = React.useRef<((emojiId: string) => void) | null>(null);
   const [state, setState] = React.useState({ working: false, message: "", error: false });
 
   React.useEffect(() => {
@@ -166,33 +170,21 @@ function ComposeDialog({
                 onChange={setMessageText}
                 placeholder="Введите сообщение"
                 insertRef={messageInsertRef}
+                insertEmojiRef={messageEmojiInsertRef}
+              />
+              <TelegramMessageTools
+                tags={[
+                  ...(workspace.menu_text_tags?.length ? workspace.menu_text_tags : DEFAULT_TELEGRAM_TEMPLATE_TAGS),
+                  ...workspace.document_tag_titles.map((title) => ({
+                    label: `Документ: ${title}`,
+                    template: `{doc:${title}}`,
+                  })),
+                ]}
+                customEmojis={workspace.custom_emojis}
+                onInsertTag={(token) => messageInsertRef.current?.(token)}
+                onInsertEmoji={(emojiId) => messageEmojiInsertRef.current?.(emojiId)}
               />
             </label>
-            <div className="grid gap-2 rounded-lg border border-border/70 bg-muted/35 p-2">
-              <div className="text-xs font-medium text-muted-foreground">Доступные теги</div>
-              <div className="flex flex-wrap gap-1.5">
-              {[
-                ["Имя", "{first_name}"],
-                ["ФИО", "{employee_full_name}"],
-                ["Должность", "{position}"],
-                ["Первый рабочий день", "{first_workday}"],
-              ]
-                .concat(workspace.document_tag_titles.map((title) => [`Документ: ${title}`, `{doc:${title}}`]))
-                .map(([label, token]) => (
-                  <Button
-                    key={token}
-                    type="button"
-                    variant="secondary"
-                    size="xs"
-                    title={token}
-                    onMouseDown={(event) => event.preventDefault()}
-                    onClick={() => messageInsertRef.current?.(token)}
-                  >
-                    {label}
-                  </Button>
-                ))}
-              </div>
-            </div>
             <TargetPicker workspace={workspace} targets={targets} onChange={updateTargets} />
             {preview ? (
               <Alert className="border-primary/30 bg-primary/5">
@@ -310,8 +302,18 @@ export function MessagesPage({ apiUrl }: MessagesPageProps) {
   const [composeOpen, setComposeOpen] = React.useState(false);
 
   const refresh = React.useCallback(() => {
-    return requestJson<Workspace>(apiUrl)
-      .then(setWorkspace)
+    return Promise.all([
+      requestJson<Workspace>(apiUrl),
+      requestJson<{ menu_text_tags?: Workspace["menu_text_tags"]; custom_emojis?: TelegramCustomEmoji[] }>("/api/settings/workspace").catch(() => ({
+        menu_text_tags: undefined,
+        custom_emojis: undefined,
+      })),
+    ])
+      .then(([nextWorkspace, messageTools]) => setWorkspace({
+        ...nextWorkspace,
+        menu_text_tags: messageTools.menu_text_tags || nextWorkspace.menu_text_tags,
+        custom_emojis: messageTools.custom_emojis || nextWorkspace.custom_emojis,
+      }))
       .catch((err) => setError(err instanceof Error ? err.message : "Не удалось загрузить сообщения"));
   }, [apiUrl]);
 
