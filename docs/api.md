@@ -175,10 +175,11 @@ source_of_truth: true
   - `telegram_username`, `telegram_link_expires_at` и текущий numeric
     `telegram_user_id`.
 - `menu_text_tags`: `{employee_full_name}`, `{full_name}`, `{first_name}`, `{position}`, `{first_workday}`.
-- `telegram_message_capabilities`: safe HTML and custom emoji capability matrix. Custom emoji entities are supported only in message text; inline and reply keyboard labels use ordinary emoji fallback.
+- `telegram_message_capabilities`: safe HTML and custom emoji capability matrix. Message text supports numeric `tg-emoji`; Telegram Bot API also supports `icon_custom_emoji_id` for inline/reply keyboard buttons, but this app has not yet wired catalog IDs to individual buttons, so keyboard labels currently use ordinary emoji fallback.
 - `custom_emojis[]`: authenticated catalog rows with `title`, numeric `emoji_id`, `fallback`, `is_active`; manage through `/api/settings/custom-emojis*`. The catalog is explicit metadata, not Telegram clipboard import.
 - `menu_sets`
   - `buttons[]`
+  - `button_rows`: optional array of button-id arrays, e.g. `[[12, 13], [14]]`; each id must belong to the same set and may occur once. If omitted/null, runtime keeps legacy `sort_order` layout. On update, omitted preserves the existing layout and explicit null clears it.
   - `menu_text`/`description`: rendered by the common TelegramSafeHTML renderer with the menu tags above.
 - `available_scenarios`
 - `accounts`
@@ -278,8 +279,8 @@ source_of_truth: true
 | `POST` | `/api/settings/hr` | Обновить HR notification settings. | JSON: `hr_name`, `notification_recipient_ids`, `default_menu_set_id`, notification booleans; `telegram_user_id` только для чтения | Settings workspace payload | Обновляет `hr_settings`; подтвержденный `telegram_user_id` меняется только через link/disconnect endpoints, а `notification_recipient_ids` остается legacy/additional list только для глобальных HR events | `401`, `409` при попытке изменить `telegram_user_id` |
 | `POST` | `/api/settings/hr/telegram-link` | Выпустить одноразовую ссылку подтверждения HR Telegram. | Нет | `start_parameter`, optional `deep_link`, `expires_at`, settings workspace | Сохраняет только hash токена и TTL в `hr_settings`; numeric Telegram ID появится после атомарного открытия ссылки владельцем; при действующей привязке выпуск отклоняется | `401`, `409` если HR уже подключен |
 | `DELETE` | `/api/settings/hr/telegram-link` | Отключить текущий HR Telegram и отменить pending link. | Нет | Settings workspace payload | Очищает подтвержденный numeric ID, username и pending token | `401` |
-| `POST` | `/api/settings/menu-sets` | Создать menu set. | JSON: `title`, optional `description` или `menu_text` | Settings workspace payload | Создает `bot_menu_sets` | `401` |
-| `POST` | `/api/settings/menu-sets/{menu_set_id}` | Обновить menu set. | JSON: `title`, `description` или `menu_text` | Settings workspace payload | Обновляет `bot_menu_sets`; `description`/`menu_text` — TelegramSafeHTML-текст набора, включая root, с menu tags из workspace | `401`, `404` |
+| `POST` | `/api/settings/menu-sets` | Создать menu set. | JSON: `title`, optional `description` или `menu_text`, optional `button_rows: number[][]` | Settings workspace payload | Создает `bot_menu_sets`; rows валидируются против кнопок набора | `401`, `400` |
+| `POST` | `/api/settings/menu-sets/{menu_set_id}` | Обновить menu set. | JSON: `title`, `description` или `menu_text`, optional `button_rows: number[][]` | Settings workspace payload | Обновляет `bot_menu_sets`; `description`/`menu_text` — TelegramSafeHTML-текст набора, включая root, с menu tags из workspace; duplicate/foreign button ids отклоняются | `401`, `400`, `404` |
 | `DELETE` | `/api/settings/menu-sets/{menu_set_id}` | Удалить menu set. | Path: `menu_set_id` | Settings workspace payload | Удаляет buttons внутри set, отвязывает переходы на set, очищает `employees.current_menu_set_id` и default menu setting | `401`, `404` |
 | `POST` | `/api/settings/menu-sets/{menu_set_id}/buttons` | Создать menu button. | JSON: `label`, `action_type`, optional `scenario_key`, optional `target_menu_set_id` | Settings workspace payload | Создает `bot_menu_buttons` | `401`, `404` |
 | `POST` | `/api/settings/menu-buttons/{button_id}` | Обновить menu button. | JSON: `label`, `action_type`, optional `scenario_key`, optional `target_menu_set_id` | Settings workspace payload | Обновляет `bot_menu_buttons` | `401`, `404` |

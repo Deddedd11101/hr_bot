@@ -111,6 +111,9 @@ def _ensure_sqlite_schema() -> None:
         )
         conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_positions_slug ON positions (slug)"))
         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_positions_id ON positions (id)"))
+        menu_set_columns = {row[1] for row in conn.execute(text("PRAGMA table_info(bot_menu_sets)")).fetchall()}
+        if "button_rows" not in menu_set_columns:
+            conn.execute(text("ALTER TABLE bot_menu_sets ADD COLUMN button_rows TEXT"))
         conn.execute(
             text(
                 """
@@ -260,6 +263,7 @@ def _ensure_sqlite_schema() -> None:
                     CREATE TABLE employees (
                         id INTEGER NOT NULL,
                         full_name VARCHAR(255),
+                        first_name VARCHAR(255),
                         telegram_user_id VARCHAR(64),
                         telegram_username TEXT,
                         current_menu_set_id INTEGER,
@@ -307,6 +311,7 @@ def _ensure_sqlite_schema() -> None:
                     INSERT INTO employees (
                         id,
                         full_name,
+                        first_name,
                         telegram_user_id,
                         telegram_username,
                         current_menu_set_id,
@@ -347,6 +352,7 @@ def _ensure_sqlite_schema() -> None:
                     SELECT
                         id,
                         NULLIF(full_name, ''),
+                        {"first_name" if "first_name" in original_employee_columns else "NULL"},
                         NULLIF(telegram_user_id, ''),
                         telegram_username,
                         current_menu_set_id,

@@ -448,6 +448,9 @@ class BotMenuSet(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)
+    button_rows: Mapped[Optional[str]] = mapped_column(
+        String(4096), nullable=True, doc="JSON rows of button ids; absent means legacy sort_order layout."
+    )
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     role_scope: Mapped[str] = mapped_column(
         String(64),

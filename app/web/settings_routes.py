@@ -24,6 +24,7 @@ from .settings import (
     _menu_target_conflicts,
     _settings_workspace_payload,
     _serialize_custom_emoji,
+    normalize_menu_button_rows,
     _validate_menu_button_payload_refs,
 )
 from .support import render_template, require_admin, require_api_admin, require_api_auth, require_auth
@@ -784,6 +785,13 @@ def create_menu_set_api(
     )
     _apply_menu_set_payload(menu_set, payload)
     db.add(menu_set)
+    db.flush()
+    if "button_rows" in payload:
+        try:
+            menu_set.button_rows = normalize_menu_button_rows(db, menu_set.id, payload.get("button_rows"))
+        except ValueError as exc:
+            db.rollback()
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
     db.commit()
     return _settings_workspace_payload(db, current_user)
 
@@ -811,6 +819,11 @@ def update_menu_set_api(
             detail="Некоторые сотрудники или кандидаты уже привязаны к другим наборам меню.",
         )
     _apply_menu_set_payload(menu_set, payload)
+    if "button_rows" in payload:
+        try:
+            menu_set.button_rows = normalize_menu_button_rows(db, menu_set.id, payload.get("button_rows"))
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
     db.commit()
     return _settings_workspace_payload(db, current_user)
 

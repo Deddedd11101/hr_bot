@@ -91,7 +91,7 @@ SCENARIO_STEP_TEMPLATE_TAGS = [
     {
         "label": "Имя",
         "template": "{first_name}",
-        "description": "Имя из отдельного кадрового поля; для старых карточек используется последнее слово ФИО.",
+        "description": "Имя из отдельного кадрового поля; если поле пустое, тег остается пустым.",
     },
     {
         "label": "Должность",
@@ -119,8 +119,8 @@ TELEGRAM_MESSAGE_CAPABILITIES = {
     "safe_html": True,
     "custom_emoji": {
         "text": "tg-emoji entity with numeric emoji-id",
-        "inline_buttons": "unsupported; use ordinary emoji fallback",
-        "reply_keyboard": "unsupported; use ordinary emoji fallback",
+        "inline_buttons": "Bot API supports icon_custom_emoji_id; app catalog wiring is not enabled yet",
+        "reply_keyboard": "Bot API supports icon_custom_emoji_id; app catalog wiring is not enabled yet",
         "fallback": "ordinary_emoji",
     },
 }
@@ -936,7 +936,8 @@ class TelegramSafeHTMLParser(HTMLParser):
             )
             if not emoji_id:
                 return
-            self.parts.append(f'<tg-emoji emoji-id="{emoji_id}"></tg-emoji>')
+            self.parts.append(f'<tg-emoji emoji-id="{emoji_id}">')
+            self.open_tags.append("tg-emoji")
             return
         self.parts.append(f"<{normalized_tag}>")
         self.open_tags.append(normalized_tag)
@@ -993,12 +994,7 @@ def _replace_template_fields(template: str, values: dict[str, str]) -> str:
 
 def resolve_employee_first_name(employee: Employee) -> str:
     explicit = (getattr(employee, "first_name", None) or "").strip()
-    if explicit:
-        return explicit
-    parts = (employee.full_name or "").strip().split()
-    # Existing Russian cards are surname-first ("Тарасова Галина"). Never use
-    # the first token as a presumed name; an explicit field is preferred.
-    return parts[-1] if len(parts) >= 2 else "не указано"
+    return explicit
 
 
 def render_telegram_message_html(db: Session, template: str, employee: Employee, anchor_date: date, step_time: Optional[str]) -> str:

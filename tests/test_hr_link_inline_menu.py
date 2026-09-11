@@ -1,4 +1,5 @@
 import asyncio
+import json
 import unittest
 from datetime import timedelta
 from types import SimpleNamespace
@@ -11,7 +12,7 @@ from app.auth import authenticate_account, create_admin_session_token
 from app.database import SessionLocal, init_db
 from app.hr_linking import consume_hr_link_token, hash_hr_link_token
 from app.main import AUTH_COOKIE_NAME, app
-from app.messaging.service import handle_menu_callback, handle_start_command
+from app.messaging.service import handle_menu_callback, handle_start_command, menu_button_option_rows
 from app.models import BotMenuButton, BotMenuSet, Employee, HrSettings
 from app.scenario_engine import _resolve_explicit_notification_recipient
 from app.time_utils import utc_now
@@ -259,6 +260,40 @@ class HrLinkAndInlineMenuTests(unittest.TestCase):
         bot = Bot()
         asyncio.run(TelegramMessenger(bot).send_inline_menu("1", "Nested", [("x", "menu:x")]))
         self.assertEqual(len(bot.calls), 1)
+
+    def test_menu_button_rows_are_preserved_and_rendered_as_nested_rows(self) -> None:
+        chat_id = str(981000000000 + (uuid4().int % 100000000000))
+        with SessionLocal() as db:
+            employee = Employee(
+                full_name=f"Rows {uuid4().hex[:8]}",
+                telegram_user_id=chat_id,
+                employee_stage="staff",
+                created_at=utc_now(),
+                is_flow_scheduled=False,
+            )
+            menu_set = BotMenuSet(title="Rows", sort_order=1, employee_scope="employees")
+            db.add_all([employee, menu_set])
+            db.commit()
+            first = BotMenuButton(menu_set_id=menu_set.id, label="First", sort_order=10, action_type="inactive")
+            second = BotMenuButton(menu_set_id=menu_set.id, label="Second", sort_order=20, action_type="inactive")
+            third = BotMenuButton(menu_set_id=menu_set.id, label="Third", sort_order=30, action_type="inactive")
+            db.add_all([first, second, third])
+            db.commit()
+            menu_set.button_rows = json.dumps([[second.id, first.id], [third.id]])
+            employee.current_menu_set_id = menu_set.id
+            employee.current_menu_path = str(menu_set.id)
+            db.commit()
+
+            rows = menu_button_option_rows(db, employee)
+
+            self.assertEqual(
+                rows[:2],
+                [
+                    [("Second", f"menu:button:{second.id}"), ("First", f"menu:button:{first.id}")],
+                    [("Third", f"menu:button:{third.id}")],
+                ],
+            )
+            self.assertTrue(rows[-1] == [("Главное меню", "menu:home")] or rows[-1] == rows[1])
 
 
 if __name__ == "__main__":

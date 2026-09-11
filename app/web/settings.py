@@ -1,3 +1,5 @@
+import json
+
 from sqlalchemy.orm import Session
 
 from ..auth import ROLE_LABELS
@@ -89,6 +91,10 @@ def _serialize_custom_emoji(item: TelegramCustomEmoji) -> dict:
 
 
 def _serialize_menu_set(menu_set: BotMenuSet, buttons: list[BotMenuButton]) -> dict:
+    try:
+        button_rows = json.loads(menu_set.button_rows or "null")
+    except (TypeError, ValueError):
+        button_rows = None
     return {
         "id": menu_set.id,
         "title": menu_set.title,
@@ -99,8 +105,33 @@ def _serialize_menu_set(menu_set: BotMenuSet, buttons: list[BotMenuButton]) -> d
         "employee_scope": menu_set.employee_scope or "all",
         "target_employee_ids": _deserialize_menu_target_employee_ids(menu_set),
         "system_tag": menu_set.system_tag or "",
+        "button_rows": button_rows if isinstance(button_rows, list) else None,
         "buttons": [_serialize_menu_button(button) for button in buttons],
     }
+
+
+def normalize_menu_button_rows(db: Session, menu_set_id: int, raw_rows: object) -> str | None:
+    if raw_rows in (None, ""):
+        return None
+    if not isinstance(raw_rows, list) or any(not isinstance(row, list) for row in raw_rows):
+        raise ValueError("button_rows должен быть массивом массивов id кнопок")
+    buttons = db.query(BotMenuButton).filter(BotMenuButton.menu_set_id == menu_set_id).all()
+    owned_ids = {button.id for button in buttons}
+    seen: set[int] = set()
+    normalized: list[list[int]] = []
+    for row in raw_rows:
+        next_row: list[int] = []
+        for raw_id in row:
+            if not str(raw_id).isdigit() or int(raw_id) not in owned_ids:
+                raise ValueError("button_rows содержит кнопку не из этого набора")
+            button_id = int(raw_id)
+            if button_id in seen:
+                raise ValueError("button_rows не должен содержать дубли кнопок")
+            seen.add(button_id)
+            next_row.append(button_id)
+        if next_row:
+            normalized.append(next_row)
+    return json.dumps(normalized, ensure_ascii=False, separators=(",", ":")) if normalized else None
 
 
 def _serialize_admin_account(account: AdminAccount) -> dict:

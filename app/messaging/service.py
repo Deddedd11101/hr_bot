@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import json
 from typing import Literal, NamedTuple, Optional
 
 from sqlalchemy.orm import Session
@@ -342,6 +343,50 @@ def menu_button_options(db: Session, employee: Employee) -> list[tuple[str, str]
     return options
 
 
+def _menu_button_rows(db: Session, menu_set: BotMenuSet) -> list[list[BotMenuButton]]:
+    buttons = db.query(BotMenuButton).filter(BotMenuButton.menu_set_id == menu_set.id).order_by(BotMenuButton.sort_order, BotMenuButton.id).all()
+    by_id = {button.id: button for button in buttons}
+    try:
+        raw_rows = json.loads(menu_set.button_rows or "null")
+    except (TypeError, ValueError):
+        raw_rows = None
+    if not isinstance(raw_rows, list):
+        return [buttons] if buttons else []
+    rows: list[list[BotMenuButton]] = []
+    seen: set[int] = set()
+    for raw_row in raw_rows:
+        if not isinstance(raw_row, list):
+            continue
+        row = [by_id[int(raw_id)] for raw_id in raw_row if str(raw_id).isdigit() and int(raw_id) in by_id and int(raw_id) not in seen]
+        seen.update(button.id for button in row)
+        if row:
+            rows.append(row)
+    unlisted = [button for button in buttons if button.id not in seen]
+    if unlisted:
+        rows.append(unlisted)
+    return rows
+
+
+def menu_button_option_rows(db: Session, employee: Employee) -> list[tuple[str, str]] | list[list[tuple[str, str]]]:
+    menu_set = current_menu_set(db, employee)
+    if not menu_set:
+        return []
+    rows = [[(button.label.strip(), f"{MENU_CALLBACK_PREFIX}button:{button.id}") for button in row if button.label.strip()] for row in _menu_button_rows(db, menu_set)]
+    root_set = resolve_root_menu_set(db, employee)
+    current_path = _deserialize_menu_path(employee)
+    footer: list[tuple[str, str]] = []
+    if len(current_path) > 1:
+        footer.append((MENU_BACK_BUTTON_TEXT, f"{MENU_CALLBACK_PREFIX}back"))
+    if root_set and menu_set.id != root_set.id:
+        footer.append((MENU_HOME_BUTTON_TEXT, f"{MENU_CALLBACK_PREFIX}home"))
+    if footer:
+        rows.append(footer)
+    rows = [row for row in rows if row]
+    if not menu_set.button_rows:
+        return [item for row in rows for item in row]
+    return rows
+
+
 async def send_menu(
     messenger: MessengerClient,
     db: Session,
@@ -354,7 +399,7 @@ async def send_menu(
     if not chat_id:
         return
     safe_text = render_menu_text(text, employee)
-    options = menu_button_options(db, employee)
+    options = menu_button_option_rows(db, employee)
     if not options:
         return
     inline_sender = getattr(messenger, "send_inline_menu", None)
@@ -375,7 +420,11 @@ async def send_menu(
         db.commit()
         return
     # Compatibility fallback for lightweight test clients and older adapters.
-    await messenger.send_menu(chat_id=chat_id, text=safe_text, buttons=[label for label, _ in options])
+    if options and isinstance(options[0], tuple):
+        reply_buttons = [label for label, _ in options]
+    else:
+        reply_buttons = [[label for label, _ in row] for row in options]
+    await messenger.send_menu(chat_id=chat_id, text=safe_text, buttons=reply_buttons)
 
 
 async def send_root_menu(messenger: MessengerClient, db: Session, employee: Employee, text: str) -> bool:
@@ -384,14 +433,12 @@ async def send_root_menu(messenger: MessengerClient, db: Session, employee: Empl
     if not root_set or not chat_id:
         return False
     set_current_menu_set(db, employee, root_set, path_ids=[root_set.id])
-    buttons = [
-        button.label.strip()
-        for button in db.query(BotMenuButton)
-        .filter(BotMenuButton.menu_set_id == root_set.id)
-        .order_by(BotMenuButton.sort_order, BotMenuButton.id)
-        .all()
-        if button.label and button.label.strip()
-    ]
+    button_rows = _menu_button_rows(db, root_set)
+    buttons = (
+        [button.label.strip() for button in button_rows[0] if button.label and button.label.strip()]
+        if not root_set.button_rows and button_rows
+        else [[button.label.strip() for button in row if button.label and button.label.strip()] for row in button_rows]
+    )
     if not buttons:
         return False
     await messenger.send_menu(chat_id=chat_id, text=render_menu_text(root_set.description or root_set.title or text, employee), buttons=buttons)

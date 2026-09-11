@@ -154,7 +154,7 @@ class ScenarioEngineSmokeTests(unittest.IsolatedAsyncioTestCase):
                 "ФИО: Антон Востриков; должность: Аналитик; первый день: 01.09.2026",
             )
 
-    def test_first_name_uses_explicit_field_and_legacy_last_token_fallback(self) -> None:
+    def test_first_name_uses_only_explicit_field(self) -> None:
         init_db()
         now = datetime.now(UTC).replace(tzinfo=None)
         with SessionLocal() as db:
@@ -169,7 +169,7 @@ class ScenarioEngineSmokeTests(unittest.IsolatedAsyncioTestCase):
             db.add(employee)
             db.commit()
             db.refresh(employee)
-            self.assertEqual(format_message(db, "{first_name}", employee, now.date(), None), "Галина")
+            self.assertEqual(format_message(db, "{first_name}", employee, now.date(), None), "")
             employee.first_name = "Галя"
             db.commit()
             self.assertEqual(render_menu_text("<b>{first_name}</b> {position}", employee), "<b>Галя</b> не указана")
@@ -381,12 +381,12 @@ class ScenarioEngineSmokeTests(unittest.IsolatedAsyncioTestCase):
             db.refresh(employee)
             message = format_message(
                 db,
-                '<tg-emoji emoji-id="123456789"></tg-emoji> <tg-emoji emoji-id="javascript"></tg-emoji>',
+                '<tg-emoji emoji-id="123456789">✨</tg-emoji> <tg-emoji emoji-id="javascript">x</tg-emoji>',
                 employee,
                 now.date(),
                 None,
             )
-            self.assertIn('<tg-emoji emoji-id="123456789"></tg-emoji>', message)
+            self.assertIn('<tg-emoji emoji-id="123456789">✨</tg-emoji>', message)
             self.assertNotIn("javascript", message)
 
     def test_format_message_escapes_template_values(self) -> None:
