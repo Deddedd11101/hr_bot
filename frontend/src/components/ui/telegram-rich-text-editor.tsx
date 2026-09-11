@@ -1,5 +1,6 @@
 import * as React from "react";
 import { EditorContent, useEditor, type Editor } from "@tiptap/react";
+import { Node } from "@tiptap/core";
 import Link from "@tiptap/extension-link";
 import Placeholder from "@tiptap/extension-placeholder";
 import StarterKit from "@tiptap/starter-kit";
@@ -46,6 +47,27 @@ type TelegramEditorNode = {
 
 type FormatAction = "bold" | "italic" | "underline" | "strike" | "code";
 
+const TelegramEmoji = Node.create({
+  name: "telegramEmoji",
+  inline: true,
+  group: "inline",
+  atom: true,
+  addAttributes() {
+    return {
+      emojiId: {
+        default: "",
+        parseHTML: (element: HTMLElement) => element.getAttribute("emoji-id") || "",
+      },
+    };
+  },
+  parseHTML() {
+    return [{ tag: "tg-emoji[emoji-id]" }];
+  },
+  renderHTML({ HTMLAttributes }) {
+    return ["tg-emoji", { "emoji-id": HTMLAttributes.emojiId }];
+  },
+});
+
 const SAFE_LINK_SCHEMES = ["http:", "https:", "mailto:"];
 
 function escapeText(value: string) {
@@ -67,6 +89,10 @@ function isSafeLink(value: unknown): value is string {
 
 function serializeInline(node: TelegramEditorNode): string {
   if (node.type === "hardBreak") return "\n";
+  if (node.type === "telegramEmoji") {
+    const emojiId = String(node.attrs?.emojiId || "");
+    return /^\d+$/.test(emojiId) ? `<tg-emoji emoji-id="${emojiId}"></tg-emoji>` : "";
+  }
   if (node.type !== "text") {
     return (node.content || []).map(serializeInline).join("");
   }
@@ -276,6 +302,7 @@ export type TelegramRichTextEditorProps = {
   className?: string;
   editorClassName?: string;
   insertRef?: React.MutableRefObject<((text: string) => void) | null>;
+  insertEmojiRef?: React.MutableRefObject<((emojiId: string) => void) | null>;
 };
 
 export function TelegramRichTextEditor({
@@ -286,6 +313,7 @@ export function TelegramRichTextEditor({
   className,
   editorClassName,
   insertRef,
+  insertEmojiRef,
 }: TelegramRichTextEditorProps) {
   const lastEmittedValue = React.useRef(value);
   const contextLinkSelection = React.useRef<{ from: number; to: number } | null>(null);
@@ -303,6 +331,7 @@ export function TelegramRichTextEditor({
         link: false,
         underline: false,
       }),
+      TelegramEmoji,
       Underline,
       Link.configure({
         autolink: false,
@@ -349,6 +378,21 @@ export function TelegramRichTextEditor({
       insertRef.current = null;
     };
   }, [disabled, editor, insertRef]);
+
+  React.useEffect(() => {
+    if (!insertEmojiRef) return;
+    insertEmojiRef.current = (emojiId: string) => {
+      if (!editor || disabled || !/^\d+$/.test(emojiId)) return;
+      editor
+        .chain()
+        .focus()
+        .insertContent({ type: "telegramEmoji", attrs: { emojiId } })
+        .run();
+    };
+    return () => {
+      insertEmojiRef.current = null;
+    };
+  }, [disabled, editor, insertEmojiRef]);
 
   if (!editor) return null;
 

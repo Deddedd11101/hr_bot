@@ -102,12 +102,21 @@ type Position = {
   created_at?: string;
 };
 
+type CustomEmoji = {
+  id: number;
+  title: string;
+  emoji_id: string;
+  fallback: string;
+  is_active: boolean;
+};
+
 type Workspace = {
   current_user: AdminAccount;
   role_labels: Record<string, string>;
   menu_role_scope_labels: Record<string, string>;
   menu_employee_scope_labels: Record<string, string>;
   positions: Position[];
+  custom_emojis: CustomEmoji[];
   hr_settings: HrSettings;
   menu_sets: MenuSet[];
   available_scenarios: ScenarioOption[];
@@ -204,6 +213,7 @@ async function requestJson(path: string, options: RequestInit = {}) {
 function normalizeWorkspace(workspace: Workspace): Workspace {
   return {
     ...workspace,
+    custom_emojis: Array.isArray(workspace.custom_emojis) ? workspace.custom_emojis : [],
     menu_role_scope_labels: workspace.menu_role_scope_labels || { all: "Для всех ролей" },
     menu_employee_scope_labels:
       workspace.menu_employee_scope_labels || {
@@ -233,6 +243,7 @@ function cloneWorkspace(workspace: Workspace): Workspace {
     ...workspace,
     hr_settings: { ...workspace.hr_settings },
     positions: workspace.positions.map((position) => ({ ...position })),
+    custom_emojis: workspace.custom_emojis.map((emoji) => ({ ...emoji })),
     menu_sets: workspace.menu_sets.map((menuSet) => ({
       ...menuSet,
       target_employee_stages: [...menuSet.target_employee_stages],
@@ -384,6 +395,8 @@ export function SettingsPage({ apiUrl }: SettingsPageProps) {
   const [draggedPositionId, setDraggedPositionId] = React.useState<number | null>(null);
   const [dragOverPositionId, setDragOverPositionId] = React.useState<number | null>(null);
   const [positionsReordering, setPositionsReordering] = React.useState(false);
+  const [newEmoji, setNewEmoji] = React.useState({ title: "", emoji_id: "", fallback: "✨" });
+  const [emojiDrafts, setEmojiDrafts] = React.useState<Record<number, { title: string; emoji_id: string; fallback: string }>>({});
   const [hrLink, setHrLink] = React.useState<{ url: string; expiresAt: string } | null>(null);
   const [hrLinkBusy, setHrLinkBusy] = React.useState(false);
   const [hrLinkCopied, setHrLinkCopied] = React.useState(false);
@@ -895,6 +908,83 @@ export function SettingsPage({ apiUrl }: SettingsPageProps) {
                 </div>
               </div>
             ))}
+          </div>
+        </SettingsCard>
+      ) : null}
+
+      {isAdmin ? (
+        <SettingsCard title="Каталог custom emoji" description="Сохранённые Telegram-иконки доступны в редакторах сообщений.">
+          <div className="grid gap-3 rounded-lg border border-border bg-muted/35 p-3 md:grid-cols-[1fr_1fr_120px_auto] md:items-end">
+            <Field>
+              <FieldLabel>Название</FieldLabel>
+              <Input value={newEmoji.title} onChange={(event) => setNewEmoji((current) => ({ ...current, title: event.target.value }))} placeholder="Например, Ура" />
+            </Field>
+            <Field>
+              <FieldLabel>Emoji ID</FieldLabel>
+              <Input value={newEmoji.emoji_id} onChange={(event) => setNewEmoji((current) => ({ ...current, emoji_id: event.target.value.replace(/\D/g, "") }))} inputMode="numeric" placeholder="Только из Telegram" />
+            </Field>
+            <Field>
+              <FieldLabel>Предпросмотр</FieldLabel>
+              <Input value={newEmoji.fallback} onChange={(event) => setNewEmoji((current) => ({ ...current, fallback: event.target.value }))} maxLength={8} />
+            </Field>
+            <Button
+              disabled={!newEmoji.title.trim() || !/^\d+$/.test(newEmoji.emoji_id)}
+              onClick={() =>
+                setWorkspaceFromApi(
+                  requestJson("/api/settings/custom-emojis", {
+                    method: "POST",
+                    body: JSON.stringify({ title: newEmoji.title.trim(), emoji_id: newEmoji.emoji_id, fallback: newEmoji.fallback || "✨" }),
+                  }),
+                  "Иконка добавлена",
+                ).then(() => setNewEmoji({ title: "", emoji_id: "", fallback: "✨" }))
+              }
+            >
+              Добавить
+            </Button>
+          </div>
+          <div className="grid gap-2">
+            {workspace.custom_emojis.length ? workspace.custom_emojis.map((emoji) => {
+              const draft = emojiDrafts[emoji.id] || { title: emoji.title, emoji_id: emoji.emoji_id, fallback: emoji.fallback };
+              return (
+              <div key={emoji.id} className="grid gap-3 rounded-lg border border-border bg-background p-3 md:grid-cols-[auto_1fr_1fr_120px_auto] md:items-end">
+                <span className="text-xl" aria-hidden="true">{emoji.fallback || "✨"}</span>
+                <Field>
+                  <FieldLabel>Название</FieldLabel>
+                  <Input value={draft.title} onChange={(event) => setEmojiDrafts((current) => ({ ...current, [emoji.id]: { ...draft, title: event.target.value } }))} />
+                </Field>
+                <Field>
+                  <FieldLabel>Emoji ID</FieldLabel>
+                  <Input value={draft.emoji_id} onChange={(event) => setEmojiDrafts((current) => ({ ...current, [emoji.id]: { ...draft, emoji_id: event.target.value.replace(/\D/g, "") } }))} inputMode="numeric" />
+                </Field>
+                <Field>
+                  <FieldLabel>Предпросмотр</FieldLabel>
+                  <Input value={draft.fallback} onChange={(event) => setEmojiDrafts((current) => ({ ...current, [emoji.id]: { ...draft, fallback: event.target.value } }))} maxLength={8} />
+                </Field>
+                <div className="flex gap-2 md:justify-end">
+                  <Button
+                    variant="secondary"
+                    size="icon"
+                    aria-label={`Сохранить ${emoji.title}`}
+                    disabled={!draft.title.trim() || !/^\d+$/.test(draft.emoji_id)}
+                    onClick={() => setWorkspaceFromApi(requestJson(`/api/settings/custom-emojis/${emoji.id}`, { method: "PATCH", body: JSON.stringify(draft) }), "Иконка обновлена")}
+                  >
+                    <Save />
+                  </Button>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  aria-label={`Отключить ${emoji.title}`}
+                  disabled={!emoji.is_active}
+                  onClick={() => setWorkspaceFromApi(requestJson(`/api/settings/custom-emojis/${emoji.id}`, { method: "DELETE" }), "Иконка отключена")}
+                >
+                  <Trash2 />
+                </Button>
+                </div>
+              </div>
+              );
+            }) : (
+              <div className="rounded-lg border border-dashed border-border px-3 py-4 text-sm text-muted-foreground">Каталог пока пуст.</div>
+            )}
           </div>
         </SettingsCard>
       ) : null}
