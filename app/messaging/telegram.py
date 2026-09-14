@@ -32,33 +32,36 @@ class TelegramMessenger:
             reply_markup=reply_markup,
         )
 
-    async def send_menu(self, chat_id: str, text: str, buttons: list[str]) -> None:
+    async def send_menu(self, chat_id: str, text: str, buttons: list[str] | list[list[str]]) -> None:
         if not buttons:
             await self.send_text(chat_id=chat_id, text=text)
             return
+        rows = buttons if buttons and isinstance(buttons[0], list) else [[button] for button in buttons]
         keyboard = ReplyKeyboardMarkup(
-            keyboard=[[KeyboardButton(text=button)] for button in buttons if button.strip()],
+            keyboard=[[KeyboardButton(text=button) for button in row if button.strip()] for row in rows if row],
             resize_keyboard=True,
         )
         await self.bot.send_message(chat_id=chat_id, text=text, reply_markup=keyboard)
 
     @staticmethod
-    def _inline_markup(buttons: list[tuple[str, str]]) -> InlineKeyboardMarkup | None:
+    def _inline_markup(buttons: list[tuple[str, str]] | list[list[tuple[str, str]]]) -> InlineKeyboardMarkup | None:
+        rows = buttons if buttons and isinstance(buttons[0], list) else [[button] for button in buttons]
         rows = [
-            [InlineKeyboardButton(text=label, callback_data=callback_data)]
-            for label, callback_data in buttons
-            if label.strip() and callback_data.strip()
+            [InlineKeyboardButton(text=label, callback_data=callback_data) for label, callback_data in row if label.strip() and callback_data.strip()]
+            for row in rows
+            if row
         ]
         return InlineKeyboardMarkup(inline_keyboard=rows) if rows else None
 
     async def send_inline_menu(self, chat_id: str, text: str, buttons: list[tuple[str, str]]) -> Any:
-        # A separate invisible cleanup message removes reply keyboards sent by older versions.
-        await self.bot.send_message(chat_id=chat_id, text="\u2063", reply_markup=ReplyKeyboardRemove())
         return await self.bot.send_message(
             chat_id=chat_id,
             text=text,
             reply_markup=self._inline_markup(buttons),
         )
+
+    async def delete_message(self, chat_id: str, message_id: int) -> Any:
+        return await self.bot.delete_message(chat_id=chat_id, message_id=message_id)
 
     async def edit_inline_menu(
         self, chat_id: str, message_id: int, text: str, buttons: list[tuple[str, str]]

@@ -8,6 +8,7 @@ import {
     updatePayloadState,
 } from "./helpers";
 import { PageDetailHeader } from "@/components/ui/page-header";
+import { type TelegramCustomEmoji, type TelegramTemplateTag } from "@/components/ui/telegram-message-tools";
 import {
     AssignmentHistorySection,
     EmployeeDetailError,
@@ -66,6 +67,12 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
         message: "",
         error: false,
     });
+    const [telegramMessageWorkspace, setTelegramMessageWorkspace] = React.useState<{
+        menu_text_tags?: TelegramTemplateTag[];
+        custom_emojis?: TelegramCustomEmoji[];
+    }>({});
+    const manualBotMessageInsertRef = React.useRef<((text: string) => void) | null>(null);
+    const manualBotMessageEmojiInsertRef = React.useRef<((emojiId: string) => void) | null>(null);
 
     function applyEmployeePayload(payload: any) {
         const normalizedPayload = Object.assign({}, payload, {
@@ -150,6 +157,26 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
             isMounted = false;
         };
     }, [apiUrl]);
+
+    React.useEffect(function () {
+        fetch("/api/settings/workspace", {
+            credentials: "same-origin",
+            headers: { Accept: "application/json" },
+        })
+            .then(function (response) {
+                if (!response.ok) throw new Error("Не удалось загрузить настройки Telegram-сообщений");
+                return response.json();
+            })
+            .then(function (payload) {
+                setTelegramMessageWorkspace({
+                    menu_text_tags: Array.isArray(payload.menu_text_tags) ? payload.menu_text_tags : [],
+                    custom_emojis: Array.isArray(payload.custom_emojis) ? payload.custom_emojis : [],
+                });
+            })
+            .catch(function () {
+                setTelegramMessageWorkspace({});
+            });
+    }, []);
 
     function setOperationMessage(message: string, isError: boolean) {
         setFlashState({
@@ -884,6 +911,10 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
                     setManualBotMessageText={setManualBotMessageText}
                     handleManualBotMessageSubmit={handleManualBotMessageSubmit}
                     manualBotMessageHistory={manualBotMessageHistory}
+                    manualBotMessageTemplateTags={telegramMessageWorkspace.menu_text_tags}
+                    manualBotMessageCustomEmojis={telegramMessageWorkspace.custom_emojis}
+                    manualBotMessageInsertRef={manualBotMessageInsertRef}
+                    manualBotMessageEmojiInsertRef={manualBotMessageEmojiInsertRef}
                     isCandidate={isCandidate}
                 />
             </section>

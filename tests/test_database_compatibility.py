@@ -16,17 +16,19 @@ def _create_non_employee_tables(engine) -> None:
             table.create(engine, checkfirst=True)
 
 
-def _create_legacy_employees_table(path: Path, *, include_menu_state: bool) -> None:
+def _create_legacy_employees_table(path: Path, *, include_menu_state: bool, include_first_name: bool = False) -> None:
     connection = sqlite3.connect(path)
     try:
         menu_columns = ""
         if include_menu_state:
             menu_columns = ", current_menu_path TEXT, current_menu_message_id INTEGER"
+        first_name_column = "first_name TEXT," if include_first_name else ""
         connection.execute(
             f"""
             CREATE TABLE employees (
                 id INTEGER PRIMARY KEY,
                 full_name TEXT NOT NULL,
+                {first_name_column}
                 telegram_user_id TEXT NOT NULL,
                 telegram_username TEXT,
                 current_menu_set_id INTEGER{menu_columns},
@@ -67,6 +69,7 @@ def _create_legacy_employees_table(path: Path, *, include_menu_state: bool) -> N
         columns = [
             "id",
             "full_name",
+            *(["first_name"] if include_first_name else []),
             "telegram_user_id",
             "telegram_username",
             "current_menu_set_id",
@@ -75,7 +78,7 @@ def _create_legacy_employees_table(path: Path, *, include_menu_state: bool) -> N
             "is_flow_scheduled",
             "employee_stage",
         ]
-        values = [1, "Legacy employee", "12345", "legacy", 7, "2026-09-01", "2026-01-01", 0, "staff"]
+        values = [1, "Legacy employee", *(["Legacy First"] if include_first_name else []), "12345", "legacy", 7, "2026-09-01", "2026-01-01", 0, "staff"]
         if include_menu_state:
             columns[5:5] = ["current_menu_path", "current_menu_message_id"]
             values[5:5] = ["7/9", 902]
@@ -95,6 +98,27 @@ class DatabaseCompatibilityTests(unittest.TestCase):
 
     def test_employee_rebuild_uses_null_for_missing_menu_state(self) -> None:
         self._assert_menu_state(include_menu_state=False, expected=(None, None))
+
+    def test_employee_rebuild_preserves_existing_first_name(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            path = Path(temporary_directory) / "legacy.db"
+            engine = create_engine(f"sqlite:///{path}")
+            _create_non_employee_tables(engine)
+            _create_legacy_employees_table(path, include_menu_state=False, include_first_name=True)
+
+            previous_engine = database.engine
+            previous_url = database.settings.DATABASE_URL
+            try:
+                database.engine = engine
+                database.settings.DATABASE_URL = f"sqlite:///{path}"
+                database._ensure_sqlite_schema()
+                with engine.connect() as connection:
+                    row = connection.execute(text("SELECT first_name FROM employees WHERE id = 1")).one()
+                self.assertEqual(row[0], "Legacy First")
+            finally:
+                database.engine = previous_engine
+                database.settings.DATABASE_URL = previous_url
+                engine.dispose()
 
     def _assert_menu_state(self, *, include_menu_state: bool, expected: tuple[str | None, int | None]) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:

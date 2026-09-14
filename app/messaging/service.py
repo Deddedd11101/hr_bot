@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import json
 from typing import Literal, NamedTuple, Optional
 
 from sqlalchemy.orm import Session
@@ -23,6 +24,7 @@ from ..scenario_engine import (
     handle_file_response,
     handle_text_response,
     normalize_test_task_answer_file_category,
+    render_menu_text,
     matches_role_scope,
     sanitize_telegram_safe_html,
     start_scenario,
@@ -341,6 +343,50 @@ def menu_button_options(db: Session, employee: Employee) -> list[tuple[str, str]
     return options
 
 
+def _menu_button_rows(db: Session, menu_set: BotMenuSet) -> list[list[BotMenuButton]]:
+    buttons = db.query(BotMenuButton).filter(BotMenuButton.menu_set_id == menu_set.id).order_by(BotMenuButton.sort_order, BotMenuButton.id).all()
+    by_id = {button.id: button for button in buttons}
+    try:
+        raw_rows = json.loads(menu_set.button_rows or "null")
+    except (TypeError, ValueError):
+        raw_rows = None
+    if not isinstance(raw_rows, list):
+        return [buttons] if buttons else []
+    rows: list[list[BotMenuButton]] = []
+    seen: set[int] = set()
+    for raw_row in raw_rows:
+        if not isinstance(raw_row, list):
+            continue
+        row = [by_id[int(raw_id)] for raw_id in raw_row if str(raw_id).isdigit() and int(raw_id) in by_id and int(raw_id) not in seen]
+        seen.update(button.id for button in row)
+        if row:
+            rows.append(row)
+    unlisted = [button for button in buttons if button.id not in seen]
+    if unlisted:
+        rows.append(unlisted)
+    return rows
+
+
+def menu_button_option_rows(db: Session, employee: Employee) -> list[tuple[str, str]] | list[list[tuple[str, str]]]:
+    menu_set = current_menu_set(db, employee)
+    if not menu_set:
+        return []
+    rows = [[(button.label.strip(), f"{MENU_CALLBACK_PREFIX}button:{button.id}") for button in row if button.label.strip()] for row in _menu_button_rows(db, menu_set)]
+    root_set = resolve_root_menu_set(db, employee)
+    current_path = _deserialize_menu_path(employee)
+    footer: list[tuple[str, str]] = []
+    if len(current_path) > 1:
+        footer.append((MENU_BACK_BUTTON_TEXT, f"{MENU_CALLBACK_PREFIX}back"))
+    if root_set and menu_set.id != root_set.id:
+        footer.append((MENU_HOME_BUTTON_TEXT, f"{MENU_CALLBACK_PREFIX}home"))
+    if footer:
+        rows.append(footer)
+    rows = [row for row in rows if row]
+    if not menu_set.button_rows:
+        return [item for row in rows for item in row]
+    return rows
+
+
 async def send_menu(
     messenger: MessengerClient,
     db: Session,
@@ -352,8 +398,8 @@ async def send_menu(
     chat_id = get_primary_chat_id(employee, db=db)
     if not chat_id:
         return
-    safe_text = sanitize_telegram_safe_html(text)
-    options = menu_button_options(db, employee)
+    safe_text = render_menu_text(text, employee)
+    options = menu_button_option_rows(db, employee)
     if not options:
         return
     inline_sender = getattr(messenger, "send_inline_menu", None)
@@ -374,22 +420,51 @@ async def send_menu(
         db.commit()
         return
     # Compatibility fallback for lightweight test clients and older adapters.
-    await messenger.send_menu(chat_id=chat_id, text=safe_text, buttons=[label for label, _ in options])
+    if options and isinstance(options[0], tuple):
+        reply_buttons = [label for label, _ in options]
+    else:
+        reply_buttons = [[label for label, _ in row] for row in options]
+    await messenger.send_menu(chat_id=chat_id, text=safe_text, buttons=reply_buttons)
+
+
+async def send_root_menu(messenger: MessengerClient, db: Session, employee: Employee, text: str) -> bool:
+    root_set = resolve_root_menu_set(db, employee)
+    chat_id = get_primary_chat_id(employee, db=db)
+    if not root_set or not chat_id:
+        return False
+    set_current_menu_set(db, employee, root_set, path_ids=[root_set.id])
+    button_rows = _menu_button_rows(db, root_set)
+    buttons = (
+        [button.label.strip() for button in button_rows[0] if button.label and button.label.strip()]
+        if not root_set.button_rows and button_rows
+        else [[button.label.strip() for button in row if button.label and button.label.strip()] for row in button_rows]
+    )
+    if not buttons:
+        return False
+    await messenger.send_menu(chat_id=chat_id, text=render_menu_text(root_set.description or root_set.title or text, employee), buttons=buttons)
+    employee.current_menu_message_id = None
+    db.commit()
+    return True
 
 
 async def show_main_menu(messenger: MessengerClient, db: Session, employee: Employee, text: str) -> bool:
-    root_set = resolve_root_menu_set(db, employee)
-    if not root_set:
-        return False
-    set_current_menu_set(db, employee, root_set, path_ids=[root_set.id])
-    await send_menu(
-        messenger,
-        db,
-        employee,
-        root_set.description or root_set.title or text,
-        edit_message_id=employee.current_menu_message_id,
-    )
-    return True
+    if employee.current_menu_message_id:
+        await clear_nested_menu(messenger, db, employee)
+    return await send_root_menu(messenger, db, employee, text)
+
+
+async def clear_nested_menu(messenger: MessengerClient, db: Session, employee: Employee) -> None:
+    chat_id = get_primary_chat_id(employee, db=db)
+    message_id = employee.current_menu_message_id
+    if chat_id and message_id:
+        deleter = getattr(messenger, "delete_message", None)
+        if deleter is not None:
+            try:
+                await deleter(chat_id, int(message_id))
+            except Exception:
+                logger.debug("Could not delete stale inline menu", exc_info=True)
+    employee.current_menu_message_id = None
+    db.commit()
 
 
 async def handle_menu_navigation(messenger: MessengerClient, db: Session, employee: Employee, text: str) -> bool:
@@ -404,7 +479,7 @@ async def handle_menu_navigation(messenger: MessengerClient, db: Session, employ
         return False
     path_ids = _deserialize_menu_path(employee)
     if len(path_ids) <= 1:
-        return await show_main_menu(messenger, db, employee, "Вы уже в главном меню.")
+        return await show_main_menu(messenger, db, employee, "Главное меню открыто.")
 
     previous_set_id = path_ids[-2]
     previous_set = db.get(BotMenuSet, previous_set_id)
@@ -416,6 +491,9 @@ async def handle_menu_navigation(messenger: MessengerClient, db: Session, employ
             "Предыдущий раздел больше недоступен. Открываю главное меню.",
         )
     set_current_menu_set(db, employee, previous_set, path_ids=path_ids[:-1])
+    root_set = resolve_root_menu_set(db, employee)
+    if root_set and previous_set.id == root_set.id:
+        return await show_main_menu(messenger, db, employee, "Главное меню открыто.")
     await send_menu(
         messenger,
         db,
@@ -511,6 +589,19 @@ async def handle_menu_button(messenger: MessengerClient, db: Session, employee: 
         .first()
     )
     return await _handle_menu_button_record(messenger, db, employee, menu_set, button) if button else False
+
+
+async def handle_root_menu_command(messenger: MessengerClient, db: Session, employee: Employee, text: str) -> bool:
+    root_set = resolve_root_menu_set(db, employee)
+    if not root_set:
+        return False
+    button = (
+        db.query(BotMenuButton)
+        .filter(BotMenuButton.menu_set_id == root_set.id, BotMenuButton.label == text.strip())
+        .order_by(BotMenuButton.sort_order, BotMenuButton.id)
+        .first()
+    )
+    return await _handle_menu_button_record(messenger, db, employee, root_set, button) if button else False
 
 
 async def handle_menu_callback(
@@ -700,6 +791,10 @@ async def handle_text_event(
     if access.state != "ok" or access.employee is None:
         return access.state
     employee = access.employee
+    # Reply-keyboard root labels are reserved commands. This check happens
+    # before free-text scenario handling so a menu label cannot be saved as an answer.
+    if await handle_root_menu_command(messenger, db, employee, text):
+        return "handled"
     if text.strip() == SCENARIO_BACK_BUTTON_TEXT:
         if await handle_back_response(messenger, db, employee):
             return "handled"

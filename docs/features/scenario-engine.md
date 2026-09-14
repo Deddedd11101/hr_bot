@@ -34,6 +34,20 @@ Scenario engine превращает scenario templates плюс employee state 
 - `employee_document_links` / `employee_files` — персональные document slots для тегов вида `{doc:...}` и актуального resume slot.
 - `document_library_items` — shared documents из `/app/documents`, которые можно переиспользовать как вложение шага.
 
+## Telegram message templates
+
+Тексты шагов, уведомлений и меню используют общий безопасный Telegram HTML renderer. Старый plain text остается совместимым. В сценариях доступны `{employee_full_name}`, `{position}`, `{first_workday}` и `{first_name}`; в уведомлениях дополнительно доступен `{resume}`/`{резюме}`. В menu set `menu_text` доступны `{employee_full_name}`, `{full_name}`, `{first_name}`, `{position}` и `{first_workday}`. Значения карточки экранируются перед вставкой.
+
+`{first_name}` берет только отдельное кадровое поле `employees.first_name`. Если поле пустое, тег рендерится пустой строкой: ФИО не угадывается по словам, и Telegram display name не используется. Новые формы должны заполнять отдельное поле явно.
+
+В тексте сообщений разрешен ограниченный HTML whitelist: `<b>`, `<strong>`, `<i>`, `<em>`, `<u>`, `<s>`, `<code>`, `<pre>`, безопасные `<a href>` и numeric `<tg-emoji emoji-id="...">`. Telegram Bot API также поддерживает `icon_custom_emoji_id` у inline/reply-кнопок, но текущий редактор пока не связывает каталог с отдельными кнопками; до отдельного button-icon slice клавиатуры используют обычный emoji fallback. Custom emoji не переносится автоматически простым копированием из Premium-клиента.
+
+Корневой menu set показывается постоянной reply-клавиатурой. Вложенные sets показываются inline-сообщением и редактируют его при переходах; reply-клавиатура при этом не меняется. Точные labels корневой клавиатуры зарезервированы как команды меню и обрабатываются до свободного текстового ответа сценария, чтобы label не сохранился случайно как ответ.
+
+Порядок кнопок можно задать в `button_rows` как массив строк с ID кнопок конкретного набора. Старые наборы без layout продолжают использовать `sort_order`; runtime добавляет неуказанные актуальные кнопки в конец legacy-порядка.
+
+Ручные сообщения из карточки используют тот же renderer и employee-context tags; исходный шаблон сохраняется в audit history, а в Telegram отправляется отрендеренный безопасный HTML.
+
 ## Audience targeting
 
 - `employee_scope` продолжает отвечать за coarse split `кандидаты / сотрудники / все`.
@@ -86,9 +100,9 @@ Scenario engine превращает scenario templates плюс employee state 
 
 - `flow_step_templates.is_terminal=true` означает явную остановку текущего сценария на этом шаге.
 - Для send-only step (`response_type=none`) progress закрывается сразу после отправки текста/вложения/уведомлений этого шага.
-- Для интерактивных step (`text`, `date`, `file`, `buttons`, `branching`) progress закрывается после валидного ответа пользователя и применения side effects этого ответа.
-- Terminal step не запускает следующий root/chain/follow-up step и не создает scheduled follow-up request.
-- Terminal работает одинаково в root-flow, branch-step и chain-step, потому что `resolve_followup_step()` возвращает `None` для explicit terminal step.
+- Для интерактивных leaf-step (`text`, `date`, `file`, `buttons`) progress закрывается после валидного ответа пользователя и применения side effects этого ответа.
+- После достижения terminal boundary runtime не запускает следующий root/chain/follow-up step и не создает scheduled follow-up request; terminal `branching`/`chain` сначала выполняет выбранные дочерние шаги.
+- Terminal работает одинаково в root-flow, branch-step и chain-step. Для branching/chain-контейнера флаг не подавляет dispatch выбранной ветки: runtime завершает progress после последнего дочернего шага и не проваливается в следующий root-step. Для terminal интерактивного leaf-step завершение происходит после валидного ответа.
 - Практический editor contract: завершающим надо помечать последний step конкретной ветки, где сценарий должен остановиться. Если отказной step остается обычным root-step после branch parent, любой путь, который явно или неявно вернулся в root-flow до этого шага, все равно может его отправить.
 - `launch_scenario` остается отдельной transition-механикой: текущий сценарий завершается и запускает target scenario. Не использовать `is_terminal` как замену `launch_scenario`, если нужен переход в другой сценарий.
 
@@ -119,7 +133,8 @@ Scenario engine превращает scenario templates плюс employee state 
 - Storage не меняется: поля текста остаются `TEXT`, а старые plain text сообщения остаются валидными.
 - Runtime отправляет сообщения в Telegram HTML parse mode, но принимает только ограниченный safe subset:
   - `<b>`, `<strong>`, `<i>`, `<em>`, `<u>`, `<s>`, `<code>`, `<pre>`;
-  - `<a href="...">` только с `http://`, `https://` или `mailto:`.
+  - `<a href="...">` только с `http://`, `https://` или `mailto:`;
+  - `<tg-emoji emoji-id="...">` только с numeric `emoji-id`.
 - Unknown tags, опасные attributes и ссылки с небезопасным protocol не уходят в Telegram как HTML.
 - Broken HTML не должен ломать отправку сценария: renderer закрывает незакрытые разрешенные tags или деградирует в escaped text.
 - Template values из карточки всегда HTML-escape'ятся перед подстановкой: ФИО, должность, даты, резюме и URL settings не могут вставить произвольный HTML.

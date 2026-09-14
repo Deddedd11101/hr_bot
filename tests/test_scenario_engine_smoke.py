@@ -20,6 +20,7 @@ from app.models import (
 from app.scenario_engine import (
     SCENARIO_BACK_BUTTON_TEXT,
     format_message,
+    render_menu_text,
     handle_button_response,
     handle_back_response,
     handle_choice_confirmation_response_by_step_id,
@@ -152,6 +153,26 @@ class ScenarioEngineSmokeTests(unittest.IsolatedAsyncioTestCase):
                 message,
                 "ФИО: Антон Востриков; должность: Аналитик; первый день: 01.09.2026",
             )
+
+    def test_first_name_uses_only_explicit_field(self) -> None:
+        init_db()
+        now = datetime.now(UTC).replace(tzinfo=None)
+        with SessionLocal() as db:
+            employee = Employee(
+                full_name="Тарасова Галина",
+                first_name="",
+                telegram_user_id="100003",
+                created_at=now,
+                is_flow_scheduled=False,
+                employee_stage="staff",
+            )
+            db.add(employee)
+            db.commit()
+            db.refresh(employee)
+            self.assertEqual(format_message(db, "{first_name}", employee, now.date(), None), "")
+            employee.first_name = "Галя"
+            db.commit()
+            self.assertEqual(render_menu_text("<b>{first_name}</b> {position}", employee), "<b>Галя</b> не указана")
 
     def test_format_message_uses_safe_fallbacks_for_empty_employee_tags(self) -> None:
         init_db()
@@ -349,6 +370,24 @@ class ScenarioEngineSmokeTests(unittest.IsolatedAsyncioTestCase):
                 message,
                 '<a href="http://example.com">http</a> <a href="https://example.com">https</a> <a href="mailto:hr@example.com">mail</a>',
             )
+
+    def test_telegram_custom_emoji_is_text_only_safe_entity(self) -> None:
+        init_db()
+        now = datetime.now(UTC).replace(tzinfo=None)
+        with SessionLocal() as db:
+            employee = Employee(full_name="Emoji User", telegram_user_id="100004", created_at=now)
+            db.add(employee)
+            db.commit()
+            db.refresh(employee)
+            message = format_message(
+                db,
+                '<tg-emoji emoji-id="123456789">✨</tg-emoji> <tg-emoji emoji-id="javascript">x</tg-emoji>',
+                employee,
+                now.date(),
+                None,
+            )
+            self.assertIn('<tg-emoji emoji-id="123456789">✨</tg-emoji>', message)
+            self.assertNotIn("javascript", message)
 
     def test_format_message_escapes_template_values(self) -> None:
         init_db()
@@ -2818,6 +2857,153 @@ class ScenarioEngineSmokeTests(unittest.IsolatedAsyncioTestCase):
             sent_texts = [item["text"] for item in messenger.texts]
             self.assertIn("Первый", sent_texts)
             self.assertIn("Второй", sent_texts)
+
+    async def test_terminal_text_step_inside_branch_sends_then_completes(self) -> None:
+        init_db()
+        now = datetime.now(UTC).replace(tzinfo=None)
+        scenario_key = f"test_terminal_branch_text_{int(datetime.now(UTC).timestamp() * 1000000)}"
+
+        with SessionLocal() as db:
+            scenario = ScenarioTemplate(
+                scenario_key=scenario_key,
+                title="Terminal branch text",
+                role_scope="all",
+                scenario_kind="scenario",
+                sort_order=0,
+                trigger_mode="manual_only",
+            )
+            root_step = FlowStepTemplate(
+                flow_key=scenario_key,
+                step_key="start",
+                step_title="Start",
+                sort_order=10,
+                default_text="Выберите",
+                response_type="branching",
+                button_options="Готов",
+                send_mode="immediate",
+                day_offset_workdays=0,
+                is_terminal=True,
+            )
+            terminal_branch = FlowStepTemplate(
+                flow_key=scenario_key,
+                step_key="terminal_branch",
+                parent_step_id=None,
+                branch_option_index=0,
+                step_title="Terminal branch",
+                default_text="Напишите финальный ответ",
+                response_type="text",
+                send_mode="immediate",
+                day_offset_workdays=0,
+                is_terminal=True,
+            )
+            employee = Employee(
+                full_name="Branch terminal tester",
+                telegram_user_id="123456794",
+                created_at=now,
+                is_flow_scheduled=False,
+                employee_stage="candidate",
+            )
+            db.add_all([scenario, root_step, employee])
+            db.commit()
+            db.refresh(root_step)
+            terminal_branch.parent_step_id = root_step.id
+            db.add(terminal_branch)
+            db.commit()
+
+            messenger = FakeMessenger()
+            await send_step(messenger, db, employee, scenario, root_step)
+            self.assertTrue(await handle_button_response(messenger, db, employee, scenario_key, "start", 0))
+            self.assertIn("Напишите финальный ответ", [item["text"] for item in messenger.texts])
+            self.assertTrue(await handle_text_response(messenger, db, employee, SimpleNamespace(text="Готово")))
+
+            progress = db.query(ScenarioProgress).filter(ScenarioProgress.employee_id == employee.id).one()
+            self.assertTrue(progress.is_completed)
+            self.assertFalse(progress.waiting_for_response)
+
+    async def test_terminal_branch_chain_stops_after_last_child_without_root_fallthrough(self) -> None:
+        init_db()
+        now = datetime.now(UTC).replace(tzinfo=None)
+        scenario_key = f"test_terminal_branch_chain_{int(datetime.now(UTC).timestamp() * 1000000)}"
+
+        with SessionLocal() as db:
+            scenario = ScenarioTemplate(
+                scenario_key=scenario_key,
+                title="Terminal branch chain",
+                role_scope="all",
+                scenario_kind="scenario",
+                sort_order=0,
+                trigger_mode="manual_only",
+            )
+            root_step = FlowStepTemplate(
+                flow_key=scenario_key,
+                step_key="start",
+                step_title="Start",
+                sort_order=10,
+                default_text="Выберите",
+                response_type="branching",
+                button_options="Готов",
+                send_mode="immediate",
+                day_offset_workdays=0,
+            )
+            branch_container = FlowStepTemplate(
+                flow_key=scenario_key,
+                step_key="ready_chain",
+                parent_step_id=None,
+                branch_option_index=0,
+                step_title="Ready chain",
+                default_text="",
+                response_type="chain",
+                send_mode="immediate",
+                day_offset_workdays=0,
+                is_terminal=True,
+            )
+            root_fallthrough = FlowStepTemplate(
+                flow_key=scenario_key,
+                step_key="must_not_send",
+                step_title="Root fallthrough",
+                sort_order=20,
+                default_text="Не должно прийти",
+                response_type="none",
+                send_mode="immediate",
+                day_offset_workdays=0,
+            )
+            employee = Employee(
+                full_name="Branch chain tester",
+                telegram_user_id="123456795",
+                created_at=now,
+                is_flow_scheduled=False,
+                employee_stage="candidate",
+            )
+            db.add_all([scenario, root_step, root_fallthrough, employee])
+            db.commit()
+            db.refresh(root_step)
+            branch_container.parent_step_id = root_step.id
+            db.add(branch_container)
+            db.commit()
+            db.refresh(branch_container)
+            child = FlowStepTemplate(
+                flow_key=scenario_key,
+                step_key="ready_chain__chain_0",
+                parent_step_id=branch_container.id,
+                step_title="Chain answer",
+                default_text="Ответьте в финальном шаге",
+                response_type="text",
+                send_mode="immediate",
+                day_offset_workdays=0,
+            )
+            db.add(child)
+            db.commit()
+
+            messenger = FakeMessenger()
+            await send_step(messenger, db, employee, scenario, root_step)
+            self.assertTrue(await handle_button_response(messenger, db, employee, scenario_key, "start", 0))
+            self.assertIn("Ответьте в финальном шаге", [item["text"] for item in messenger.texts])
+            self.assertTrue(await handle_text_response(messenger, db, employee, SimpleNamespace(text="Готово")))
+
+            sent_texts = [item["text"] for item in messenger.texts]
+            self.assertNotIn("Не должно прийти", sent_texts)
+            progress = db.query(ScenarioProgress).filter(ScenarioProgress.employee_id == employee.id).one()
+            self.assertTrue(progress.is_completed)
 
 
 if __name__ == "__main__":
