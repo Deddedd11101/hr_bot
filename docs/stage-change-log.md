@@ -34,6 +34,19 @@ source_of_truth: true
 
 ## Записи
 
+### 2026-09-14 11:52 MSK - app deploy - hybrid bot menu and terminal branch delivery
+
+- Deploy ref: `stage`; deployed SHA: `71c26217e33891029a008459c1d19c7215137042`.
+- [Deploy Stage 34824783487](https://github.com/Deddedd11101/hr_bot/actions/runs/34824783487) -> success; [integration PR #24](https://github.com/Deddedd11101/hr_bot/pull/24) и его [CI 34824686183](https://github.com/Deddedd11101/hr_bot/actions/runs/34824686183) -> success.
+- В stage включены hybrid bot menu и новый editor: root reply keyboard, nested inline navigation, явный `button_rows` layout, employee menu tags, custom emoji catalog и очистка layout при удалении кнопки. Generated Vite assets пересобраны из объединенных исходников.
+- Исправлена terminal-семантика сценария: terminal leaf завершается после успешной отправки или валидного ответа, а terminal `branching`/`chain` выполняет выбранные дочерние шаги и завершается без перехода к следующему root-шагу. Финальный текст дочернего шага отправляется до закрытия progress.
+- Включены согласованные правила координации пакетов: исполнитель завершает PR, интегратор объединяет и деплоит; отчеты отдельно фиксируют проверку кода, выкладку и пользовательскую приемку.
+- Проверки объединенного ref: compileall app/tests/tools, Ruff F821, 212 backend tests, docs contracts, npm ci, TypeScript, UI registry (80 записей), npm build дважды и diff-check -> passed. Final targeted DB/Docs reviews -> approved.
+- Backup: `backups/hr_bot.before-deploy.20260914-085157.db` создан и проверен через `PRAGMA quick_check`; scenario snapshot: `backups/scenarios.before-deploy.20260914-085157.json`; scenario configuration fingerprint unchanged.
+- Stage smoke: `hr-bot-web`, `hr-bot-worker` и `wg-quick@redshield` прошли `systemctl is-active`; `/app/employees` и `/app/flows/workspace-v2` -> `303`; Telegram API -> `HTTP/2 302`; grep свежих worker logs не нашел `TelegramNetworkError`, `Request timeout`, `Traceback` или `Unclosed client session`; deploy вывел `71c2621`.
+- Реальные сообщения сотрудникам не отправлялись и stage DB вручную не менялась. Ручная приемка остается: проверить root/submenu/Назад в Telegram на согласованном тестовом получателе, layout строк и custom emoji в `/app/bot-menu`, а также terminal branch с отправкой финального дочернего текста.
+- Known warnings: npm audit 7 findings (2 low, 1 moderate, 4 high), large graph chunk и GitHub Actions Node.js 20 deprecation annotation; вне scope пакета.
+
 ### 2026-09-10 01:04 MSK - app deploy - manual safe HTML and shared Telegram editor
 
 - Deploy ref: `stage`; deployed SHA: `91ef6229d85196a6920954d15552f52b8ac769f0`.
