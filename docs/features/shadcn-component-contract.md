@@ -80,7 +80,7 @@ source_of_truth: true
 - Toolbar and context-menu formatting use the same safe mark set. The context-menu link dialog restores the saved editor selection before applying or inserting a safe URL.
 - Bot menu text exposes backend-provided tag buttons and previews two distinct Telegram surfaces: root reply keyboard below the input and nested inline buttons on the message. Button layout is one shared `button_rows: number[][]` contract from the menu-set payload; the UI edits that contract with drag/drop and keyboard-accessible movement controls rather than creating a second order model.
 - Surveys do not receive this primitive.
-- The employee manual message endpoint passes text through the same safe HTML renderer before Telegram delivery; scenario template tags remain literal in this ad-hoc surface.
+- The employee manual message endpoint passes text through the same safe HTML renderer before Telegram delivery and resolves supported employee template tags from the current card context.
 - Custom emoji catalog is backed by `GET /api/settings/workspace` (`custom_emojis`) and the CRUD endpoints `/api/settings/custom-emojis*`. Admins create/update/deactivate entries; editors show only active catalog entries and insert numeric `emoji_id` values through the shared editor. Menu keyboard labels continue using ordinary fallback emoji because Telegram custom entities are message content, not keyboard labels.
 
 ## Current Migration Debt

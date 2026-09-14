@@ -1368,7 +1368,7 @@ export function WorkspaceStepDetailPane(props: {
                       <span className="grid gap-1">
                         <span className="text-sm font-semibold text-foreground/85">Завершить сценарий после этого шага</span>
                         <span className="text-xs leading-5 text-muted-foreground">
-                          Бот не пойдёт к следующему шагу и не поставит follow-up после отправки шага или после ответа пользователя.
+                          Обычный шаг завершит сценарий после отправки или ответа. Ветка или цепочка сначала выполнит выбранные дочерние шаги, затем завершится без перехода к следующему основному шагу.
                         </span>
                       </span>
                     </label>
