@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from typing import Optional
 
 from aiohttp import ClientError
@@ -32,6 +33,9 @@ from .messaging.service import (
 )
 from .scenario_engine import CALLBACK_PREFIX, CHOICE_CONFIRM_CALLBACK_PREFIX
 from .scheduler import schedule_all_employees
+
+
+logger = logging.getLogger(__name__)
 
 
 def _telegram_username(user) -> Optional[str]:
@@ -96,9 +100,23 @@ async def _handle_incoming_file_like(
         if employee is None:
             await messenger.close()
             return
-        file_info = await bot.get_file(media.file_id)
-        destination = build_employee_file_path(employee.id, original_name)
-        await bot.download_file(file_info.file_path, destination=destination)
+        try:
+            file_info = await bot.get_file(media.file_id)
+            destination = build_employee_file_path(employee.id, original_name)
+            await bot.download_file(file_info.file_path, destination=destination)
+        except Exception:
+            logger.exception(
+                "Telegram inbound media download failed: chat_user_id=%s file_id=%s filename=%s",
+                user.id,
+                getattr(media, "file_id", None),
+                original_name,
+            )
+            await messenger.send_text(
+                chat_id=str(user.id),
+                text="Не удалось загрузить файл. Попробуйте отправить его еще раз.",
+            )
+            await messenger.close()
+            return
         employee, db_file, save_state = await save_incoming_file(
             db,
             str(user.id),

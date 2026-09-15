@@ -1746,6 +1746,13 @@ async def send_step_attachment(
     attachment_path = (getattr(step, "attachment_path", None) or "").strip()
     if not attachment_path:
         return False
+    if is_http_answer_link(attachment_path):
+        await messenger.send_text(
+            chat_id=chat_id,
+            text=attachment_path,
+            reply_markup=reply_markup,
+        )
+        return True
     path = Path(attachment_path)
     if not path.exists():
         return False

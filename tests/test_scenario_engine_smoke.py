@@ -1131,6 +1131,15 @@ class ScenarioEngineSmokeTests(unittest.IsolatedAsyncioTestCase):
                 "Company policy\n\nRead before start\n\nhttps://example.com/policy",
             )
 
+    async def test_send_step_attachment_supports_legacy_http_link(self) -> None:
+        step = SimpleNamespace(attachment_path="https://example.com/designer-test-task")
+        messenger = FakeMessenger()
+
+        handled = await send_step_attachment(messenger, "employee-chat", step)
+
+        self.assertTrue(handled)
+        self.assertEqual(messenger.texts[0]["text"], "https://example.com/designer-test-task")
+
     async def test_send_step_attachment_falls_back_to_upload_when_library_file_is_broken(self) -> None:
         init_db()
         now = datetime.now(UTC).replace(tzinfo=None)
