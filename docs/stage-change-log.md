@@ -34,6 +34,17 @@ source_of_truth: true
 
 ## Записи
 
+### 2026-09-15 12:08 MSK - app deploy - test task media links
+
+- Deploy ref: `stage`; deployed SHA: `4573ba2f69b2f369ccbb748e039029872dd25a22`.
+- [Deploy Stage 34950711434](https://github.com/Deddedd11101/hr_bot/actions/runs/34950711434) -> success; [PR #26](https://github.com/Deddedd11101/hr_bot/pull/26) CI `34905017671` -> success.
+- В stage включено: ответы на тестовое задание ссылкой `http://`/`https://` как текстовым сообщением; сохранение и дальнейшая обработка legacy URL-вложений; понятный ответ и exception log при ошибке загрузки Telegram media. Существующие file/video ответы не менялись.
+- Проверки объединенного ref: compileall app/tests/tools, Ruff F821, 193 backend tests, import smoke и docs-check -> passed; frontend не менялся.
+- Backup: `backups/hr_bot.before-deploy.20260915-090808.db` создан и проверен через `PRAGMA quick_check`; scenario snapshot: `backups/scenarios.before-deploy.20260915-090808.json`; scenario configuration fingerprint unchanged.
+- Stage smoke: `hr-bot-web`, `hr-bot-worker` и `wg-quick@redshield` прошли `systemctl is-active`; `/app/employees` и `/app/flows/workspace-v2` -> `303`; Telegram API -> `HTTP/2 302`; свежих `TelegramNetworkError`, `Request timeout`, `Traceback` и `Unclosed client session` в worker logs не найдено; deploy вывел `4573ba2`.
+- Реальные ответы в Telegram на designer/PM/аналитик сценариях не отправлялись. Ручная приемка остается: проверить file/video/link ответ в тестовом сценарии и убедиться, что файл/ссылка видны в нужной карточке.
+- Known warning: GitHub Actions указал deprecation annotation для Node.js 20 actions; deploy успешен, предупреждение вне scope.
+
 ### 2026-09-14 11:52 MSK - app deploy - hybrid bot menu and terminal branch delivery
 
 - Deploy ref: `stage`; deployed SHA: `71c26217e33891029a008459c1d19c7215137042`.
