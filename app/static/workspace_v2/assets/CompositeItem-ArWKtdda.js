@@ -1,0 +1,1 @@
+import{E as u,F as t,w as c}from"./useBaseUiId-BEctzMIr.js";import{u as E}from"./tabs-Buutlv80.js";function M(e){const{render:d,className:l,style:C,state:s=u,props:o=t,refs:r=t,metadata:a,stateAttributesMapping:m,tag:p="div",...i}=e,{compositeProps:n,compositeRef:f}=E({metadata:a});return c(p,e,{state:s,ref:[...r,f],props:[n,...o,i],stateAttributesMapping:m})}export{M as C};
