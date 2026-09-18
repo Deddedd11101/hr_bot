@@ -34,6 +34,18 @@ source_of_truth: true
 
 ## Записи
 
+### 2026-09-19 00:21 MSK - app deploy - каталог грейдов и оценка сотрудника
+
+- Deploy ref: `stage`; deployed SHA: `1653faca7918db54cc83bee2a3e26a6eac5ec61b`.
+- Интеграция: backend PR [#28](https://github.com/Deddedd11101/hr_bot/pull/28) и UI PR [#29](https://github.com/Deddedd11101/hr_bot/pull/29) собраны backend-first через [integration PR #30](https://github.com/Deddedd11101/hr_bot/pull/30), CI run [35396118260](https://github.com/Deddedd11101/hr_bot/actions/runs/35396118260) -> success.
+- В stage включены каталог грейдов/специализаций, матрица ожиданий, preview/apply JSON import, оценка и вкладка грейда в карточке сотрудника. Удаление сотрудника с финальной оценкой защищено ответом `409`; удаление без финальной оценки очищает незавершенные grade-данные по контракту. Sample catalog автоматически не импортируется.
+- Проверки объединенного ref: `compileall app tests tools`, Ruff F821, 245 Grade + employee/messaging/scenario tests, `tools/check_docs_contracts.py`, `npm ci`, `npm run build`, `git diff --check` -> passed. npm сообщил 7 audit findings (2 low, 1 moderate, 4 high); сборка также выдала предупреждение о крупном graph-view chunk, оба замечания вне scope.
+- Deploy Stage run [35396264878](https://github.com/Deddedd11101/hr_bot/actions/runs/35396264878) -> success; preflight compile/Ruff/backend smoke/frontend build/import smoke прошел.
+- Backup: `backups/hr_bot.before-deploy.20260918-212134.db`, создан и проверен через `PRAGMA quick_check`; scenario snapshot: `backups/scenarios.before-deploy.20260918-212134.json`; scenario configuration fingerprint unchanged.
+- Stage smoke: workflow подтвердил active `hr-bot-web`, `hr-bot-worker` и `wg-quick@redshield`; `/app/employees` и `/app/flows/workspace-v2` прошли HTTP smoke (`200`/`303`); Telegram API ответил `HTTP/2 302`; свежих `TelegramNetworkError`, `Request timeout`, `Traceback` и `Unclosed client session` в worker logs не найдено. Дополнительная внешняя проверка без авторизации: `/app/grades` и `/app/employees` -> `303` на login.
+- Вручную не импортировался sample Grade catalog; не создавались/менялись employee profiles или assessments; Telegram-сообщения не отправлялись.
+- Пользовательская приемка остается открытой: войти и проверить `/app/grades`, выбрать/создать тестовую специализацию, проверить preview и явное применение импорта только на согласованном тестовом каталоге, пройти draft -> финализация -> история на тестовом сотруднике и проверить delete guard. Финальные stage-оценки не создавались интегратором.
+
 ### 2026-09-15 12:08 MSK - app deploy - test task media links
 
 - Deploy ref: `stage`; deployed SHA: `4573ba2f69b2f369ccbb748e039029872dd25a22`.
