@@ -42,6 +42,7 @@ const navItems = [
   { key: "surveys", label: "Опросы", href: "/app/surveys/workspace", icon: FileCheck2 },
   { key: "bot_menu", label: "Меню бота", href: "/app/bot-menu", icon: Bot },
   { key: "documents", label: "Документы", href: "/app/documents", icon: FolderOpen },
+  { key: "grades", label: "Грейды", href: "/app/grades", icon: BadgeCheck },
   { key: "settings", label: "Настройки", href: "/app/settings", icon: Settings },
 ] as const;
 

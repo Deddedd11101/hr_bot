@@ -2708,6 +2708,27 @@ function PatternsSection() {
             "Confirm destructive edits.",
           ]}
         />
+        <ExampleBlock id="record-with-tabs" title="Карточка с вкладками">
+          <Tabs defaultValue="profile" className="flex-col">
+            <TabsList variant="line" aria-label="Разделы карточки">
+              <TabsTrigger value="profile">Профиль</TabsTrigger>
+              <TabsTrigger value="grade">Грейд</TabsTrigger>
+            </TabsList>
+            <TabsContent value="profile" keepMounted><Input aria-label="Имя сотрудника" defaultValue="Алексей Иванов" /></TabsContent>
+            <TabsContent value="grade" keepMounted>
+              <Tabs defaultValue="empty" className="flex-col">
+                <TabsList aria-label="Состояния вкладки">
+                  <TabsTrigger value="empty">Пусто</TabsTrigger>
+                  <TabsTrigger value="loading">Загрузка</TabsTrigger>
+                  <TabsTrigger value="error">Ошибка</TabsTrigger>
+                </TabsList>
+                <TabsContent value="empty">Оценок пока нет. Назначьте специализацию и текущий грейд.</TabsContent>
+                <TabsContent value="loading"><span role="status">Загрузка грейда...</span></TabsContent>
+                <TabsContent value="error"><span role="alert">Не удалось загрузить грейд.</span><Button variant="outline">Повторить</Button></TabsContent>
+              </Tabs>
+            </TabsContent>
+          </Tabs>
+        </ExampleBlock>
         <PatternCard
           entryId="shell-sidebar-pattern"
           title="Shell sidebar"
