@@ -12,6 +12,8 @@ os.environ.setdefault("DATABASE_URL", "sqlite://")
 
 from sqlalchemy import create_engine, event, select, text
 from sqlalchemy.orm import Session
+from fastapi import HTTPException
+from unittest.mock import patch
 
 from app.database import Base
 from app.models import (AdminAccount, Employee, EmployeeGradeProfile, Grade,
@@ -79,6 +81,37 @@ class GradeServicesTests(unittest.TestCase):
         self.assertEqual(grade.name, "Renamed")
         self.assertFalse(grade.active)
         self.assertTrue(all(type(item["id"]) is int for item in payload["grades"]))
+
+    def test_employee_delete_removes_grade_draft_and_values(self):
+        from app.web.employees import _delete_employee_record
+        draft = self.draft()
+        self.db.add(GradeAssessmentValue(assessment_id=draft.id, skill_id=self.skill["id"], level=2))
+        self.db.commit()
+        with patch("app.web.employees.settings.FILE_STORAGE_DIR", self.temp.name):
+            _delete_employee_record(self.db, self.db.get(Employee, 1))
+        self.db.expire_all()
+        for model in (Employee, EmployeeGradeProfile, GradeAssessment, GradeAssessmentValue):
+            self.assertIsNone(self.db.scalar(select(model)))
+
+    def test_employee_delete_preserves_final_grade_and_files(self):
+        from app.web.employees import _delete_employee_record
+        draft = self.draft()
+        service.finalize_assessment(self.db, draft.id)
+        self.db.commit()
+        snapshot = draft.catalog_snapshot
+        directory = Path(self.temp.name) / "1"
+        directory.mkdir()
+        evidence = directory / "evidence.txt"
+        evidence.write_text("keep", encoding="utf-8")
+        with patch("app.web.employees.settings.FILE_STORAGE_DIR", self.temp.name):
+            with self.assertRaises(HTTPException) as caught:
+                _delete_employee_record(self.db, self.db.get(Employee, 1))
+        self.assertEqual(caught.exception.status_code, 409)
+        self.db.rollback()
+        self.assertIsNotNone(self.db.get(Employee, 1))
+        self.assertIsNotNone(self.db.scalar(select(EmployeeGradeProfile)))
+        self.assertEqual(self.db.get(GradeAssessment, draft.id).catalog_snapshot, snapshot)
+        self.assertEqual(evidence.read_text(encoding="utf-8"), "keep")
 
     def test_catalog_uniqueness_and_archival(self):
         with self.assertRaises(ValueError):
