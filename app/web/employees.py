@@ -4,7 +4,8 @@ from pathlib import Path
 from typing import Optional
 
 from aiogram.exceptions import TelegramBadRequest
-from sqlalchemy import or_
+from fastapi import HTTPException
+from sqlalchemy import or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -26,10 +27,13 @@ from ..models import (
     EmployeeAssignmentHistory,
     EmployeeDocumentLink,
     EmployeeFile,
+    EmployeeGradeProfile,
     EmployeeHrNote,
     EmployeeManualBotMessage,
     EmployeeMessengerAccount,
     FlowLaunchRequest,
+    GradeAssessment,
+    GradeAssessmentValue,
     ScenarioProgress,
     ScenarioTemplate,
 )
@@ -1366,6 +1370,18 @@ def _delete_employee_related_scenario_state(db: Session, employee_id: int) -> No
 def _delete_employee_record(db: Session, employee: Employee) -> str:
     redirect_url = "/candidates" if _employee_list_kind(employee) == "candidates" else "/employees"
     employee_id = employee.id
+    # Serialize with Grade creation/finalization before any filesystem side effects.
+    db.execute(update(Employee).where(Employee.id == employee_id).values(id=Employee.id))
+    if db.scalar(select(GradeAssessment.id).where(
+        GradeAssessment.employee_id == employee_id, GradeAssessment.status == "final"
+    ).limit(1)) is not None:
+        raise HTTPException(status_code=409, detail="Нельзя удалить карточку с финализированными оценками грейда.")
+    assessment_ids = select(GradeAssessment.id).where(GradeAssessment.employee_id == employee_id)
+    db.query(GradeAssessmentValue).filter(
+        GradeAssessmentValue.assessment_id.in_(assessment_ids)
+    ).delete(synchronize_session=False)
+    db.query(GradeAssessment).filter(GradeAssessment.employee_id == employee_id).delete(synchronize_session=False)
+    db.query(EmployeeGradeProfile).filter(EmployeeGradeProfile.employee_id == employee_id).delete(synchronize_session=False)
     db.query(EmployeeMessengerAccount).filter(
         EmployeeMessengerAccount.employee_id == employee_id,
     ).delete(synchronize_session=False)

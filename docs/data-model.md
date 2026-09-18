@@ -54,6 +54,33 @@ source_of_truth: true
 
 ## Основные таблицы, поддержанные кодом
 
+### Грейды и оценки
+
+Источник портирования: `arctand/grade@a360e50`; детали в [[features/grades]]. Новые
+таблицы additive через `Base.metadata.create_all` и `_ensure_sqlite_schema` с тем же DDL.
+Нет destructive backfill. Только четыре грейда seed-ятся идемпотентно; навыки импортирует оператор.
+
+| Таблица | Содержание / ограничения |
+| --- | --- |
+| `grades` | slug и rank уникальны; name, sort_order, active |
+| `grade_specializations` | уникальный slug, description, active, nullable position_slug |
+| `grade_skill_categories` | глобальные категории, уникальное name, active |
+| `grade_skills` | category_id + name уникальны, complexity, sort_order, active |
+| `grade_skill_importances` | unique(skill_id, specialization_id), importance 1..3 |
+| `grade_skill_expectations` | unique(skill_id, grade_id, specialization_id), level 0..4 |
+| `employee_grade_profiles` | unique employee_id; specialization/current_grade/target_grade/target_specialization |
+| `grade_assessments` | employee_id, assessor_admin_account_id, специализации/грейды, status draft/final, timestamps, catalog_snapshot TEXT; один draft на employee через SQLite partial unique index |
+| `grade_assessment_values` | unique(assessment_id, skill_id), level 0..4 |
+
+Связи логические, без физического cascade, в существующем стиле HRBot. References
+проверяет приложение. Каталог архивируется, финальные снимки не переписываются.
+Удаление сотрудника с final-оценками блокируется (409), сохраняя владельца и историю.
+Без final-оценок удаляются его EmployeeGradeProfile, GradeAssessment и GradeAssessmentValue
+в одной транзакции с карточкой. Проверка сериализована с Grade write operations.
+Профиль без текущего грейда допускается, но начать оценку до назначения грейда и
+специализации нельзя. GET профиля ничего не создаёт. SQLite запись Grade использует
+`BEGIN IMMEDIATE`, чтобы сохранение draft не пересекалось с его финализацией.
+
 ### Люди, identity и access
 
 | Таблица | Назначение | Ключевые поля | Связи и примечания |

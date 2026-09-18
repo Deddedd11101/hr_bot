@@ -37,6 +37,12 @@ source_of_truth: true
 
 ## Текущий snapshot
 
+- `HRB-P2-09`: разрабатывается отдельный Grade domain/API из `arctand/grade@a360e50`.
+  Additive schema, immutable финальные оценки, import каталога только вручную.
+  Удаление карточки с final-оценками защищено HTTP 409; без них Grade-черновики
+  и профиль удаляются вместе с карточкой, без orphan-записей.
+  Backend/UI разделены; stage не изменён. См. [[features/grades]].
+
 - Координация пакетов: Product сверяет соседние задачи и актуальные PR/SHA; исполнитель заканчивает PR, DevOps/назначенный интегратор выполняет deploy. Отчеты разделяют код, выкладку и пользовательскую приемку; правила в AGENTS.md и [[stage-deploy]]. Автоматическая отправка задач другим чатам требует явного разрешения пользователя.
 - Stack: FastAPI admin + Aiogram Telegram bot + APScheduler + SQLite + React/Vite admin surfaces.
 - Production model: classic admin pages остаются рабочими fallback-экранами, пока новые React-экраны развиваются параллельно.

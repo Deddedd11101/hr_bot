@@ -49,6 +49,7 @@ from .models import (
 from .scenario_engine import format_message, get_first_step, get_scenario_steps, matches_role_scope, start_scenario
 from .web.bulk_action_routes import router as bulk_action_router
 from .web.document_routes import router as document_router
+from .web.grade_routes import router as grade_router
 from .web.bulk_actions import (
     MASS_TARGET_CANDIDATE_STAGE_OPTIONS,
     MASS_TARGET_EMPLOYEE_STAGE_OPTIONS,
@@ -172,6 +173,7 @@ templates = Jinja2Templates(directory="app/templates")
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 app.include_router(dashboard_router)
 app.include_router(document_router)
+app.include_router(grade_router)
 app.include_router(employee_router)
 app.include_router(bulk_action_router)
 app.include_router(scenario_router)
@@ -352,4 +354,3 @@ def swagger_ui_alias():
 
 
 _configure_openapi_routes()
-
