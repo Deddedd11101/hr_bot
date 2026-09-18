@@ -31,6 +31,11 @@ def init_db() -> None:
     seed_admin_accounts()
     seed_flow_templates()
     seed_positions_catalog()
+    from .web.grades import seed_grades
+
+    with SessionLocal() as db:
+        seed_grades(db)
+        db.commit()
 
 
 @contextmanager
@@ -52,6 +57,13 @@ def _ensure_sqlite_schema() -> None:
         return
 
     with engine.begin() as conn:
+        # Grade is additive: use the same model DDL for startup and compatibility.
+        for table_name in (
+            "grades", "grade_specializations", "grade_skill_categories", "grade_skills",
+            "grade_skill_importances", "grade_skill_expectations", "employee_grade_profiles",
+            "grade_assessments", "grade_assessment_values",
+        ):
+            Base.metadata.tables[table_name].create(conn, checkfirst=True)
         table_info = conn.execute(text("PRAGMA table_info(employees)")).fetchall()
         columns = {row[1] for row in table_info}
         original_employee_columns = set(columns)

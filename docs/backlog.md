@@ -105,7 +105,13 @@ Frontend editor: `TelegramRichTextEditor` используется в scenario s
 | `HRB-P2-07` | `todo` | UI и хранение для двух ИП | После решения `HRB-DISC-04` реализовать раздельное хранение данных по ИП и отобразить текущий юридический контур в админке, массовых действиях, карточках и runbook. |
 | `HRB-P2-08` | `doing` | Security/compliance layer | Первый auth-hardening slice сделан в коде: signed session cookie вместо raw account id, TTL cookie, базовый login rate limit и запрет слабых новых паролей в account management. Для stage admin принят deferred baseline: домен + HTTPS reverse proxy + закрытый публичный `:8000`, без VPN-only на первом шаге; см. [[decisions/stage-admin-https-baseline]]. Оставшийся scope: целевые роли, аудит, секреты, backup policy, защита файлов/персональных данных, реализация HTTPS/proxy на stage, CSRF и broader hardening. |
 
-## Правило обновления
+## Грейды
+
+| Token | Статус | Название | Scope |
+| --- | --- | --- | --- |
+| `HRB-P2-09` | `doing` | Грейды и оценка навыков | Порт Grade domain/API, каталог/матрица, вкладка сотрудника, snapshot финальной оценки. Backend и UI отдельными PR; без deploy. [[features/grades]] |
+
+## Обновление статусов
 
 Когда задача меняет статус:
 

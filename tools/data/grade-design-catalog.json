@@ -1,0 +1,43 @@
+{
+  "specialization": {"name": "Дизайнер сервисов"},
+  "categories": [
+    {"name": "Софты", "skills": [
+      {"name": "Автономность", "complexity": 1, "importance": 3, "levels": {"junior": 1, "middle": 2, "senior": 3, "lead": 4}},
+      {"name": "Инициатива", "complexity": 1, "importance": 1, "levels": {"junior": 1, "middle": 2, "senior": 3, "lead": 4}},
+      {"name": "Клиентоориентированность", "complexity": 1, "importance": 3, "levels": {"junior": 1, "middle": 2, "senior": 3, "lead": 4}},
+      {"name": "Командная работа", "complexity": 1, "importance": 1, "levels": {"junior": 1, "middle": 2, "senior": 3, "lead": 4}},
+      {"name": "Критичность", "complexity": 1, "importance": 1, "levels": {"junior": 1, "middle": 2, "senior": 3, "lead": 3}},
+      {"name": "Ответственность", "complexity": 1, "importance": 2, "levels": {"junior": 1, "middle": 2, "senior": 3, "lead": 4}},
+      {"name": "Самообладание", "complexity": 1, "importance": 1, "levels": {"junior": 1, "middle": 2, "senior": 3, "lead": 3}},
+      {"name": "Системность", "complexity": 1, "importance": 2, "levels": {"junior": 1, "middle": 2, "senior": 3, "lead": 4}}
+    ]},
+    {"name": "UX", "skills": [
+      {"name": "Исследования", "complexity": 1, "importance": 2, "levels": {"junior": 1, "middle": 2, "senior": 3, "lead": 3}},
+      {"name": "Проектирование", "complexity": 1, "importance": 3, "levels": {"junior": 1, "middle": 2, "senior": 3, "lead": 4}},
+      {"name": "Копирайтинг", "complexity": 1, "importance": 1, "levels": {"junior": 1, "middle": 2, "senior": 3, "lead": 3}}
+    ]},
+    {"name": "UI", "skills": [
+      {"name": "Диз процесс", "complexity": 1, "importance": 3, "levels": {"junior": 1, "middle": 1, "senior": 2, "lead": 2}},
+      {"name": "Композиция, сетки", "complexity": 1, "importance": 2, "levels": {"junior": 1, "middle": 2, "senior": 3, "lead": 3}},
+      {"name": "Референсы, мудборд", "complexity": 1, "importance": 1, "levels": {"junior": 1, "middle": 2, "senior": 3, "lead": 3}},
+      {"name": "Типографика и цвет", "complexity": 1, "importance": 2, "levels": {"junior": 1, "middle": 2, "senior": 3, "lead": 3}}
+    ]},
+    {"name": "Граф дизайн", "skills": [
+      {"name": "3д", "complexity": 2, "importance": 1, "levels": {"junior": 0, "middle": 0, "senior": 1, "lead": 1}},
+      {"name": "Анимации", "complexity": 1, "importance": 1, "levels": {"junior": 0, "middle": 1, "senior": 2, "lead": 2}},
+      {"name": "Брендинг (?)", "complexity": 1, "importance": 1, "levels": {"junior": 0, "middle": 0, "senior": 0, "lead": 0}},
+      {"name": "Генерации", "complexity": 1, "importance": 1, "levels": {"junior": 0, "middle": 1, "senior": 1, "lead": 2}},
+      {"name": "Иллюстрации (?)", "complexity": 1, "importance": 1, "levels": {"junior": 0, "middle": 0, "senior": 0, "lead": 0}}
+    ]},
+    {"name": "Технические навыки", "skills": [
+      {"name": "Компоненты и стили", "complexity": 1, "importance": 3, "levels": {"junior": 1, "middle": 2, "senior": 3, "lead": 3}},
+      {"name": "Прототип дизайна", "complexity": 1, "importance": 2, "levels": {"junior": 1, "middle": 2, "senior": 3, "lead": 3}},
+      {"name": "Системность и порядок в работе", "complexity": 1, "importance": 1, "levels": {"junior": 1, "middle": 2, "senior": 2, "lead": 4}}
+    ]},
+    {"name": "Разработка", "skills": [
+      {"name": "Хэндофф", "complexity": 1, "importance": 3, "levels": {"junior": 1, "middle": 2, "senior": 3, "lead": 3}},
+      {"name": "Понимание верстки", "complexity": 1, "importance": 2, "levels": {"junior": 1, "middle": 2, "senior": 3, "lead": 3}},
+      {"name": "Конструкторы", "complexity": 1, "importance": 1, "levels": {"junior": 0, "middle": 1, "senior": 1, "lead": 1}}
+    ]}
+  ]
+}

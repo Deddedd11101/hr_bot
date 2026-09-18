@@ -1,10 +1,109 @@
 from datetime import date, datetime
 from typing import Optional
 
-from sqlalchemy import Boolean, Date, DateTime, Index, Integer, String, UniqueConstraint
+from sqlalchemy import Boolean, CheckConstraint, Date, DateTime, Float, Index, Integer, String, Text, UniqueConstraint, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .database import Base
+from .time_utils import utc_now
+
+
+class Grade(Base):
+    __tablename__ = "grades"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    slug: Mapped[str] = mapped_column(String(100), unique=True)
+    name: Mapped[str] = mapped_column(String(255))
+    rank: Mapped[int] = mapped_column(Integer, unique=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class GradeSpecialization(Base):
+    __tablename__ = "grade_specializations"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    slug: Mapped[str] = mapped_column(String(100), unique=True)
+    name: Mapped[str] = mapped_column(String(255))
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    position_slug: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+
+
+class GradeSkillCategory(Base):
+    __tablename__ = "grade_skill_categories"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(255), unique=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class GradeSkill(Base):
+    __tablename__ = "grade_skills"
+    __table_args__ = (UniqueConstraint("category_id", "name"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    category_id: Mapped[int] = mapped_column(Integer, index=True)
+    name: Mapped[str] = mapped_column(String(255))
+    complexity: Mapped[float] = mapped_column(Float, default=1)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class GradeSkillImportance(Base):
+    __tablename__ = "grade_skill_importances"
+    __table_args__ = (UniqueConstraint("skill_id", "specialization_id"), CheckConstraint("importance BETWEEN 1 AND 3"))
+    id: Mapped[int] = mapped_column(primary_key=True)
+    skill_id: Mapped[int] = mapped_column(Integer)
+    specialization_id: Mapped[int] = mapped_column(Integer, index=True)
+    importance: Mapped[int] = mapped_column(Integer, default=1)
+
+
+class GradeSkillExpectation(Base):
+    __tablename__ = "grade_skill_expectations"
+    __table_args__ = (UniqueConstraint("skill_id", "grade_id", "specialization_id"), CheckConstraint("level BETWEEN 0 AND 4"))
+    id: Mapped[int] = mapped_column(primary_key=True)
+    skill_id: Mapped[int] = mapped_column(Integer)
+    grade_id: Mapped[int] = mapped_column(Integer)
+    specialization_id: Mapped[int] = mapped_column(Integer, index=True)
+    level: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class EmployeeGradeProfile(Base):
+    __tablename__ = "employee_grade_profiles"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    employee_id: Mapped[int] = mapped_column(Integer, unique=True)
+    specialization_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    current_grade_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    target_grade_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    target_specialization_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+
+
+class GradeAssessment(Base):
+    __tablename__ = "grade_assessments"
+    __table_args__ = (
+        CheckConstraint("status IN ('draft', 'final')"),
+        Index("uq_grade_assessment_employee_draft", "employee_id", unique=True, sqlite_where=text("status = 'draft'")),
+    )
+    id: Mapped[int] = mapped_column(primary_key=True)
+    employee_id: Mapped[int] = mapped_column(Integer, index=True)
+    specialization_id: Mapped[int] = mapped_column(Integer)
+    current_grade_id: Mapped[int] = mapped_column(Integer)
+    target_grade_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    target_specialization_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    assessor_admin_account_id: Mapped[int] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(String(16), default="draft")
+    catalog_snapshot: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+    finalized_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+
+class GradeAssessmentValue(Base):
+    __tablename__ = "grade_assessment_values"
+    __table_args__ = (UniqueConstraint("assessment_id", "skill_id"), CheckConstraint("level BETWEEN 0 AND 4"))
+    id: Mapped[int] = mapped_column(primary_key=True)
+    assessment_id: Mapped[int] = mapped_column(Integer, index=True)
+    skill_id: Mapped[int] = mapped_column(Integer)
+    level: Mapped[int] = mapped_column(Integer, default=0)
 
 
 class Employee(Base):

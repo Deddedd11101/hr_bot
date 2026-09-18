@@ -14,6 +14,14 @@ related:
 source_of_truth: true
 ---
 
+## Грейды
+
+- `GET /grades`: authenticated legacy redirect 303 на `/app/grades`.
+- `GET /app/grades`: authenticated React entrypoint каталога грейдов; backend-пакет
+  предоставляет временную заглушку до интеграции UI. Вход без сессии ведёт на `/login`.
+- Данные оценки сотрудника читаются отдельным API из [[features/grades]], не через
+  общий employee-detail payload. Вкладка поставляется UI dependency-пакетом.
+
 # Карта web-поверхности
 
 ## Назначение

@@ -14,6 +14,37 @@ related:
 source_of_truth: true
 ---
 
+## Grade API
+
+Все endpoints требуют существующую authenticated admin-сессию (любая текущая роль).
+Это не публичный API сотрудника. Неавторизованный запрос: 401, неизвестная сущность: 404,
+ошибка данных: 422, конфликт уникальности: 409. Запись атомарна, SQLite write-lock берётся
+до чтения изменяемого состояния. Полный контракт: [[features/grades]].
+
+- `GET /api/grades/workspace`: `grades`, `specializations`, `categories`, `skills`,
+  `importances`, `expectations`, `positions`; integer ID, snake_case полей каталога.
+- `POST /api/grades/grades`, `PUT/DELETE /api/grades/grades/{item_id}`.
+- `POST /api/grades/specializations`, `PUT/DELETE /api/grades/specializations/{item_id}`.
+- `POST /api/grades/categories`, `PUT/DELETE /api/grades/categories/{item_id}`.
+- `POST /api/grades/skills`, `PUT/DELETE /api/grades/skills/{item_id}`.
+  Эти операции возвращают workspace; DELETE только архивирует (`active=false`).
+- `PUT /api/grades/matrix`: `{specialization_id, rows:[{skill_id, importance, levels:{grade_slug:level}}]}`.
+- `POST /api/grades/import`: Grade JSON import, `dryRun` и `mode`; см. [[features/grades]].
+- `GET /api/employees/{employee_id}/grade`: отдельный reusable payload:
+  `employee_id`, nullable `profile`, nullable `suggested_specialization_id`, `grades`,
+  `specializations`, `assessments`, nullable `latest_final`. GET не создаёт профиль.
+- `PUT /api/employees/{employee_id}/grade`: `specialization_id`, `current_grade_id`,
+  `target_grade_id`, `target_specialization_id`; возвращает тот же employee-grade payload.
+- `POST /api/employees/{employee_id}/grade/assessments`: существующий или новый draft.
+- `GET /api/grade-assessments/{assessment_id}`: метаданные, `catalog`, `scores`,
+  `categories`, `progress`, `gaps`, `goal_options`. Расчётные score/category records
+  используют camelCase reference Grade (`skillId`, `currentLevel`, `categoryId`),
+  остальной API использует snake_case. `progress` от 0 до 1 при выбранной цели, иначе `null`.
+- `PATCH /api/grade-assessments/{assessment_id}`: `values:[{skill_id,level}]`,
+  optional `target_grade_id`/`target_specialization_id`; final read-only.
+- `POST /api/grade-assessments/{assessment_id}/finalize`: идемпотентная финализация,
+  immutable snapshot. Ни финализация, ни расчёт не повышают грейд автоматически.
+
 # JSON API
 
 ## Область покрытия
