@@ -1,7 +1,9 @@
 {% extends "react_base.html" %}
 {% block content %}
 <section class="react-page">
-    <h1>Грейды</h1>
-    <p>Интерфейс каталога подключается отдельным пакетом. API готов к интеграции.</p>
+    <div id="react-grades-root"></div>
 </section>
+{% endblock %}
+{% block scripts %}
+<script type="module" src="/static/workspace_v2/grades.js?v=1"></script>
 {% endblock %}

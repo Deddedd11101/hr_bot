@@ -1,6 +1,8 @@
 import React from "react";
 
 import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+const GradeTab = React.lazy(() => import("./grade-tab").then(module => ({ default: module.GradeTab })));
 import {
     buildEmployeeUpdatePayload,
     buildWorkHoursValue,
@@ -28,6 +30,7 @@ export type EmployeeDetailPageProps = {
 
 export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
     const { apiUrl, saveUrl, listUrl, flashMessage, flashType } = props;
+    const [gradeOpened, setGradeOpened] = React.useState(false);
 
     const [state, setState] = React.useState({
         loading: true,
@@ -855,6 +858,9 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
                 }
             />
             <EmployeeFlashNotice message={flashState.message} error={flashState.error} />
+            <Tabs defaultValue="profile" className="min-w-0 flex-col" onValueChange={value => { if (value === "grade") setGradeOpened(true); }}>
+            <TabsList variant="line" aria-label="Разделы карточки"><TabsTrigger value="profile">Профиль</TabsTrigger><TabsTrigger value="grade">Грейд</TabsTrigger></TabsList>
+            <TabsContent value="profile" keepMounted>
             <section className="employee-detail-grid">
                 <div className="employee-detail-main">
                     <EmployeeProfileSection
@@ -918,6 +924,9 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
                     isCandidate={isCandidate}
                 />
             </section>
+            </TabsContent>
+            <TabsContent value="grade" keepMounted className="admin-page-surface min-w-0 p-4">{gradeOpened && <React.Suspense fallback={<p role="status">Загрузка грейда...</p>}><GradeTab employeeId={Number(form.id)} /></React.Suspense>}</TabsContent>
+            </Tabs>
         </div>
     );
 }

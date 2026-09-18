@@ -15,6 +15,20 @@ source_of_truth: false
 
 # Контекст
 
+## 2026-09-18 — grades UI
+
+- `/app/grades`: справочники, матрица ожиданий и JSON-импорт с предпросмотром.
+- Employee detail: вкладки через существующий `Tabs`; формы сохраняются при
+  переключении. Оценка вынесена в `grade-tab.tsx` и `grade-assessment.tsx`,
+  `employee-detail/sections.tsx` не изменялся.
+- Паттерн `record-with-tabs` добавлен в design-system; Chart/ToggleGroup/Progress/Tabs
+  отмечены как product usage. Shared primitive API не менялся.
+- Локальный browser smoke: `frontend/scripts/smoke-grades.cjs`; требует Playwright
+  в окружении, отдельную SQLite, локальную админку и тестового сотрудника.
+  `GRADE_SMOKE_URL`, `GRADE_SMOKE_EMPLOYEE_ID`, `GRADE_SMOKE_OUTPUT` настраивают запуск;
+  `GRADE_SMOKE_CHROMIUM` опционально указывает установленный браузер.
+- Не задеплоено. Backend dependency: PR #28. Новые библиотеки в package.json не добавлены.
+
 `/app/ui-kit` удален из runtime вместе с route, sidebar entry, Vite input и template. Эксперимент признан неудачным: он не уменьшал хаос во frontend-страницах, а добавлял еще одну поверхность поддержки.
 
 ## 2026-09-11 — bot menu message tools and custom emoji catalog

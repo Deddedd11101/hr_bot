@@ -109,7 +109,7 @@ Frontend editor: `TelegramRichTextEditor` используется в scenario s
 
 | Token | Статус | Название | Scope |
 | --- | --- | --- | --- |
-| `HRB-P2-09` | `doing` | Грейды и оценка навыков | Порт Grade domain/API, каталог/матрица, вкладка сотрудника, snapshot финальной оценки. Backend и UI отдельными PR; без deploy. [[features/grades]] |
+| `HRB-P2-09` | `doing` | Грейды и оценка навыков | Domain/API и UI каталога/матрицы, импорт, вкладка сотрудника, радар и snapshot финальной оценки реализованы отдельными dependency PR. Остались review, интеграция и приёмка на стенде; без deploy. [[features/grades]] |
 
 ## Обновление статусов
 

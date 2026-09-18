@@ -17,10 +17,12 @@ source_of_truth: true
 ## Грейды
 
 - `GET /grades`: authenticated legacy redirect 303 на `/app/grades`.
-- `GET /app/grades`: authenticated React entrypoint каталога грейдов; backend-пакет
-  предоставляет временную заглушку до интеграции UI. Вход без сессии ведёт на `/login`.
+- `GET /app/grades`: authenticated React каталог, матрица ожиданий и JSON-импорт
+  грейдов. Вход без сессии ведёт на `/login`; пункт «Грейды» есть в боковом меню.
 - Данные оценки сотрудника читаются отдельным API из [[features/grades]], не через
-  общий employee-detail payload. Вкладка поставляется UI dependency-пакетом.
+  общий employee-detail payload. Вкладка «Грейд» в `/app/employees/{employee_id}`
+  содержит профиль, историю, редактирование и финализацию оценки; вкладка «Профиль»
+  сохраняет существующие поля карточки и их локальное состояние.
 
 # Карта web-поверхности
 
