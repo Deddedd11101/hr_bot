@@ -18,10 +18,31 @@ export function Choice({ label, value, options, onChange, disabled = false }: {
   </Field>;
 }
 
+export const LEVEL_LABELS = ["Нет", "Понимание", "Умение", "Экспертиза", "Лидерство"] as const;
+export const levelLabel = (n: number) => LEVEL_LABELS[n] ?? String(n);
+
 export function LevelChoice({ label, value, onChange, disabled }: { label: string; value: number; onChange: (v: number) => void; disabled?: boolean }) {
-  return <ToggleGroup aria-label={label} value={[String(value)]} onValueChange={v => { if (v.length) onChange(Number(v[0])); }} disabled={disabled} variant="outline" size="sm">
-    {[0, 1, 2, 3, 4].map(n => <ToggleGroupItem key={n} value={String(n)} aria-label={`${label}: ${n}`} title={["Нет", "Понимание", "Умение", "Экспертиза", "Лидерство"][n]}>{n}</ToggleGroupItem>)}
-  </ToggleGroup>;
+  return <div className="flex flex-col items-end gap-1">
+    <ToggleGroup aria-label={label} value={[String(value)]} onValueChange={v => { if (v.length) onChange(Number(v[0])); }} disabled={disabled} variant="outline" size="sm">
+      {[0, 1, 2, 3, 4].map(n => <ToggleGroupItem key={n} value={String(n)} aria-label={`${label}: ${n} — ${levelLabel(n)}`} title={levelLabel(n)}>{n}</ToggleGroupItem>)}
+    </ToggleGroup>
+    {/* Выбранный уровень словами: тонкий tint нажатой кнопки сам по себе читается плохо. Для screen reader состояние уже есть в aria-pressed. */}
+    <span aria-hidden="true" className="text-xs text-muted-foreground tabular-nums">{value} · {levelLabel(value)}</span>
+  </div>;
+}
+
+/*
+ * Зафиксированный уровень завершённой оценки. Это текст, а не disabled-контрол:
+ * disabled-переключатели у всех пяти значений выглядели одинаково бледно, и
+ * выбранный уровень не читался. Для screen reader «Уровень: 2 · Умение» —
+ * обычное значение, без обещания редактирования.
+ */
+export function LevelValue({ value }: { value: number }) {
+  return <span className="inline-flex shrink-0 items-baseline gap-1.5 rounded-md border bg-card px-2.5 py-1 text-sm">
+    <span className="sr-only">Уровень: </span>
+    <span className="font-semibold tabular-nums">{value}</span>
+    <span className="text-muted-foreground">· {levelLabel(value)}</span>
+  </span>;
 }
 
 export function Importance({ value }: { value: number }) {
