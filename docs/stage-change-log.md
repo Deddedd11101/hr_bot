@@ -34,6 +34,18 @@ source_of_truth: true
 
 ## Записи
 
+### 2026-09-20 19:13 MSK - app deploy - UX-правки грейдов и cache-bust статики
+
+- Deploy ref: `stage`; deployed SHA: `df581a9ce422096655e3ea7d3ce1d12fd85c4f51` (две выкладки подряд: `da96af2` -> run [35521473418](https://github.com/Deddedd11101/hr_bot/actions/runs/35521473418) success, затем `df581a9` -> run [35521805238](https://github.com/Deddedd11101/hr_bot/actions/runs/35521805238) success).
+- PR [#32](https://github.com/Deddedd11101/hr_bot/pull/32) `fix/grade-ux-polish` (`abb3b6d`): в финальной оценке уровень показывается текстом `2 · Умение` вместо disabled-переключателя, в черновике выбранный уровень дублируется подписью; профиль категорий — радар ограниченного размера при 3+ категориях, пары полос «Текущий / Цель» при 1–2, легенда «сплошная / пунктир»; таблица специализаций показывает название должности вместо slug (`Не привязана` / `(архив)` / `(нет в справочнике)`). Backend, схема, формулы и API не менялись; контракт в [[features/grades]].
+- PR [#33](https://github.com/Deddedd11101/hr_bot/pull/33) `fix/grade-ux-cache-bust` (`?v=` для `employee-detail.js` 49, `grades.js` 2, `app.css` 95): после первой выкладки сервер уже отдавал новые бандлы, но браузеры с кэшем грузили старый `employee-detail.js` — статика отдаётся без `Cache-Control`, ручной `?v=` является единственным cache-bust. Проверять после UI-выкладок обязательно.
+- Проверки #32: typecheck, check:registry (81), build + повторный build (стабильный output), `git diff --check`, compileall/Ruff F821, 245 backend + Grade tests, `tools/check_docs_contracts.py` -> passed; CI run [35463833427](https://github.com/Deddedd11101/hr_bot/actions/runs/35463833427) success. Проверки #33: `test_employee_api_smoke` + `test_grades_api_smoke` (135) OK; CI success.
+- Backup: `backups/hr_bot.before-deploy.20260920-160418.db` и `backups/hr_bot.before-deploy.20260920-161025.db`, оба созданы и проверены `PRAGMA quick_check`; scenario snapshots `backups/scenarios.before-deploy.20260920-160418.json`, `backups/scenarios.before-deploy.20260920-161025.json`; scenario configuration fingerprint unchanged в обеих выкладках.
+- Stage smoke (обе выкладки): `hr-bot-web`, `hr-bot-worker`, `wg-quick@redshield` active; `/app/employees` и `/app/flows/workspace-v2` -> `303`; Telegram API -> `HTTP/2 302`; свежих `TelegramNetworkError`, `Request timeout`, `Traceback`, `Unclosed client session` в worker logs не найдено; deploy вывел `da96af2` / `df581a9`.
+- Данные stage (по поручению владельца, через обычный UI, не SQL): в каталог грейдов импортировано 6 категорий и 15 навыков для «Демо-аналитика (временная)» (старая демо-категория и её 3 навыка сохранены); у сотрудника #70 создана оценка #2 в статусе черновик (18 уровней, прогресс к Senior 77%), не финализирована. Final-оценка #1 не менялась. Telegram-сообщения не отправлялись.
+- Сценарий проверен: авторизованный просмотр `/app/employees/70` -> вкладка «Грейд» -> черновик #2 после второй выкладки грузит `employee-detail.js?v=49`, радар 320x240 с легендой, подписи уровней под переключателями; финальная оценка #1 показывает уровни текстом. Проверено интегратором в браузере, не пользователем.
+- Задача C по #70 закрыта без расследования: владелец подтвердил, что сам нажал «Завершить оценку»; таймстемпы (`created 21:39:23`, `finalized 21:43:35`, тот же admin id) этому не противоречат.
+
 ### 2026-09-19 00:21 MSK - app deploy - каталог грейдов и оценка сотрудника
 
 - Deploy ref: `stage`; deployed SHA: `1653faca7918db54cc83bee2a3e26a6eac5ec61b`.
