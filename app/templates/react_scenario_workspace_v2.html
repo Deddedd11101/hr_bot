@@ -3,10 +3,12 @@
 {% block extra_head %}
     <style>
         /*
-         * Рабочая область занимает высоту экрана целиком. Ограничение снято
-         * с .container и перенесено на саму область: раньше контейнер сужался
-         * под «плавающую карточку», и полоса заголовка страницы оказывалась
-         * зажата вместе с ним — разделитель не доходил до краёв поля.
+         * Рабочая область занимает высоту экрана целиком, поэтому нижний
+         * отступ поля снят. Предел ширины здесь не задаётся: контейнер
+         * оболочки (.app-shell-container) намеренно без предела, чтобы полоса
+         * заголовка доходила до краёв поля, а содержимое — и каталог,
+         * и редактор — ограничивает себя само классом .admin-page-shell
+         * (frontend/src/index.css).
          */
         .main:has(#react-scenario-workspace-v2-root) {
             padding-bottom: 0;
@@ -53,5 +55,5 @@
 {% endblock %}
 
 {% block scripts %}
-    <script type="module" src="/static/workspace_v2/scenario-workspace.js?v=98"></script>
+    <script type="module" src="/static/workspace_v2/scenario-workspace.js?v=100"></script>
 {% endblock %}

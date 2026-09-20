@@ -11,7 +11,7 @@ import {
   type CatalogEntry,
 } from "./registry";
 
-type NavEntry = Pick<CatalogEntry, "id" | "navLabel" | "href" | "summary" | "status">;
+type NavEntry = Pick<CatalogEntry, "id" | "title" | "href" | "summary" | "status">;
 
 /**
  * Активная запись задаётся адресом страницы.
@@ -83,7 +83,7 @@ function NavLink({
           className="absolute left-0 top-1/2 h-1 w-0.5 -translate-y-1/2 rounded-full bg-border opacity-0 transition-opacity group-hover:opacity-100"
         />
       )}
-      <span className="truncate">{entry.navLabel}</span>
+      <span className="truncate">{entry.title}</span>
       {entry.status === "unused" ? (
         <span
           aria-hidden="true"

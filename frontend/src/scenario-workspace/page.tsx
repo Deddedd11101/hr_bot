@@ -5,6 +5,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PageDetailHeader, PageHeader } from "@/components/ui/page-header";
+import { PageRow } from "@/components/ui/page-row";
 import { Textarea } from "@/components/ui/textarea";
 import {
   buildChildContainer,
@@ -1145,12 +1146,23 @@ export function ScenarioWorkspacePage() {
         {isCatalogRoute ? (
           renderScenarioCatalogSection()
         ) : (
-          <div
-            className={`grid h-full min-h-0 grid-cols-[minmax(420px,1fr)_minmax(420px,0.72fr)] gap-4 transition-opacity max-[1400px]:grid-cols-[minmax(360px,1fr)_minmax(380px,0.78fr)] ${loading ? "opacity-80" : "opacity-100"}`}
+          <PageRow
+            columns={2}
+            /*
+             * Холст и детали — полоса из двух равных долей, как модули на
+             * дашборде: дробей 1fr/0.72fr и своего порога 1400px в страничной
+             * сетке не бывает, лестница брейкпоинтов записана в PageRow.
+             * Предел ширины тот же, что у строки полосы заголовка и у каталога
+             * (.admin-page-shell): иначе на 2200px холст начинается на 127px
+             * левее крошки. Grid с заданной высотой растягивает единственный
+             * ряд, поэтому цепочка h-full / min-h-0 до холста React Flow
+             * сохраняется.
+             */
+            className={`admin-page-shell h-full min-h-0 transition-opacity ${loading ? "opacity-80" : "opacity-100"}`}
           >
             {renderCanvasSection()}
             {renderDetailSection()}
-          </div>
+          </PageRow>
         )}
       </div>
     </div>

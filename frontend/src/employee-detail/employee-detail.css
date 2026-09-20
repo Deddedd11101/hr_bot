@@ -1,54 +1,20 @@
-.react-detail-page {
-    display: flex;
-    flex-direction: column;
-    gap: 18px;
-    padding-bottom: 28px;
-    color: var(--foreground);
-}
+/*
+ * Карточка сотрудника собрана из PageRow и PageSection (components/ui):
+ * полосы равных долей, модули с шапкой постоянной высоты, записи внутри
+ * разделены линиями (PageSectionRows), пустота — PageSectionEmpty.
+ * Здесь остались только раскладки внутри модулей: сетка полей, строки
+ * документов и историй, ряд действий. Поверхностей (рамка, фон, радиус)
+ * у этих строк нет: рамку несёт модуль, вторая внутри — карточка в карточке.
+ */
 
-.employee-detail-grid {
-    display: grid;
-    grid-template-columns: minmax(0, 1.34fr) minmax(420px, 0.82fr);
-    gap: 18px;
-    align-items: start;
-}
-
-.employee-detail-main,
-.employee-profile-form,
-.employee-detail-side {
-    display: flex;
-    min-width: 0;
-    flex-direction: column;
-    gap: 12px;
-}
-
-.employee-detail-side {
-    align-self: start;
-}
-
-.employee-detail-card {
-    border: 1px solid var(--border);
-    background: color-mix(in srgb, var(--card) 94%, transparent);
-}
-
-.employee-detail-card [data-slot="card-header"] {
-    padding-bottom: 12px;
-}
-
-.employee-detail-card [data-slot="card-content"] {
-    padding-top: 0;
-}
-
-.employee-detail-card [data-slot="card-title"] {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 1rem;
-}
-
+/*
+ * Сетка полей отвечает на ширину модуля, а не окна: модуль стоит в доле
+ * полосы и бывает от 270 до 900px. Запрет minmax(...px) касается страничной
+ * сетки PageRow, а не сетки полей внутри модуля.
+ */
 .employee-field-grid {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
     gap: 14px 16px;
 }
 
@@ -56,6 +22,7 @@
     min-width: 0;
 }
 
+/* Имитация disabled-input: поверхность уровня контрола, не карточки. */
 .employee-readonly-field {
     display: flex;
     min-height: 32px;
@@ -78,41 +45,6 @@
 .employee-time-range span {
     color: var(--muted-foreground);
     font-size: 0.8rem;
-}
-
-.employee-check-field {
-    margin-top: 14px;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-lg);
-    background: var(--muted);
-    padding: 10px;
-}
-
-.employee-save-footer {
-    justify-content: space-between;
-    gap: 12px;
-}
-
-.employee-save-state {
-    min-height: 20px;
-    color: var(--muted-foreground);
-    font-size: 0.875rem;
-}
-
-.employee-save-state.is-error {
-    color: var(--destructive);
-}
-
-.employee-ops-stack {
-    display: flex;
-    flex-direction: column;
-    gap: 14px;
-}
-
-.employee-inline-form {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
 }
 
 .employee-action-row {
@@ -145,52 +77,11 @@
     clip-path: inset(50%);
 }
 
-.employee-file-picker {
-    display: flex;
-    min-width: 0;
-    gap: 10px;
-    align-items: center;
-    border: 1px dashed var(--border);
-    border-radius: var(--radius-lg);
-    background: var(--muted);
-    padding: 8px;
-}
-
-.employee-file-picker span {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    color: var(--muted-foreground);
-    font-size: 0.875rem;
-}
-
-.employee-document-tools {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    margin-bottom: 16px;
-}
-
-.employee-document-tools [data-slot="field-group"] {
-    gap: 12px;
-}
-
-.employee-document-list {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-}
-
 .employee-document-row {
     display: grid;
     grid-template-columns: 34px minmax(0, 1fr) max-content;
     gap: 12px;
     align-items: center;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-lg);
-    background: var(--background);
-    padding: 9px;
 }
 
 .employee-document-icon {
@@ -227,21 +118,11 @@
     font-size: 0.8rem;
 }
 
-.employee-assignment-history-list {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-}
-
 .employee-assignment-history-row {
     display: grid;
     grid-template-columns: minmax(0, 1fr) max-content;
     gap: 12px;
     align-items: center;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-lg);
-    background: var(--background);
-    padding: 10px 12px;
 }
 
 .employee-assignment-history-main {
@@ -280,21 +161,11 @@
     text-align: right;
 }
 
-.employee-manual-message-list {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-}
-
 .employee-manual-message-row {
     display: flex;
     min-width: 0;
     flex-direction: column;
     gap: 8px;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-lg);
-    background: var(--background);
-    padding: 10px 12px;
 }
 
 .employee-manual-message-header {
@@ -333,33 +204,11 @@
     line-height: 1.45;
 }
 
-.employee-empty-state {
-    min-height: 118px;
-    border: 1px dashed var(--border);
-    background: var(--muted);
-}
-
 .employee-danger-card {
     border-color: color-mix(in srgb, var(--destructive) 42%, var(--border));
 }
 
-.employee-detail-loading {
-    min-height: 260px;
-    justify-content: center;
-}
-
-@media (max-width: 1180px) {
-    .employee-detail-grid {
-        grid-template-columns: 1fr;
-    }
-
-    .employee-detail-side {
-        position: static;
-    }
-}
-
 @media (max-width: 760px) {
-    .employee-field-grid,
     .employee-assignment-history-row,
     .employee-document-row {
         grid-template-columns: 1fr;
