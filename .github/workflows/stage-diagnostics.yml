@@ -1,0 +1,128 @@
+name: Stage Diagnostics
+
+# Read-only проверка стенда: ничего не делает checkout, restart, deploy или
+# записи в БД. Раньше эта диагностика жила на ветке ops/hr-menu-preflight под
+# именем "Deploy Stage" — запуск с неверным --ref превращался в реальную выкладку.
+
+on:
+  workflow_dispatch:
+    inputs:
+      worker_log_minutes:
+        description: "За сколько минут смотреть worker logs на Telegram/network ошибки"
+        required: false
+        default: "5"
+
+concurrency:
+  group: deploy-stage
+  cancel-in-progress: false
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    env:
+      WORKER_LOG_MINUTES: ${{ inputs.worker_log_minutes }}
+
+    steps:
+      - name: Read-only stage checks over SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.STAGE_HOST }}
+          username: ${{ secrets.STAGE_USERNAME }}
+          password: ${{ secrets.STAGE_PASSWORD }}
+          port: ${{ secrets.STAGE_PORT }}
+          envs: WORKER_LOG_MINUTES
+          script: |
+            set -eu
+            cd "${{ secrets.STAGE_APP_DIR }}"
+            failures=0
+
+            echo "== Git =="
+            echo "deployed: $(git rev-parse HEAD) ($(git log -1 --format=%s))"
+            if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
+              echo "tracked dirt on server worktree:"
+              git status --short --untracked-files=no
+              failures=$((failures + 1))
+            else
+              echo "tracked worktree clean"
+            fi
+
+            echo "== Services =="
+            for unit in hr-bot-web hr-bot-worker wg-quick@redshield caddy; do
+              state="$(systemctl is-active "$unit" || true)"
+              echo "$unit: $state"
+              [ "$state" = "active" ] || failures=$((failures + 1))
+            done
+
+            echo "== Telegram route =="
+            ip route get 149.154.166.110 | head -1
+            wg show redshield latest-handshakes || true
+            code="$(curl -4 -s -o /dev/null -w '%{http_code}' --connect-timeout 10 https://api.telegram.org/ || echo 000)"
+            echo "api.telegram.org (IPv4): $code"
+            [ "$code" != "000" ] || failures=$((failures + 1))
+
+            echo "== Bot identity =="
+            set +e
+            .venv/bin/python - <<'PY'
+            import asyncio
+            import os
+            import subprocess
+            from pathlib import Path
+
+            def service_env(service):
+                pid = subprocess.check_output(["systemctl", "show", service, "--property=MainPID", "--value"], text=True).strip()
+                raw = Path("/proc", pid, "environ").read_bytes()
+                return dict(item.decode().split("=", 1) for item in raw.split(b"\0") if b"=" in item)
+
+            web_env = service_env("hr-bot-web")
+            worker_env = service_env("hr-bot-worker")
+            os.environ.update(web_env)
+            from app.config import settings
+            from app.messaging.telegram import create_telegram_messenger
+
+            async def inspect():
+                client = create_telegram_messenger(settings.TELEGRAM_BOT_TOKEN)
+                try:
+                    me = await client.bot.get_me()
+                finally:
+                    await client.close()
+                configured = web_env.get("TELEGRAM_BOT_USERNAME", "").strip().lstrip("@")
+                worker_configured = worker_env.get("TELEGRAM_BOT_USERNAME", "").strip().lstrip("@")
+                username_ok = bool(configured) and configured.lower() == (me.username or "").lower()
+                tokens_equal = bool(web_env.get("TELEGRAM_BOT_TOKEN")) and web_env.get("TELEGRAM_BOT_TOKEN") == worker_env.get("TELEGRAM_BOT_TOKEN")
+                print("getMe username:", me.username)
+                print("web configured username:", configured or "MISSING")
+                print("worker configured username:", worker_configured or "MISSING")
+                print("username matches:", username_ok)
+                print("web/worker token env equal:", tokens_equal)
+                if not (username_ok and tokens_equal and worker_configured.lower() == configured.lower()):
+                    raise SystemExit(2)
+
+            try:
+                asyncio.run(inspect())
+            except SystemExit:
+                raise
+            except Exception as exc:
+                print("bot identity check failed:", type(exc).__name__)
+                raise SystemExit(1)
+            PY
+            identity_rc=$?
+            set -e
+            [ "$identity_rc" = "0" ] || failures=$((failures + 1))
+
+            echo "== HTTP =="
+            for path in /app/employees /app/flows/workspace-v2 /app/grades; do
+              code="$(curl -s -o /dev/null -w '%{http_code}' --connect-timeout 10 "https://hr.zephyrlab.ru${path}" || echo 000)"
+              echo "HTTPS ${path}: ${code}"
+              case "$code" in 200|303) ;; *) failures=$((failures + 1));; esac
+            done
+
+            echo "== Worker log (last ${WORKER_LOG_MINUTES} min) =="
+            if journalctl -u hr-bot-worker --since "${WORKER_LOG_MINUTES} minutes ago" --no-pager -n 200 \
+                | grep -E 'TelegramNetworkError|Request timeout|Traceback|Unclosed client session'; then
+              failures=$((failures + 1))
+            else
+              echo "no Telegram/network errors"
+            fi
+
+            echo "== Result: ${failures} failing check(s) =="
+            [ "$failures" = "0" ]
