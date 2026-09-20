@@ -13,6 +13,20 @@ import type { CatalogItem, EntityKind, Workspace } from "./types";
 
 const titles: Record<EntityKind, string> = { grades: "Грейды", specializations: "Специализации", categories: "Категории", skills: "Навыки" };
 
+const positionTitle = (p: Workspace["positions"][number]) => p.title || p.name || p.label || p.slug;
+
+/*
+ * В таблице должность показывается названием из справочника, а в API и storage
+ * остаётся slug. Slug, которого в справочнике уже нет, не прячем: оператор должен
+ * видеть, что привязка устарела, а не пустую ячейку.
+ */
+function positionLabel(slug: string | null | undefined, positions: Workspace["positions"]) {
+  if (!slug) return "Не привязана";
+  const position = positions.find(p => p.slug === slug);
+  if (!position) return `${slug} (нет в справочнике)`;
+  return position.active === false ? `${positionTitle(position)} (архив)` : positionTitle(position);
+}
+
 export function CatalogEditor({ kind, workspace, onSaved }: { kind: EntityKind; workspace: Workspace; onSaved: (w: Workspace) => void }) {
   const action = useAction();
   const [editing, setEditing] = useState<CatalogItem | null | undefined>(undefined);
@@ -40,7 +54,7 @@ export function CatalogEditor({ kind, workspace, onSaved }: { kind: EntityKind; 
     <Table><TableHeader><TableRow><TableHead>Название</TableHead><TableHead>{kind === "grades" ? "Ранг" : kind === "specializations" ? "Должность" : kind === "skills" ? "Категория" : "Порядок"}</TableHead><TableHead>Статус</TableHead><TableHead><span className="sr-only">Действия</span></TableHead></TableRow></TableHeader>
       <TableBody>{workspace[kind].map(item => <TableRow key={item.id} className="group">
         <TableCell className="whitespace-normal break-words">{item.name}</TableCell>
-        <TableCell>{kind === "grades" ? workspace.grades.find(g => g.id === item.id)?.rank : kind === "skills" ? workspace.categories.find(c => c.id === workspace.skills.find(s => s.id === item.id)?.category_id)?.name : kind === "specializations" ? workspace.specializations.find(s => s.id === item.id)?.position_slug || "Не связана" : item.sort_order}</TableCell>
+        <TableCell>{kind === "grades" ? workspace.grades.find(g => g.id === item.id)?.rank : kind === "skills" ? workspace.categories.find(c => c.id === workspace.skills.find(s => s.id === item.id)?.category_id)?.name : kind === "specializations" ? positionLabel(workspace.specializations.find(s => s.id === item.id)?.position_slug, workspace.positions) : item.sort_order}</TableCell>
         <TableCell><Badge variant="outline">{item.active ? "Активен" : "Архив"}</Badge></TableCell>
         <TableCell><div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100">
           <Button variant="ghost" size="icon-sm" title={`Изменить: ${item.name}`} aria-label={`Изменить: ${item.name}`} onClick={() => edit(item)} disabled={action.busy}><Pencil /></Button>
@@ -58,7 +72,7 @@ export function CatalogEditor({ kind, workspace, onSaved }: { kind: EntityKind; 
             {(kind === "grades" || kind === "specializations") && <Field><FieldLabel htmlFor={`${kind}-slug`}>Код</FieldLabel><Input id={`${kind}-slug`} required pattern="[a-z0-9_-]+" value={fields.slug || ""} onChange={e => change("slug", e.target.value)} disabled={action.busy} /></Field>}
             {kind === "grades" && <Field><FieldLabel htmlFor="grade-rank">Ранг</FieldLabel><Input id="grade-rank" type="number" required min={1} step={1} value={fields.rank || ""} onChange={e => change("rank", e.target.value)} disabled={action.busy} /></Field>}
             {kind === "specializations" && <><Field><FieldLabel htmlFor="spec-description">Описание</FieldLabel><Input id="spec-description" value={fields.description || ""} onChange={e => change("description", e.target.value)} disabled={action.busy} /></Field>
-              <Choice label="Должность" value={fields.position_slug || "none"} onChange={v => change("position_slug", v)} disabled={action.busy} options={[{ value: "none", label: "Без привязки" }, ...workspace.positions.map(p => ({ value: p.slug, label: p.name || p.title || p.label || p.slug }))]} /></>}
+              <Choice label="Должность" value={fields.position_slug || "none"} onChange={v => change("position_slug", v)} disabled={action.busy} options={[{ value: "none", label: "Не привязана" }, ...workspace.positions.map(p => ({ value: p.slug, label: p.active === false ? `${positionTitle(p)} (архив)` : positionTitle(p) }))]} /></>}
             {kind === "skills" && <Choice label="Категория" value={fields.category_id || ""} onChange={v => change("category_id", v)} disabled={action.busy} options={workspace.categories.filter(c => c.active).map(c => ({ value: String(c.id), label: c.name }))} />}
             <Field><FieldLabel htmlFor={`${kind}-sort`}>Порядок</FieldLabel><Input id={`${kind}-sort`} type="number" step={1} required value={fields.sort_order || "0"} onChange={e => change("sort_order", e.target.value)} disabled={action.busy} /></Field>
           </FieldGroup>
