@@ -9,35 +9,23 @@ import {
     Play,
     RefreshCcw,
     Send,
-    ShieldAlert,
     Trash2,
     Upload,
 } from "lucide-react";
 
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
-import {
-    Card,
-    CardContent,
-    CardFooter,
-    CardHeader,
-    CardTitle,
-} from "@/components/ui/card";
-import {
-    Empty,
-    EmptyHeader,
-    EmptyMedia,
-    EmptyTitle,
-} from "@/components/ui/empty";
 import {
     Field,
     FieldContent,
     FieldGroup,
     FieldLabel,
-    FieldSet,
     FieldTitle,
 } from "@/components/ui/field";
+import { PageRow } from "@/components/ui/page-row";
+import { PageSection, PageSectionEmpty, PageSectionRows } from "@/components/ui/page-section";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ConfirmAction } from "@/components/ui/confirm-action";
 import { DatePicker, DateTimePicker, TimeSelect } from "@/components/ui/date-picker";
@@ -198,11 +186,10 @@ function SelectField(props: {
     );
 }
 
-function DetailCard(props: React.ComponentProps<typeof Card>) {
-    const { className, ...rest } = props;
-    return <Card className={cn("employee-detail-card shadow-none ring-0", className)} {...rest} />;
-}
-
+/*
+ * Чекбокс без собственной рамки и заливки: раньше он лежал в отдельном
+ * блоке с фоном внутри модуля — третий уровень поверхности.
+ */
 function CheckboxField(props: {
     name: string;
     checked: boolean;
@@ -210,7 +197,7 @@ function CheckboxField(props: {
     title: string;
 }) {
     return (
-        <Field orientation="horizontal" className="employee-check-field">
+        <Field orientation="horizontal">
             <Checkbox
                 checked={props.checked}
                 onCheckedChange={function (value) {
@@ -228,18 +215,18 @@ function DocumentList(props: {
     title: string;
     items: DetailItem[];
     emptyTitle: string;
+    /** Счётчик у имени модуля — только там, где записей бывает больше одной. */
+    counter?: number;
     children?: React.ReactNode;
 }) {
-    const { title, items, emptyTitle, children } = props;
+    const { title, items, emptyTitle, counter, children } = props;
     return (
-        <DetailCard>
-            <CardHeader>
-                <CardTitle>{title}</CardTitle>
-            </CardHeader>
-            <CardContent>
-                {children ? <div className="employee-document-tools">{children}</div> : null}
+        <PageSection title={title} counter={counter}>
+                {children ? (
+                    <div className="mb-4 flex flex-col gap-3 [&_[data-slot=field-group]]:gap-3">{children}</div>
+                ) : null}
                 {items.length ? (
-                    <div className="employee-document-list">
+                    <PageSectionRows>
                         {items.map(function (item) {
                             return (
                                 <div className="employee-document-row" key={item.id}>
@@ -316,38 +303,21 @@ function DocumentList(props: {
                                 </div>
                             );
                         })}
-                    </div>
+                    </PageSectionRows>
                 ) : (
-                    <Empty className="employee-empty-state">
-                        <EmptyHeader>
-                            <EmptyMedia variant="icon">
-                                <FileText />
-                            </EmptyMedia>
-                            <EmptyTitle>{emptyTitle}</EmptyTitle>
-                        </EmptyHeader>
-                    </Empty>
+                    <PageSectionEmpty icon={<FileText />} title={emptyTitle} />
                 )}
-            </CardContent>
-        </DetailCard>
+        </PageSection>
     );
 }
 
 function ScenarioList(props: { items: DetailItem[] }) {
     if (!props.items.length) {
-        return (
-            <Empty className="employee-empty-state">
-                <EmptyHeader>
-                    <EmptyMedia variant="icon">
-                        <CalendarClock />
-                    </EmptyMedia>
-                    <EmptyTitle>Запусков нет</EmptyTitle>
-                </EmptyHeader>
-            </Empty>
-        );
+        return <PageSectionEmpty icon={<CalendarClock />} title="Запусков нет" />;
     }
 
     return (
-        <div className="employee-document-list">
+        <PageSectionRows>
             {props.items.map(function (item) {
                 const extraActionButton = item.extraAction ? (
                     <Button
@@ -395,32 +365,53 @@ function ScenarioList(props: { items: DetailItem[] }) {
                     </div>
                 );
             })}
-        </div>
+        </PageSectionRows>
     );
 }
 
+function SkeletonRow(props: { columns: 1 | 2 | 3 | 4; height: string }) {
+    return (
+        <PageRow columns={props.columns}>
+            {Array.from({ length: props.columns }, function (_, index) {
+                return <Skeleton key={index} className={cn("admin-page-surface", props.height)} />;
+            })}
+        </PageRow>
+    );
+}
+
+/*
+ * Скелет повторяет раскладку страницы: те же полосы и то же число долей,
+ * иначе страница перекладывается при загрузке. Шаблон не сообщает, кандидат
+ * это или сотрудник, поэтому первая и третья полосы нарисованы как у
+ * сотрудника (3 и 3 доли); у кандидата после загрузки они становятся
+ * 2 и 4. Чистое решение — data-is-candidate в контексте шаблона — отдельная
+ * правка на стороне бэкенда.
+ */
 export function EmployeeDetailLoading() {
     return (
-        <DetailCard className="employee-detail-loading">
-            <CardContent>Загружаю карточку сотрудника...</CardContent>
-        </DetailCard>
+        <div className="admin-page-stack" aria-busy="true" aria-label="Загружаю карточку сотрудника">
+            <SkeletonRow columns={3} height="h-[420px]" />
+            <SkeletonRow columns={2} height="h-64" />
+            <SkeletonRow columns={3} height="h-72" />
+            <SkeletonRow columns={4} height="h-56" />
+            <SkeletonRow columns={3} height="h-56" />
+            <SkeletonRow columns={1} height="h-24" />
+        </div>
     );
 }
 
 export function EmployeeDetailError(props: { message: string; listUrl: string }) {
     return (
-        <DetailCard>
-            <CardHeader>
-                <CardTitle>Карточка не загрузилась</CardTitle>
-            </CardHeader>
-            <CardContent>{props.message || "Не удалось загрузить карточку сотрудника"}</CardContent>
-            <CardFooter>
-                <a href={props.listUrl} className={buttonVariants({ variant: "outline" })}>
-                    <ArrowLeft data-icon="inline-start" />
-                    Вернуться к списку
-                </a>
-            </CardFooter>
-        </DetailCard>
+        <div className="admin-page-shell flex flex-col items-start gap-4">
+            <Alert variant="destructive">
+                <AlertTitle>Карточка не загрузилась</AlertTitle>
+                <AlertDescription>{props.message || "Не удалось загрузить карточку сотрудника"}</AlertDescription>
+            </Alert>
+            <a href={props.listUrl} className={buttonVariants({ variant: "outline" })}>
+                <ArrowLeft data-icon="inline-start" />
+                Вернуться к списку
+            </a>
+        </div>
     );
 }
 
@@ -439,13 +430,9 @@ export function AssignmentHistorySection(props: { items: AssignmentHistoryItem[]
     const items = Array.isArray(props.items) ? props.items : [];
 
     return (
-        <DetailCard>
-            <CardHeader>
-                <CardTitle>История назначений</CardTitle>
-            </CardHeader>
-            <CardContent>
+        <PageSection title="История назначений" counter={items.length}>
                 {items.length ? (
-                    <div className="employee-assignment-history-list">
+                    <PageSectionRows>
                         {items.map(function (item) {
                             const title = item.role_label || item.assignment_role || "Назначение";
                             return (
@@ -465,21 +452,15 @@ export function AssignmentHistorySection(props: { items: AssignmentHistoryItem[]
                                 </div>
                             );
                         })}
-                    </div>
+                    </PageSectionRows>
                 ) : (
-                    <Empty className="employee-empty-state">
-                        <EmptyHeader>
-                            <EmptyMedia variant="icon">
-                                <RefreshCcw />
-                            </EmptyMedia>
-                            <EmptyTitle>
-                                История назначений появится после первой смены руководителя или наставника.
-                            </EmptyTitle>
-                        </EmptyHeader>
-                    </Empty>
+                    <PageSectionEmpty
+                        icon={<RefreshCcw />}
+                        title="Назначений нет"
+                        description="История появится после первой смены руководителя или наставника."
+                    />
                 )}
-            </CardContent>
-        </DetailCard>
+        </PageSection>
     );
 }
 
@@ -504,17 +485,13 @@ export function ManualBotMessageSection(props: {
             : "Нужна активная Telegram-привязка с numeric ID. Username без ID недостаточно для ручной отправки.";
 
     return (
-        <DetailCard>
-            <CardHeader>
-                <CardTitle>Отправить сообщение в бот</CardTitle>
-            </CardHeader>
-            <CardContent className="employee-ops-stack">
+        <PageSection title="Отправить сообщение в бот" contentClassName="gap-4">
                 {warningText ? (
                     <Alert>
                         <AlertDescription>{warningText}</AlertDescription>
                     </Alert>
                 ) : null}
-                <form className="employee-inline-form" onSubmit={props.onSubmit}>
+                <form onSubmit={props.onSubmit}>
                     <FieldGroup>
                         <Field>
                             <FieldLabel>Текст сообщения</FieldLabel>
@@ -540,12 +517,14 @@ export function ManualBotMessageSection(props: {
                     </FieldGroup>
                 </form>
                 {props.sendState.message ? (
-                    <p className={cn("employee-save-state", props.sendState.error && "is-error")}>
+                    <p
+                        role="status"
+                        className={cn("text-sm text-muted-foreground", props.sendState.error && "text-destructive")}
+                    >
                         {props.sendState.message}
                     </p>
                 ) : null}
-            </CardContent>
-        </DetailCard>
+        </PageSection>
     );
 }
 
@@ -553,13 +532,9 @@ export function ManualBotMessageHistorySection(props: { items: ManualBotMessageH
     const items = Array.isArray(props.items) ? props.items : [];
 
     return (
-        <DetailCard>
-            <CardHeader>
-                <CardTitle>История ручных сообщений</CardTitle>
-            </CardHeader>
-            <CardContent>
+        <PageSection title="История ручных сообщений" counter={items.length}>
                 {items.length ? (
-                    <div className="employee-manual-message-list">
+                    <PageSectionRows>
                         {items.map(function (item) {
                             const status = String(item.status || "").trim();
                             const isFailed = status === "failed";
@@ -587,19 +562,11 @@ export function ManualBotMessageHistorySection(props: { items: ManualBotMessageH
                                 </div>
                             );
                         })}
-                    </div>
+                    </PageSectionRows>
                 ) : (
-                    <Empty className="employee-empty-state">
-                        <EmptyHeader>
-                            <EmptyMedia variant="icon">
-                                <Send />
-                            </EmptyMedia>
-                            <EmptyTitle>Ручных сообщений пока нет.</EmptyTitle>
-                        </EmptyHeader>
-                    </Empty>
+                    <PageSectionEmpty icon={<Send />} title="Ручных сообщений нет" />
                 )}
-            </CardContent>
-        </DetailCard>
+        </PageSection>
     );
 }
 
@@ -611,12 +578,7 @@ function HrNotesSection(props: {
     const items = Array.isArray(props.items) ? props.items : [];
 
     return (
-        <DetailCard>
-            <CardHeader>
-                <CardTitle>HR-заметки</CardTitle>
-            </CardHeader>
-            <CardContent>
-                <FieldSet>
+        <PageSection title="HR-заметки" counter={items.length} contentClassName="gap-4">
                     <Field>
                         <FieldLabel>Новая заметка</FieldLabel>
                         <Textarea
@@ -627,9 +589,9 @@ function HrNotesSection(props: {
                             placeholder="Добавьте внутреннюю заметку"
                         />
                     </Field>
-                    <div className="employee-manual-message-list">
-                        {items.length ? (
-                            items.map(function (item) {
+                    {items.length ? (
+                        <PageSectionRows>
+                            {items.map(function (item) {
                                 const authorLabel = item.author_label || (
                                     item.author_account_id ? "Account #" + item.author_account_id : "Автор не указан"
                                 );
@@ -646,21 +608,12 @@ function HrNotesSection(props: {
                                         </p>
                                     </div>
                                 );
-                            })
-                        ) : (
-                            <Empty className="employee-empty-state">
-                                <EmptyHeader>
-                                    <EmptyMedia variant="icon">
-                                        <FileText />
-                                    </EmptyMedia>
-                                    <EmptyTitle>История заметок пока пустая</EmptyTitle>
-                                </EmptyHeader>
-                            </Empty>
-                        )}
-                    </div>
-                </FieldSet>
-            </CardContent>
-        </DetailCard>
+                            })}
+                        </PageSectionRows>
+                    ) : (
+                        <PageSectionEmpty icon={<FileText />} title="Заметок нет" />
+                    )}
+        </PageSection>
     );
 }
 
@@ -680,12 +633,15 @@ export function EmployeeProfileSection(props: any) {
         onFirstWorkdayChange,
     } = props;
     return (
-        <form className="employee-profile-form" onSubmit={handleSubmit}>
-            <DetailCard>
-                <CardHeader>
-                    <CardTitle>{isCandidate ? "Профиль кандидата" : "Профиль сотрудника"}</CardTitle>
-                </CardHeader>
-                <CardContent>
+        /*
+         * Форма записи оборачивает свои полосы и задаёт им тот же шаг, что
+         * у стека страницы: для стека она один ребёнок, для полос — родитель.
+         * Кнопка «Сохранить» остаётся в модуле «Доступ к боту», поэтому все
+         * модули формы должны лежать внутри неё, а модули операций — снаружи.
+         */
+        <form className="grid gap-[var(--admin-page-gap)]" onSubmit={handleSubmit}>
+            <PageRow columns={isCandidate ? 2 : 3}>
+            <PageSection title={isCandidate ? "Профиль кандидата" : "Профиль сотрудника"}>
                     <FieldGroup className="employee-field-grid">
                         <Field>
                             <FieldLabel htmlFor="employee-full-name">ФИО</FieldLabel>
@@ -761,16 +717,11 @@ export function EmployeeProfileSection(props: any) {
                             </div>
                         </Field>
                     </FieldGroup>
-                </CardContent>
-            </DetailCard>
+            </PageSection>
 
             {isCandidate ? (
                 <>
-                    <DetailCard>
-                        <CardHeader>
-                            <CardTitle>Найм</CardTitle>
-                        </CardHeader>
-                        <CardContent>
+                    <PageSection title="Найм" contentClassName="gap-4">
                             <FieldGroup className="employee-field-grid">
                                 <Field>
                                     <FieldLabel>Текущий этап</FieldLabel>
@@ -798,16 +749,11 @@ export function EmployeeProfileSection(props: any) {
                                 onChange={handleChange}
                                 title="Согласие на ПДн"
                             />
-                        </CardContent>
-                    </DetailCard>
+                    </PageSection>
                 </>
             ) : (
                 <>
-                    <DetailCard>
-                        <CardHeader>
-                            <CardTitle>Рабочий профиль</CardTitle>
-                        </CardHeader>
-                        <CardContent>
+                    <PageSection title="Рабочий профиль" contentClassName="gap-4">
                             <FieldGroup className="employee-field-grid">
                                 <Field>
                                     <FieldLabel>Дата рождения</FieldLabel>
@@ -858,7 +804,7 @@ export function EmployeeProfileSection(props: any) {
                                     />
                                 </Field>
                             </FieldGroup>
-                            <div className="employee-checkbox-grid">
+                            <div className="flex flex-col gap-3">
                                 <CheckboxField
                                     name="is_manager"
                                     checked={!!form.is_manager}
@@ -872,14 +818,9 @@ export function EmployeeProfileSection(props: any) {
                                     title="Может быть наставником"
                                 />
                             </div>
-                        </CardContent>
-                    </DetailCard>
+                    </PageSection>
 
-                    <DetailCard>
-                        <CardHeader>
-                            <CardTitle>Сопровождение</CardTitle>
-                        </CardHeader>
-                        <CardContent>
+                    <PageSection title="Сопровождение" contentClassName="gap-4">
                             <FieldGroup className="employee-field-grid">
                                 <Field>
                                     <FieldLabel>Руководитель сотрудника</FieldLabel>
@@ -958,40 +899,43 @@ export function EmployeeProfileSection(props: any) {
                                 onChange={handleChange}
                                 title="Согласие на ПДн"
                             />
-                        </CardContent>
-                    </DetailCard>
+                    </PageSection>
                 </>
             )}
+            </PageRow>
 
+            <PageRow columns={2}>
             <HrNotesSection
                 value={hrNoteDraft}
                 items={hrNotesHistory}
                 onChange={onHrNoteDraftChange}
             />
 
-            <DetailCard>
-                <CardHeader>
-                    <CardTitle>Доступ к боту</CardTitle>
-                </CardHeader>
-                <CardContent>
-                    <FieldSet>
+            <PageSection title="Доступ к боту" contentClassName="gap-4">
                         <CheckboxField
                             name="is_bot_blocked"
                             checked={!!form.is_bot_blocked}
                             onChange={handleChange}
                             title="Заблокировать доступ к чат-боту"
                         />
-                    </FieldSet>
-                </CardContent>
-                <CardFooter className="employee-save-footer">
-                    <span className={cn("employee-save-state", saveState.error && "is-error")}>
-                        {saveState.message || " "}
-                    </span>
-                    <Button type="submit" disabled={saveState.saving}>
-                        {saveState.saving ? "Сохраняю..." : "Сохранить"}
-                    </Button>
-                </CardFooter>
-            </DetailCard>
+                    {/*
+                      Подвал модуля: статус сохранения и кнопка отправки формы.
+                      Пустота тянет тело до высоты соседа по полосе, и кнопка
+                      встаёт по низу — mt-auto.
+                    */}
+                    <div className="mt-auto flex items-center justify-between gap-3">
+                        <span
+                            role="status"
+                            className={cn("text-sm text-muted-foreground", saveState.error && "text-destructive")}
+                        >
+                            {saveState.message || " "}
+                        </span>
+                        <Button type="submit" disabled={saveState.saving}>
+                            {saveState.saving ? "Сохраняю..." : "Сохранить"}
+                        </Button>
+                    </div>
+            </PageSection>
+            </PageRow>
         </form>
     );
 }
@@ -1038,6 +982,7 @@ export function EmployeeOperationsSection(props: any) {
         manualBotMessageCustomEmojis,
         manualBotMessageInsertRef,
         manualBotMessageEmojiInsertRef,
+        assignmentHistory,
         isCandidate,
     } = props;
     const canPromoteToAdaptation = isCandidate && !!String(form?.first_workday || "").trim();
@@ -1047,8 +992,14 @@ export function EmployeeOperationsSection(props: any) {
         }),
     );
 
+    /*
+     * Полосы операций — прямые дети стека страницы, поэтому фрагмент.
+     * У кандидата на первой полосе четыре модуля, у сотрудника три: модуль
+     * «Переход в адаптацию» есть только у кандидата, и число долей меняется
+     * вместе с ним — сироты на полосе не остаётся.
+     */
     return (
-        <div className="employee-detail-side">
+        <>
             {opsState.message || opsState.working ? (
                 <Alert variant={opsState.error ? "destructive" : "default"}>
                     <AlertDescription>
@@ -1057,12 +1008,9 @@ export function EmployeeOperationsSection(props: any) {
                 </Alert>
             ) : null}
 
+            <PageRow columns={isCandidate ? 4 : 3}>
             {isCandidate ? (
-                <DetailCard>
-                    <CardHeader>
-                        <CardTitle>Переход в адаптацию</CardTitle>
-                    </CardHeader>
-                    <CardContent className="employee-ops-stack">
+                <PageSection title="Переход в адаптацию" contentClassName="gap-4">
                         <p className="text-sm text-muted-foreground">
                             Переводит кандидата в статус адаптации и подготавливает даты адаптационного периода.
                         </p>
@@ -1086,8 +1034,7 @@ export function EmployeeOperationsSection(props: any) {
                                 Перевести в адаптацию
                             </Button>
                         </ConfirmAction>
-                    </CardContent>
-                </DetailCard>
+                </PageSection>
             ) : null}
 
             <ManualBotMessageSection
@@ -1102,12 +1049,8 @@ export function EmployeeOperationsSection(props: any) {
                 insertEmojiRef={manualBotMessageEmojiInsertRef}
             />
 
-            <DetailCard>
-                <CardHeader>
-                    <CardTitle>Сценарии</CardTitle>
-                </CardHeader>
-                <CardContent className="employee-ops-stack">
-                    <form className="employee-inline-form" onSubmit={handleLaunchSubmit}>
+            <PageSection title="Сценарии" contentClassName="gap-4">
+                    <form onSubmit={handleLaunchSubmit}>
                         <FieldGroup>
                             <Field>
                                 <FieldLabel>Запустить сейчас</FieldLabel>
@@ -1141,7 +1084,7 @@ export function EmployeeOperationsSection(props: any) {
                         </FieldGroup>
                     </form>
 
-                    <form className="employee-inline-form" onSubmit={handleScheduleSubmit}>
+                    <form onSubmit={handleScheduleSubmit}>
                         <FieldGroup>
                             <Field>
                                 <FieldLabel>Запланировать</FieldLabel>
@@ -1189,15 +1132,20 @@ export function EmployeeOperationsSection(props: any) {
                             </Button>
                         </FieldGroup>
                     </form>
-                </CardContent>
-            </DetailCard>
+            </PageSection>
 
+            <PageSection title="Запланированные сценарии" counter={launchItems.length}>
+                    <ScenarioList items={launchItems} />
+            </PageSection>
+            </PageRow>
+
+            <PageRow columns={4}>
             <DocumentList
                 title="Резюме"
                 items={resumeDocumentItem ? [resumeDocumentItem] : []}
                 emptyTitle="Резюме пока не загружено"
             >
-                <form className="employee-inline-form" onSubmit={handleResumeFileSubmit}>
+                <form onSubmit={handleResumeFileSubmit}>
                     <FieldGroup>
                         <Field>
                             <FieldLabel>{resumeDocumentItem ? "Заменить резюме" : "Загрузить резюме"}</FieldLabel>
@@ -1210,7 +1158,7 @@ export function EmployeeOperationsSection(props: any) {
                                     setResumeFile(file);
                                 }}
                             />
-                            <div className="employee-file-picker">
+                            <div className="flex min-w-0 items-center gap-2.5">
                                 <label
                                     htmlFor="react-resume-file-input"
                                     className={buttonVariants({ variant: "outline", size: "sm" })}
@@ -1218,7 +1166,7 @@ export function EmployeeOperationsSection(props: any) {
                                     <Upload data-icon="inline-start" />
                                     Выбрать файл
                                 </label>
-                                <span>{resumeFile ? resumeFile.name : "Файл не выбран"}</span>
+                                <span className="min-w-0 truncate text-sm text-muted-foreground">{resumeFile ? resumeFile.name : "Файл не выбран"}</span>
                             </div>
                         </Field>
                         <div className="employee-action-row">
@@ -1232,7 +1180,7 @@ export function EmployeeOperationsSection(props: any) {
             </DocumentList>
 
             <DocumentList
-                title="Тестовое задание / ответ кандидата"
+                title="Тестовое задание"
                 items={testAssignmentDocumentItem ? [testAssignmentDocumentItem] : []}
                 emptyTitle="Ответ кандидата пока не получен"
             />
@@ -1242,8 +1190,7 @@ export function EmployeeOperationsSection(props: any) {
                 items={offerDocumentItem ? [offerDocumentItem] : []}
                 emptyTitle="Оффер пока не добавлен"
             >
-                <div className="employee-ops-stack">
-                    <form className="employee-inline-form" onSubmit={handleOfferSubmit}>
+                    <form onSubmit={handleOfferSubmit}>
                         <FieldGroup>
                             <Field>
                                 <FieldLabel>Ссылка на оффер</FieldLabel>
@@ -1264,7 +1211,7 @@ export function EmployeeOperationsSection(props: any) {
                             </div>
                         </FieldGroup>
                     </form>
-                    <form className="employee-inline-form" onSubmit={handleOfferFileSubmit}>
+                    <form onSubmit={handleOfferFileSubmit}>
                         <FieldGroup>
                             <Field>
                                 <FieldLabel>Файл оффера</FieldLabel>
@@ -1277,7 +1224,7 @@ export function EmployeeOperationsSection(props: any) {
                                         setOfferFile(file);
                                     }}
                                 />
-                                <div className="employee-file-picker">
+                                <div className="flex min-w-0 items-center gap-2.5">
                                     <label
                                         htmlFor="react-offer-file-input"
                                         className={buttonVariants({ variant: "outline", size: "sm" })}
@@ -1285,7 +1232,7 @@ export function EmployeeOperationsSection(props: any) {
                                         <Upload data-icon="inline-start" />
                                         Выбрать файл
                                     </label>
-                                    <span>{offerFile ? offerFile.name : "Файл не выбран"}</span>
+                                    <span className="min-w-0 truncate text-sm text-muted-foreground">{offerFile ? offerFile.name : "Файл не выбран"}</span>
                                 </div>
                             </Field>
                             <div className="employee-action-row">
@@ -1296,15 +1243,15 @@ export function EmployeeOperationsSection(props: any) {
                             </div>
                         </FieldGroup>
                     </form>
-                </div>
             </DocumentList>
 
             <DocumentList
                 title="Файлы HR"
                 items={hrFileItems}
+                counter={hrFileItems.length}
                 emptyTitle="HR-файлов нет"
             >
-                    <form className="employee-inline-form" onSubmit={handleFileSubmit}>
+                    <form onSubmit={handleFileSubmit}>
                         <FieldGroup>
                             <Field>
                                 <FieldLabel>Загрузить файл HR</FieldLabel>
@@ -1319,7 +1266,7 @@ export function EmployeeOperationsSection(props: any) {
                                         });
                                     }}
                                 />
-                                <div className="employee-file-picker">
+                                <div className="flex min-w-0 items-center gap-2.5">
                                     <label
                                         htmlFor="react-file-input"
                                         className={buttonVariants({ variant: "outline", size: "sm" })}
@@ -1327,7 +1274,7 @@ export function EmployeeOperationsSection(props: any) {
                                         <Upload data-icon="inline-start" />
                                         Выбрать файл
                                     </label>
-                                    <span>{fileForm.upload ? fileForm.upload.name : "Файл не выбран"}</span>
+                                    <span className="min-w-0 truncate text-sm text-muted-foreground">{fileForm.upload ? fileForm.upload.name : "Файл не выбран"}</span>
                                 </div>
                             </Field>
                             <Button type="submit" variant="secondary">
@@ -1337,35 +1284,21 @@ export function EmployeeOperationsSection(props: any) {
                         </FieldGroup>
                     </form>
             </DocumentList>
+            </PageRow>
 
-            <DetailCard>
-                <CardHeader>
-                    <CardTitle>Запланированные сценарии</CardTitle>
-                </CardHeader>
-                <CardContent>
-                    <ScenarioList items={launchItems} />
-                </CardContent>
-            </DetailCard>
+            <PageRow columns={3}>
+            <AssignmentHistorySection items={assignmentHistory} />
 
             <ManualBotMessageHistorySection items={manualBotMessageHistory} />
 
-            <DetailCard>
-                <CardHeader>
-                    <CardTitle>История ручных запусков</CardTitle>
-                </CardHeader>
-                <CardContent>
+            <PageSection title="История ручных запусков" counter={manualLaunchItems.length}>
                     <ScenarioList items={manualLaunchItems} />
-                </CardContent>
-            </DetailCard>
+            </PageSection>
+            </PageRow>
 
-            <DetailCard className="employee-danger-card">
-                <CardHeader>
-                    <CardTitle>
-                        <ShieldAlert data-icon="inline-start" />
-                        Редкие действия
-                    </CardTitle>
-                </CardHeader>
-                <CardFooter className="employee-action-row">
+            <PageRow columns={1}>
+            <PageSection title="Редкие действия" className="employee-danger-card">
+                <div className="employee-action-row">
                     <ConfirmAction
                         title="Сбросить привязку к боту?"
                         description="Активные сценарии и ожидающие отправки будут очищены. Сотруднику придётся привязать бот заново."
@@ -1388,8 +1321,9 @@ export function EmployeeOperationsSection(props: any) {
                             Удалить сотрудника
                         </Button>
                     </ConfirmAction>
-                </CardFooter>
-            </DetailCard>
-        </div>
+                </div>
+            </PageSection>
+            </PageRow>
+        </>
     );
 }

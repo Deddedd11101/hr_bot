@@ -1,0 +1,1 @@
+import{j as s}from"./createLucideIcon-EjPmQ_Rm.js";import{c as d}from"./useBaseUiId-BEctzMIr.js";const g={1:"",2:"md:grid-cols-2",3:"lg:grid-cols-3",4:"md:grid-cols-2 xl:grid-cols-4"};function c({columns:a=1,className:o,...r}){return s.jsx("div",{"data-slot":"page-row","data-columns":a,className:d("grid grid-cols-1 gap-[var(--admin-page-gap)]",g[a],o),...r})}export{c as P};

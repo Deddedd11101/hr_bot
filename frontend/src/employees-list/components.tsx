@@ -6,7 +6,6 @@ import {
   SlidersHorizontal,
   BadgeCheck,
   CalendarDays,
-  ExternalLink,
   FileClock,
   MessageCircle,
   Timer,
@@ -33,6 +32,7 @@ import {
 } from "@/components/ui/table";
 import { RecordCard, RecordCardTag, type RecordCardTagSpec } from "@/components/ui/record-card";
 import { ПРОЯВЛЕНИЕ } from "@/lib/reveal";
+import { открытьЗаписьПоСтроке } from "@/lib/row-open";
 import { cn } from "@/lib/utils";
 
 import { Checkbox } from "@/components/ui/checkbox";
@@ -88,21 +88,22 @@ export function SinglePicker({
 }
 
 /**
- * Действия записи: чат и переход в карточку.
+ * Действия записи: чат.
  *
  * В покое скрыты, проявляются по наведению и при фокусе внутри записи —
  * правила в lib/reveal.ts.
  *
- * Переход в карточку отдельной иконкой нужен только в таблице: в сетке
- * запись открывает сама карточка (RecordCard), и вторая точка входа
- * рядом с ней только дублировала бы действие.
+ * Перехода в карточку здесь нет ни в сетке, ни в таблице: запись открывает
+ * сама запись — карточка целиком (RecordCard) или строка (см. EmployeeTableRow).
+ * Раньше в таблице стояла отдельная иконка «Открыть карточку», и у двух
+ * представлений одного списка оказывались два разных способа открыть запись.
  */
 function ItemActions({ item, внутри }: { item: EmployeeItem; внутри: "card" | "row" }) {
   return (
     /*
      * Переносить действия нельзя: в карточке это ломало бы строку постоянной
      * высоты, в таблице — растягивало ячейку в столбик. Колонка под них
-     * рассчитана точно: 2×32 кнопки + 8 зазор + 2×16 отступы ячейки = 104.
+     * рассчитана точно: 1×32 кнопка + 2×16 отступы ячейки = 64.
      */
     <div className="flex shrink-0 items-center gap-2 whitespace-nowrap">
       {item.chat_link ? (
@@ -115,16 +116,6 @@ function ItemActions({ item, внутри }: { item: EmployeeItem; внутри:
           aria-label="Открыть чат"
         >
           <MessageCircle />
-        </a>
-      ) : null}
-      {внутри === "row" ? (
-        <a
-          href={item.react_edit_url || item.edit_url}
-          className={cn(buttonVariants({ variant: "outline", size: "icon" }), ПРОЯВЛЕНИЕ[внутри])}
-          title="Открыть карточку"
-          aria-label="Открыть карточку"
-        >
-          <ExternalLink />
         </a>
       ) : null}
     </div>
@@ -221,7 +212,7 @@ const КОЛОНКИ: ColumnSpec[] = [
   { key: "channel", field: "channel", label: () => "Канал", width: 190 },
   { key: "date", field: "date", label: (kind) => (kind === "candidates" ? "Дедлайн" : "Выход"), width: 130 },
   { key: "scenario", field: "scenario", label: () => "Сценарий", width: 220 },
-  { key: null, field: null, label: () => "Действия", width: 112, align: "text-right", labelHidden: true },
+  { key: null, field: null, label: () => "Действия", width: 64, align: "text-right", labelHidden: true },
 ];
 
 function видимыеКолонки(columns: Record<ColumnKey, boolean>): ColumnSpec[] {
@@ -320,6 +311,11 @@ export function EmployeeTableHeader({
  *
  * Компонент Table взят из кита. До этого он числился showcase — «в продукте
  * пока не применяется: список сотрудников собран из блоков вручную».
+ *
+ * Запись открывает строка — тот же принцип, что у карточки в сетке.
+ * Настоящая ссылка стоит в ячейке имени, клик по остальной площади строки
+ * ведёт туда же (lib/row-open.ts). Отдельной иконки «Открыть» в колонке
+ * действий нет.
  */
 export function EmployeeTable({
   items,
@@ -385,10 +381,26 @@ export function EmployeeTableRow({
     scenario: item.planned_scenario_title || "—",
   };
 
+  const href = item.react_edit_url || item.edit_url;
+
   return (
-    <TableRow className="group/row">
+    /*
+     * tr не получает tabIndex и role: точка табуляции у строки одна — ссылка
+     * в ячейке имени, а дерево доступности остаётся таблицей. Курсор и
+     * заливка по наведению и по фокусу внутри — обещание клика по всей строке.
+     */
+    <TableRow
+      className="group/row cursor-pointer focus-within:bg-muted/50"
+      onClick={(event) => открытьЗаписьПоСтроке(event, href)}
+    >
       <TableCell className="overflow-hidden px-4 py-2.5 font-semibold">
-        <span className="block truncate">{item.full_name || "Без имени"}</span>
+        <a
+          href={href}
+          data-row-open=""
+          className="block truncate rounded outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+        >
+          {item.full_name || "Без имени"}
+        </a>
       </TableCell>
       {HIDEABLE_COLUMNS.filter((ключ) => columns[ключ]).map((ключ) => (
         <TableCell key={ключ} className="overflow-hidden px-4 py-2.5 text-muted-foreground">
@@ -405,7 +417,7 @@ export function EmployeeTableRow({
         * bg-muted/50, ровно как у строки, и поверх того же bg-card, так что
         * оттенок совпадает пиксель в пиксель.
         */}
-      <TableCell className="sticky right-0 z-[1] bg-card px-4 py-2.5 text-right group-hover/row:bg-muted/50">
+      <TableCell className="sticky right-0 z-[1] bg-card px-4 py-2.5 text-right group-hover/row:bg-muted/50 group-focus-within/row:bg-muted/50">
         <div className="flex items-center justify-end">
           <ItemActions item={item} внутри="row" />
         </div>

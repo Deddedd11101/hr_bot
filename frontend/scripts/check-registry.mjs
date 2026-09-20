@@ -7,6 +7,10 @@
  *    компонента, посчитанным по импортам. Реестр не должен утверждать,
  *    что компонент работает в продукте, если его никто не импортирует.
  * 2. `sourceRef`, если он указан на локальный файл, обязан существовать.
+ * 3. Имя записи-примитива обязано быть одним из реальных экспортов её
+ *    `sourceRef`. Имена поддерживались руками, и 23 из 58 незаметно
+ *    разошлись с кодом: `sonner.tsx` экспортирует `Toaster`,
+ *    `chart.tsx` — `ChartContainer`, а записи назывались «Sonner» и «Chart».
  *
  * Запуск: node scripts/check-registry.mjs
  * Код возврата 1 при любой найденной проблеме — годится для CI.
@@ -66,6 +70,29 @@ function computeStatuses() {
     );
   }
   return statuses;
+}
+
+/**
+ * Имена, которые файл действительно экспортирует.
+ *
+ * Проверяем принадлежность, а не равенство одному символу: у составных
+ * компонентов корней несколько (`ResizablePanelGroup` рядом с `ResizablePanel`),
+ * и выбор между ними — вопрос вкуса. Выдуманное имя не пройдёт в любом случае.
+ */
+function exportedNames(file) {
+  const text = readFileSync(file, "utf8");
+  const names = new Set();
+
+  for (const match of text.matchAll(/^export\s*\{([\s\S]*?)\}/gm)) {
+    for (const raw of match[1].split(",")) {
+      const name = raw.trim().replace(/\s+as\s+.*$/, "").replace(/^type\s+/, "");
+      if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) names.add(name);
+    }
+  }
+  for (const match of text.matchAll(/^export\s+(?:function|const|class)\s+([A-Za-z_][A-Za-z0-9_]*)/gm)) {
+    names.add(match[1]);
+  }
+  return names;
 }
 
 /** Реестр — TypeScript, поэтому собираем его во временный CJS через esbuild. */
@@ -136,8 +163,18 @@ for (const entry of registry.CATALOG) {
   }
 
   if (entry.sourceRef && !entry.sourceRef.startsWith("http")) {
-    if (!existsSync(path.join(repoDir, entry.sourceRef))) {
+    const full = path.join(repoDir, entry.sourceRef);
+    if (!existsSync(full)) {
       problems.push(`${entry.id}: sourceRef ${entry.sourceRef} не существует`);
+    } else if (entry.group === "primitives") {
+      const names = exportedNames(full);
+      if (!names.has(entry.title)) {
+        const shown = [...names].slice(0, 6).join(", ");
+        problems.push(
+          `${entry.id}: имя "${entry.title}" не экспортируется из ${entry.sourceRef}` +
+            (shown ? ` (там: ${shown}${names.size > 6 ? ", …" : ""})` : ""),
+        );
+      }
     }
   }
 }

@@ -12,7 +12,6 @@ import {
 import { PageDetailHeader } from "@/components/ui/page-header";
 import { type TelegramCustomEmoji, type TelegramTemplateTag } from "@/components/ui/telegram-message-tools";
 import {
-    AssignmentHistorySection,
     EmployeeDetailError,
     EmployeeFlashNotice,
     EmployeeDetailLoading,
@@ -836,7 +835,7 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
     });
 
     return (
-        <div className="react-detail-page">
+        <>
             {/*
               Статус и этап — свойства записи, а не действия, но полоса
               заголовка — единственное место, где они видны без прокрутки;
@@ -857,12 +856,20 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
                     </>
                 }
             />
+            {/*
+              Полоса заголовка стоит перед стеком, а не внутри: стек ограничен
+              --admin-page-max-width, а разделитель полосы тянется на всё поле.
+              Стек даёт содержимому тот же предел и центр, что у строки полосы,
+              поэтому крошка и первая карточка начинаются с одной вертикали —
+              как на списках. До этого предел был снят с контейнера и ничем
+              не заменён: на 2200px карточки начинались на 127px левее крошки.
+            */}
+            <div className="admin-page-stack">
             <EmployeeFlashNotice message={flashState.message} error={flashState.error} />
             <Tabs defaultValue="profile" className="min-w-0 flex-col" onValueChange={value => { if (value === "grade") setGradeOpened(true); }}>
             <TabsList variant="line" aria-label="Разделы карточки"><TabsTrigger value="profile">Профиль</TabsTrigger><TabsTrigger value="grade">Грейд</TabsTrigger></TabsList>
-            <TabsContent value="profile" keepMounted>
-            <section className="employee-detail-grid">
-                <div className="employee-detail-main">
+            {/* Профиль и операции — полосы равных долей в стеке (hrbot-ui #27), без прежней дробной сетки. */}
+            <TabsContent value="profile" keepMounted className="admin-page-stack min-w-0">
                     <EmployeeProfileSection
                         form={form}
                         isCandidate={isCandidate}
@@ -878,8 +885,6 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
                         onHrNoteDraftChange={handleHrNoteDraftChange}
                         onFirstWorkdayChange={handleFirstWorkdayChange}
                     />
-                    <AssignmentHistorySection items={assignmentHistory} />
-                </div>
                 <EmployeeOperationsSection
                     opsState={opsState}
                     offerUrl={offerUrl}
@@ -921,12 +926,13 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
                     manualBotMessageCustomEmojis={telegramMessageWorkspace.custom_emojis}
                     manualBotMessageInsertRef={manualBotMessageInsertRef}
                     manualBotMessageEmojiInsertRef={manualBotMessageEmojiInsertRef}
+                    assignmentHistory={assignmentHistory}
                     isCandidate={isCandidate}
                 />
-            </section>
             </TabsContent>
             <TabsContent value="grade" keepMounted className="admin-page-surface min-w-0 p-4">{gradeOpened && <React.Suspense fallback={<p role="status">Загрузка грейда...</p>}><GradeTab employeeId={Number(form.id)} /></React.Suspense>}</TabsContent>
             </Tabs>
-        </div>
+            </div>
+        </>
     );
 }

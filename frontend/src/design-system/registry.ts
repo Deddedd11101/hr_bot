@@ -64,10 +64,15 @@ export const STATUS_LABELS: Record<EntryStatus, string> = {
 export type CatalogEntry = {
   /** Уникальный стабильный идентификатор. Совпадает с id секции в DOM. */
   id: string;
-  /** Публичное имя блока. */
+  /**
+   * Имя записи. Для компонентов кита — корневой экспорт из `sourceRef`,
+   * ровно как он называется в коде. Для токенов, паттернов и правил —
+   * устоявшееся английское имя: экспорта у них нет, и придумывать его нельзя.
+   *
+   * Человеческое объяснение живёт в `summary`, русские синонимы — в `aliases`,
+   * поэтому поиск по-русски продолжает работать.
+   */
   title: string;
-  /** Короткая подпись для навигации. */
-  navLabel: string;
   group: KitGroup;
   /** Смысловой раздел внутри группы. Должен существовать в NAVIGATION_SECTIONS. */
   section: string;
@@ -159,7 +164,6 @@ export const CATALOG: CatalogEntry[] = [
   {
     id: "palette",
     title: "Palette",
-    navLabel: "Палитра",
     group: "foundations",
     section: "foundations-core",
     order: 1,
@@ -168,7 +172,7 @@ export const CATALOG: CatalogEntry[] = [
       "Семантические роли цвета и их значения в светлой и тёмной теме. Роли, а не конкретные значения, являются контрактом.",
     sourceRef: "frontend/src/index.css",
     tags: ["tokens", "color", "theme", "oklch"],
-    aliases: ["цвета", "токены", "colors"],
+    aliases: ["палитра", "цвета", "токены", "colors"],
     related: ["typography", "radius-and-depth"],
     canvas: "standard",
     family: "tokens",
@@ -179,7 +183,6 @@ export const CATALOG: CatalogEntry[] = [
   {
     id: "typography",
     title: "Typography",
-    navLabel: "Типографика",
     group: "foundations",
     section: "foundations-core",
     order: 2,
@@ -187,7 +190,7 @@ export const CATALOG: CatalogEntry[] = [
     summary: "Шкала размеров, начертаний и межстрочных интервалов.",
     sourceRef: "frontend/src/index.css",
     tags: ["type", "scale", "font"],
-    aliases: ["шрифт", "текст"],
+    aliases: ["типографика", "шрифт", "текст"],
     related: ["palette"],
     canvas: "standard",
     family: "type",
@@ -198,14 +201,13 @@ export const CATALOG: CatalogEntry[] = [
   {
     id: "spacing-rhythm",
     title: "Spacing rhythm",
-    navLabel: "Ритм отступов",
     group: "foundations",
     section: "foundations-core",
     order: 3,
     href: "#spacing-rhythm",
     summary: "Шаг сетки и правила вертикального ритма между блоками.",
     tags: ["spacing", "layout", "rhythm"],
-    aliases: ["отступы", "сетка"],
+    aliases: ["ритм отступов", "отступы", "сетка"],
     related: ["radius-and-depth"],
     canvas: "standard",
     family: "layout",
@@ -216,14 +218,13 @@ export const CATALOG: CatalogEntry[] = [
   {
     id: "radius-and-depth",
     title: "Radius and depth",
-    navLabel: "Радиусы и глубина",
     group: "foundations",
     section: "foundations-core",
     order: 4,
     href: "#radius-and-depth",
     summary: "Шкала скруглений и правила использования границ вместо теней.",
     tags: ["radius", "shadow", "border"],
-    aliases: ["скругления", "тени"],
+    aliases: ["радиусы и глубина", "скругления", "тени"],
     related: ["palette", "card"],
     canvas: "standard",
     family: "layout",
@@ -235,8 +236,7 @@ export const CATALOG: CatalogEntry[] = [
   // ----------------------------------------------------------------- primitives
   {
     id: "buttons",
-    title: "Buttons",
-    navLabel: "Кнопки",
+    title: "Button",
     group: "primitives",
     section: "primitives-actions",
     order: 1,
@@ -244,7 +244,7 @@ export const CATALOG: CatalogEntry[] = [
     summary: "Варианты и размеры кнопок, включая иконочные и деструктивные.",
     sourceRef: "frontend/src/components/ui/button.tsx",
     tags: ["action", "button", "variant"],
-    aliases: ["button", "кнопка"],
+    aliases: ["кнопки", "button", "кнопка"],
     related: ["field", "confirmation-dialog"],
     canvas: "standard",
     family: "actions",
@@ -255,7 +255,6 @@ export const CATALOG: CatalogEntry[] = [
   {
     id: "field",
     title: "Field",
-    navLabel: "Обёртка поля",
     group: "primitives",
     section: "primitives-fields",
     order: 1,
@@ -263,7 +262,7 @@ export const CATALOG: CatalogEntry[] = [
     summary: "Подпись, пояснение и сообщение об ошибке вокруг любого контрола. Единая обвязка для всех полей формы.",
     sourceRef: "frontend/src/components/ui/field.tsx",
     tags: ["form", "label", "wrapper"],
-    aliases: ["обёртка", "подпись"],
+    aliases: ["обёртка поля", "обёртка", "подпись"],
     related: ["input", "select"],
     canvas: "standard",
     family: "fields",
@@ -274,7 +273,6 @@ export const CATALOG: CatalogEntry[] = [
   {
     id: "input",
     title: "Input",
-    navLabel: "Текстовое поле",
     group: "primitives",
     section: "primitives-fields",
     order: 2,
@@ -282,7 +280,7 @@ export const CATALOG: CatalogEntry[] = [
     summary: "Однострочный ввод текста.",
     sourceRef: "frontend/src/components/ui/input.tsx",
     tags: ["input", "text", "form"],
-    aliases: ["инпут", "поле ввода"],
+    aliases: ["текстовое поле", "инпут", "поле ввода"],
     related: ["field", "textarea"],
     canvas: "standard",
     family: "fields",
@@ -293,7 +291,6 @@ export const CATALOG: CatalogEntry[] = [
   {
     id: "textarea",
     title: "Textarea",
-    navLabel: "Многострочное поле",
     group: "primitives",
     section: "primitives-fields",
     order: 3,
@@ -301,7 +298,7 @@ export const CATALOG: CatalogEntry[] = [
     summary: "Ввод текста в несколько строк: описания, тексты сообщений бота.",
     sourceRef: "frontend/src/components/ui/textarea.tsx",
     tags: ["textarea", "multiline"],
-    aliases: ["текстовая область"],
+    aliases: ["многострочное поле", "текстовая область"],
     related: ["input", "field"],
     canvas: "standard",
     family: "fields",
@@ -311,8 +308,7 @@ export const CATALOG: CatalogEntry[] = [
   },
   {
     id: "telegram-rich-text-editor",
-    title: "Telegram rich text editor",
-    navLabel: "Telegram editor",
+    title: "TelegramRichTextEditor",
     group: "primitives",
     section: "primitives-fields",
     order: 4,
@@ -331,7 +327,6 @@ export const CATALOG: CatalogEntry[] = [
   {
     id: "select",
     title: "Select",
-    navLabel: "Выбор из списка",
     group: "primitives",
     section: "primitives-fields",
     order: 5,
@@ -339,7 +334,7 @@ export const CATALOG: CatalogEntry[] = [
     summary: "Выбор одного значения из списка. Отдаёт null при очистке — обработчик обязан это учитывать.",
     sourceRef: "frontend/src/components/ui/select.tsx",
     tags: ["select", "dropdown", "choice"],
-    aliases: ["селект", "выпадающий список"],
+    aliases: ["выбор из списка", "селект", "выпадающий список"],
     related: ["field"],
     canvas: "standard",
     family: "fields",
@@ -354,7 +349,6 @@ export const CATALOG: CatalogEntry[] = [
   {
     id: "checkbox",
     title: "Checkbox",
-    navLabel: "Флажок",
     group: "primitives",
     section: "primitives-fields",
     order: 6,
@@ -362,7 +356,7 @@ export const CATALOG: CatalogEntry[] = [
     summary: "Независимый переключатель да/нет.",
     sourceRef: "frontend/src/components/ui/checkbox.tsx",
     tags: ["checkbox", "boolean"],
-    aliases: ["чекбокс", "галочка"],
+    aliases: ["флажок", "чекбокс", "галочка"],
     related: ["switch", "radio-group"],
     canvas: "standard",
     family: "fields",
@@ -372,8 +366,7 @@ export const CATALOG: CatalogEntry[] = [
   },
   {
     id: "radio-group",
-    title: "Radio group",
-    navLabel: "Выбор одного",
+    title: "RadioGroup",
     group: "primitives",
     section: "primitives-fields",
     order: 7,
@@ -381,7 +374,7 @@ export const CATALOG: CatalogEntry[] = [
     summary: "Выбор ровно одного варианта изнескольких взаимоисключающих.",
     sourceRef: "frontend/src/components/ui/radio-group.tsx",
     tags: ["radio", "choice"],
-    aliases: ["радиокнопки"],
+    aliases: ["выбор одного", "радиокнопки"],
     related: ["checkbox", "select"],
     canvas: "standard",
     family: "fields",
@@ -392,7 +385,6 @@ export const CATALOG: CatalogEntry[] = [
   {
     id: "switch",
     title: "Switch",
-    navLabel: "Тумблер",
     group: "primitives",
     section: "primitives-fields",
     order: 8,
@@ -410,8 +402,7 @@ export const CATALOG: CatalogEntry[] = [
   },
   {
     id: "date-picker",
-    title: "Date picker",
-    navLabel: "Дата и время",
+    title: "DatePicker",
     group: "primitives",
     section: "primitives-fields",
     order: 9,
@@ -419,7 +410,7 @@ export const CATALOG: CatalogEntry[] = [
     summary: "Выбор даты, времени и даты со временем. Календарь и список времени вместо нативных браузерных попапов.",
     sourceRef: "frontend/src/components/ui/date-picker.tsx",
     tags: ["date", "time", "calendar"],
-    aliases: ["дата", "календарь", "время"],
+    aliases: ["дата и время", "дата", "календарь", "время"],
     related: ["field", "select"],
     canvas: "standard",
     family: "fields",
@@ -429,8 +420,7 @@ export const CATALOG: CatalogEntry[] = [
   },
   {
     id: "theme-switch",
-    title: "Theme switch",
-    navLabel: "Переключатель темы",
+    title: "ThemeSwitch",
     group: "primitives",
     section: "primitives-actions",
     order: 2,
@@ -438,7 +428,7 @@ export const CATALOG: CatalogEntry[] = [
     summary: "Переключение светлой и тёмной темы с анимацией раскрытия. Живёт в настройках админки.",
     sourceRef: "frontend/src/components/ui/theme-switch.tsx",
     tags: ["theme", "toggle", "motion"],
-    aliases: ["тема", "тёмная тема"],
+    aliases: ["переключатель темы", "тема", "тёмная тема"],
     related: ["palette"],
     canvas: "standard",
     family: "actions",
@@ -453,7 +443,6 @@ export const CATALOG: CatalogEntry[] = [
   {
     id: "badge",
     title: "Badge",
-    navLabel: "Бейдж",
     group: "primitives",
     section: "primitives-display",
     order: 1,
@@ -472,7 +461,6 @@ export const CATALOG: CatalogEntry[] = [
   {
     id: "card",
     title: "Card",
-    navLabel: "Карточка",
     group: "primitives",
     section: "primitives-display",
     order: 2,
@@ -491,7 +479,6 @@ export const CATALOG: CatalogEntry[] = [
   {
     id: "avatar",
     title: "Avatar",
-    navLabel: "Аватар",
     group: "primitives",
     section: "primitives-display",
     order: 3,
@@ -510,7 +497,6 @@ export const CATALOG: CatalogEntry[] = [
   {
     id: "progress",
     title: "Progress",
-    navLabel: "Прогресс",
     group: "primitives",
     section: "primitives-display",
     order: 4,
@@ -529,7 +515,6 @@ export const CATALOG: CatalogEntry[] = [
   {
     id: "skeleton",
     title: "Skeleton",
-    navLabel: "Скелетон",
     group: "primitives",
     section: "primitives-display",
     order: 5,
@@ -548,7 +533,6 @@ export const CATALOG: CatalogEntry[] = [
   {
     id: "dialog",
     title: "Dialog",
-    navLabel: "Диалог",
     group: "primitives",
     section: "primitives-overlays",
     order: 1,
@@ -566,8 +550,7 @@ export const CATALOG: CatalogEntry[] = [
   },
   {
     id: "confirm-action",
-    title: "Confirm action",
-    navLabel: "Подтверждение",
+    title: "ConfirmAction",
     group: "primitives",
     section: "primitives-overlays",
     order: 2,
@@ -585,8 +568,7 @@ export const CATALOG: CatalogEntry[] = [
   },
   {
     id: "dropdown-menu",
-    title: "Dropdown menu",
-    navLabel: "Выпадающее меню",
+    title: "DropdownMenu",
     group: "primitives",
     section: "primitives-overlays",
     order: 3,
@@ -594,7 +576,7 @@ export const CATALOG: CatalogEntry[] = [
     summary: "Меню действий у элемента. В продукте пока не применяется — действия вынесены отдельными кнопками.",
     sourceRef: "frontend/src/components/ui/dropdown-menu.tsx",
     tags: ["menu", "dropdown", "actions"],
-    aliases: ["меню", "действия"],
+    aliases: ["выпадающее меню", "меню", "действия"],
     related: ["dialog"],
     canvas: "standard",
     family: "overlays",
@@ -605,7 +587,6 @@ export const CATALOG: CatalogEntry[] = [
   {
     id: "tooltip",
     title: "Tooltip",
-    navLabel: "Подсказка",
     group: "primitives",
     section: "primitives-overlays",
     order: 4,
@@ -625,13 +606,12 @@ export const CATALOG: CatalogEntry[] = [
   {
     id: "table",
     title: "Table",
-    navLabel: "Таблица",
     group: "primitives",
     section: "primitives-collections",
     order: 1,
     href: "#table",
     summary:
-      "Табличное представление данных. Используется в списке людей: вся выдача — одна карточка, строки разделены линиями, шапка сортирует по колонкам.",
+      "Табличное представление данных. Используется в списке людей: вся выдача — одна карточка, строки разделены линиями, шапка сортирует по колонкам. Строку открывает ссылка в ячейке имени и клик по её площади.",
     sourceRef: "frontend/src/components/ui/table.tsx",
     tags: ["table", "data", "rows", "sort"],
     aliases: ["таблица"],
@@ -645,8 +625,7 @@ export const CATALOG: CatalogEntry[] = [
   },
   {
     id: "scroll-area",
-    title: "Scroll area",
-    navLabel: "Область прокрутки",
+    title: "ScrollArea",
     group: "primitives",
     section: "primitives-collections",
     order: 2,
@@ -654,7 +633,7 @@ export const CATALOG: CatalogEntry[] = [
     summary: "Прокручиваемая область с оформленной полосой вместо системной.",
     sourceRef: "frontend/src/components/ui/scroll-area.tsx",
     tags: ["scroll", "overflow"],
-    aliases: ["прокрутка"],
+    aliases: ["область прокрутки", "прокрутка"],
     related: ["table"],
     canvas: "standard",
     family: "collections",
@@ -665,8 +644,7 @@ export const CATALOG: CatalogEntry[] = [
   },
   {
     id: "emoji-picker",
-    title: "Emoji picker",
-    navLabel: "Выбор эмодзи",
+    title: "EmojiPickerPopover",
     group: "primitives",
     section: "primitives-collections",
     order: 3,
@@ -674,7 +652,7 @@ export const CATALOG: CatalogEntry[] = [
     summary: "Вставка эмодзи в текст сообщения бота.",
     sourceRef: "frontend/src/components/ui/emoji-picker-popover.tsx",
     tags: ["emoji", "picker"],
-    aliases: ["эмодзи", "смайлы"],
+    aliases: ["выбор эмодзи", "эмодзи", "смайлы"],
     related: ["textarea"],
     canvas: "standard",
     family: "fields",
@@ -685,8 +663,7 @@ export const CATALOG: CatalogEntry[] = [
   },
   {
     id: "record-card",
-    title: "Record card",
-    navLabel: "Карточка записи",
+    title: "RecordCard",
     group: "primitives",
     section: "primitives-collections",
     order: 4,
@@ -706,7 +683,6 @@ export const CATALOG: CatalogEntry[] = [
   {
     id: "breadcrumb",
     title: "Breadcrumb",
-    navLabel: "Хлебные крошки",
     group: "primitives",
     section: "primitives-navigation",
     order: 1,
@@ -714,7 +690,7 @@ export const CATALOG: CatalogEntry[] = [
     summary: "Путь до текущего экрана. В продукте пока не применяется: навигация собрана вручную в шелле.",
     sourceRef: "frontend/src/components/ui/breadcrumb.tsx",
     tags: ["breadcrumb", "path"],
-    aliases: ["крошки", "путь"],
+    aliases: ["хлебные крошки", "крошки", "путь"],
     related: ["tabs"],
     canvas: "standard",
     family: "navigation",
@@ -725,7 +701,6 @@ export const CATALOG: CatalogEntry[] = [
   {
     id: "tabs",
     title: "Tabs",
-    navLabel: "Вкладки",
     group: "primitives",
     section: "primitives-navigation",
     order: 2,
@@ -745,7 +720,6 @@ export const CATALOG: CatalogEntry[] = [
   {
     id: "alert",
     title: "Alert",
-    navLabel: "Сообщение",
     group: "primitives",
     section: "primitives-display",
     order: 6,
@@ -765,7 +739,6 @@ export const CATALOG: CatalogEntry[] = [
   {
     id: "empty",
     title: "Empty",
-    navLabel: "Пустое состояние",
     group: "primitives",
     section: "primitives-display",
     order: 7,
@@ -785,7 +758,6 @@ export const CATALOG: CatalogEntry[] = [
   {
     id: "popover",
     title: "Popover",
-    navLabel: "Поповер",
     group: "primitives",
     section: "primitives-overlays",
     order: 5,
@@ -805,7 +777,6 @@ export const CATALOG: CatalogEntry[] = [
   {
     id: "separator",
     title: "Separator",
-    navLabel: "Разделитель",
     group: "primitives",
     section: "primitives-display",
     order: 8,
@@ -824,8 +795,7 @@ export const CATALOG: CatalogEntry[] = [
   },
   {
     id: "page-header",
-    title: "Page header",
-    navLabel: "Полоса заголовка",
+    title: "PageHeader",
     group: "primitives",
     section: "primitives-display",
     order: 9,
@@ -844,8 +814,7 @@ export const CATALOG: CatalogEntry[] = [
   },
   {
     id: "page-filters",
-    title: "Page filters",
-    navLabel: "Полоса фильтров",
+    title: "PageFilters",
     group: "primitives",
     section: "primitives-display",
     order: 10,
@@ -854,7 +823,7 @@ export const CATALOG: CatalogEntry[] = [
       "Полоса фильтров выдачи: набор, поиск, селекты, представление. Идёт сразу за заголовком и ни во что не завёрнута.",
     sourceRef: "frontend/src/components/ui/page-filters.tsx",
     tags: ["filters", "search", "toolbar", "layout"],
-    aliases: ["фильтры", "поиск", "тулбар"],
+    aliases: ["полоса фильтров", "фильтры", "поиск", "тулбар"],
     related: ["page-header", "input-group", "select"],
     canvas: "standard",
     family: "layout",
@@ -864,8 +833,7 @@ export const CATALOG: CatalogEntry[] = [
   },
   {
     id: "page-row",
-    title: "Page row",
-    navLabel: "Полоса модулей",
+    title: "PageRow",
     group: "primitives",
     section: "primitives-display",
     order: 11,
@@ -874,7 +842,7 @@ export const CATALOG: CatalogEntry[] = [
       "Полоса страницы с равными долями. Принимает количество колонок, а не шаблон: дробей и col-span в страничной сетке не бывает.",
     sourceRef: "frontend/src/components/ui/page-row.tsx",
     tags: ["grid", "row", "columns", "layout"],
-    aliases: ["сетка", "полоса", "колонки"],
+    aliases: ["полоса модулей", "сетка", "полоса", "колонки"],
     related: ["page-section", "spacing-rhythm"],
     canvas: "standard",
     family: "layout",
@@ -884,8 +852,7 @@ export const CATALOG: CatalogEntry[] = [
   },
   {
     id: "page-section",
-    title: "Page section",
-    navLabel: "Модуль страницы",
+    title: "PageSection",
     group: "primitives",
     section: "primitives-display",
     order: 12,
@@ -894,7 +861,7 @@ export const CATALOG: CatalogEntry[] = [
       "Модуль страницы: шапка постоянной высоты и одно из тел под ней. Описания под заголовком нет — оно ломало полосу равных долей.",
     sourceRef: "frontend/src/components/ui/page-section.tsx",
     tags: ["section", "module", "card", "layout"],
-    aliases: ["модуль", "секция", "блок"],
+    aliases: ["модуль страницы", "модуль", "секция", "блок"],
     related: ["card", "page-row", "empty", "composition-rules"],
     canvas: "standard",
     family: "layout",
@@ -904,8 +871,7 @@ export const CATALOG: CatalogEntry[] = [
   },
   {
     id: "alert-dialog",
-    title: "Alert dialog",
-    navLabel: "Диалог подтверждения",
+    title: "AlertDialog",
     group: "primitives",
     section: "primitives-overlays",
     order: 6,
@@ -925,7 +891,6 @@ export const CATALOG: CatalogEntry[] = [
   {
     id: "calendar",
     title: "Calendar",
-    navLabel: "Календарь",
     group: "primitives",
     section: "primitives-fields",
     order: 10,
@@ -945,7 +910,6 @@ export const CATALOG: CatalogEntry[] = [
   {
     id: "label",
     title: "Label",
-    navLabel: "Подпись",
     group: "primitives",
     section: "primitives-fields",
     order: 11,
@@ -965,7 +929,6 @@ export const CATALOG: CatalogEntry[] = [
   {
     id: "accordion",
     title: "Accordion",
-    navLabel: "Аккордеон",
     group: "primitives",
     section: "primitives-unused",
     order: 1,
@@ -984,8 +947,7 @@ export const CATALOG: CatalogEntry[] = [
   },
   {
     id: "aspect-ratio",
-    title: "Aspect ratio",
-    navLabel: "Пропорции",
+    title: "AspectRatio",
     group: "primitives",
     section: "primitives-unused",
     order: 2,
@@ -1004,8 +966,7 @@ export const CATALOG: CatalogEntry[] = [
   },
   {
     id: "button-group",
-    title: "Button group",
-    navLabel: "Группа кнопок",
+    title: "ButtonGroup",
     group: "primitives",
     section: "primitives-unused",
     order: 3,
@@ -1025,7 +986,6 @@ export const CATALOG: CatalogEntry[] = [
   {
     id: "carousel",
     title: "Carousel",
-    navLabel: "Карусель",
     group: "primitives",
     section: "primitives-unused",
     order: 4,
@@ -1044,8 +1004,7 @@ export const CATALOG: CatalogEntry[] = [
   },
   {
     id: "chart",
-    title: "Chart",
-    navLabel: "График",
+    title: "ChartContainer",
     group: "primitives",
     section: "primitives-unused",
     order: 5,
@@ -1065,7 +1024,6 @@ export const CATALOG: CatalogEntry[] = [
   {
     id: "collapsible",
     title: "Collapsible",
-    navLabel: "Сворачиваемый блок",
     group: "primitives",
     section: "primitives-unused",
     order: 6,
@@ -1085,7 +1043,6 @@ export const CATALOG: CatalogEntry[] = [
   {
     id: "command",
     title: "Command",
-    navLabel: "Командная палитра",
     group: "primitives",
     section: "primitives-unused",
     order: 7,
@@ -1104,8 +1061,7 @@ export const CATALOG: CatalogEntry[] = [
   },
   {
     id: "context-menu",
-    title: "Context menu",
-    navLabel: "Контекстное меню",
+    title: "ContextMenu",
     group: "primitives",
     section: "primitives-unused",
     order: 8,
@@ -1124,8 +1080,7 @@ export const CATALOG: CatalogEntry[] = [
   },
   {
     id: "direction",
-    title: "Direction",
-    navLabel: "Направление текста",
+    title: "DirectionProvider",
     group: "primitives",
     section: "primitives-unused",
     order: 9,
@@ -1145,7 +1100,6 @@ export const CATALOG: CatalogEntry[] = [
   {
     id: "drawer",
     title: "Drawer",
-    navLabel: "Выдвижная панель",
     group: "primitives",
     section: "primitives-unused",
     order: 10,
@@ -1164,8 +1118,7 @@ export const CATALOG: CatalogEntry[] = [
   },
   {
     id: "hover-card",
-    title: "Hover card",
-    navLabel: "Карточка при наведении",
+    title: "HoverCard",
     group: "primitives",
     section: "primitives-unused",
     order: 11,
@@ -1184,8 +1137,7 @@ export const CATALOG: CatalogEntry[] = [
   },
   {
     id: "input-group",
-    title: "Input group",
-    navLabel: "Группа полей",
+    title: "InputGroup",
     group: "primitives",
     section: "primitives-fields",
     order: 12,
@@ -1204,8 +1156,7 @@ export const CATALOG: CatalogEntry[] = [
   },
   {
     id: "input-otp",
-    title: "Input OTP",
-    navLabel: "Ввод кода",
+    title: "InputOTP",
     group: "primitives",
     section: "primitives-unused",
     order: 13,
@@ -1225,7 +1176,6 @@ export const CATALOG: CatalogEntry[] = [
   {
     id: "item",
     title: "Item",
-    navLabel: "Элемент списка",
     group: "primitives",
     section: "primitives-unused",
     order: 14,
@@ -1245,7 +1195,6 @@ export const CATALOG: CatalogEntry[] = [
   {
     id: "kbd",
     title: "Kbd",
-    navLabel: "Клавиша",
     group: "primitives",
     section: "primitives-unused",
     order: 15,
@@ -1265,7 +1214,6 @@ export const CATALOG: CatalogEntry[] = [
   {
     id: "menubar",
     title: "Menubar",
-    navLabel: "Строка меню",
     group: "primitives",
     section: "primitives-unused",
     order: 16,
@@ -1284,8 +1232,7 @@ export const CATALOG: CatalogEntry[] = [
   },
   {
     id: "native-select",
-    title: "Native select",
-    navLabel: "Нативный select",
+    title: "NativeSelect",
     group: "primitives",
     section: "primitives-unused",
     order: 17,
@@ -1304,8 +1251,7 @@ export const CATALOG: CatalogEntry[] = [
   },
   {
     id: "navigation-menu",
-    title: "Navigation menu",
-    navLabel: "Меню навигации",
+    title: "NavigationMenu",
     group: "primitives",
     section: "primitives-unused",
     order: 18,
@@ -1325,7 +1271,6 @@ export const CATALOG: CatalogEntry[] = [
   {
     id: "pagination",
     title: "Pagination",
-    navLabel: "Постраничная навигация",
     group: "primitives",
     section: "primitives-unused",
     order: 19,
@@ -1344,8 +1289,7 @@ export const CATALOG: CatalogEntry[] = [
   },
   {
     id: "resizable",
-    title: "Resizable",
-    navLabel: "Изменяемые панели",
+    title: "ResizablePanelGroup",
     group: "primitives",
     section: "primitives-unused",
     order: 20,
@@ -1365,7 +1309,6 @@ export const CATALOG: CatalogEntry[] = [
   {
     id: "sheet",
     title: "Sheet",
-    navLabel: "Боковая панель",
     group: "primitives",
     section: "primitives-unused",
     order: 21,
@@ -1385,7 +1328,6 @@ export const CATALOG: CatalogEntry[] = [
   {
     id: "slider",
     title: "Slider",
-    navLabel: "Ползунок",
     group: "primitives",
     section: "primitives-unused",
     order: 22,
@@ -1404,8 +1346,7 @@ export const CATALOG: CatalogEntry[] = [
   },
   {
     id: "sonner",
-    title: "Sonner",
-    navLabel: "Тосты",
+    title: "Toaster",
     group: "primitives",
     section: "primitives-unused",
     order: 23,
@@ -1425,7 +1366,6 @@ export const CATALOG: CatalogEntry[] = [
   {
     id: "spinner",
     title: "Spinner",
-    navLabel: "Индикатор загрузки",
     group: "primitives",
     section: "primitives-unused",
     order: 24,
@@ -1444,8 +1384,7 @@ export const CATALOG: CatalogEntry[] = [
   },
   {
     id: "time-picker",
-    title: "Time picker",
-    navLabel: "Выбор времени",
+    title: "TimePicker",
     group: "primitives",
     section: "primitives-unused",
     order: 25,
@@ -1465,7 +1404,6 @@ export const CATALOG: CatalogEntry[] = [
   {
     id: "toggle",
     title: "Toggle",
-    navLabel: "Переключатель-кнопка",
     group: "primitives",
     section: "primitives-unused",
     order: 26,
@@ -1484,8 +1422,7 @@ export const CATALOG: CatalogEntry[] = [
   },
   {
     id: "toggle-group",
-    title: "Toggle group",
-    navLabel: "Группа переключателей",
+    title: "ToggleGroup",
     group: "primitives",
     section: "primitives-unused",
     order: 27,
@@ -1507,7 +1444,6 @@ export const CATALOG: CatalogEntry[] = [
   {
     id: "record-with-tabs",
     title: "Record with tabs",
-    navLabel: "Карточка с вкладками",
     group: "patterns",
     section: "patterns-screens",
     order: 7,
@@ -1526,7 +1462,6 @@ export const CATALOG: CatalogEntry[] = [
   {
     id: "settings-form",
     title: "Settings form",
-    navLabel: "Форма настроек",
     group: "patterns",
     section: "patterns-screens",
     order: 1,
@@ -1534,7 +1469,7 @@ export const CATALOG: CatalogEntry[] = [
     summary: "Композиция экрана настроек: группы полей и сохранение.",
     sourceRef: "frontend/src/settings/page.tsx",
     tags: ["settings", "form", "screen"],
-    aliases: ["настройки"],
+    aliases: ["форма настроек", "настройки"],
     related: ["field"],
     canvas: "workspace",
     family: "composition",
@@ -1545,7 +1480,6 @@ export const CATALOG: CatalogEntry[] = [
   {
     id: "bot-menu-editor",
     title: "Bot menu editor",
-    navLabel: "Редактор меню бота",
     group: "patterns",
     section: "patterns-screens",
     order: 2,
@@ -1553,7 +1487,7 @@ export const CATALOG: CatalogEntry[] = [
     summary: "Композиция редактора меню бота: наборы, кнопки, привязка документов.",
     sourceRef: "frontend/src/bot-menu/page.tsx",
     tags: ["bot", "menu", "editor"],
-    aliases: ["меню бота"],
+    aliases: ["редактор меню бота", "меню бота"],
     related: ["settings-form"],
     canvas: "workspace",
     family: "composition",
@@ -1564,7 +1498,6 @@ export const CATALOG: CatalogEntry[] = [
   {
     id: "shell-sidebar-pattern",
     title: "Shell sidebar",
-    navLabel: "Каркас и сайдбар",
     group: "patterns",
     section: "patterns-screens",
     order: 3,
@@ -1572,7 +1505,7 @@ export const CATALOG: CatalogEntry[] = [
     summary: "Оболочка админки: боковая навигация, роль оператора и выход. Живёт вне сборки Vite, со своей палитрой --shell-*.",
     sourceRef: "frontend/src/shell-sidebar/page.tsx",
     tags: ["shell", "sidebar", "nav"],
-    aliases: ["каркас", "оболочка"],
+    aliases: ["каркас и сайдбар", "каркас", "оболочка"],
     related: ["breadcrumb"],
     canvas: "workspace",
     family: "navigation",
@@ -1583,7 +1516,6 @@ export const CATALOG: CatalogEntry[] = [
   {
     id: "bulk-action-console",
     title: "Mass broadcast",
-    navLabel: "Рассылка",
     group: "patterns",
     section: "patterns-screens",
     order: 4,
@@ -1603,7 +1535,6 @@ export const CATALOG: CatalogEntry[] = [
   {
     id: "workspace-builder",
     title: "Workspace builder",
-    navLabel: "Конструктор сценариев",
     group: "patterns",
     section: "patterns-screens",
     order: 5,
@@ -1611,7 +1542,7 @@ export const CATALOG: CatalogEntry[] = [
     summary: "Мастер-деталь конструктора: список шагов слева, редактор справа.",
     sourceRef: "frontend/src/scenario-workspace/page.tsx",
     tags: ["workspace", "builder", "master-detail"],
-    aliases: ["сценарии", "конструктор"],
+    aliases: ["конструктор сценариев", "сценарии", "конструктор"],
     related: ["detail-page-blocks"],
     canvas: "workspace",
     family: "composition",
@@ -1622,7 +1553,6 @@ export const CATALOG: CatalogEntry[] = [
   {
     id: "auth-form",
     title: "Auth form",
-    navLabel: "Форма входа",
     group: "patterns",
     section: "patterns-screens",
     order: 6,
@@ -1630,7 +1560,7 @@ export const CATALOG: CatalogEntry[] = [
     summary: "Экран входа: минимальная форма и сообщение об ошибке.",
     sourceRef: "frontend/src/login/page.tsx",
     tags: ["auth", "login", "form"],
-    aliases: ["логин", "вход"],
+    aliases: ["форма входа", "логин", "вход"],
     related: ["field"],
     canvas: "standard",
     family: "composition",
@@ -1641,7 +1571,6 @@ export const CATALOG: CatalogEntry[] = [
   {
     id: "confirmation-dialog",
     title: "Confirmation dialog",
-    navLabel: "Подтверждение",
     group: "patterns",
     section: "patterns-blocks",
     order: 1,
@@ -1660,16 +1589,16 @@ export const CATALOG: CatalogEntry[] = [
   {
     id: "detail-page-blocks",
     title: "Detail page building blocks",
-    navLabel: "Блоки карточки",
     group: "patterns",
     section: "patterns-blocks",
     order: 2,
     href: "#detail-page-blocks",
-    summary: "Строительные блоки карточки сотрудника: секции, списки документов, история.",
+    summary:
+      "Сборка карточки сотрудника из PageRow и PageSection: полосы равных долей, форма записи вокруг своих полос, записи в модулях разделены линиями.",
     sourceRef: "frontend/src/employee-detail/sections.tsx",
     tags: ["detail", "card", "history"],
-    aliases: ["карточка сотрудника"],
-    related: ["card", "workspace-builder"],
+    aliases: ["блоки карточки", "карточка сотрудника"],
+    related: ["page-row", "page-section", "card"],
     canvas: "workspace",
     family: "composition",
     status: "not-a-component",
@@ -1679,16 +1608,15 @@ export const CATALOG: CatalogEntry[] = [
   {
     id: "list-page-item",
     title: "List page item",
-    navLabel: "Элемент списка",
     group: "patterns",
     section: "patterns-blocks",
     order: 3,
     href: "#list-page-item",
     summary:
-      "Сборка выдачи из карточек записей и строк таблицы. Сама карточка — компонент кита RecordCard, здесь описано, как из неё собирается экран.",
+      "Сборка выдачи из карточек записей и строк таблицы. Запись открывает сама запись: в сетке — RecordCard целиком, в таблице — строка со ссылкой в ячейке имени.",
     sourceRef: "frontend/src/employees-list/components.tsx",
     tags: ["list", "row", "card"],
-    aliases: ["список сотрудников"],
+    aliases: ["элемент списка", "список сотрудников"],
     related: ["table", "badge", "record-card"],
     canvas: "workspace",
     family: "collections",
@@ -1701,14 +1629,13 @@ export const CATALOG: CatalogEntry[] = [
   {
     id: "composition-rules",
     title: "Composition rules",
-    navLabel: "Правила композиции",
     group: "review",
     section: "review-rules",
     order: 1,
     href: "#composition-rules",
     summary: "Общие принципы сборки экранов: плотность, порядок блоков, отказ от декоративного шума.",
     tags: ["rules", "composition", "density"],
-    aliases: ["принципы", "композиция"],
+    aliases: ["правила композиции", "принципы", "композиция"],
     related: ["design-debt", "review-checklist"],
     canvas: "standard",
     family: "process",
@@ -1719,14 +1646,13 @@ export const CATALOG: CatalogEntry[] = [
   {
     id: "design-debt",
     title: "What counts as design debt",
-    navLabel: "Что считать долгом",
     group: "review",
     section: "review-rules",
     order: 2,
     href: "#design-debt",
     summary: "Признаки, по которым правка считается долгом, а не решением.",
     tags: ["review", "debt", "process"],
-    aliases: ["долг", "техдолг"],
+    aliases: ["что считать долгом", "долг", "техдолг"],
     related: ["review-checklist"],
     canvas: "standard",
     family: "process",
@@ -1737,14 +1663,13 @@ export const CATALOG: CatalogEntry[] = [
   {
     id: "review-checklist",
     title: "What reviews and watchdogs should check",
-    navLabel: "Чек-лист ревью",
     group: "review",
     section: "review-rules",
     order: 3,
     href: "#review-checklist",
     summary: "Что проверяет ревьюер и что должно ловиться автоматически.",
     tags: ["review", "checklist", "ci"],
-    aliases: ["ревью", "чеклист"],
+    aliases: ["чек-лист ревью", "ревью", "чеклист"],
     related: ["design-debt"],
     canvas: "standard",
     family: "process",
@@ -1876,7 +1801,7 @@ export function buildNavigationTree(
   })).filter((group) => group.sections.length > 0);
 }
 
-/** Поиск по navLabel, title, aliases, tags и summary с рангами. */
+/** Поиск по title, aliases, tags и summary с рангами. */
 export function searchCatalog(query: string, catalog: CatalogEntry[] = CATALOG): CatalogEntry[] {
   const needle = query.trim().toLowerCase();
   if (!needle) return [];
@@ -1884,16 +1809,15 @@ export function searchCatalog(query: string, catalog: CatalogEntry[] = CATALOG):
   const ranked = catalog
     .filter((entry) => entry.public)
     .map((entry, index) => {
-      const navLabel = entry.navLabel.toLowerCase();
       const title = entry.title.toLowerCase();
       const aliases = entry.aliases.map((alias) => alias.toLowerCase());
       const tags = entry.tags.map((tag) => tag.toLowerCase());
 
       let rank = -1;
-      if (navLabel === needle || title === needle || aliases.includes(needle)) rank = 0;
-      else if (navLabel.startsWith(needle) || title.startsWith(needle)) rank = 1;
+      if (title === needle || aliases.includes(needle)) rank = 0;
+      else if (title.startsWith(needle)) rank = 1;
       else if (aliases.some((alias) => alias.startsWith(needle))) rank = 2;
-      else if (navLabel.includes(needle) || title.includes(needle)) rank = 3;
+      else if (title.includes(needle)) rank = 3;
       else if (aliases.some((alias) => alias.includes(needle))) rank = 4;
       else if (tags.some((tag) => tag.includes(needle))) rank = 5;
       else if (entry.summary.toLowerCase().includes(needle)) rank = 6;

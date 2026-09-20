@@ -41,6 +41,7 @@ import {
 import { PageRow, type PageRowColumns } from "@/components/ui/page-row";
 import { RecordCard } from "@/components/ui/record-card";
 import { ПРОЯВЛЕНИЕ } from "@/lib/reveal";
+import { открытьЗаписьПоСтроке } from "@/lib/row-open";
 import {
   PageSection,
   PageSectionEmpty,
@@ -1426,7 +1427,7 @@ function PrimitivesSection() {
           />
         </ExampleBlock>
 
-        <ExampleBlock id="telegram-rich-text-editor" title="Telegram rich text editor" playground>
+        <ExampleBlock id="telegram-rich-text-editor" title="TelegramRichTextEditor" playground>
           <Playground
             tabs={[
               {
@@ -1989,7 +1990,7 @@ function PrimitivesSection() {
                 id: "anatomy",
                 label: "Анатомия",
                 caption:
-                  "В продукте не применяется: табличный вид списка сотрудников собран из блоков вручную и по этой причине не является таблицей для скринридера.",
+                  "Используется в списке людей: вся выдача — одна карточка, строки разделены линиями, шапка сортирует по колонкам. Запись открывает строка: настоящая ссылка стоит в ячейке имени — одна точка табуляции, средняя кнопка мыши, — а клик по остальной площади строки ведёт туда же. Кнопки внутри строки остаются достижимыми; отдельной иконки «Открыть» в колонке действий нет.",
                 code: exampleCode.data,
                 render: () => (
                   <div className="w-full overflow-x-auto rounded-xl border border-border/80">
@@ -1999,21 +2000,21 @@ function PrimitivesSection() {
                           <TableHead>Сущность</TableHead>
                           <TableHead>Статус</TableHead>
                           <TableHead>Владелец</TableHead>
-                          <TableHead className="text-right">Действие</TableHead>
+                          <TableHead className="text-right"><span className="sr-only">Действия</span></TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        <TableRow className="border-border/80">
-                          <TableCell className="font-medium">Список сотрудников</TableCell>
+                        <TableRow className="group/row cursor-pointer border-border/80 focus-within:bg-muted/50" onClick={(event) => открытьЗаписьПоСтроке(event, "#table")}>
+                          <TableCell className="font-medium"><a href="#table" data-row-open="" className="block truncate rounded outline-none focus-visible:ring-3 focus-visible:ring-ring/50">Список сотрудников</a></TableCell>
                           <TableCell><Badge variant="secondary">стабильно</Badge></TableCell>
                           <TableCell>HR</TableCell>
-                          <TableCell className="text-right"><Button size="sm" variant="ghost">Открыть</Button></TableCell>
+                          <TableCell className="text-right"><Button size="icon" variant="outline" className={ПРОЯВЛЕНИЕ.row} aria-label="Открыть чат" title="Открыть чат"><MessageCircle /></Button></TableCell>
                         </TableRow>
-                        <TableRow className="border-border/80">
-                          <TableCell className="font-medium">Конструктор сценариев</TableCell>
+                        <TableRow className="group/row cursor-pointer border-border/80 focus-within:bg-muted/50" onClick={(event) => открытьЗаписьПоСтроке(event, "#table")}>
+                          <TableCell className="font-medium"><a href="#table" data-row-open="" className="block truncate rounded outline-none focus-visible:ring-3 focus-visible:ring-ring/50">Конструктор сценариев</a></TableCell>
                           <TableCell><Badge variant="outline">тяжёлый</Badge></TableCell>
                           <TableCell>Ops</TableCell>
-                          <TableCell className="text-right"><Button size="sm" variant="ghost">Проверить</Button></TableCell>
+                          <TableCell className="text-right"><Button size="icon" variant="outline" className={ПРОЯВЛЕНИЕ.row} aria-label="Открыть чат" title="Открыть чат"><MessageCircle /></Button></TableCell>
                         </TableRow>
                       </TableBody>
                     </Table>
@@ -2809,97 +2810,106 @@ function PatternsSection() {
       </ExampleBlock>
 
       <ExampleBlock
-          id="detail-page-blocks" title="Detail page building blocks">
-        <div className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
-          <div className="flex flex-col gap-3">
-            <Card className="border border-border/80 bg-card shadow-none ring-0">
-              <CardHeader>
-                <CardTitle className="text-base font-semibold">Сопровождение</CardTitle>
-              </CardHeader>
-              <CardContent className="grid gap-3 pt-0">
-                <FieldGroup className="grid gap-3">
-                  <Field>
-                    <FieldLabel>Руководитель сотрудника</FieldLabel>
-                    <Input placeholder="Telegram id" />
-                  </Field>
-                  <Field>
-                    <FieldLabel>Наставник адаптации</FieldLabel>
-                    <Input placeholder="Telegram id" />
-                  </Field>
-                  <Field orientation="horizontal">
-                    <Checkbox defaultChecked />
-                    <FieldContent>
-                      <FieldTitle>Согласие на ПДн</FieldTitle>
-                    </FieldContent>
-                  </Field>
-                </FieldGroup>
-              </CardContent>
-            </Card>
-            <div className="flex flex-wrap gap-2">
-              <Badge variant="secondary">В штате</Badge>
-              <Badge variant="outline">Стаж: 0 лет</Badge>
-            </div>
-          </div>
+          id="detail-page-blocks"
+          title="Detail page building blocks"
+          description="Карточка записи собирается из тех же полос равных долей и модулей, что дашборд: PageRow задаёт доли, PageSection — шапку и тело, записи внутри разделены линиями.">
+        <PageRow columns={2}>
+          <PageSection title="Сопровождение" contentClassName="gap-4">
+            <FieldGroup>
+              <Field>
+                <FieldLabel>Руководитель сотрудника</FieldLabel>
+                <Input placeholder="Telegram id" />
+              </Field>
+              <Field>
+                <FieldLabel>Наставник адаптации</FieldLabel>
+                <Input placeholder="Telegram id" />
+              </Field>
+            </FieldGroup>
+            <Field orientation="horizontal">
+              <Checkbox defaultChecked />
+              <FieldContent>
+                <FieldTitle>Согласие на ПДн</FieldTitle>
+              </FieldContent>
+            </Field>
+          </PageSection>
 
-          <Card className="border border-border/80 bg-card shadow-none ring-0">
-            <CardHeader>
-              <CardTitle className="text-base font-semibold">Document row</CardTitle>
-            </CardHeader>
-            <CardContent className="pt-0">
-              <div className="grid grid-cols-[34px_minmax(0,1fr)_max-content] items-center gap-3 rounded-lg border border-border bg-background p-2.5">
-                <div className="grid size-[34px] place-items-center rounded-md bg-muted text-muted-foreground">
-                  <FileText className="size-4" />
+          <PageSection title="Файлы HR" counter={2}>
+            <PageSectionRows>
+              {[
+                { name: "СТО.pdf", meta: "От HR · 31.05.2026 17:58" },
+                { name: "Памятка новичка.docx", meta: "От HR · 02.06.2026 10:12" },
+              ].map((file) => (
+                <div key={file.name} className="grid grid-cols-[34px_minmax(0,1fr)_max-content] items-center gap-3">
+                  <div className="grid size-[34px] place-items-center rounded-md bg-muted text-muted-foreground">
+                    <FileText className="size-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-semibold">{file.name}</div>
+                    <div className="truncate text-xs text-muted-foreground">{file.meta}</div>
+                  </div>
+                  <div className="flex items-center justify-end gap-2">
+                    <Button variant="outline" size="icon-sm" aria-label="Скачать" title="Скачать">
+                      <Download />
+                    </Button>
+                    <Button variant="secondary" size="icon-sm" aria-label="Отправить" title="Отправить">
+                      <Send />
+                    </Button>
+                  </div>
                 </div>
-                <div className="min-w-0">
-                  <div className="truncate text-sm font-semibold">СТО.pdf</div>
-                  <div className="truncate text-xs text-muted-foreground">От HR · 31.05.2026 17:58</div>
-                </div>
-                <div className="flex items-center justify-end gap-2">
-                  <Button variant="outline" size="icon-sm" aria-label="Скачать" title="Скачать">
-                    <Download />
-                  </Button>
-                  <Button variant="secondary" size="icon-sm" aria-label="Отправить" title="Отправить">
-                    <Send />
-                  </Button>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+              ))}
+            </PageSectionRows>
+          </PageSection>
+        </PageRow>
       </ExampleBlock>
 
       <ExampleBlock
-          id="list-page-item" title="List page item">
-        <Card className="w-full min-w-0 rounded-lg border border-border bg-card shadow-none ring-0 transition-colors hover:bg-accent/60">
-          <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3">
-            <div className="min-w-0 space-y-1.5">
-              <div className="flex flex-wrap items-center gap-2">
-                <h3 className="truncate text-[1rem] font-semibold">Соколова Мария Андреевна</h3>
-                <Badge variant="secondary">В штате</Badge>
-              </div>
-              <div className="text-[0.92rem] text-muted-foreground">Аналитик</div>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <Button variant="outline" size="icon" aria-label="Открыть чат" title="Открыть чат">
+          id="list-page-item"
+          title="List page item"
+          description="Запись открывает сама запись: в сетке — карточка целиком, в таблице — строка. Иконки «Открыть карточку» нет ни там, ни там.">
+        <div className="flex w-full min-w-0 flex-col gap-4">
+          <RecordCard
+            title="Соколова Мария Андреевна"
+            subtitle="Аналитик"
+            tags={[
+              { label: "В штате" },
+              { label: "@m_sokolova", icon: <MessageCircle className="size-3.5" /> },
+              { label: "19.06.2026", title: "Дата выхода: 19.06.2026", "aria-label": "Дата выхода: 19.06.2026" },
+              { label: "ОС от коллег", icon: <Workflow className="size-3.5" /> },
+            ]}
+            href="#list-page-item"
+            actions={
+              <Button variant="outline" size="icon" className={ПРОЯВЛЕНИЕ.card} aria-label="Открыть чат" title="Открыть чат">
                 <MessageCircle />
               </Button>
-              <Button variant="outline" size="icon" aria-label="Открыть карточку" title="Открыть карточку">
-                <ExternalLink />
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent className="flex flex-wrap items-center gap-2">
-            <Badge variant="secondary">
-              <MessageCircle data-icon="inline-start" />
-              @m_sokolova
-            </Badge>
-            <Badge variant="secondary">Выход: 19.06.2026</Badge>
-            <Badge variant="secondary">
-              <Workflow data-icon="inline-start" />
-              OC от коллег
-            </Badge>
-          </CardContent>
-        </Card>
+            }
+          />
+          <Card className="w-full min-w-0 overflow-hidden border border-border bg-card px-0 py-1.5 shadow-none ring-0">
+            <Table className="table-fixed">
+              <TableHeader>
+                <TableRow className="border-border/80">
+                  <TableHead>ФИО</TableHead>
+                  <TableHead>Должность</TableHead>
+                  <TableHead>Статус</TableHead>
+                  <TableHead className="w-16 text-right"><span className="sr-only">Действия</span></TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                <TableRow className="group/row cursor-pointer border-border/80 focus-within:bg-muted/50" onClick={(event) => открытьЗаписьПоСтроке(event, "#list-page-item")}>
+                  <TableCell className="overflow-hidden px-4 py-2.5 font-semibold"><a href="#list-page-item" data-row-open="" className="block truncate rounded outline-none focus-visible:ring-3 focus-visible:ring-ring/50">Соколова Мария Андреевна</a></TableCell>
+                  <TableCell className="overflow-hidden px-4 py-2.5 text-muted-foreground"><span className="block truncate">Аналитик</span></TableCell>
+                  <TableCell className="overflow-hidden px-4 py-2.5 text-muted-foreground"><span className="block truncate">В штате</span></TableCell>
+                  <TableCell className="px-4 py-2.5 text-right"><Button variant="outline" size="icon" className={ПРОЯВЛЕНИЕ.row} aria-label="Открыть чат" title="Открыть чат"><MessageCircle /></Button></TableCell>
+                </TableRow>
+                <TableRow className="group/row cursor-pointer border-border/80 focus-within:bg-muted/50" onClick={(event) => открытьЗаписьПоСтроке(event, "#list-page-item")}>
+                  <TableCell className="overflow-hidden px-4 py-2.5 font-semibold"><a href="#list-page-item" data-row-open="" className="block truncate rounded outline-none focus-visible:ring-3 focus-visible:ring-ring/50">Гринёв Тимофей Ильич</a></TableCell>
+                  <TableCell className="overflow-hidden px-4 py-2.5 text-muted-foreground"><span className="block truncate">Инженер поддержки</span></TableCell>
+                  <TableCell className="overflow-hidden px-4 py-2.5 text-muted-foreground"><span className="block truncate">Адаптация</span></TableCell>
+                  <TableCell className="px-4 py-2.5 text-right"></TableCell>
+                </TableRow>
+              </TableBody>
+            </Table>
+          </Card>
+        </div>
       </ExampleBlock>
 
       <ExampleBlock
@@ -3079,7 +3089,7 @@ function EntryPage({ entry }: { entry: CatalogEntry }) {
           {GROUP_LABELS[entry.group]}
           {section ? ` · ${section.label}` : ""}
         </div>
-        <h2 className="text-3xl font-semibold tracking-tight">{entry.navLabel}</h2>
+        <h2 className="text-3xl font-semibold tracking-tight">{entry.title}</h2>
         <p className="max-w-3xl text-sm leading-6 text-muted-foreground">{entry.summary}</p>
         <div className="flex flex-wrap items-center gap-2">
           {entry.status !== "not-a-component" ? (
@@ -3095,10 +3105,6 @@ function EntryPage({ entry }: { entry: CatalogEntry }) {
               {STATUS_LABELS[entry.status]}
             </Badge>
           ) : null}
-          {/* Английское имя — техническое: по нему компонент называется в коде. */}
-          <code className="rounded-md border border-border/80 bg-muted/50 px-2 py-1 font-mono text-xs text-muted-foreground">
-            {entry.title}
-          </code>
           {entry.sourceRef ? (
             <code className="rounded-md border border-border/80 bg-muted/50 px-2 py-1 font-mono text-xs text-muted-foreground">
               {entry.sourceRef}
@@ -3146,7 +3152,7 @@ function EntryPage({ entry }: { entry: CatalogEntry }) {
                 href={item.href}
                 className="rounded-lg border border-border/80 bg-card px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground"
               >
-                {item.navLabel}
+                {item.title}
               </a>
             ))}
           </div>

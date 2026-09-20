@@ -68,7 +68,7 @@ export function WorkspaceFlashNotice(props: { message: string; error: boolean })
 
   return (
     <div
-      className={`mb-4 rounded-lg border px-4 py-3 text-sm font-medium ${
+      className={`mx-auto mb-4 w-full max-w-[var(--admin-page-max-width)] rounded-lg border px-4 py-3 text-sm font-medium ${
         props.error
           ? "border-destructive/30 bg-destructive/10 text-destructive"
           : "border-primary/30 bg-primary/5 text-foreground"
