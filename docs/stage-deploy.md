@@ -42,10 +42,9 @@ source_of_truth: true
 - устанавливает `requirements.txt`;
 - компилирует `app/`;
 - запускает `ruff check --select F821 app tests`;
-- запускает smoke tests:
-  - `tests.test_scenario_engine_smoke`;
-  - `tests.test_messaging_identity`;
-  - `tests.test_employee_api_smoke`;
+- запускает весь набор тестов `python -m unittest discover -s tests -t . -v`
+  (с 2026-09-20; раньше только три smoke-модуля, из-за чего P0-поведение бота,
+  планировщик и Grade оставались вне CI);
 - smoke-imports:
   - `app.config`;
   - `app.main`;
@@ -63,7 +62,8 @@ source_of_truth: true
    - `python -m pip install -r requirements.txt`;
    - `python -m compileall app`;
    - `ruff check --select F821 app tests`;
-   - backend smoke tests;
+   - весь набор backend-тестов (`unittest discover`), включая
+     [[features/candidate-critical-path]];
    - `npm ci && npm run build` в `frontend`;
    - smoke imports;
 4. подключается по SSH через GitHub secrets;

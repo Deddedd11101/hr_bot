@@ -45,6 +45,7 @@ source_of_truth: true
   радаром и финализацию. Stage не изменён; интеграция и пользовательская приёмка
   остаются открытыми. См. [[features/grades]].
 
+- Критический путь кандидата (смена статуса → запуск, файл/видео/ссылка на тестовое, финальный шаг без дублей) закреплён сквозным тестом `tests/test_candidate_flow_regression.py` и контрактом в [[features/candidate-critical-path]]; CI и preflight `Deploy Stage` с 2026-09-20 гоняют весь `tests/` через `unittest discover` (309 тестов), а не три smoke-модуля. Ручной прогон на стенде с реальным Telegram — отдельный пункт приёмки.
 - Координация пакетов: Product сверяет соседние задачи и актуальные PR/SHA; исполнитель заканчивает PR, DevOps/назначенный интегратор выполняет deploy. Отчеты разделяют код, выкладку и пользовательскую приемку; правила в AGENTS.md и [[stage-deploy]]. Автоматическая отправка задач другим чатам требует явного разрешения пользователя.
 - Stack: FastAPI admin + Aiogram Telegram bot + APScheduler + SQLite + React/Vite admin surfaces.
 - Production model: classic admin pages остаются рабочими fallback-экранами, пока новые React-экраны развиваются параллельно.

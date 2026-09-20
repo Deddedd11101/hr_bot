@@ -28,7 +28,7 @@ source_of_truth: false
 | Agent entrypoint | Документы, с которых должен начинать агент перед работой. | [[README]], [[maps/start-here]], [[project_state]], [[backlog]], [[inventory]], [[documentation-workflow]], [[documentation-standard]] |
 | Engineering source of truth | Runtime, API, web, data и configuration contracts. | [[architecture]], [[api]], [[web-surface]], [[data-model]], [[configuration]] |
 | Pipelines and operations | Локальный запуск, stage deploy, smoke checks и delivery ledger. | [[local-runbook]], [[stage-deploy]], [[stage-change-log]] |
-| Product and feature behavior | Поведение фич, риски и продуктовые ограничения. | [[features/bot-identity]], [[features/employee-lifecycle]], [[features/scenario-engine]], [[features/notifications]], [[features/scenario-portability]] |
+| Product and feature behavior | Поведение фич, риски и продуктовые ограничения. | [[features/bot-identity]], [[features/employee-lifecycle]], [[features/scenario-engine]], [[features/candidate-critical-path]], [[features/notifications]], [[features/scenario-portability]] |
 | Frontend/UI governance | Правила React admin, shadcn/Base UI и page composition. | [[features/ui-design-guidelines]], [[features/shadcn-component-contract]], [[lld/classic-to-react-admin-migration]] |
 | Decisions | Почему выбрана или отменена модель. | `decisions/` |
 | Handoffs | Исторический контекст продолжения работы. Не канон. | `handoffs/` |
@@ -58,6 +58,7 @@ source_of_truth: false
 | --- | --- | --- |
 | [[features/bot-identity]] | Product and feature behavior | Актуален по текущему `/start` identity flow: numeric ID first, затем public username fallback, candidate auto-create only on `/start`, blocked-user deny и interim username-based employee linking; OTP/linking invite остаются будущим решением. |
 | [[features/employee-lifecycle]] | Product and feature behavior | Обновлен по explicit HR cutover `candidate -> adaptation` и manager assignment trigger; следующий аудит нужен при изменении lifecycle/event matrix. |
+| [[features/candidate-critical-path]] | Product and feature behavior | Ожидаемое поведение трёх критических потоков кандидата, карта покрытия тестами и чек-лист ручного прогона на стенде. |
 | [[features/scenario-engine]] | Product and feature behavior | В целом актуален по back-step, audience targeting и scheduler caveats; требует сверки при изменении transition-to-scenario semantics. |
 | [[features/notifications]] | Product and feature behavior | Обновлен по `StepSendNotification` и legacy compatibility seam; следующий аудит нужен при финализации notification delivery rules. |
 | [[features/scenario-portability]] | Product and feature behavior | Актуален как runbook-like feature doc; нужно обновлять при изменении `tools/scenario_portability.py`. |
