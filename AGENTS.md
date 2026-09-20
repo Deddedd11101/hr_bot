@@ -131,7 +131,7 @@ Commit messages должны следовать формату из `docs\subage
 - если менялись docs/API routes/config/models: `.\.venv\Scripts\python.exe tools\check_docs_contracts.py`;
 - если менялся бот, Telegram identity, scenario runtime или delivery, дополнительно смотреть worker logs и Telegram delivery на stage.
 
-Минимальные stage smoke checks после deploy:
+Минимальные stage smoke checks после deploy (те же проверки одним запуском: GitHub Actions `Stage Diagnostics`, read-only, `gh workflow run stage-diagnostics.yml --repo Deddedd11101/hr_bot --ref stage`):
 
 - `systemctl status hr-bot-web --no-pager`;
 - `systemctl status hr-bot-worker --no-pager`;

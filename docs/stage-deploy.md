@@ -120,6 +120,33 @@ source_of_truth: true
 - `STAGE_APP_DIR`
 - `STAGE_DB_PATH` — optional; абсолютный или относительный к `STAGE_APP_DIR` путь к SQLite. Если secret не задан, используется `hr_bot.db`.
 
+### Workflow Stage Diagnostics
+
+Источник: `.github/workflows/stage-diagnostics.yml`
+
+Read-only проверка стенда без checkout, restart и записи в БД. Заменяет
+диагностическую ветку `ops/hr-menu-preflight`, где та же проверка называлась
+`Deploy Stage` и при запуске с `--ref stage` превращалась в настоящую выкладку.
+
+Что проверяет и что считает failure:
+
+- deployed SHA и отсутствие tracked dirt в серверном worktree;
+- `hr-bot-web`, `hr-bot-worker`, `wg-quick@redshield`, `caddy` — `active`;
+- маршрут до `149.154.166.110`, handshake WireGuard, IPv4 `curl` до `api.telegram.org`;
+- Telegram `getMe` совпадает с `TELEGRAM_BOT_USERNAME` в env web и worker, токен web/worker одинаковый;
+- HTTPS `/app/employees`, `/app/flows/workspace-v2`, `/app/grades` -> `200`/`303`;
+- worker logs за `worker_log_minutes` (default 5) без `TelegramNetworkError`, `Request timeout`, `Traceback`, `Unclosed client session`.
+
+Любое несовпадение делает run failed, а не только печатает: `success` здесь
+означает, что все проверки прошли. Запуск:
+
+```powershell
+gh workflow run stage-diagnostics.yml --repo Deddedd11101/hr_bot --ref stage
+```
+
+Workflow делит concurrency group с `Deploy Stage`, поэтому во время выкладки
+ждёт её завершения. Секреты те же, что у deploy.
+
 ## Наблюдаемые факты stage
 
 Эти факты взяты из `docs/handoffs/telegram-linking-and-scope-handoff.md`. Их надо считать live operational notes, а не repo-enforced truth.
