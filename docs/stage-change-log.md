@@ -34,6 +34,17 @@ source_of_truth: true
 
 ## Записи
 
+### 2026-09-20 19:32 MSK - app deploy - sync дизайна из hrbot-ui
+
+- Deploy ref: `stage`; deployed SHA: `4bfcebcb2183e1f5afb3ea4c5d9f9cdd9d18ed3b`; run [35522815885](https://github.com/Deddedd11101/hr_bot/actions/runs/35522815885) -> success (preflight + deploy).
+- PR [#35](https://github.com/Deddedd11101/hr_bot/pull/35) `sync/hrbot-ui-20260920`: перенесены изменения дизайнера из `hrbot-ui/main @ 7e1d1b2` (hrbot-ui PR #25 строка таблицы открывает запись, #26 предел ширины деталек вровень с крошкой, #27 полосы равных долей в карточке сотрудника, правила каталога design-system) поверх предыдущего sync `203def1`. Перенесены только UI-пути (`frontend/src`, `app/templates`, `frontend/scripts`, `docs/ui`), generated assets пересобраны; backend, тесты и tools не менялись.
+- Конфликты со stage разрешены вручную: раскладка дизайнера вложена в `TabsContent` «Профиль» карточки, вкладка «Грейд» и props ручных сообщений сохранены; в `design-system/registry.ts` у двух записей stage убран `navLabel` (дизайнер удалил поле из `CatalogEntry`), запись редактора переименована в `TelegramRichTextEditor` по правилу каталога; `?v=` в шаблонах взяты большие (`shell-sidebar.js` 32, `grades.js` 3).
+- Проверки: typecheck, check:registry (81), build + повторный build (стабильно), `git diff --check`, `test_employee_api_smoke` + `test_grades_api_smoke` (135 OK), docs-check -> passed; CI PR #35 success.
+- Backup: `backups/hr_bot.before-deploy.20260920-162939.db` (quick_check ok); scenario snapshot `backups/scenarios.before-deploy.20260920-162939.json`; fingerprint unchanged.
+- Stage smoke: web/worker/WireGuard active; `/app/employees`, `/app/flows/workspace-v2` -> `303`; Telegram API -> `HTTP/2 302`; worker logs без свежих ошибок; deploy вывел `4bfcebc`.
+- Сценарий проверен интегратором в браузере: `/app/employees/70` грузит `employee-detail.js?v=50`, карточка в новой раскладке, вкладки «Профиль»/«Грейд» работают, горизонтального overflow нет. Локальные скриншоты light/dark: `D:\HRBotrtifacts\sync-hrbot-ui-20260920\`. Пользовательская приёмка дизайна не проводилась.
+- Открыто: обратный sync `hr_bot/stage -> hrbot-ui/main`, чтобы дизайнер получил грейды, Telegram-редактор и гибридное меню как новую базу; до него новые ветки дизайнера будут расходиться с stage.
+
 ### 2026-09-20 19:13 MSK - app deploy - UX-правки грейдов и cache-bust статики
 
 - Deploy ref: `stage`; deployed SHA: `df581a9ce422096655e3ea7d3ce1d12fd85c4f51` (две выкладки подряд: `da96af2` -> run [35521473418](https://github.com/Deddedd11101/hr_bot/actions/runs/35521473418) success, затем `df581a9` -> run [35521805238](https://github.com/Deddedd11101/hr_bot/actions/runs/35521805238) success).
