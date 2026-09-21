@@ -64,7 +64,7 @@ source_of_truth: true
 - Raw OpenAPI schema доступна на `/openapi.json`.
 - Схема намеренно ограничена JSON API routes с prefix `/api/*`.
 - Browser surfaces, React bootstrap pages, redirects, classic form handlers, download/export routes и `/login` не включаются в Swagger; их source of truth остается [[web-surface]].
-- API routes группируются по доменным тегам: `Dashboard`, `Employees`, `Flows and surveys`, `Bulk actions`, `Settings`, `Admin accounts`.
+- API routes группируются по доменным тегам: `Dashboard`, `Employees`, `Flows and surveys`, `Bulk actions`, `Settings`, `Admin accounts`, `Integrations`.
 - Shared document library routes живут под `/api/documents/*`; если OpenAPI tags отстают от этого списка, считать route list ниже более точной картой.
 - Swagger UI настроен на collapsed sections, включает client-side filter и сохраняет authorization state в браузере.
 
@@ -79,6 +79,7 @@ source_of_truth: true
   - body: `{"detail": "Требуется авторизация"}`.
 - Большинство JSON routes проходят по `_require_api_auth()`.
 - Account management routes дополнительно проходят `_require_api_admin()` и возвращают `403`, если текущий account не `admin`.
+- Исключение — server-to-server routes `/api/integrations/*`: они не принимают admin cookie-сессию и требуют `Authorization: Bearer <PULSE_SYNC_TOKEN>` (см. [[configuration]]). Без настроенного токена возвращают `503`, с неверным — `401` и `WWW-Authenticate: Bearer`.
 
 ## Общие формы ответов
 
@@ -251,6 +252,54 @@ source_of_truth: true
 - `manual_survey_history`
 - `scheduled_message_actions`
 - `manual_message_history`
+
+## API интеграций (Pulse)
+
+Read-only экспорт сотрудников для Pulse (задача-трекер студии). Pulse тянет
+данные сам: HRBot остаётся master по составу штата и должностям, Pulse — по
+своим ролям, ставкам и аккаунтам. Маппинг должности на роль Pulse и запись в
+Pulse живут на стороне Pulse; HRBot ничего не знает о Pulse, кроме токена.
+
+Auth: только `Authorization: Bearer <PULSE_SYNC_TOKEN>` (сравнение за
+константное время). Admin cookie-сессия не принимается. Кандидаты и
+заблокированные в боте сотрудники не отдаются.
+
+| Method | Path | Назначение | Основные inputs | Response | Side effects | Частые errors |
+| --- | --- | --- | --- | --- | --- | --- |
+| `GET` | `/api/integrations/pulse/employees` | Вернуть штатных сотрудников (`employee_stage` ∈ `staff`, `adaptation`, `ipr`; `is_bot_blocked=false`). | Header: `Authorization: Bearer <PULSE_SYNC_TOKEN>` | Pulse employees payload | Нет | `401`, `503` |
+
+### Pulse employees payload
+
+```json
+{
+  "source": "hrbot",
+  "generated_at": "2026-09-21T12:00:00Z",
+  "employee_stages": ["staff", "adaptation", "ipr"],
+  "employees": [
+    {
+      "id": 70,
+      "full_name": "Иванова Анна",
+      "first_name": "Анна",
+      "position_slug": "starshiy_dizayner",
+      "position_title": "Старший дизайнер",
+      "employee_stage": "staff",
+      "work_email": "anna@example.com",
+      "is_manager": false,
+      "is_mentor": true
+    }
+  ]
+}
+```
+
+- `id` — стабильный `employees.id`; Pulse строит по нему детерминированный
+  внешний идентификатор (`hrbot-<id>`), поэтому таблиц соответствия нет ни в
+  одной БД.
+- `position_slug` — `normalize_position_slug(desired_position)` из
+  `app/positions.py`; `position_title` — title из справочника `positions` по
+  slug, иначе `canonical_position_title`. Оба `null`, если должность не задана.
+- `first_name`, `work_email` — `null`, если пусто. Список отсортирован по `id`.
+- Поля с PII ограничены ФИО и рабочей почтой; Telegram, даты рождения, заметки
+  и файлы не экспортируются.
 
 ## API dashboard workspace
 

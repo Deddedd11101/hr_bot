@@ -50,6 +50,7 @@ from .scenario_engine import format_message, get_first_step, get_scenario_steps,
 from .web.bulk_action_routes import router as bulk_action_router
 from .web.document_routes import router as document_router
 from .web.grade_routes import router as grade_router
+from .web.integration_routes import router as integration_router
 from .web.bulk_actions import (
     MASS_TARGET_CANDIDATE_STAGE_OPTIONS,
     MASS_TARGET_EMPLOYEE_STAGE_OPTIONS,
@@ -174,6 +175,7 @@ app.mount("/static", StaticFiles(directory="app/static"), name="static")
 app.include_router(dashboard_router)
 app.include_router(document_router)
 app.include_router(grade_router)
+app.include_router(integration_router)
 app.include_router(employee_router)
 app.include_router(bulk_action_router)
 app.include_router(scenario_router)
@@ -195,6 +197,8 @@ def _api_tag_for_path(path: str) -> str:
         return "Documents"
     if path.startswith("/api/accounts"):
         return "Admin accounts"
+    if path.startswith("/api/integrations"):
+        return "Integrations"
     return "API"
 
 
