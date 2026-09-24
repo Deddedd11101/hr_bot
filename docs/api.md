@@ -161,7 +161,8 @@ source_of_truth: true
   - актуальный slot резюме, если задан; если slot пустой, возвращается fallback на последний legacy `employee_files.category=resume`, который не попадает в generic `files`
 - `test_assignment_answer` / `test_task_result`
   - актуальный ответ на тестовое: сначала `employee_document_links.slot_key=test_task_result`, затем fallback на последний `employee_files.category=test_result`; payload единый для file/photo/video/link: `label`, `kind`, `download_url`, `open_url`, `created_at`
-  - scenario step с `response_type=file` и `target_field=test_task_result` принимает file/photo/video/video_note или `http://` / `https://` ссылку; обычный текст не сохраняется и не двигает сценарий
+  - scenario step с `response_type=file` или `text` и `target_field=test_task_result` принимает file/photo/video/video_note или одну `http://` / `https://` ссылку, в том числе с пояснением; slot хранит URL без пояснения. Текст без ссылки или несколько ссылок не двигают сценарий
+  - `POST /api/flows/workspace/steps/{step_id}` дополнительно возвращает `422` для несовместимого назначения: `resume`/`candidate_file` допускают только `file`, `test_task_result` допускает `file`/`text`; сохранение откатывается целиком. Classic save применяет ту же проверку
 - `scheduled_launches`
   - pending scheduled flow requests
 - `manual_launch_history`

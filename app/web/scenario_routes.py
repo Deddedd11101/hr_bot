@@ -27,6 +27,7 @@ from ..models import Employee, FlowStepTemplate, ScenarioTemplate, StepButtonNot
 from ..positions import build_role_scope_labels, serialize_role_scopes
 from ..time_utils import utc_now
 from .scenarios import (
+    _validate_step_answer_destination,
     _apply_workspace_step_update,
     _build_scenario_workspace_payload,
     _copy_template_entity,
@@ -1185,6 +1186,7 @@ async def update_scenario(
                 step.day_offset_workdays = 0
                 step.target_field = None
                 step.send_employee_card = False
+            _validate_step_answer_destination(step.response_type, step.target_field)
             if step.response_type == "buttons":
                 options = [item.strip() for item in (step.button_options or "").splitlines() if item.strip()]
                 preserved_option_indexes: set[int] = set()
@@ -1477,6 +1479,7 @@ async def update_scenario(
                         chain_step.day_offset_workdays = 0
                         chain_target_field_value = str(chain_payload.get("target_field") or "").strip()
                         chain_step.target_field = chain_target_field_value if chain_target_field_value in TARGET_FIELD_LABELS else None
+                        _validate_step_answer_destination(chain_step.response_type, chain_step.target_field)
                         chain_step.send_employee_card = str(chain_payload.get("send_employee_card") or "false").strip() == "true"
                         chain_step.notify_on_send_text = str(chain_payload.get("notify_on_send_text") or "").strip() or None
                         chain_step.notify_on_send_recipient_ids = _normalize_notification_recipient_tokens(
@@ -1727,6 +1730,7 @@ async def update_scenario(
                         child_chain_step.day_offset_workdays = 0
                         child_chain_target_field_value = str(chain_payload.get("target_field") or "").strip()
                         child_chain_step.target_field = child_chain_target_field_value if child_chain_target_field_value in TARGET_FIELD_LABELS else None
+                        _validate_step_answer_destination(child_chain_step.response_type, child_chain_step.target_field)
                         child_chain_step.send_employee_card = str(chain_payload.get("send_employee_card") or "false").strip() == "true"
                         child_chain_step.notify_on_send_text = str(chain_payload.get("notify_on_send_text") or "").strip() or None
                         child_chain_step.notify_on_send_recipient_ids = _normalize_notification_recipient_tokens(

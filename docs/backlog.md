@@ -25,6 +25,8 @@ source_of_truth: true
 
 # Бэклог HR Bot
 
+- Ответы на тестовое: подготовлены приём ссылки с пояснением, media для text/test_task_result, validation назначений, подсказка больших файлов и guarded repair трёх ошибочных target fields. Ожидают review, интеграции, применения repair и Telegram-приёмки. Отдельно согласовать отображение одновременно тестового и Loom у дизайнера; не перезаписывать slot вторым ответом без решения.
+
 Stage candidate: персональный slot `offer` поддерживает ссылку или файл без добавления нового one-off поля в карточку.
 
 Deploy safety: `Deploy Stage` создаёт проверенный SQLite backup, сохраняет JSON snapshot scenario config tables и при неожиданном изменении сценариев во время restart восстанавливает pre-deploy scenario config перед намеренным failure.

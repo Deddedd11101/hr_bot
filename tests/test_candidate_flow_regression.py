@@ -9,6 +9,7 @@
 """
 
 import unittest
+from unittest.mock import AsyncMock
 from datetime import UTC, datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -16,6 +17,8 @@ from types import SimpleNamespace
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
+from aiogram.exceptions import TelegramBadRequest
+from aiogram.methods import GetFile
 
 from app import bot_runner
 from app.auth import authenticate_account, create_admin_session_token
@@ -35,6 +38,7 @@ from app.models import (
     ScenarioProgress,
     ScenarioTemplate,
 )
+from app.scenario_engine import extract_test_task_answer_link
 from app.scheduler import schedule_all_employees
 
 
@@ -315,6 +319,116 @@ class CandidateFlowRegressionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self._pending_requests(), [])
 
     # ------------------------------------------------------------------- flow 2
+
+    async def test_link_with_prose_saves_url(self) -> None:
+        await self._reach_task_step()
+        answer = "Готово: https://example.com/answer?x=1&y=2 спасибо"
+        with SessionLocal() as db:
+            await handle_text_event(self.messenger, db, self.chat_id, None, answer)
+            slot = db.query(EmployeeDocumentLink).filter_by(employee_id=self.employee_id, slot_key="test_task_result").one()
+            self.assertEqual(slot.url, "https://example.com/answer?x=1&y=2")
+        self._assert_finished_after_task_answer()
+
+    async def test_text_mode_test_result_accepts_link(self) -> None:
+        with SessionLocal() as db:
+            step = db.query(FlowStepTemplate).filter_by(flow_key=self.scenario_key, step_key="task").one()
+            step.response_type = "text"
+            db.commit()
+        await self.test_link_with_prose_saves_url()
+
+    async def test_text_mode_test_result_accepts_document(self) -> None:
+        with SessionLocal() as db:
+            step = db.query(FlowStepTemplate).filter_by(flow_key=self.scenario_key, step_key="task").one()
+            step.response_type = "text"
+            db.commit()
+        await self._reach_task_step()
+        message = SimpleNamespace(from_user=SimpleNamespace(id=self.chat_id, username=None), caption=None,
+            document=SimpleNamespace(file_id="word", file_unique_id="word", file_size=18000,
+                file_name="answer.docx", mime_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document"))
+        await bot_runner.on_document(message, _FakeTelegramBot())
+        self._assert_finished_after_task_answer()
+        payload = self.client.get(f"/api/employees/{self.employee_id}").json()
+        self.assertEqual(payload["test_task_result"]["kind"], "file")
+        self.assertIn("answer.docx", payload["test_task_result"]["label"])
+        self.assertTrue(payload["test_task_result"]["download_url"])
+
+    async def test_multiple_links_keep_waiting_without_slot(self) -> None:
+        await self._reach_task_step()
+        with SessionLocal() as db:
+            await handle_text_event(self.messenger, db, self.chat_id, None, "https://example.com/a https://example.com/b")
+            self.assertIsNone(db.query(EmployeeDocumentLink).filter_by(employee_id=self.employee_id, slot_key="test_task_result").first())
+        self.assertTrue(self._progress().waiting_for_response)
+
+    async def test_oversized_document_stays_waiting_without_download(self) -> None:
+        await self._reach_task_step()
+        bot = SimpleNamespace(get_file=AsyncMock(), download_file=AsyncMock())
+        message = SimpleNamespace(from_user=SimpleNamespace(id=self.chat_id, username=None), caption=None,
+            document=SimpleNamespace(file_id="large", file_unique_id="large", file_size=32600000,
+                file_name="answer.mp4", mime_type="video/mp4"))
+        await bot_runner.on_document(message, bot)
+        bot.get_file.assert_not_awaited()
+        bot.download_file.assert_not_awaited()
+        self.assertTrue(self._progress().waiting_for_response)
+        self.assertIn(bot_runner.OVERSIZED_FILE_TEXT, self.messenger.texts_for(self.chat_id))
+        with SessionLocal() as db:
+            self.assertEqual(db.query(EmployeeFile).filter_by(employee_id=self.employee_id).count(), 0)
+
+    async def test_unknown_size_too_big_and_partial_download_errors_keep_waiting(self) -> None:
+        await self._reach_task_step()
+        message = SimpleNamespace(from_user=SimpleNamespace(id=self.chat_id, username=None), caption=None,
+            document=SimpleNamespace(file_id="unknown", file_unique_id="unknown", file_size=None,
+                file_name="answer.mp4", mime_type="video/mp4"))
+        bot = SimpleNamespace(get_file=AsyncMock(side_effect=TelegramBadRequest(
+            method=GetFile(file_id="unknown"), message="Bad Request: file is too big")), download_file=AsyncMock())
+        await bot_runner.on_document(message, bot)
+        self.assertIn(bot_runner.OVERSIZED_FILE_TEXT, self.messenger.texts_for(self.chat_id))
+        bot.download_file.assert_not_awaited()
+
+        async def failed_download(file_path, destination):
+            Path(destination).write_bytes(b"partial")
+            raise OSError("synthetic download failure")
+
+        bot.get_file = AsyncMock(return_value=SimpleNamespace(file_path="remote/test"))
+        bot.download_file = failed_download
+        await bot_runner.on_document(message, bot)
+        self.assertEqual(list(Path(self._tmpdir.name).rglob("*.mp4")), [])
+        self.assertTrue(self._progress().waiting_for_response)
+        self.assertTrue(self.messenger.closed)
+        with SessionLocal() as db:
+            self.assertEqual(db.query(EmployeeFile).filter_by(employee_id=self.employee_id).count(), 0)
+
+    async def test_back_restores_previous_test_result_after_link_answer(self) -> None:
+        from app.scenario_engine import handle_back_response
+        with SessionLocal() as db:
+            final = db.query(FlowStepTemplate).filter_by(flow_key=self.scenario_key, step_key="final").one()
+            final.response_type = "text"
+            db.add(EmployeeDocumentLink(employee_id=self.employee_id, slot_key="test_task_result",
+                title="Previous result", item_kind="link", url="https://example.com/previous",
+                created_at=datetime.now(UTC).replace(tzinfo=None)))
+            db.commit()
+        await self._reach_task_step()
+        with SessionLocal() as db:
+            await handle_text_event(self.messenger, db, self.chat_id, None, "Result https://example.com/new")
+            employee = db.get(Employee, self.employee_id)
+            self.assertTrue(await handle_back_response(self.messenger, db, employee))
+            slot = db.query(EmployeeDocumentLink).filter_by(employee_id=self.employee_id, slot_key="test_task_result").one()
+            self.assertEqual(slot.url, "https://example.com/previous")
+
+    def test_answer_url_extraction_is_unambiguous(self) -> None:
+        self.assertEqual(extract_test_task_answer_link("Готово (https://example.com/result)."), "https://example.com/result")
+        self.assertEqual(extract_test_task_answer_link("https://example.com/a_(b)"), "https://example.com/a_(b)")
+        for value in ("no link", "https://", "https://user:secret@example.com", "https://example.com:abc", "javascript:alert(1)"):
+            self.assertIsNone(extract_test_task_answer_link(value), value)
+
+    def test_workspace_rejects_text_file_destination_without_changing_step(self) -> None:
+        with SessionLocal() as db:
+            step = db.query(FlowStepTemplate).filter_by(flow_key=self.scenario_key, step_key="task").one()
+            step_id = step.id
+        result = self.client.post(f"/api/flows/workspace/steps/{step_id}", json={"response_type": "text", "target_field": "candidate_file"})
+        self.assertEqual(result.status_code, 422, result.text)
+        with SessionLocal() as db:
+            self.assertEqual(db.get(FlowStepTemplate, step_id).target_field, "test_task_result")
+            self.assertEqual(db.get(FlowStepTemplate, step_id).response_type, "file")
     async def test_photo_answer_saves_slot_and_finishes_scenario(self) -> None:
         await self._reach_task_step()
         await bot_runner.on_photo(self._photo_message("photo-1"), _FakeTelegramBot())
