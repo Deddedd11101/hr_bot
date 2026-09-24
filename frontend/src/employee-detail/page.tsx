@@ -807,6 +807,9 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
     const testAssignmentDocumentItem = testAssignmentDocument
         ? buildDocumentItem(testAssignmentDocument, "Тестовое задание / ответ кандидата", "Ответ кандидата")
         : null;
+    const testExplanationDocumentItem = payload.test_task_explanation
+        ? { ...buildDocumentItem(payload.test_task_explanation, "Пояснение к тестовому", "Пояснение / Loom"), subtitle: "Пояснение / Loom" }
+        : null;
 
     const launchItems = payload.scheduled_launches.map(function (item: any) {
         return {
@@ -915,6 +918,7 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
                     handleDeleteEmployee={handleDeleteEmployee}
                     hrFileItems={hrFileItems}
                     testAssignmentDocumentItem={testAssignmentDocumentItem}
+                    testExplanationDocumentItem={testExplanationDocumentItem}
                     launchItems={launchItems}
                     manualLaunchItems={manualLaunchItems}
                     manualBotMessageText={manualBotMessageText}

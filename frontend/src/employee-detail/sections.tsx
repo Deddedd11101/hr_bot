@@ -971,6 +971,7 @@ export function EmployeeOperationsSection(props: any) {
         handleDeleteEmployee,
         hrFileItems,
         testAssignmentDocumentItem,
+        testExplanationDocumentItem,
         launchItems,
         manualLaunchItems,
         manualBotMessageText,
@@ -1181,7 +1182,7 @@ export function EmployeeOperationsSection(props: any) {
 
             <DocumentList
                 title="Тестовое задание"
-                items={testAssignmentDocumentItem ? [testAssignmentDocumentItem] : []}
+                items={[testAssignmentDocumentItem, testExplanationDocumentItem].filter(Boolean)}
                 emptyTitle="Ответ кандидата пока не получен"
             />
 

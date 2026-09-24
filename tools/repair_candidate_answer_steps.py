@@ -6,11 +6,12 @@ from pathlib import Path
 import sqlite3
 
 
-# Scenario keys, not database-local IDs. Loom's separate answer needs product review.
+# Scenario keys, not database-local IDs. Main result and explanation stay separate.
 REPAIRS = (
-    ("scenario_79dff913f06d", "scenario_79dff913f06d_step_1786983499", "text"),
-    ("custom_scenario_1a59cad6b7a2", "scenario_79dff913f06d_step_1786983499_copy_45_5", "file"),
-    ("custom_scenario_9493d363cba1", "scenario_79dff913f06d_step_1786983499_copy_45_5_copy_46_4", "text"),
+    ("scenario_79dff913f06d", "scenario_79dff913f06d_step_1786983499", "text", "test_task_result"),
+    ("custom_scenario_1a59cad6b7a2", "scenario_79dff913f06d_step_1786983499_copy_45_5", "file", "test_task_result"),
+    ("custom_scenario_9493d363cba1", "scenario_79dff913f06d_step_1786983499_copy_45_5_copy_46_4", "text", "test_task_result"),
+    ("scenario_79dff913f06d", "scenario_79dff913f06d_step_1787144865", "file", "test_task_explanation"),
 )
 
 
@@ -23,7 +24,7 @@ def repair(db_path: Path, *, apply: bool = False, backup: Path | None = None) ->
         try:
             db.execute("BEGIN IMMEDIATE" if apply else "BEGIN")
             plan = []
-            for flow_key, step_key, expected_response in REPAIRS:
+            for flow_key, step_key, expected_response, new_target in REPAIRS:
                 rows = db.execute(
                     "SELECT response_type, target_field FROM flow_step_templates WHERE flow_key=? AND step_key=?",
                     (flow_key, step_key),
@@ -31,10 +32,10 @@ def repair(db_path: Path, *, apply: bool = False, backup: Path | None = None) ->
                 if len(rows) != 1:
                     raise ValueError(f"Missing or ambiguous step: {flow_key}/{step_key}")
                 response, target = rows[0]
-                if response != expected_response or target not in {"candidate_file", "test_task_result"}:
+                if response != expected_response or target not in {"candidate_file", new_target}:
                     raise ValueError(f"Configuration changed: {flow_key}/{step_key}; no changes applied")
                 plan.append(dict(flow_key=flow_key, step_key=step_key, response_type=response,
-                                 old_target=target, new_target="test_task_result", changed=target != "test_task_result"))
+                                 old_target=target, new_target=new_target, changed=target != new_target))
             if apply and any(item["changed"] for item in plan):
                 # Hold the write lock while taking a consistent SQLite backup via a second reader.
                 with backup.open("xb"):

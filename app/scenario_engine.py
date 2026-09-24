@@ -49,7 +49,8 @@ RESUME_DOCUMENT_SLOT = "resume"
 TEST_TASK_RESULT_TITLE = "Ответ на тестовое"
 TEST_TASK_RESULT_SLOT = "test_task_result"
 TEST_TASK_RESULT_FILE_CATEGORY = "test_result"
-TEST_TASK_RESULT_TARGET_FIELDS = {TEST_TASK_RESULT_SLOT, "test_assignment_answer", "test_task_answer", TEST_TASK_RESULT_FILE_CATEGORY}
+TEST_TASK_EXPLANATION_SLOT = "test_task_explanation"
+TEST_TASK_RESULT_TARGET_FIELDS = {TEST_TASK_RESULT_SLOT, "test_assignment_answer", "test_task_answer", TEST_TASK_RESULT_FILE_CATEGORY, TEST_TASK_EXPLANATION_SLOT}
 TEST_TASK_RESULT_TEXT_PROMPT = "Пришлите файл, фото, видео или одну ссылку http/https на выполненное тестовое задание. К ссылке можно добавить пояснение."
 SINGLE_STEP_REQUEST_PREFIX = "__single_step__:"
 INTERACTIVE_RESPONSE_TYPES = {"text", "date", "file", "buttons", "branching"}
@@ -705,10 +706,11 @@ def _capture_response_undo_snapshot(
                 default_title=RESUME_DOCUMENT_TITLE,
             )
         if is_test_task_answer_step(step):
+            slot_key, slot_title, _ = _test_task_slot_details(step)
             file_before["document_slot_before"] = _capture_document_slot_snapshot(
-                _get_employee_document_slot(db, employee.id, TEST_TASK_RESULT_SLOT),
-                default_slot_key=TEST_TASK_RESULT_SLOT,
-                default_title=TEST_TASK_RESULT_TITLE,
+                _get_employee_document_slot(db, employee.id, slot_key),
+                default_slot_key=slot_key,
+                default_title=slot_title,
             )
     return {
         "step_key": step.step_key,
@@ -1238,11 +1240,18 @@ def _mark_employee_file_as_resume_slot(db: Session, employee: Employee, employee
     )
 
 
-def _mark_employee_file_as_test_task_result_slot(db: Session, employee: Employee, employee_file: EmployeeFile) -> None:
-    link_row = _get_employee_document_slot(db, employee.id, TEST_TASK_RESULT_SLOT)
+def _test_task_slot_details(step: FlowStepTemplate | None) -> tuple[str, str, str]:
+    if step and step.target_field == TEST_TASK_EXPLANATION_SLOT:
+        return TEST_TASK_EXPLANATION_SLOT, "Пояснение к тестовому (Loom)", "test_explanation"
+    return TEST_TASK_RESULT_SLOT, TEST_TASK_RESULT_TITLE, TEST_TASK_RESULT_FILE_CATEGORY
+
+
+def _mark_employee_file_as_test_task_result_slot(db: Session, employee: Employee, employee_file: EmployeeFile, step: FlowStepTemplate | None = None) -> None:
+    slot_key, title, _ = _test_task_slot_details(step)
+    link_row = _get_employee_document_slot(db, employee.id, slot_key)
     if link_row:
-        link_row.slot_key = TEST_TASK_RESULT_SLOT
-        link_row.title = TEST_TASK_RESULT_TITLE
+        link_row.slot_key = slot_key
+        link_row.title = title
         link_row.url = ""
         link_row.item_kind = "file"
         link_row.employee_file_id = employee_file.id
@@ -1250,8 +1259,8 @@ def _mark_employee_file_as_test_task_result_slot(db: Session, employee: Employee
     db.add(
         EmployeeDocumentLink(
             employee_id=employee.id,
-            slot_key=TEST_TASK_RESULT_SLOT,
-            title=TEST_TASK_RESULT_TITLE,
+            slot_key=slot_key,
+            title=title,
             url="",
             item_kind="file",
             employee_file_id=employee_file.id,
@@ -1260,11 +1269,12 @@ def _mark_employee_file_as_test_task_result_slot(db: Session, employee: Employee
     )
 
 
-def _mark_link_as_test_task_result_slot(db: Session, employee: Employee, url: str) -> None:
-    link_row = _get_employee_document_slot(db, employee.id, TEST_TASK_RESULT_SLOT)
+def _mark_link_as_test_task_result_slot(db: Session, employee: Employee, url: str, step: FlowStepTemplate | None = None) -> None:
+    slot_key, title, _ = _test_task_slot_details(step)
+    link_row = _get_employee_document_slot(db, employee.id, slot_key)
     if link_row:
-        link_row.slot_key = TEST_TASK_RESULT_SLOT
-        link_row.title = TEST_TASK_RESULT_TITLE
+        link_row.slot_key = slot_key
+        link_row.title = title
         link_row.url = url
         link_row.item_kind = "link"
         link_row.employee_file_id = None
@@ -1272,8 +1282,8 @@ def _mark_link_as_test_task_result_slot(db: Session, employee: Employee, url: st
     db.add(
         EmployeeDocumentLink(
             employee_id=employee.id,
-            slot_key=TEST_TASK_RESULT_SLOT,
-            title=TEST_TASK_RESULT_TITLE,
+            slot_key=slot_key,
+            title=title,
             url=url,
             item_kind="link",
             employee_file_id=None,
@@ -1289,7 +1299,7 @@ def is_test_task_answer_step(step: FlowStepTemplate | None) -> bool:
 
 
 def normalize_test_task_answer_file_category(step: FlowStepTemplate | None, category: str) -> str:
-    return TEST_TASK_RESULT_FILE_CATEGORY if is_test_task_answer_step(step) else category
+    return _test_task_slot_details(step)[2] if is_test_task_answer_step(step) else category
 
 
 def is_http_answer_link(value: str | None) -> bool:
@@ -2158,7 +2168,7 @@ async def handle_text_response(messenger_or_bot: Any, db: Session, employee: Emp
             return True
         undo_snapshot = _capture_response_undo_snapshot(db, context_employee, scenario, step)
         store_survey_answer(db, context_employee, scenario, step, normalized_text)
-        _mark_link_as_test_task_result_slot(db, context_employee, answer_url)
+        _mark_link_as_test_task_result_slot(db, context_employee, answer_url, step)
         if not apply_response_to_employee(db, context_employee, step, normalized_text):
             _restore_response_undo_snapshot(db, context_employee, scenario, step, undo_snapshot)
             return False
@@ -2486,8 +2496,8 @@ async def handle_file_response(
         uploaded_file.category = RESUME_DOCUMENT_SLOT
         _mark_employee_file_as_resume_slot(db, context_employee, uploaded_file)
     if is_test_task_answer_step(step):
-        uploaded_file.category = TEST_TASK_RESULT_FILE_CATEGORY
-        _mark_employee_file_as_test_task_result_slot(db, context_employee, uploaded_file)
+        uploaded_file.category = _test_task_slot_details(step)[2]
+        _mark_employee_file_as_test_task_result_slot(db, context_employee, uploaded_file, step)
     if not apply_response_to_employee(db, context_employee, step, uploaded_file.original_filename, uploaded_file):
         _restore_response_undo_snapshot(db, context_employee, scenario, step, undo_snapshot)
         return False

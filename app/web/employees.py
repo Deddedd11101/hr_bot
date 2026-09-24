@@ -54,8 +54,8 @@ RESUME_DOCUMENT_TITLE = "Резюме"
 RESUME_DOCUMENT_SLOT = "resume"
 TEST_TASK_RESULT_TITLE = "Ответ на тестовое"
 TEST_TASK_RESULT_SLOT = "test_task_result"
-SEMANTIC_DOCUMENT_SLOTS = {OFFER_DOCUMENT_SLOT, RESUME_DOCUMENT_SLOT, TEST_TASK_RESULT_SLOT}
-SEMANTIC_FILE_CATEGORIES = {"offer_document", RESUME_DOCUMENT_SLOT, "test_result"}
+SEMANTIC_DOCUMENT_SLOTS = {OFFER_DOCUMENT_SLOT, RESUME_DOCUMENT_SLOT, TEST_TASK_RESULT_SLOT, "test_task_explanation"}
+SEMANTIC_FILE_CATEGORIES = {"offer_document", RESUME_DOCUMENT_SLOT, "test_result", "test_explanation"}
 AUTOMATIC_LAUNCH_TYPES = {"status_transition"}
 SYSTEM_LAUNCH_TYPES = {"registration", "bot_registration", "trigger", "system"}
 LAUNCH_TYPE_LABELS = {
@@ -1120,12 +1120,12 @@ def _get_latest_resume_file(db: Session, employee_id: int) -> Optional[EmployeeF
     )
 
 
-def _get_latest_test_task_result_file(db: Session, employee_id: int) -> Optional[EmployeeFile]:
+def _get_latest_test_task_result_file(db: Session, employee_id: int, category: str = "test_result") -> Optional[EmployeeFile]:
     return (
         db.query(EmployeeFile)
         .filter(
             EmployeeFile.employee_id == employee_id,
-            EmployeeFile.category == "test_result",
+            EmployeeFile.category == category,
         )
         .order_by(EmployeeFile.created_at.desc(), EmployeeFile.id.desc())
         .first()
@@ -1147,13 +1147,14 @@ def _get_employee_resume_document_payload(db: Session, employee_id: int) -> Opti
     return None
 
 
-def _get_employee_test_task_result_payload(db: Session, employee_id: int) -> Optional[dict]:
-    test_result_slot = _get_employee_document_slot(db, employee_id, slot_key=TEST_TASK_RESULT_SLOT)
+def _get_employee_test_task_result_payload(db: Session, employee_id: int, slot_key: str = TEST_TASK_RESULT_SLOT) -> Optional[dict]:
+    test_result_slot = _get_employee_document_slot(db, employee_id, slot_key=slot_key)
     if test_result_slot:
         payload = _serialize_explicit_document_link(db, test_result_slot, employee_id, source="slot")
         if payload:
             return payload
-    latest_test_result_file = _get_latest_test_task_result_file(db, employee_id)
+    category = "test_explanation" if slot_key == "test_task_explanation" else "test_result"
+    latest_test_result_file = _get_latest_test_task_result_file(db, employee_id, category)
     if latest_test_result_file:
         return _serialize_explicit_file_document(latest_test_result_file, employee_id, source="legacy_file")
     return None
@@ -1822,6 +1823,7 @@ def _build_employee_detail_payload(db: Session, employee: Employee) -> dict:
         "resume_document": resume_document,
         "test_assignment_answer": test_task_result,
         "test_task_result": test_task_result,
+        "test_task_explanation": _get_employee_test_task_result_payload(db, employee.id, "test_task_explanation"),
         "scheduled_launches": [
             _serialize_launch_request(launch_request, scenario_by_key, employee.id)
             for launch_request in pending_scheduled_launches

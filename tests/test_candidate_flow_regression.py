@@ -320,6 +320,39 @@ class CandidateFlowRegressionTests(unittest.IsolatedAsyncioTestCase):
 
     # ------------------------------------------------------------------- flow 2
 
+    async def test_loom_link_and_video_do_not_replace_main_answer_and_back_only_undoes_loom(self) -> None:
+        from app.scenario_engine import handle_back_response
+        with SessionLocal() as db:
+            final = db.query(FlowStepTemplate).filter_by(flow_key=self.scenario_key, step_key="final").one()
+            final.response_type = "text"
+            db.add(FlowStepTemplate(flow_key=self.scenario_key, step_key="loom", step_title="Loom",
+                sort_order=25, default_text="Send explanation", response_type="file", target_field="test_task_explanation",
+                send_mode="immediate", day_offset_workdays=0))
+            db.commit()
+        await self._reach_task_step()
+        with SessionLocal() as db:
+            await handle_text_event(self.messenger, db, self.chat_id, None, "https://example.com/main")
+        for kind in ("link", "video"):
+            with self.subTest(kind=kind):
+                if kind == "link":
+                    with SessionLocal() as db:
+                        await handle_text_event(self.messenger, db, self.chat_id, None, "Explanation https://example.com/loom")
+                else:
+                    message = SimpleNamespace(from_user=SimpleNamespace(id=self.chat_id, username=None), caption=None,
+                        video=SimpleNamespace(file_id="loom", file_unique_id="loom", file_size=222,
+                            mime_type="video/mp4", file_name="loom.mp4"))
+                    await bot_runner.on_video(message, _FakeTelegramBot())
+                payload = self.client.get(f"/api/employees/{self.employee_id}").json()
+                self.assertEqual(payload["test_task_result"]["open_url"], "https://example.com/main")
+                self.assertEqual(payload["test_task_explanation"]["kind"], kind)
+                self.assertFalse(any(item.get("category") == "test_explanation" for item in payload["files"]))
+                self.assertFalse(any(item.get("slot_key") == "test_task_explanation" for item in payload["document_links"]))
+                with SessionLocal() as db:
+                    self.assertTrue(await handle_back_response(self.messenger, db, db.get(Employee, self.employee_id)))
+                payload = self.client.get(f"/api/employees/{self.employee_id}").json()
+                self.assertIsNone(payload["test_task_explanation"])
+                self.assertEqual(payload["test_task_result"]["open_url"], "https://example.com/main")
+
     async def test_link_with_prose_saves_url(self) -> None:
         await self._reach_task_step()
         answer = "Готово: https://example.com/answer?x=1&y=2 спасибо"
