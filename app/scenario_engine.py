@@ -2263,6 +2263,18 @@ async def _apply_confirmed_button_choice(
     _clear_pending_choice_confirmation(progress)
     db.commit()
     if step.target_field in {"personal_data_consent", "employee_data_consent"} and not getattr(context_employee, step.target_field):
+        refusal_step = (
+            get_branch_step(db, step.id, option_index)
+            if step.response_type == "branching" and not stale_option_index
+            else None
+        )
+        # Consent refusal may send its closing message, but must not resume data collection.
+        if (
+            refusal_step
+            and refusal_step.is_terminal
+            and refusal_step.response_type == "none"
+        ):
+            return await send_step(messenger, db, context_employee, scenario, refusal_step)
         progress.waiting_for_response = False
         progress.is_completed = True
         progress.completed_at = utc_now()

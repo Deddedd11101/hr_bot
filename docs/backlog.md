@@ -25,6 +25,8 @@ source_of_truth: true
 
 # Бэклог HR Bot
 
+- Отказ от согласия ПДн: исправлен dispatch прямого завершающего сообщения выбранной ветки; добавлены regression-проверки. Ожидает интеграции и Telegram-приёмки, на stage пока не подтверждено.
+
 Stage candidate: персональный slot `offer` поддерживает ссылку или файл без добавления нового one-off поля в карточку.
 
 Deploy safety: `Deploy Stage` создаёт проверенный SQLite backup, сохраняет JSON snapshot scenario config tables и при неожиданном изменении сценариев во время restart восстанавливает pre-deploy scenario config перед намеренным failure.

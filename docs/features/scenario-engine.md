@@ -99,6 +99,7 @@ Scenario engine превращает scenario templates плюс employee state 
 ## Terminal steps
 
 - `flow_step_templates.is_terminal=true` означает явную остановку текущего сценария на этом шаге.
+- Отказ на `personal_data_consent` / `employee_data_consent` может отправить выбранную прямую ветку с `is_terminal=true` и `response_type=none`, затем завершает сценарий. Если такой ветки нет, она интерактивная/нефинальная или индекс выбора устарел, сценарий завершается сразу. После отказа основной поток, сбор новых ответов и переход в другой сценарий не запускаются; при `confirm_choice` правило применяется после подтверждения.
 - Для send-only step (`response_type=none`) progress закрывается сразу после отправки текста/вложения/уведомлений этого шага.
 - Для интерактивных leaf-step (`text`, `date`, `file`, `buttons`) progress закрывается после валидного ответа пользователя и применения side effects этого ответа.
 - После достижения terminal boundary runtime не запускает следующий root/chain/follow-up step и не создает scheduled follow-up request; terminal `branching`/`chain` сначала выполняет выбранные дочерние шаги.

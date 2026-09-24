@@ -124,6 +124,67 @@ class FakeMessenger:
 
 
 class ScenarioEngineSmokeTests(unittest.IsolatedAsyncioTestCase):
+    async def test_consent_refusal_dispatches_only_terminal_message_branch(self) -> None:
+        init_db()
+        for target_field in ("personal_data_consent", "employee_data_consent"):
+            for branch_kind in ("terminal", "confirmed", "missing", "nonterminal", "interactive", "launch", "stale"):
+                with self.subTest(target_field=target_field, branch_kind=branch_kind):
+                    with SessionLocal() as db:
+                        key = f"consent_{target_field}_{branch_kind}_{datetime.now(UTC).timestamp()}"
+                        scenario = ScenarioTemplate(
+                            scenario_key=key, title="Consent regression", role_scope="all",
+                            scenario_kind="scenario", trigger_mode="manual_only", sort_order=0,
+                        )
+                        employee = Employee(
+                            full_name="Consent Tester", telegram_user_id="123456794",
+                            employee_stage="candidate", is_flow_scheduled=False,
+                            created_at=datetime.now(UTC).replace(tzinfo=None),
+                        )
+                        parent = FlowStepTemplate(
+                            flow_key=key, step_key="consent", step_title="Consent",
+                            sort_order=10, default_text="Consent?", response_type="branching",
+                            button_options="yes\nno", target_field=target_field,
+                            send_mode="immediate", day_offset_workdays=0,
+                            confirm_choice=branch_kind in {"confirmed", "stale"},
+                        )
+                        following = FlowStepTemplate(
+                            flow_key=key, step_key="following", step_title="Following",
+                            sort_order=20, default_text="Must not send", response_type="none",
+                            send_mode="immediate", day_offset_workdays=0,
+                        )
+                        db.add_all([scenario, employee, parent, following])
+                        db.flush()
+                        if branch_kind != "missing":
+                            db.add(FlowStepTemplate(
+                                flow_key=key, step_key="refusal", step_title="Refusal",
+                                parent_step_id=parent.id, branch_option_index=1, sort_order=10,
+                                default_text="Goodbye", is_terminal=branch_kind != "nonterminal",
+                                response_type={"interactive": "text", "launch": "launch_scenario"}.get(branch_kind, "none"),
+                                send_mode="immediate", day_offset_workdays=0,
+                            ))
+                        db.commit()
+                        messenger = FakeMessenger()
+                        await send_step(messenger, db, employee, scenario, parent)
+                        self.assertTrue(await handle_button_response(messenger, db, employee, key, "consent", 1))
+                        if branch_kind in {"confirmed", "stale"}:
+                            self.assertNotIn("Goodbye", [item["text"] for item in messenger.texts])
+                            if branch_kind == "stale":
+                                parent.button_options = "no\nyes"
+                                db.commit()
+                            self.assertTrue(await handle_choice_confirmation_response_by_step_id(
+                                messenger, db, employee, parent.id, "confirm",
+                            ))
+                        progress = db.query(ScenarioProgress).filter_by(employee_id=employee.id, scenario_key=key).one()
+                        self.assertFalse(getattr(employee, target_field))
+                        self.assertTrue(progress.is_completed)
+                        self.assertFalse(progress.waiting_for_response)
+                        dispatched = branch_kind in {"terminal", "confirmed"}
+                        self.assertEqual(progress.current_step_key, "refusal" if dispatched else "consent")
+                        texts = [item["text"] for item in messenger.texts]
+                        self.assertEqual(texts.count("Goodbye"), int(dispatched))
+                        self.assertNotIn("Must not send", texts)
+                        self.assertFalse(await handle_button_response(messenger, db, employee, key, "consent", 1))
+
     def test_format_message_supports_employee_template_tags(self) -> None:
         init_db()
         now = datetime.now(UTC).replace(tzinfo=None)
