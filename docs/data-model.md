@@ -121,7 +121,7 @@ source_of_truth: true
 | Таблица | Назначение | Ключевые поля | Связи и примечания |
 | --- | --- | --- | --- |
 | `employee_files` | Inbound и outbound employee files | `employee_id`, `direction`, `category`, Telegram file ids, `stored_path`, `mime_type`, `file_size` | Backed by local filesystem storage |
-| `employee_document_links` | Per-employee document slots/links | `employee_id`, `slot_key`, `title`, `url`, `item_kind`, `employee_file_id` | Offer, resume и test-result slots могут быть link-backed или file-backed через `employee_files`; generic payload исключает semantic slots |
+| `employee_document_links` | Per-employee document slots/links | `employee_id`, `slot_key`, `title`, `url`, `item_kind`, `employee_file_id` | Offer, resume, test-result и test-task-explanation slots могут быть link-backed или file-backed через `employee_files`; generic payload исключает semantic slots |
 | `document_library_items` | Shared library documents for bot menu and scenario steps | `title`, `description`, `category`, `item_kind`, `external_url`, stored file metadata, `is_active`, `sort_order` | Общие материалы для `/app/documents`, `send_document` menu buttons и reusable вложений шагов сценария |
 
 ## Важные runtime rules
