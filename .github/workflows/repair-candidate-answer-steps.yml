@@ -1,0 +1,159 @@
+name: Repair Candidate Answer Steps
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Git ref containing the reviewed repair tool"
+        required: true
+        default: "stage"
+      mode:
+        description: "dry_run only validates and prints the four-row plan; apply writes after backup"
+        required: true
+        type: choice
+        options:
+          - dry_run
+          - apply
+        default: "dry_run"
+
+concurrency:
+  group: stage-candidate-answer-repair
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    env:
+      REPAIR_REF: ${{ inputs.ref }}
+      REPAIR_MODE: ${{ inputs.mode }}
+      STAGE_DB_PATH: ${{ secrets.STAGE_DB_PATH }}
+      REMOTE_DIR: /tmp/hr-bot-candidate-answer-repair-${{ github.run_id }}
+
+    steps:
+      - name: Checkout reviewed repair tooling
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.REPAIR_REF }}
+
+      - name: Validate repair tooling
+        run: python -m py_compile tools/repair_candidate_answer_steps.py
+
+      - name: Upload repair tooling
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.STAGE_HOST }}
+          username: ${{ secrets.STAGE_USERNAME }}
+          password: ${{ secrets.STAGE_PASSWORD }}
+          port: ${{ secrets.STAGE_PORT }}
+          source: "tools/repair_candidate_answer_steps.py"
+          target: ${{ env.REMOTE_DIR }}
+
+      - name: Run guarded repair over SSH
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          REPAIR_MODE: ${{ env.REPAIR_MODE }}
+          STAGE_DB_PATH: ${{ env.STAGE_DB_PATH }}
+          REMOTE_DIR: ${{ env.REMOTE_DIR }}
+        with:
+          host: ${{ secrets.STAGE_HOST }}
+          username: ${{ secrets.STAGE_USERNAME }}
+          password: ${{ secrets.STAGE_PASSWORD }}
+          port: ${{ secrets.STAGE_PORT }}
+          envs: REPAIR_MODE,STAGE_DB_PATH,REMOTE_DIR
+          script: |
+            set -euo pipefail
+            cd "${{ secrets.STAGE_APP_DIR }}"
+            if [ -n "$(git status --porcelain)" ]; then
+              echo "Stage worktree is dirty; refusing candidate answer repair."
+              git status --short
+              exit 1
+            fi
+
+            db_path="${STAGE_DB_PATH:-hr_bot.db}"
+            if [ ! -f "${db_path}" ]; then
+              echo "Stage SQLite database not found: ${db_path}"
+              exit 1
+            fi
+            if [ ! -f "${REMOTE_DIR}/tools/repair_candidate_answer_steps.py" ]; then
+              echo "Uploaded repair tool not found."
+              exit 1
+            fi
+
+            mkdir -p "${REMOTE_DIR}"
+            plan_path="${REMOTE_DIR}/candidate-answer-repair-plan.json"
+            .venv/bin/python "${REMOTE_DIR}/tools/repair_candidate_answer_steps.py" \
+              --db "${db_path}" > "${plan_path}"
+
+            .venv/bin/python - "${plan_path}" <<'PY'
+            import json
+            import sys
+
+            expected = [
+                ("scenario_79dff913f06d", "scenario_79dff913f06d_step_1786983499", "text", "test_task_result"),
+                ("custom_scenario_1a59cad6b7a2", "scenario_79dff913f06d_step_1786983499_copy_45_5", "file", "test_task_result"),
+                ("custom_scenario_9493d363cba1", "scenario_79dff913f06d_step_1786983499_copy_45_5_copy_46_4", "text", "test_task_result"),
+                ("scenario_79dff913f06d", "scenario_79dff913f06d_step_1787144865", "file", "test_task_explanation"),
+            ]
+            with open(sys.argv[1], encoding="utf-8") as handle:
+                plan = json.load(handle)
+            if len(plan) != len(expected):
+                raise SystemExit(f"Unexpected repair plan length: {len(plan)}")
+            for item, expected_row in zip(plan, expected, strict=True):
+                actual = (
+                    item.get("flow_key"),
+                    item.get("step_key"),
+                    item.get("response_type"),
+                    item.get("new_target"),
+                )
+                if actual != expected_row:
+                    raise SystemExit(f"Unexpected repair plan row: {actual}")
+                if item.get("old_target") not in {"candidate_file", item["new_target"]}:
+                    raise SystemExit(f"Unexpected existing target: {item.get('old_target')}")
+            print("Guarded repair preconditions: 4 expected rows matched.")
+            PY
+
+            cat "${plan_path}"
+            if [ "${REPAIR_MODE}" = "dry_run" ]; then
+              echo "Dry-run mode: no SQLite changes written."
+              exit 0
+            fi
+
+            backup_path="backups/hr_bot.before-candidate-answer-target-repair.$(date +%Y%m%d-%H%M%S).db"
+            .venv/bin/python "${REMOTE_DIR}/tools/repair_candidate_answer_steps.py" \
+              --db "${db_path}" \
+              --apply \
+              --backup "${backup_path}" > "${REMOTE_DIR}/candidate-answer-repair-apply.json"
+            cat "${REMOTE_DIR}/candidate-answer-repair-apply.json"
+
+            .venv/bin/python "${REMOTE_DIR}/tools/repair_candidate_answer_steps.py" \
+              --db "${db_path}" > "${REMOTE_DIR}/candidate-answer-repair-verify.json"
+            .venv/bin/python - "${REMOTE_DIR}/candidate-answer-repair-verify.json" <<'PY'
+            import json
+            import sys
+
+            with open(sys.argv[1], encoding="utf-8") as handle:
+                plan = json.load(handle)
+            if len(plan) != 4 or any(item.get("changed") for item in plan):
+                raise SystemExit("Post-repair verification failed: targets are not all canonical.")
+            print("Post-repair verification: all four targets are canonical.")
+            PY
+
+            systemctl restart hr-bot-web
+            systemctl restart hr-bot-worker
+            systemctl is-active --quiet hr-bot-web
+            systemctl is-active --quiet hr-bot-worker
+            wait_http_status() {
+              path="$1"
+              for attempt in $(seq 1 30); do
+                code="$(curl -s -o /dev/null -w '%{http_code}' --connect-timeout 2 --max-time 5 "http://127.0.0.1:8000${path}" || true)"
+                case "$code" in
+                  200|303) echo "${path} status: ${code}"; return 0 ;;
+                esac
+                sleep 2
+              done
+              echo "Unexpected ${path} status after repair: ${code}"
+              return 1
+            }
+            wait_http_status "/app/employees"
+            wait_http_status "/app/flows/workspace-v2"
+            echo "Candidate answer target repair applied with verified backup: ${backup_path}"
