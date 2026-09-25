@@ -680,7 +680,10 @@ def _capture_response_undo_snapshot(
     }
     target_field = (step.target_field or "").strip()
     if target_field and hasattr(employee, target_field):
-        employee_before[target_field] = getattr(employee, target_field)
+        previous_value = getattr(employee, target_field)
+        if target_field == "first_workday" and isinstance(previous_value, date):
+            previous_value = previous_value.isoformat()
+        employee_before[target_field] = previous_value
     if scenario.scenario_key == RECRUITMENT_SCENARIO_KEY and step.response_type == "branching":
         employee_before["employee_stage"] = employee.employee_stage
     survey_answer = _get_latest_survey_answer(db, employee, scenario, step)
@@ -731,6 +734,8 @@ def _restore_response_undo_snapshot(
     if isinstance(employee_before, dict):
         for field_name, previous_value in employee_before.items():
             if hasattr(employee, field_name):
+                if field_name == "first_workday" and isinstance(previous_value, str):
+                    previous_value = date.fromisoformat(previous_value)
                 setattr(employee, field_name, previous_value)
 
     survey_before = snapshot.get("survey_before")
@@ -1004,7 +1009,10 @@ def _replace_template_fields(template: str, values: dict[str, str]) -> str:
 
 def resolve_employee_first_name(employee: Employee) -> str:
     explicit = (getattr(employee, "first_name", None) or "").strip()
-    return explicit
+    if explicit:
+        return explicit
+    parts = (employee.full_name or "").split()
+    return parts[1] if len(parts) > 1 else (parts[0] if parts else "")
 
 
 def render_telegram_message_html(db: Session, template: str, employee: Employee, anchor_date: date, step_time: Optional[str]) -> str:
@@ -2230,6 +2238,7 @@ async def handle_date_response_by_step_id(
     selected_date = _parse_iso_date(value)
     if not selected_date:
         return DateCallbackResult(False, "noop", None)
+    messenger = as_messenger(messenger_or_bot)
     undo_snapshot = _capture_response_undo_snapshot(db, context_employee, scenario, step)
     store_survey_answer(db, context_employee, scenario, step, selected_date.isoformat())
     if not apply_response_to_employee(db, context_employee, step, selected_date.isoformat()):
@@ -2237,8 +2246,16 @@ async def handle_date_response_by_step_id(
         return DateCallbackResult(False, "noop", None)
     context_employee.candidate_status = step.step_key
     _push_response_undo_snapshot(progress, undo_snapshot)
+    # Consume this response before the first delivery await to reject callback replays.
+    progress.waiting_for_response = False
     db.commit()
-    await advance_after_response(messenger_or_bot, db, context_employee, scenario, step)
+    chat_id = progress.recipient_chat_id or get_primary_chat_id(employee, db=db)
+    try:
+        if chat_id:
+            await messenger.send_text(chat_id=chat_id, text=f"Вы выбрали дату: {selected_date:%d.%m.%Y}")
+    finally:
+        # A failed receipt must not leave an accepted date without a follow-up step.
+        await advance_after_response(messenger_or_bot, db, context_employee, scenario, step)
     return DateCallbackResult(True, "selected", None)
 
 
