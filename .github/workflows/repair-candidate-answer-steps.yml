@@ -17,7 +17,7 @@ on:
         default: "dry_run"
 
 concurrency:
-  group: stage-candidate-answer-repair
+  group: deploy-stage
   cancel-in-progress: false
 
 jobs:
@@ -70,6 +70,13 @@ jobs:
             fi
 
             db_path="${STAGE_DB_PATH:-hr_bot.db}"
+            case "${REPAIR_MODE}" in
+              dry_run|apply) ;;
+              *)
+                echo "Unsupported repair mode: ${REPAIR_MODE}"
+                exit 1
+                ;;
+            esac
             if [ ! -f "${db_path}" ]; then
               echo "Stage SQLite database not found: ${db_path}"
               exit 1
@@ -117,6 +124,15 @@ jobs:
               echo "Dry-run mode: no SQLite changes written."
               exit 0
             fi
+
+            required_runtime_commit="f56a0c4f6a98fd08a1e9dff3fe8fad24da1cfa1b"
+            if ! git merge-base --is-ancestor "${required_runtime_commit}" HEAD; then
+              echo "Stage deployed code does not contain the reviewed candidate answer/Loom runtime."
+              echo "Required ancestor: ${required_runtime_commit}"
+              echo "Current deployed HEAD: $(git rev-parse HEAD)"
+              exit 1
+            fi
+            echo "Reviewed candidate answer/Loom runtime is present in deployed history."
 
             backup_path="backups/hr_bot.before-candidate-answer-target-repair.$(date +%Y%m%d-%H%M%S).db"
             .venv/bin/python "${REMOTE_DIR}/tools/repair_candidate_answer_steps.py" \

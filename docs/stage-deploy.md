@@ -134,6 +134,11 @@ source_of_truth: true
    перезапускает web/worker;
 8. режим `apply` не принимает путь backup или произвольные SQL/shell-команды от
    оператора.
+9. перед `apply` workflow проверяет, что текущий deployed HEAD содержит reviewed
+   runtime commit `f56a0c4f6a98fd08a1e9dff3fe8fad24da1cfa1b`, а неизвестное значение
+   `mode` отклоняется;
+10. workflow использует общий concurrency group `deploy-stage`, поэтому repair не
+    выполняется параллельно с Deploy Stage или Stage Diagnostics.
 
 Workflow использует существующие secrets `STAGE_HOST`, `STAGE_PORT`,
 `STAGE_USERNAME`, `STAGE_PASSWORD`, `STAGE_APP_DIR` и optional `STAGE_DB_PATH`.
