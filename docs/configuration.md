@@ -52,6 +52,7 @@ source_of_truth: true
 | `ADMIN_SESSION_SECRET`   | `change-me-admin-session-secret` | Секрет сессий админки                             | Обязательно заменить вне локального демо              |
 | `ADMIN_SESSION_MAX_AGE_SECONDS` | `43200`                   | TTL signed session cookie                         | Для stage менять только осознанно                     |
 | `ADMIN_SESSION_COOKIE_SECURE` | `false`                     | Ставить cookie только через HTTPS                 | На HTTPS stage должно быть `true`                     |
+| `PULSE_SYNC_TOKEN`       | пусто                            | Bearer-токен для `GET /api/integrations/pulse/employees` | Пусто = endpoint отвечает `503`; на stage задать в systemd drop-in web-сервиса, значение то же, что `HRBOT_SYNC_TOKEN` в Pulse |
 | `DEFAULT_ADMIN_LOGIN`    | `admin`                          | Bootstrap admin login                             | Используется startup seeding                          |
 | `DEFAULT_ADMIN_PASSWORD` | `admin123`                       | Bootstrap admin password                          | Небезопасно вне локального bootstrap                  |
 | `DEFAULT_HR_LOGIN`       | `hr`                             | Bootstrap HR login                                | Используется startup seeding                          |
@@ -98,6 +99,15 @@ source_of_truth: true
 
 На stage эти значения определяют, где приложение хранит durable state. Их надо менять вместе с backup policy, а не случайно.
 
+### Интеграции
+
+- `PULSE_SYNC_TOKEN`
+
+Секрет server-to-server доступа Pulse к read-only экспорту сотрудников (см.
+[[api]]). Генерировать случайную строку не короче 32 символов, хранить только в
+systemd drop-in web-сервиса и в env Pulse; при компрометации сменить с обеих
+сторон. Worker-сервису переменная не нужна.
+
 ### Bootstrap-аккаунты
 
 - `DEFAULT_ADMIN_LOGIN`
@@ -119,6 +129,7 @@ source_of_truth: true
 
 - реальный Telegram bot token;
 - реальный admin session secret;
+- реальный `PULSE_SYNC_TOKEN`;
 - любые server-specific secret values;
 - скопированный stage `.env`.
 
