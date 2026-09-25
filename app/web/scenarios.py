@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any, Optional
 from uuid import uuid4
 
-from fastapi import UploadFile
+from fastapi import HTTPException, UploadFile
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -939,7 +939,16 @@ def _apply_workspace_step_update(db: Session, step: FlowStepTemplate, payload: d
     if step.response_type == "chain":
         step.target_field = None
 
+    _validate_step_answer_destination(step.response_type, step.target_field)
+
     return step
+
+
+def _validate_step_answer_destination(response_type: str, target_field: str | None) -> None:
+    if target_field in {"candidate_file", "resume"} and response_type != "file":
+        raise HTTPException(status_code=422, detail="Для резюме или файла кандидата выберите тип ответа «Загрузка файла». Для файла или ссылки на тестовое выберите «Ответ на тестовое».")
+    if target_field in {"test_task_result", "test_task_explanation"} and response_type not in {"file", "text"}:
+        raise HTTPException(status_code=422, detail="Для ответа на тестовое выберите «Загрузка файла» или «Текстовый ответ».")
 
 
 def _sync_workspace_button_notifications(db: Session, step: FlowStepTemplate, payload: dict, scenario_kind: str = "scenario") -> None:

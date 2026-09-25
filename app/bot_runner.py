@@ -6,7 +6,7 @@ from aiohttp import ClientError
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
-from aiogram.exceptions import TelegramNetworkError
+from aiogram.exceptions import TelegramBadRequest, TelegramNetworkError
 from aiogram.filters import CommandStart
 from aiogram.types import CallbackQuery, Message
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -36,6 +36,12 @@ from .scheduler import schedule_all_employees
 
 
 logger = logging.getLogger(__name__)
+TELEGRAM_DOWNLOAD_LIMIT = 20 * 1024 * 1024
+OVERSIZED_FILE_TEXT = (
+    "Этот файл слишком большой: бот может загрузить файл до 20 МБ. "
+    "Для ответа на тестовое отправьте одну ссылку на файл в облачном хранилище "
+    "с доступом для просмотра или уменьшите файл. Ответ пока не сохранён."
+)
 
 
 def _telegram_username(user) -> Optional[str]:
@@ -100,11 +106,21 @@ async def _handle_incoming_file_like(
         if employee is None:
             await messenger.close()
             return
+        if file_size is not None and file_size > TELEGRAM_DOWNLOAD_LIMIT:
+            await messenger.send_text(chat_id=str(user.id), text=OVERSIZED_FILE_TEXT)
+            await messenger.close()
+            return
+        destination = None
         try:
             file_info = await bot.get_file(media.file_id)
             destination = build_employee_file_path(employee.id, original_name)
             await bot.download_file(file_info.file_path, destination=destination)
-        except Exception:
+        except Exception as exc:
+            if destination is not None:
+                try:
+                    destination.unlink(missing_ok=True)
+                except OSError:
+                    logger.warning("Could not remove partial inbound download", exc_info=True)
             logger.exception(
                 "Telegram inbound media download failed: chat_user_id=%s file_id=%s filename=%s",
                 user.id,
@@ -113,7 +129,8 @@ async def _handle_incoming_file_like(
             )
             await messenger.send_text(
                 chat_id=str(user.id),
-                text="Не удалось загрузить файл. Попробуйте отправить его еще раз.",
+                text=(OVERSIZED_FILE_TEXT if isinstance(exc, TelegramBadRequest) and "file is too big" in str(exc).lower()
+                      else "Не удалось загрузить файл. Ответ пока не сохранён. Попробуйте отправить его еще раз."),
             )
             await messenger.close()
             return
