@@ -147,6 +147,29 @@ gh workflow run stage-diagnostics.yml --repo Deddedd11101/hr_bot --ref stage
 Workflow делит concurrency group с `Deploy Stage`, поэтому во время выкладки
 ждёт её завершения. Секреты те же, что у deploy.
 
+### Workflow Stage Config Pulse Sync Token
+
+Источник: `.github/workflows/stage-config-pulse-sync-token.yml`
+
+Записывает GitHub secret `PULSE_SYNC_TOKEN` в drop-in
+`/etc/systemd/system/hr-bot-web.service.d/40-pulse-sync.conf` (mode 600) и делает
+`systemctl daemon-reload`. Не делает checkout, не перезапускает сервисы и не
+трогает БД: значение вступает в силу после ближайшего `Deploy Stage`. Значение
+токена не печатается. Input `mode`: `write` (default) или `remove` — rollback,
+удаляет только этот drop-in. Worker-сервису переменная не нужна.
+
+Порядок включения интеграции с Pulse:
+
+1. Сгенерировать токен (не короче 32 символов, только `A-Za-z0-9_.~-`), сохранить
+   в GitHub secret `PULSE_SYNC_TOKEN` репозитория и передать владельцу Pulse
+   приватным каналом (там он же `HRBOT_SYNC_TOKEN`).
+2. `gh workflow run stage-config-pulse-sync-token.yml --repo Deddedd11101/hr_bot --ref stage -f mode=write`.
+3. Обычный `Deploy Stage` с `ref=stage`.
+4. Проверка: `GET /api/integrations/pulse/employees` без заголовка -> `401`,
+   с `Authorization: Bearer <token>` -> `200`; см. [[api]] и [[configuration]].
+
+Workflow делит concurrency group с `Deploy Stage`. Секреты SSH те же, что у deploy.
+
 ## Наблюдаемые факты stage
 
 Эти факты взяты из `docs/handoffs/telegram-linking-and-scope-handoff.md`. Их надо считать live operational notes, а не repo-enforced truth.
@@ -186,6 +209,7 @@ VPN-only не выбран как первый шаг: для текущей а�
 - observed systemd drop-in locations:
   - `/etc/systemd/system/hr-bot-web.service.d/10-stage-env.conf`;
   - `/etc/systemd/system/hr-bot-worker.service.d/10-stage-env.conf`.
+  - `/etc/systemd/system/hr-bot-web.service.d/40-pulse-sync.conf` — `PULSE_SYNC_TOKEN`, пишется workflow `Stage Config Pulse Sync Token`.
 
 Это operationally acceptable, но значит, что infrastructure truth частично находится вне репозитория.
 
