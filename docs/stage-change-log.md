@@ -2583,3 +2583,26 @@ source_of_truth: true
 - Открытые риски:
   - если настроено несколько `bot_registration` сценариев, выбирается первый подходящий по `sort_order`/`id`;
   - если пользователь пишет в бот без совпадающей карточки, unknown-user поведение не менялось.
+### 2026-09-25 - candidate P0 terminal branch and answer slots
+
+- Deploy ref: `stage`.
+- Deployed commit: `26eab62bf2bb9fa6f2ed74d789e9d601869ebb32`.
+- GitHub Actions Deploy Stage: [run 36122234091](https://github.com/Deddedd11101/hr_bot/actions/runs/36122234091).
+- Что изменено:
+  - отказ от согласия на обработку ПДн теперь отправляет только валидную terminal-ветку и не продолжает основной поток;
+  - ответы на тестовое разделены на `test_task_result` и `test_task_explanation` (Loom), с безопасным приемом file/media/link и проверкой несовместимых назначений;
+  - добавлен guarded repair tool для четырех точечных `target_field` настроек без автоматического применения на stage.
+- Проверки:
+  - Deploy Stage preflight: compileall, `ruff F821`, backend smoke, frontend `npm ci && npm run build`, import smoke — passed;
+  - локально: compileall, `ruff F821`, targeted scenario/identity/employee/scheduler/candidate tests, docs check, `git diff --check` — passed;
+  - SQLite backup создан и проверен;
+  - scenario JSON snapshot создан, fingerprint сценариев не изменился.
+- Stage smoke:
+  - `hr-bot-web`, `hr-bot-worker`, `wg-quick@redshield` — active;
+  - HTTPS `/app/employees`, `/app/flows/workspace-v2`, `/app/grades` — `303`;
+  - Telegram API IPv4 — `302`;
+  - configured bot username совпадает с `getMe`, web/worker token env совпадают;
+  - свежих Telegram/network errors, traceback и unclosed sessions в worker log не найдено.
+- Открытые действия:
+  - live guarded repair четырех настроек не выполнен: нужен безопасный repo/Actions command channel для dry-run/apply; root password не использовался;
+  - пользовательская Telegram-приемка отказа ПДн и test-task media/link остается не выполнена.
