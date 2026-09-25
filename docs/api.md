@@ -152,7 +152,7 @@ source_of_truth: true
 - `options`
   - роли, stages, доступные сценарии
 - `files`
-  - generic список файлов сотрудника с download/send URLs и `category`; semantic категории `resume`, `test_result`, `offer_document` сюда не попадают
+  - generic список файлов сотрудника с download/send URLs и `category`; semantic категории `resume`, `test_result`, `test_explanation`, `offer_document` сюда не попадают
 - `document_links`
   - generic персональные document link entries без semantic slots `resume`, `offer`, `test_task_result`, `test_task_explanation`
 - `offer_document`
