@@ -111,6 +111,39 @@ source_of_truth: true
 9. сотрудники из импорта получают `employee_stage=staff`, а `is_manager` / `is_mentor` не выставляются автоматически;
 10. после успешного import перезапускает `hr-bot-web` и `hr-bot-worker` и выполняет HTTP smoke checks `/app/settings` и `/app/employees`.
 
+### Workflow Repair Candidate Answer Steps
+
+Источник: `.github/workflows/repair-candidate-answer-steps.yml`.
+
+Назначение: узкий repo-backed repair четырех заранее известных `target_field` в
+`flow_step_templates`, без передачи произвольной shell-команды через GitHub Actions.
+
+Текущее поведение:
+
+1. запускается вручную через `workflow_dispatch`;
+2. принимает только `ref` и `mode` (`dry_run` по умолчанию или явный `apply`);
+3. checkout-ит tooling из выбранного ref и передает на stage только
+   `tools/repair_candidate_answer_steps.py`;
+4. отказывается работать при dirty stage worktree, отсутствующей SQLite DB или
+   отсутствии загруженного repair tool;
+5. всегда сначала строит и проверяет план ровно для четырех известных
+   `flow_key`/`step_key`/`response_type`/`new_target` строк;
+6. `dry_run` печатает план и не пишет в SQLite;
+7. `apply` генерирует новый backup path внутри `backups/`, запускает tool с
+   `--apply --backup`, повторно проверяет, что все четыре target canonical, и
+   перезапускает web/worker;
+8. режим `apply` не принимает путь backup или произвольные SQL/shell-команды от
+   оператора.
+9. перед `apply` workflow проверяет, что текущий deployed HEAD содержит reviewed
+   runtime commit `f56a0c4f6a98fd08a1e9dff3fe8fad24da1cfa1b`, а неизвестное значение
+   `mode` отклоняется;
+10. workflow использует общий concurrency group `deploy-stage`, поэтому repair не
+    выполняется параллельно с Deploy Stage или Stage Diagnostics.
+
+Workflow использует существующие secrets `STAGE_HOST`, `STAGE_PORT`,
+`STAGE_USERNAME`, `STAGE_PASSWORD`, `STAGE_APP_DIR` и optional `STAGE_DB_PATH`.
+Реальные Telegram-сообщения workflow не отправляет.
+
 Нужные GitHub secrets:
 
 - `STAGE_HOST`
