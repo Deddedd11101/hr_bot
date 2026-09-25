@@ -112,6 +112,7 @@ TARGET_FIELD_LABELS = {
     "resume": "Резюме (файл)",
     "candidate_file": "Файл кандидата",
     "test_task_result": "Ответ на тестовое",
+    "test_task_explanation": "Пояснение к тестовому (Loom)",
 }
 
 NOTIFICATION_RECIPIENT_SCOPE_LABELS = {

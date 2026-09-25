@@ -121,7 +121,7 @@ source_of_truth: true
 | Таблица | Назначение | Ключевые поля | Связи и примечания |
 | --- | --- | --- | --- |
 | `employee_files` | Inbound и outbound employee files | `employee_id`, `direction`, `category`, Telegram file ids, `stored_path`, `mime_type`, `file_size` | Backed by local filesystem storage |
-| `employee_document_links` | Per-employee document slots/links | `employee_id`, `slot_key`, `title`, `url`, `item_kind`, `employee_file_id` | Offer, resume и test-result slots могут быть link-backed или file-backed через `employee_files`; generic payload исключает semantic slots |
+| `employee_document_links` | Per-employee document slots/links | `employee_id`, `slot_key`, `title`, `url`, `item_kind`, `employee_file_id` | Offer, resume, test-result и test-task-explanation slots могут быть link-backed или file-backed через `employee_files`; generic payload исключает semantic slots |
 | `document_library_items` | Shared library documents for bot menu and scenario steps | `title`, `description`, `category`, `item_kind`, `external_url`, stored file metadata, `is_active`, `sort_order` | Общие материалы для `/app/documents`, `send_document` menu buttons и reusable вложений шагов сценария |
 
 ## Важные runtime rules
@@ -135,7 +135,8 @@ source_of_truth: true
 - Даже если старый клиент напрямую вызовет generic document-link delete для `slot_key=resume`, backend удаляет только link row и сохраняет `EmployeeFile` плюс физический файл.
 - Если `resume` slot пустой, runtime/API может использовать последний `employee_files.category=resume` как совместимый fallback.
 - `employee_document_links.slot_key=test_task_result` — актуальная связь ответа на тестовое; scenario runtime пишет сюда file/photo/video/video_note ответы как file-backed slot и `http://` / `https://` ответы как link-backed slot. Если slot отсутствует или невалиден, карточка может показать последний legacy `employee_files.category=test_result`.
-- Generic employee detail payload исключает semantic file categories `resume`, `test_result`, `offer_document`, чтобы карточка не смешивала текущие продуктовые документы с общими файлами.
+- `employee_document_links.slot_key=test_task_explanation` хранит пояснение (Loom) независимо от результата, на тех же existing columns. Файлы получают `employee_files.category=test_explanation`, fallback ограничен этой категорией. Новая таблица/колонка не требуется; исторические generic файлы автоматически не переименовываются. Undo восстанавливает предыдущий slot пояснения, не меняя основной ответ.
+- Generic employee detail payload исключает semantic file categories `resume`, `test_result`, `test_explanation`, `offer_document`, чтобы карточка не смешивала текущие продуктовые документы с общими файлами.
 
 ### `employees`
 
