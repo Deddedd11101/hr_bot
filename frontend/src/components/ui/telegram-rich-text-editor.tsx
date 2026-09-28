@@ -34,6 +34,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { EmojiPickerPopover } from "@/components/ui/emoji-picker-popover";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 
@@ -242,7 +243,7 @@ function LinkEditor({ editor }: { editor: Editor }) {
   );
 }
 
-function EditorToolbar({ editor }: { editor: Editor }) {
+function EditorToolbar({ editor, disabled }: { editor: Editor; disabled: boolean }) {
   return (
     <div
       className="flex flex-wrap items-center gap-1 rounded-lg border border-border/70 bg-muted/35 p-1"
@@ -265,6 +266,13 @@ function EditorToolbar({ editor }: { editor: Editor }) {
         <Code2 />
       </ToolbarButton>
       <LinkEditor editor={editor} />
+      <EmojiPickerPopover
+        disabled={disabled}
+        onEmojiSelect={(emoji) => {
+          if (editor.isEditable) editor.chain().focus().insertContent(emoji).run();
+        }}
+        finalFocus={() => editor.view.dom}
+      />
       <span className="mx-1 h-4 w-px bg-border" aria-hidden="true" />
       <Button
         type="button"
@@ -429,7 +437,7 @@ export function TelegramRichTextEditor({
 
   return (
     <div className={cn("grid min-w-0 gap-2", className)}>
-      <EditorToolbar editor={editor} />
+      <EditorToolbar editor={editor} disabled={disabled} />
       <ContextMenu>
         <ContextMenuTrigger>
           <div

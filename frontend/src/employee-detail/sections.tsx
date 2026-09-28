@@ -654,18 +654,6 @@ export function EmployeeProfileSection(props: any) {
                             />
                         </Field>
                         <Field>
-                            <FieldLabel htmlFor="employee-first-name">Имя</FieldLabel>
-                            <Input
-                                id="employee-first-name"
-                                type="text"
-                                name="first_name"
-                                value={form.first_name || ""}
-                                onChange={handleChange}
-                                placeholder="Например, Галина"
-                                autoComplete="given-name"
-                            />
-                        </Field>
-                        <Field>
                             <FieldLabel htmlFor="employee-chat-handle">Telegram username</FieldLabel>
                             <Input
                                 id="employee-chat-handle"
@@ -871,6 +859,19 @@ export function EmployeeProfileSection(props: any) {
                                         name="adaptation_feedback_url"
                                         value={form.adaptation_feedback_url}
                                         onChange={handleChange}
+                                        placeholder="https://..."
+                                    />
+                                </Field>
+                                <Field>
+                                    <FieldLabel htmlFor="employee-ipr-url">Ссылка на ИПР</FieldLabel>
+                                    <Input
+                                        id="employee-ipr-url"
+                                        type="url"
+                                        inputMode="url"
+                                        name="ipr_url"
+                                        value={form.ipr_url || ""}
+                                        onChange={handleChange}
+                                        pattern="https?://.+"
                                         placeholder="https://..."
                                     />
                                 </Field>
