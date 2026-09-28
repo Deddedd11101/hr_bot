@@ -89,7 +89,7 @@ Workspace возвращает `telegram_connection_state` со значения
 
 ## Что изменилось в P0
 
-- `/start`, text, file-like media (`document` / `photo` / `video` / `video_note`) и callback entrypoints теперь используют один inbound access resolution path.
+- `/start`, text, file-like media (`document` / `photo` / `video` / `video_note` / `animation`) и callback entrypoints теперь используют один inbound access resolution path.
 - Unknown users по-прежнему не могут создавать `employee_files` и не открывают runtime access через stray text/file input, но `/start` теперь является осознанной candidate-entry точкой и может создать новую candidate-карточку.
 - Known users все еще могут быть linked по сохраненному normalized public username, если пишут с нового Telegram ID и match однозначный.
 - Duplicate normalized username теперь является fail-closed состоянием, а не поводом выбрать первую карточку или создать дубль.
