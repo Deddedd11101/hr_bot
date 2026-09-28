@@ -107,12 +107,15 @@ SCENARIO_STEP_TEMPLATE_TAGS = [
     },
 ]
 SCENARIO_NOTIFICATION_TEMPLATE_TAGS = [
-    *SCENARIO_STEP_TEMPLATE_TAGS[:3],
+    *SCENARIO_STEP_TEMPLATE_TAGS,
     {
         "label": "Резюме",
         "template": "{resume}",
-        "description": "Имя актуального resume slot из карточки; если slot пустой, fallback на последний файл категории resume. В уведомлениях также поддерживается алиас {резюме}.",
+        "description": "Актуальное резюме: ссылка или имя файла; файл также прикладывается к уведомлению. Если slot отсутствует, используется legacy resume-файл.",
     },
+    {"label": "ИПР", "template": "{ipr}", "description": "Ссылка на ИПР из карточки сотрудника."},
+    {"label": "План испытательного срока", "template": "{probation_plan}", "description": "Ссылка из поля «Задачи на ИС» карточки сотрудника."},
+    {"label": "Обратная связь коллег", "template": "{colleague_feedback}", "description": "Ссылка из поля «Обратная связь» карточки сотрудника, не текст ответов коллег."},
 ]
 MENU_TEXT_TAGS = [
     *SCENARIO_STEP_TEMPLATE_TAGS,
@@ -1007,6 +1010,23 @@ def resolve_employee_first_name(employee: Employee) -> str:
     return explicit
 
 
+def _render_employee_link(url: str | None, label: str) -> str:
+    value = (url or "").strip()
+    try:
+        parsed = urlsplit(value)
+        valid = (
+            parsed.scheme.lower() in {"http", "https"}
+            and parsed.hostname and not parsed.username and not parsed.password
+            and "\\" not in value and not any(char.isspace() for char in value)
+        )
+        parsed.port
+    except ValueError:
+        valid = False
+    if not valid:
+        return f"{label}: ссылка не указана"
+    return f'<a href="{html.escape(value, quote=True)}">{html.escape(label)}</a>'
+
+
 def render_telegram_message_html(db: Session, template: str, employee: Employee, anchor_date: date, step_time: Optional[str]) -> str:
     name = resolve_employee_first_name(employee)
     full_name = (employee.full_name or "").strip() or "коллега"
@@ -1014,6 +1034,10 @@ def render_telegram_message_html(db: Session, template: str, employee: Employee,
     position = (getattr(employee, "desired_position", None) or "").strip() or "не указана"
     first_workday = employee.first_workday.strftime("%d.%m.%Y") if getattr(employee, "first_workday", None) else "не указана"
     resume = resolve_employee_resume_template_value(db, employee)
+    ipr_slot = _get_employee_document_slot(db, employee.id, "ipr")
+    ipr = _render_employee_link(ipr_slot.url if ipr_slot else None, "ИПР")
+    probation_plan = _render_employee_link(employee.adaptation_tasks_url, "План испытательного срока")
+    colleague_feedback = _render_employee_link(employee.adaptation_feedback_url, "Обратная связь коллег")
     time_text = step_time or "10:00"
     links = (
         db.query(EmployeeDocumentLink)
@@ -1052,6 +1076,11 @@ def render_telegram_message_html(db: Session, template: str, employee: Employee,
             "first_workday": _escape_template_value(first_workday),
             "resume": resume,
             "резюме": resume,
+            "ipr": ipr,
+            "probation_plan": probation_plan,
+            "colleague_feedback": colleague_feedback,
+            "adaptation_tasks_url": probation_plan,
+            "adaptation_feedback_url": colleague_feedback,
             "date": _escape_template_value(anchor_date.strftime("%d.%m.%Y")),
             "time": _escape_template_value(time_text),
             "test_url": _escape_template_value(settings.TEST_URL),

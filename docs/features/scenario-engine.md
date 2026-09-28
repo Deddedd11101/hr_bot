@@ -130,6 +130,12 @@ Scenario engine превращает scenario templates плюс employee state 
 
 ## Message template tags
 
+В step/button notifications набор кнопок включает ФИО, имя, должность, первый рабочий день, резюме, ИПР, план испытательного срока и обратную связь коллег. Дополнительные ключи:
+- `{ipr}` — HTTP(S)-ссылка `employee_document_links.slot_key=ipr`, редактируемая через поле `ipr_url` карточки; не документ из Grade и не произвольный HR-файл.
+- `{probation_plan}` (алиас `{adaptation_tasks_url}`) — ссылка из поля «Задачи на ИС» (`employees.adaptation_tasks_url`).
+- `{colleague_feedback}` (алиас `{adaptation_feedback_url}`) — ссылка из поля «Обратная связь» (`employees.adaptation_feedback_url`), не агрегированный текст ответов коллег.
+Ссылки экранируются; пустое/невалидное значение дает `<название>: ссылка не указана`. Эти три тега не скачивают внешние файлы и не прикрепляют случайные документы. Существующее прикрепление файла по `{resume}` и `{doc:...}` сохраняется.
+
 - Тексты шагов сценария и scenario notifications проходят через общий TelegramSafeHTML renderer.
 - Storage не меняется: поля текста остаются `TEXT`, а старые plain text сообщения остаются валидными.
 - Runtime отправляет сообщения в Telegram HTML parse mode, но принимает только ограниченный safe subset:

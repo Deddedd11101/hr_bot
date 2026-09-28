@@ -163,6 +163,23 @@ class EmployeeApiSmokeTests(unittest.TestCase):
         payload.update(overrides)
         return payload
 
+    def test_ipr_link_roundtrip_preserve_omit_clear_and_reject_unsafe_url(self) -> None:
+        url = f"/api/employees/{self.employee_id}"
+        response = self.client.post(url, json=self._staff_update_payload(ipr_url="https://example.com/ipr"))
+        self.assertEqual(response.status_code, 200, response.text)
+        detail = self.client.get(url).json()
+        self.assertEqual(detail["employee"]["ipr_url"], "https://example.com/ipr")
+        self.assertFalse(any(item.get("slot_key") == "ipr" for item in detail["document_links"]))
+        response = self.client.post(url, json=self._staff_update_payload())
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(self.client.get(url).json()["employee"]["ipr_url"], "https://example.com/ipr")
+        response = self.client.post(url, json=self._staff_update_payload(ipr_url="javascript:alert(1)"))
+        self.assertEqual(response.status_code, 400, response.text)
+        self.assertEqual(self.client.get(url).json()["employee"]["ipr_url"], "https://example.com/ipr")
+        response = self.client.post(url, json=self._staff_update_payload(ipr_url=""))
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(self.client.get(url).json()["employee"]["ipr_url"], "")
+
     def _create_staff_employee(
         self,
         *,
@@ -692,10 +709,13 @@ class EmployeeApiSmokeTests(unittest.TestCase):
             {
                 "label": "Резюме",
                 "template": "{resume}",
-                "description": "Имя актуального resume slot из карточки; если slot пустой, fallback на последний файл категории resume. В уведомлениях также поддерживается алиас {резюме}.",
+                "description": "Актуальное резюме: ссылка или имя файла; файл также прикладывается к уведомлению. Если slot отсутствует, используется legacy resume-файл.",
             },
             notification_tags,
         )
+        self.assertTrue({"{first_workday}", "{ipr}", "{probation_plan}", "{colleague_feedback}"}.issubset(
+            {tag["template"] for tag in notification_tags}
+        ))
         options = payload["workspace"]["notification_recipient_options"]
         self.assertIn(
             {
