@@ -2634,4 +2634,18 @@ source_of_truth: true
   - no candidate data was modified and no real Telegram message was sent.
 - Открытая приемка:
   - ручная UI/Telegram проверка candidate grades, tags and editor emoji remains for Product/user;
-  - live repair requires dispatching the reviewed workflow through an available Actions channel, then fresh dry-run and guarded apply with its own backup.
+  - live repair на тот момент еще не был выполнен; он закрыт отдельной записью ниже через свежие dry-run/apply runs.
+
+### 2026-09-28 - candidate answer target repair completed
+
+- Workflow registration: узкий PR [#49](https://github.com/Deddedd11101/hr_bot/pull/49) добавил только repair workflow в `main`; `stage` целиком в `main` не переносился.
+- Live dry-run: [run 36439000989](https://github.com/Deddedd11101/hr_bot/actions/runs/36439000989) — guard matched the four reviewed rows; one row was already canonical, three required changes; SQLite не изменялся.
+- Live apply: [run 36439127745](https://github.com/Deddedd11101/hr_bot/actions/runs/36439127745) — passed.
+- Ремонт:
+  - `scenario_79dff913f06d_step_1786983499` -> `test_task_result`;
+  - `scenario_79dff913f06d_step_1787144865` -> `test_task_explanation`;
+  - два соответствующих custom scenario step-а -> `test_task_result`.
+- Backup: `backups/hr_bot.before-candidate-answer-target-repair.20260928-145201.db` создан до записи.
+- Post-verify: все четыре targets canonical; web/worker перезапущены; `/app/employees` и `/app/flows/workspace-v2` -> `303`.
+- Final Stage Diagnostics: [run 36439269543](https://github.com/Deddedd11101/hr_bot/actions/runs/36439269543) — `0 failing checks`; Telegram route, bot identity, HTTPS и worker logs в норме.
+- Восстановление из копии `D:\HRBot\stage_copies\stage_2026-09-22.db` не выполнялось; она использовалась только для read-only подтверждения плана.
