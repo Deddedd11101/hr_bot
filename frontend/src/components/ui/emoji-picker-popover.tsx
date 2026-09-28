@@ -51,7 +51,15 @@ function pickerStyle(): React.CSSProperties {
   } as React.CSSProperties;
 }
 
-export function EmojiPickerPopover({ onEmojiSelect }: { onEmojiSelect: (emoji: string) => void }) {
+export function EmojiPickerPopover({
+  onEmojiSelect,
+  disabled = false,
+  finalFocus,
+}: {
+  onEmojiSelect: (emoji: string) => void;
+  disabled?: boolean;
+  finalFocus?: React.ComponentProps<typeof PopoverContent>["finalFocus"];
+}) {
   const [open, setOpen] = React.useState(false);
   const theme = usePickerTheme();
 
@@ -65,15 +73,16 @@ export function EmojiPickerPopover({ onEmojiSelect }: { onEmojiSelect: (emoji: s
             size="icon"
             aria-label="Добавить эмоджи"
             title="Добавить эмоджи"
+            disabled={disabled}
           />
         }
       >
         <Smile />
       </PopoverTrigger>
-      <PopoverContent className="w-auto p-1" align="end">
+      <PopoverContent className="w-[min(328px,calc(100vw-24px))] p-1" align="end" finalFocus={finalFocus} aria-label="Выбор эмоджи">
         <React.Suspense
           fallback={
-            <div className="grid h-[380px] w-[320px] place-items-center text-sm text-muted-foreground">
+            <div role="status" className="grid h-[380px] w-full place-items-center text-sm text-muted-foreground">
               Загружаю эмоджи…
             </div>
           }
@@ -81,7 +90,7 @@ export function EmojiPickerPopover({ onEmojiSelect }: { onEmojiSelect: (emoji: s
           <LazyEmojiPicker
             lazyLoadEmojis
             skinTonesDisabled
-            width={320}
+            width="100%"
             height={380}
             theme={theme}
             style={pickerStyle()}

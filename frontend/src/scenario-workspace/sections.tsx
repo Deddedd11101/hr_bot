@@ -1212,9 +1212,6 @@ export function WorkspaceStepDetailPane(props: {
                         placeholder="Введите текст сообщения"
                         insertRef={stepTextInsertRef}
                       />
-                      <div className="flex justify-end">
-                        <EmojiPickerPopover onEmojiSelect={(emoji) => stepTextInsertRef.current?.(emoji)} />
-                      </div>
                     </div>
                   </>
                 )}

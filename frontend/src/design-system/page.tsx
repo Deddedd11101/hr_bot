@@ -121,6 +121,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { TelegramRichTextEditor } from "@/components/ui/telegram-rich-text-editor";
+import { DEFAULT_TELEGRAM_TEMPLATE_TAGS, TelegramMessageTools } from "@/components/ui/telegram-message-tools";
 import { ThemeSwitch } from "@/components/ui/theme-switch";
 import {
   Tooltip,
@@ -1152,6 +1153,7 @@ function FoundationsSection() {
 
 function TelegramRichTextEditorSpecimen() {
   const [value, setValue] = React.useState("Привет, {employee_full_name}! Ваш первый рабочий день — {first_workday}.");
+  const insertRef = React.useRef<((text: string) => void) | null>(null);
 
   return (
     <div className="grid gap-2">
@@ -1159,7 +1161,9 @@ function TelegramRichTextEditorSpecimen() {
         value={value}
         onChange={setValue}
         placeholder="Введите текст сообщения"
+        insertRef={insertRef}
       />
+      <TelegramMessageTools tags={DEFAULT_TELEGRAM_TEMPLATE_TAGS} onInsertTag={(text) => insertRef.current?.(text)} />
       <p className="text-xs text-muted-foreground">
         Сохраняются только TelegramSafeHTML-теги: <code>&lt;b&gt;</code>, <code>&lt;i&gt;</code>, <code>&lt;u&gt;</code>, <code>&lt;s&gt;</code>, <code>&lt;code&gt;</code> и безопасные ссылки.
       </p>
