@@ -464,6 +464,89 @@ class P0BehaviourTests(unittest.IsolatedAsyncioTestCase):
                 bot_runner.create_telegram_messenger = previous_factory
                 settings.FILE_STORAGE_DIR = previous_storage_dir
 
+    async def test_test_task_mp4_animation_counts_as_file_response(self) -> None:
+        fake_messenger = _FakeMessenger()
+        previous_factory = bot_runner.create_telegram_messenger
+        previous_storage_dir = settings.FILE_STORAGE_DIR
+        scenario_key = f"test_task_animation_{uuid4().hex[:8]}"
+        with TemporaryDirectory() as tmpdir:
+            settings.FILE_STORAGE_DIR = tmpdir
+            bot_runner.create_telegram_messenger = lambda _token: fake_messenger
+            try:
+                with SessionLocal() as db:
+                    self._create_waiting_file_scenario(db, scenario_key, target_field="test_task_result")
+                message = SimpleNamespace(
+                    from_user=SimpleNamespace(id=self.candidate_chat_id, username=None),
+                    caption=None,
+                    animation=SimpleNamespace(
+                        file_id="test-animation-id",
+                        file_unique_id="test-animation-unique",
+                        file_name=None,
+                        mime_type="video/mp4",
+                        file_size=654,
+                    ),
+                )
+
+                await bot_runner.on_animation(message, _FakeTelegramBot())
+
+                with SessionLocal() as db:
+                    slot = db.query(EmployeeDocumentLink).filter_by(
+                        employee_id=self.candidate_testing_id,
+                        slot_key="test_task_result",
+                    ).first()
+                    file_row = db.get(EmployeeFile, slot.employee_file_id) if slot else None
+                    progress = db.query(ScenarioProgress).filter_by(
+                        employee_id=self.candidate_testing_id,
+                        scenario_key=scenario_key,
+                    ).first()
+                self.assertIsNotNone(file_row)
+                self.assertEqual(file_row.original_filename, "test-animation-unique.mp4")
+                self.assertEqual(file_row.mime_type, "video/mp4")
+                self.assertIsNotNone(progress)
+                self.assertTrue(progress.is_completed)
+            finally:
+                bot_runner.create_telegram_messenger = previous_factory
+                settings.FILE_STORAGE_DIR = previous_storage_dir
+
+    async def test_video_rejected_by_waiting_step_reports_that_answer_was_not_counted(self) -> None:
+        fake_messenger = _FakeMessenger()
+        previous_factory = bot_runner.create_telegram_messenger
+        previous_storage_dir = settings.FILE_STORAGE_DIR
+        scenario_key = f"video_rejected_{uuid4().hex[:8]}"
+        with TemporaryDirectory() as tmpdir:
+            settings.FILE_STORAGE_DIR = tmpdir
+            bot_runner.create_telegram_messenger = lambda _token: fake_messenger
+            try:
+                with SessionLocal() as db:
+                    self._create_waiting_file_scenario(db, scenario_key)
+                    step = db.query(FlowStepTemplate).filter_by(flow_key=scenario_key).first()
+                    step.response_type = "buttons"
+                    db.commit()
+                message = SimpleNamespace(
+                    from_user=SimpleNamespace(id=self.candidate_chat_id, username=None),
+                    caption=None,
+                    video=SimpleNamespace(
+                        file_id="rejected-video-id",
+                        file_unique_id="rejected-video-unique",
+                        file_name=None,
+                        mime_type="video/mp4",
+                        file_size=654,
+                    ),
+                )
+
+                await bot_runner.on_video(message, _FakeTelegramBot())
+
+                self.assertTrue(any("Ответ пока не засчитан" in item["kwargs"]["text"] for item in fake_messenger.texts))
+                with SessionLocal() as db:
+                    progress = db.query(ScenarioProgress).filter_by(
+                        employee_id=self.candidate_testing_id,
+                        scenario_key=scenario_key,
+                    ).first()
+                    self.assertTrue(progress.waiting_for_response)
+            finally:
+                bot_runner.create_telegram_messenger = previous_factory
+                settings.FILE_STORAGE_DIR = previous_storage_dir
+
     async def test_test_task_video_note_answer_saves_slot_and_counts_as_file_response(self) -> None:
         fake_messenger = _FakeMessenger()
         previous_factory = bot_runner.create_telegram_messenger

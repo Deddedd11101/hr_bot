@@ -31,7 +31,7 @@ from .messaging.service import (
     resolve_inbound_access,
     save_incoming_file,
 )
-from .scenario_engine import CALLBACK_PREFIX, CHOICE_CONFIRM_CALLBACK_PREFIX
+from .scenario_engine import CALLBACK_PREFIX, CHOICE_CONFIRM_CALLBACK_PREFIX, get_waiting_progress
 from .scheduler import schedule_all_employees
 
 
@@ -149,7 +149,17 @@ async def _handle_incoming_file_like(
         if save_state != "saved" or employee is None or db_file is None:
             await messenger.close()
             return
-        await handle_saved_document(messenger, db, employee, db_file)
+        if not await handle_saved_document(messenger, db, employee, db_file):
+            logger.warning(
+                "Inbound media was saved but not accepted by a scenario step: employee_id=%s file_id=%s",
+                employee.id,
+                db_file.id,
+            )
+            if get_waiting_progress(db, employee.id):
+                await messenger.send_text(
+                    chat_id=str(user.id),
+                    text="Файл получен, но текущий шаг его не принял. Ответ пока не засчитан. Уточните ожидаемый формат ответа или обратитесь к HR.",
+                )
         await messenger.close()
 
 
@@ -215,6 +225,23 @@ async def on_video_note(message: Message, bot: Bot) -> None:
         mime_type="video/mp4",
         file_size=video_note.file_size,
         category_caption=None,
+    )
+
+
+async def on_animation(message: Message, bot: Bot) -> None:
+    animation = message.animation
+    if not animation:
+        return
+
+    mime_type = animation.mime_type or "video/mp4"
+    await _handle_incoming_file_like(
+        message,
+        bot,
+        animation,
+        original_name=_media_original_name(animation, ".gif" if mime_type == "image/gif" else ".mp4"),
+        mime_type=mime_type,
+        file_size=animation.file_size,
+        category_caption=message.caption,
     )
 
 
@@ -355,6 +382,7 @@ async def main() -> None:
     dp.message.register(on_photo, lambda message: bool(message.photo))
     dp.message.register(on_video, lambda message: message.video is not None)
     dp.message.register(on_video_note, lambda message: message.video_note is not None)
+    dp.message.register(on_animation, lambda message: message.animation is not None)
 
     scheduler = AsyncIOScheduler(timezone=settings.TIMEZONE)
     scheduler.start()
