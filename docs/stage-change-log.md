@@ -2606,3 +2606,32 @@ source_of_truth: true
 - Открытые действия:
   - live guarded repair четырех настроек не выполнен: нужен безопасный repo/Actions command channel для dry-run/apply; root password не использовался;
   - пользовательская Telegram-приемка отказа ПДн и test-task media/link остается не выполнена.
+
+### 2026-09-28 - candidate grades, editor UX and guarded answer-target repair tooling
+
+- Deploy ref: `stage`.
+- Deployed commit: `5faf339beaf62a5df9d7c979bd87961394e41f70`.
+- GitHub Actions Deploy Stage: [run 36437946845](https://github.com/Deddedd11101/hr_bot/actions/runs/36437946845).
+- Что выкачено:
+  - candidate grade model/API and employee detail UI;
+  - candidate message tags and emoji editor support;
+  - guarded workflow/tooling for the four reviewed test-task answer target corrections.
+- Проверки:
+  - Deploy Stage preflight: compileall, `ruff F821`, full backend smoke, frontend `npm ci && npm run build`, import smoke — passed;
+  - scenario configuration backup and JSON snapshot — created and verified;
+  - scenario fingerprint — unchanged;
+  - local `tools/check_docs_contracts.py`, `git diff --check` — passed.
+- Stage Diagnostics: [run 36438323678](https://github.com/Deddedd11101/hr_bot/actions/runs/36438323678), 0 failing checks.
+- Stage smoke:
+  - deployed SHA `5faf339beaf62a5df9d7c979bd87961394e41f70` and tracked worktree clean;
+  - `hr-bot-web`, `hr-bot-worker`, `wg-quick@redshield`, `caddy` — active;
+  - Telegram API IPv4 — `302`; bot username `ze_hr_bot` matches web/worker configuration; web/worker token values match;
+  - HTTPS `/app/employees`, `/app/flows/workspace-v2`, `/app/grades` — `303`;
+  - no fresh Telegram/network errors or traceback in worker logs.
+- Guarded repair status:
+  - local dry-run against the supplied `D:\HRBot\stage_copies\stage_2026-09-22.db` matched exactly the four reviewed rows and expected targets;
+  - no live apply performed: the repair workflow is present on `stage` but is not yet registered in GitHub Actions, and the supplied database copy predates this deploy;
+  - no candidate data was modified and no real Telegram message was sent.
+- Открытая приемка:
+  - ручная UI/Telegram проверка candidate grades, tags and editor emoji remains for Product/user;
+  - live repair requires dispatching the reviewed workflow through an available Actions channel, then fresh dry-run and guarded apply with its own backup.
