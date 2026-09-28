@@ -149,12 +149,13 @@ source_of_truth: true
   - контекст списка и edit links
 - `employee`
   - нормализованные editable fields карточки
+  - `ipr_url`: HTTP(S)-ссылка на ИПР из персонального slot `ipr`. `POST /api/employees/{employee_id}` принимает это optional поле: отсутствие сохраняет прежнюю ссылку, `null`/пустая строка очищает только ссылку, не файлы; невалидный URL возвращает `400` без сохранения карточки
 - `options`
   - роли, stages, доступные сценарии
 - `files`
   - generic список файлов сотрудника с download/send URLs и `category`; semantic категории `resume`, `test_result`, `test_explanation`, `offer_document` сюда не попадают
 - `document_links`
-  - generic персональные document link entries без semantic slots `resume`, `offer`, `test_task_result`, `test_task_explanation`
+  - generic персональные document link entries без semantic slots `resume`, `offer`, `test_task_result`, `test_task_explanation`, `ipr`
 - `offer_document`
   - актуальный slot оффера, если задан
 - `resume_document`

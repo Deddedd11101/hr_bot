@@ -128,6 +128,8 @@ source_of_truth: true
 
 ### Employee document slots
 
+- `employee_document_links.slot_key=ipr` хранит HTTP(S)-ссылку на индивидуальный план развития, не новую колонку `employees`. API-поле `employee.ipr_url` и optional save `ipr_url` читают/обновляют этот slot. Пропущенное поле сохраняет значение, пустое очищает только ссылки; replace/clear не удаляют `EmployeeFile` и физические файлы. Дубли при непустом save отклоняются, чтобы не угадывать актуальную запись. Slot исключен из generic `document_links`. Отдельного backfill нет.
+
 - `employee_document_links.slot_key=resume` — единственная актуальная связь резюме в карточке кандидата/сотрудника.
 - Replace/upload резюме создает новый `employee_files.category=resume` и переносит `resume` slot на новый файл.
 - Очистка resume slot удаляет только связь в `employee_document_links`; старые `employee_files.category=resume` и физические файлы остаются для аудита/legacy fallback.

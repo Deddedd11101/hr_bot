@@ -93,7 +93,7 @@ SCENARIO_STEP_TEMPLATE_TAGS = [
     {
         "label": "Имя",
         "template": "{first_name}",
-        "description": "Имя из отдельного кадрового поля; если поле пустое, тег остается пустым.",
+        "description": "Явно заданное имя или второе слово ФИО в формате «Фамилия Имя Отчество»; для одного слова используется оно.",
     },
     {
         "label": "Должность",
@@ -107,12 +107,15 @@ SCENARIO_STEP_TEMPLATE_TAGS = [
     },
 ]
 SCENARIO_NOTIFICATION_TEMPLATE_TAGS = [
-    *SCENARIO_STEP_TEMPLATE_TAGS[:3],
+    *SCENARIO_STEP_TEMPLATE_TAGS,
     {
         "label": "Резюме",
         "template": "{resume}",
-        "description": "Имя актуального resume slot из карточки; если slot пустой, fallback на последний файл категории resume. В уведомлениях также поддерживается алиас {резюме}.",
+        "description": "Актуальное резюме: ссылка или имя файла; файл также прикладывается к уведомлению. Если slot отсутствует, используется legacy resume-файл.",
     },
+    {"label": "ИПР", "template": "{ipr}", "description": "Ссылка на ИПР из карточки сотрудника."},
+    {"label": "План испытательного срока", "template": "{probation_plan}", "description": "Ссылка из поля «Задачи на ИС» карточки сотрудника."},
+    {"label": "Обратная связь коллег", "template": "{colleague_feedback}", "description": "Ссылка из поля «Обратная связь» карточки сотрудника, не текст ответов коллег."},
 ]
 MENU_TEXT_TAGS = [
     *SCENARIO_STEP_TEMPLATE_TAGS,
@@ -680,7 +683,10 @@ def _capture_response_undo_snapshot(
     }
     target_field = (step.target_field or "").strip()
     if target_field and hasattr(employee, target_field):
-        employee_before[target_field] = getattr(employee, target_field)
+        previous_value = getattr(employee, target_field)
+        if target_field == "first_workday" and isinstance(previous_value, date):
+            previous_value = previous_value.isoformat()
+        employee_before[target_field] = previous_value
     if scenario.scenario_key == RECRUITMENT_SCENARIO_KEY and step.response_type == "branching":
         employee_before["employee_stage"] = employee.employee_stage
     survey_answer = _get_latest_survey_answer(db, employee, scenario, step)
@@ -731,6 +737,8 @@ def _restore_response_undo_snapshot(
     if isinstance(employee_before, dict):
         for field_name, previous_value in employee_before.items():
             if hasattr(employee, field_name):
+                if field_name == "first_workday" and isinstance(previous_value, str):
+                    previous_value = date.fromisoformat(previous_value)
                 setattr(employee, field_name, previous_value)
 
     survey_before = snapshot.get("survey_before")
@@ -1004,7 +1012,27 @@ def _replace_template_fields(template: str, values: dict[str, str]) -> str:
 
 def resolve_employee_first_name(employee: Employee) -> str:
     explicit = (getattr(employee, "first_name", None) or "").strip()
-    return explicit
+    if explicit:
+        return explicit
+    parts = (employee.full_name or "").split()
+    return parts[1] if len(parts) > 1 else (parts[0] if parts else "")
+
+
+def _render_employee_link(url: str | None, label: str) -> str:
+    value = (url or "").strip()
+    try:
+        parsed = urlsplit(value)
+        valid = (
+            parsed.scheme.lower() in {"http", "https"}
+            and parsed.hostname and not parsed.username and not parsed.password
+            and "\\" not in value and not any(char.isspace() for char in value)
+        )
+        parsed.port
+    except ValueError:
+        valid = False
+    if not valid:
+        return f"{label}: ссылка не указана"
+    return f'<a href="{html.escape(value, quote=True)}">{html.escape(label)}</a>'
 
 
 def render_telegram_message_html(db: Session, template: str, employee: Employee, anchor_date: date, step_time: Optional[str]) -> str:
@@ -1014,6 +1042,10 @@ def render_telegram_message_html(db: Session, template: str, employee: Employee,
     position = (getattr(employee, "desired_position", None) or "").strip() or "не указана"
     first_workday = employee.first_workday.strftime("%d.%m.%Y") if getattr(employee, "first_workday", None) else "не указана"
     resume = resolve_employee_resume_template_value(db, employee)
+    ipr_slot = _get_employee_document_slot(db, employee.id, "ipr")
+    ipr = _render_employee_link(ipr_slot.url if ipr_slot else None, "ИПР")
+    probation_plan = _render_employee_link(employee.adaptation_tasks_url, "План испытательного срока")
+    colleague_feedback = _render_employee_link(employee.adaptation_feedback_url, "Обратная связь коллег")
     time_text = step_time or "10:00"
     links = (
         db.query(EmployeeDocumentLink)
@@ -1052,6 +1084,11 @@ def render_telegram_message_html(db: Session, template: str, employee: Employee,
             "first_workday": _escape_template_value(first_workday),
             "resume": resume,
             "резюме": resume,
+            "ipr": ipr,
+            "probation_plan": probation_plan,
+            "colleague_feedback": colleague_feedback,
+            "adaptation_tasks_url": probation_plan,
+            "adaptation_feedback_url": colleague_feedback,
             "date": _escape_template_value(anchor_date.strftime("%d.%m.%Y")),
             "time": _escape_template_value(time_text),
             "test_url": _escape_template_value(settings.TEST_URL),
@@ -2230,6 +2267,7 @@ async def handle_date_response_by_step_id(
     selected_date = _parse_iso_date(value)
     if not selected_date:
         return DateCallbackResult(False, "noop", None)
+    messenger = as_messenger(messenger_or_bot)
     undo_snapshot = _capture_response_undo_snapshot(db, context_employee, scenario, step)
     store_survey_answer(db, context_employee, scenario, step, selected_date.isoformat())
     if not apply_response_to_employee(db, context_employee, step, selected_date.isoformat()):
@@ -2237,8 +2275,16 @@ async def handle_date_response_by_step_id(
         return DateCallbackResult(False, "noop", None)
     context_employee.candidate_status = step.step_key
     _push_response_undo_snapshot(progress, undo_snapshot)
+    # Consume this response before the first delivery await to reject callback replays.
+    progress.waiting_for_response = False
     db.commit()
-    await advance_after_response(messenger_or_bot, db, context_employee, scenario, step)
+    chat_id = progress.recipient_chat_id or get_primary_chat_id(employee, db=db)
+    try:
+        if chat_id:
+            await messenger.send_text(chat_id=chat_id, text=f"Вы выбрали дату: {selected_date:%d.%m.%Y}")
+    finally:
+        # A failed receipt must not leave an accepted date without a follow-up step.
+        await advance_after_response(messenger_or_bot, db, context_employee, scenario, step)
     return DateCallbackResult(True, "selected", None)
 
 

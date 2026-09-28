@@ -2,6 +2,7 @@ import shutil
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Optional
+from urllib.parse import urlsplit
 
 from aiogram.exceptions import TelegramBadRequest
 from fastapi import HTTPException
@@ -54,7 +55,7 @@ RESUME_DOCUMENT_TITLE = "Резюме"
 RESUME_DOCUMENT_SLOT = "resume"
 TEST_TASK_RESULT_TITLE = "Ответ на тестовое"
 TEST_TASK_RESULT_SLOT = "test_task_result"
-SEMANTIC_DOCUMENT_SLOTS = {OFFER_DOCUMENT_SLOT, RESUME_DOCUMENT_SLOT, TEST_TASK_RESULT_SLOT, "test_task_explanation"}
+SEMANTIC_DOCUMENT_SLOTS = {OFFER_DOCUMENT_SLOT, RESUME_DOCUMENT_SLOT, TEST_TASK_RESULT_SLOT, "test_task_explanation", "ipr"}
 SEMANTIC_FILE_CATEGORIES = {"offer_document", RESUME_DOCUMENT_SLOT, "test_result", "test_explanation"}
 AUTOMATIC_LAUNCH_TYPES = {"status_transition"}
 SYSTEM_LAUNCH_TYPES = {"registration", "bot_registration", "trigger", "system"}
@@ -845,10 +846,13 @@ def _apply_employee_update(
     test_task_due_at: str,
     notes: str,
     assigned_by_account_id: int | None = None,
+    ipr_url: str | None = None,
 ) -> Employee:
     is_candidate = _employee_list_kind(employee) == "candidates"
     previous_candidate_work_stage = (employee.candidate_work_stage or "").strip() or None
     previous_notes = employee.notes
+    if ipr_url is not None:
+        _set_employee_ipr_link(db, employee.id, ipr_url)
     first_day = _parse_optional_date(first_workday)
     parsed_birth_date = _parse_optional_date(birth_date)
     previous_stage = (employee.employee_stage or "").strip()
@@ -1160,6 +1164,37 @@ def _get_employee_test_task_result_payload(db: Session, employee_id: int, slot_k
     return None
 
 
+def _set_employee_ipr_link(db: Session, employee_id: int, url: str) -> None:
+    value = url.strip()
+    if value:
+        try:
+            parsed = urlsplit(value)
+            valid = (
+                parsed.scheme.lower() in {"http", "https"} and parsed.hostname
+                and not parsed.username and not parsed.password and "\\" not in value
+                and not any(char.isspace() for char in value)
+            )
+            parsed.port
+        except ValueError:
+            valid = False
+        if not valid:
+            raise ValueError("Ссылка на ИПР должна начинаться с http:// или https:// и содержать адрес сайта.")
+    links = db.query(EmployeeDocumentLink).filter_by(employee_id=employee_id, slot_key="ipr").all()
+    if not value:
+        for link in links:
+            db.delete(link)
+        return
+    if len(links) > 1:
+        raise ValueError("В карточке несколько ссылок на ИПР. Очистите поле и сохраните актуальную ссылку заново.")
+    link = links[0] if links else EmployeeDocumentLink(employee_id=employee_id, slot_key="ipr", created_at=utc_now())
+    link.title = "ИПР"
+    link.item_kind = "link"
+    link.url = value
+    # Replacing the reference never removes a historical file.
+    link.employee_file_id = None
+    db.add(link)
+
+
 def _save_offer_document_link(db: Session, employee_id: int, url: str) -> tuple[Optional[EmployeeDocumentLink], Optional[str]]:
     url_value = url.strip()
     if not url_value:
@@ -1323,9 +1358,9 @@ def _clear_resume_document_slot(db: Session, employee_id: int) -> None:
 
 def _delete_employee_document_link(db: Session, link_row: EmployeeDocumentLink) -> None:
     employee_file_id = getattr(link_row, "employee_file_id", None)
-    is_resume_slot = (getattr(link_row, "slot_key", None) or "").strip() == RESUME_DOCUMENT_SLOT
+    preserve_file = (getattr(link_row, "slot_key", None) or "").strip() in {RESUME_DOCUMENT_SLOT, "ipr"}
     db.delete(link_row)
-    if employee_file_id and not is_resume_slot:
+    if employee_file_id and not preserve_file:
         employee_file = db.get(EmployeeFile, employee_file_id)
         if employee_file:
             file_path = Path(employee_file.stored_path)
@@ -1773,6 +1808,7 @@ def _build_employee_detail_payload(db: Session, employee: Employee) -> dict:
             "mentor_ipr_employee_id": str(employee.mentor_ipr_employee_id or ""),
             "is_manager": bool(employee.is_manager),
             "is_mentor": bool(employee.is_mentor),
+            "ipr_url": (ipr_link.url or "") if (ipr_link := _get_employee_document_slot(db, employee.id, slot_key="ipr")) else "",
             "adaptation_tasks_url": employee.adaptation_tasks_url or "",
             "adaptation_feedback_url": employee.adaptation_feedback_url or "",
             "adaptation_midpoint": employee.adaptation_midpoint.isoformat() if employee.adaptation_midpoint else "",
