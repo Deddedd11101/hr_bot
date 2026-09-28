@@ -2649,3 +2649,16 @@ source_of_truth: true
 - Post-verify: все четыре targets canonical; web/worker перезапущены; `/app/employees` и `/app/flows/workspace-v2` -> `303`.
 - Final Stage Diagnostics: [run 36439269543](https://github.com/Deddedd11101/hr_bot/actions/runs/36439269543) — `0 failing checks`; Telegram route, bot identity, HTTPS и worker logs в норме.
 - Восстановление из копии `D:\HRBot\stage_copies\stage_2026-09-22.db` не выполнялось; она использовалась только для read-only подтверждения плана.
+
+### 2026-09-28 - Telegram animation file-answer regression fix
+
+- Feature: [PR #50](https://github.com/Deddedd11101/hr_bot/pull/50), `fix/candidate-video-answer-20260928`.
+- Deployed commit: `8149b9c8bd003bb5f4a8957fce1c186c7b46341f`.
+- GitHub Actions Deploy Stage: [run 36442875827](https://github.com/Deddedd11101/hr_bot/actions/runs/36442875827) — preflight and deploy passed.
+- Что изменено:
+  - Telegram `animation` обрабатывается как file-answer вместе с `video`/`video_note`;
+  - если media сохранено, но ожидающий шаг его не засчитал, бот отправляет явное сообщение об этом;
+  - добавлены регрессионные тесты и обновлены live docs.
+- Проверки: CI PR #50, локальные `compileall`, `ruff F821`, `tools/check_docs_contracts.py`, `tests.test_p0_behaviour` (17 tests), `git diff --check` — passed.
+- Final Stage Diagnostics: [run 36443104071](https://github.com/Deddedd11101/hr_bot/actions/runs/36443104071) — `0 failing checks`; services, WireGuard, Telegram route, HTTPS and worker logs are healthy.
+- Ограничение приемки: реальный пользовательский ролик не классифицирован независимо как `video` или `animation`; ручная Telegram-проверка обычного видео и animation остается открытой. Реальные сообщения кандидатам без согласованного recipient не отправлялись.
