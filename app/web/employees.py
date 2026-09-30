@@ -804,15 +804,18 @@ def _create_employee_record(
     db.add(employee)
     db.flush()
     sync_legacy_telegram_account(db, employee)
-    db.add(
-        FlowLaunchRequest(
-            employee_id=employee.id,
-            flow_key="recruitment_hiring",
-            requested_at=utc_now(),
-            processed_at=None,
-            launch_type="registration",
+    # Staff cards are only linked to Telegram; the candidate registration flow must not leave
+    # a waiting step that later blocks employee surveys.
+    if employee.employee_stage == "candidate":
+        db.add(
+            FlowLaunchRequest(
+                employee_id=employee.id,
+                flow_key="recruitment_hiring",
+                requested_at=utc_now(),
+                processed_at=None,
+                launch_type="registration",
+            )
         )
-    )
     db.commit()
     db.refresh(employee)
     return employee
