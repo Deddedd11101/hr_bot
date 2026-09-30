@@ -158,7 +158,6 @@ async def launch_feedback_survey_api(
     active_progress = db.query(ScenarioProgress).filter(
         ScenarioProgress.employee_id.in_(recipient_ids),
         ScenarioProgress.is_completed.is_(False),
-        ScenarioProgress.current_step_key.is_not(None),
     ).first()
     if active_progress or any(get_waiting_progress(db, item.id) is not None for item in recipients):
         raise HTTPException(status_code=409, detail="У одного из выбранных сотрудников уже есть незавершённый сценарий.")

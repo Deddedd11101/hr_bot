@@ -147,9 +147,14 @@ class EmployeeFeedbackSurveyTests(TestCase):
             self.assertEqual(progress.feedback_run_id, run_id)
             progress.current_step_key = None
             db.commit()
+            self.assertEqual(self._launch([self.first_id], messenger).status_code, 409)
             self.assertFalse(asyncio.run(start_scenario(messenger, db, db.get(Employee, self.first_id), self.scenario_key)))
+            self.assertFalse(asyncio.run(start_scenario(
+                messenger, db, db.get(Employee, self.first_id), self.scenario_key, feedback_run_id=run_id,
+            )))
             db.refresh(progress)
             self.assertEqual(progress.feedback_run_id, run_id)
+            self.assertEqual(len(messenger.messages), 1)
 
     def test_excel_escapes_formula_answer(self):
         messenger = FakeMessenger()

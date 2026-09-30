@@ -2708,7 +2708,6 @@ async def start_scenario(
         active_progress = db.query(ScenarioProgress).filter(
             ScenarioProgress.employee_id == employee.id,
             ScenarioProgress.is_completed.is_(False),
-            ScenarioProgress.current_step_key.is_not(None),
         ).first()
         if active_progress is not None or get_waiting_progress(db, employee.id) is not None:
             return False
