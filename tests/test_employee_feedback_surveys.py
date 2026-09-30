@@ -32,6 +32,11 @@ class FakeMessenger:
         pass
 
 
+class FailingMessenger(FakeMessenger):
+    async def send_text(self, chat_id, text, reply_markup=None):
+        raise RuntimeError("simulated Telegram failure")
+
+
 class EmployeeFeedbackSurveyTests(TestCase):
     @classmethod
     def setUpClass(cls):
@@ -140,12 +145,35 @@ class EmployeeFeedbackSurveyTests(TestCase):
             self.assertFalse(asyncio.run(start_scenario(messenger, db, db.get(Employee, self.first_id), self.scenario_key)))
             db.refresh(progress)
             self.assertEqual(progress.feedback_run_id, run_id)
+            progress.current_step_key = None
+            db.commit()
+            self.assertFalse(asyncio.run(start_scenario(messenger, db, db.get(Employee, self.first_id), self.scenario_key)))
+            db.refresh(progress)
+            self.assertEqual(progress.feedback_run_id, run_id)
 
     def test_excel_escapes_formula_answer(self):
         messenger = FakeMessenger()
         self.assertEqual(self._launch([self.first_id], messenger).status_code, 200)
         self._answer(self.first_id, "=2+2", messenger)
         self.assertEqual(self._sheet_rows()[1][4], "'=2+2")
+
+    def test_question_snapshot_precedes_template_edit(self):
+        messenger = FakeMessenger()
+        self.assertEqual(self._launch([self.first_id], messenger).status_code, 200)
+        with SessionLocal() as db:
+            db.query(FlowStepTemplate).filter_by(flow_key=self.scenario_key, step_key="question").one().custom_text = "Другой вопрос"
+            db.commit()
+        self._answer(self.first_id, "Ответ на старый вопрос", messenger)
+        self.assertEqual(self._sheet_rows()[1][3], "Как работает Анна Объект, Дизайнер?")
+
+    def test_failed_first_send_does_not_leave_active_progress(self):
+        response = self._launch([self.first_id], FailingMessenger())
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()["runs"][0]["failed_count"], 1)
+        with SessionLocal() as db:
+            progress = db.query(ScenarioProgress).filter_by(employee_id=self.first_id, scenario_key=self.scenario_key).one()
+            self.assertTrue(progress.is_completed)
+            self.assertFalse(progress.waiting_for_response)
 
     def test_survey_audience_is_visible_and_enforced(self):
         with SessionLocal() as db:

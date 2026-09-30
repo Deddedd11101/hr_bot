@@ -46,6 +46,15 @@ def _subject(db: Session, employee_id: int) -> Employee:
     return employee
 
 
+def _finish_failed_start(db: Session, employee_id: int, scenario_key: str, run_id: int) -> None:
+    progress = db.query(ScenarioProgress).filter_by(employee_id=employee_id, scenario_key=scenario_key).first()
+    if progress and progress.feedback_run_id == run_id:
+        progress.waiting_for_response = False
+        progress.is_completed = True
+        progress.completed_at = utc_now()
+        progress.last_delivery_error = progress.last_delivery_error or "Не удалось отправить опрос."
+
+
 def _feedback_payload(db: Session, subject: Employee) -> dict:
     surveys = (
         db.query(ScenarioTemplate)
@@ -173,11 +182,14 @@ async def launch_feedback_survey_api(
                 )
                 if row.delivery_status != "completed":
                     row.delivery_status = "sent" if started else "failed"
+                if not started:
+                    _finish_failed_start(db, recipient.id, scenario_key, run.id)
             except Exception:
                 logger.exception("Feedback survey delivery failed for run=%s recipient=%s", run.id, recipient.id)
                 db.rollback()
                 row = db.query(EmployeeFeedbackRecipient).filter_by(run_id=run.id, respondent_employee_id=recipient.id).one()
                 row.delivery_status = "failed"
+                _finish_failed_start(db, recipient.id, scenario_key, run.id)
             db.commit()
     finally:
         await messenger.close()

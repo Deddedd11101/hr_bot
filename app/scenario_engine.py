@@ -396,16 +396,9 @@ def store_survey_answer(
     answer.answered_at = utc_now()
     if feedback_run_id is not None:
         answer.respondent_name = (employee.full_name or "").strip() or f"Сотрудник #{employee.id}"
-        run = db.get(EmployeeFeedbackRun, feedback_run_id)
-        subject = db.get(Employee, run.subject_employee_id) if run else None
-        if subject and answer.question_text is None:
-            rendered = format_message(
-                db, resolve_step_message_template(step), subject,
-                scenario_anchor_date(subject, scenario) or datetime.now(_get_tz()).date(), step.send_time,
-            )
-            parser = _PlainTextCollector()
-            parser.feed(rendered)
-            answer.question_text = "".join(parser.parts).strip() or step.step_title
+        if answer.question_text is None:
+            progress = db.query(ScenarioProgress).filter_by(employee_id=employee.id, scenario_key=scenario.scenario_key).first()
+            answer.question_text = (progress.feedback_question_text if progress else None) or step.step_title
 
 
 class _PlainTextCollector(HTMLParser):
@@ -502,6 +495,7 @@ def reset_progress(db: Session, employee_id: int, scenario_key: str) -> Scenario
     progress.updated_at = now
     progress.completed_at = None
     progress.feedback_run_id = None
+    progress.feedback_question_text = None
     return progress
 
 
@@ -2079,6 +2073,10 @@ async def send_step(
     anchor_date = scenario_anchor_date(template_employee, scenario) or datetime.now(_get_tz()).date()
     message_template = resolve_step_message_template(step)
     message_text = format_message(db, message_template, template_employee, anchor_date, step.send_time)
+    if progress.feedback_run_id is not None:
+        parser = _PlainTextCollector()
+        parser.feed(message_text)
+        progress.feedback_question_text = "".join(parser.parts).strip() or step.step_title
     attachment_document_item, attachment_document_error = _resolve_step_attachment_document_item_with_error(db, step)
     attachment_document_configured = bool(getattr(step, "attachment_document_item_id", None))
     old_attachment_path = (getattr(step, "attachment_path", None) or "").strip()
@@ -2700,7 +2698,6 @@ async def start_scenario(
             ScenarioProgress.employee_id == employee.id,
             ScenarioProgress.feedback_run_id.is_not(None),
             ScenarioProgress.is_completed.is_(False),
-            ScenarioProgress.current_step_key.is_not(None),
         ).first()
         if active_feedback is not None:
             return False

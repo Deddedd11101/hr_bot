@@ -928,6 +928,7 @@ class ScenarioProgress(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     feedback_run_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
+    feedback_question_text: Mapped[Optional[str]] = mapped_column(String(4096), nullable=True)
 
 
 class SurveyAnswer(Base):

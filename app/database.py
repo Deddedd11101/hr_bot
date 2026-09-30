@@ -593,6 +593,7 @@ def _ensure_sqlite_schema() -> None:
                         updated_at DATETIME NOT NULL,
                         completed_at DATETIME,
                         feedback_run_id INTEGER,
+                        feedback_question_text VARCHAR(4096),
                         PRIMARY KEY (id)
                     )
                     """
@@ -634,6 +635,8 @@ def _ensure_sqlite_schema() -> None:
                 conn.execute(text("ALTER TABLE scenario_progress ADD COLUMN last_delivery_error TEXT"))
             if "feedback_run_id" not in progress_columns:
                 conn.execute(text("ALTER TABLE scenario_progress ADD COLUMN feedback_run_id INTEGER"))
+            if "feedback_question_text" not in progress_columns:
+                conn.execute(text("ALTER TABLE scenario_progress ADD COLUMN feedback_question_text VARCHAR(4096)"))
             conn.execute(text("CREATE INDEX IF NOT EXISTS ix_scenario_progress_feedback_run_id ON scenario_progress (feedback_run_id)"))
 
         employee_document_link_columns = {
