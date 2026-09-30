@@ -5553,6 +5553,47 @@ class EmployeeApiSmokeTests(unittest.TestCase):
             self.assertEqual(messenger.sent_texts, [])
             self.assertNotIn((chat_id, registration_text), messenger.sent_texts)
 
+    def test_admin_create_queues_registration_only_for_candidate_cards(self) -> None:
+        created_ids: list[int] = []
+        try:
+            for list_kind, stage, expected in (
+                ("employees", "staff", 0),
+                ("employees", "adaptation", 0),
+                ("candidates", "", 1),
+            ):
+                response = self.client.post(
+                    "/api/employees",
+                    json={
+                        "list_kind": list_kind,
+                        "full_name": f"Create launch {stage or 'candidate'} {self.unique_tag}",
+                        "chat_handle": f"create_{stage or 'candidate'}_{self.unique_tag}",
+                        "employee_stage": stage,
+                    },
+                )
+                self.assertEqual(response.status_code, 200, response.text)
+                employee_id = response.json()["item"]["id"]
+                created_ids.append(employee_id)
+                with SessionLocal() as db:
+                    launches = (
+                        db.query(FlowLaunchRequest)
+                        .filter(
+                            FlowLaunchRequest.employee_id == employee_id,
+                            FlowLaunchRequest.launch_type == "registration",
+                        )
+                        .count()
+                    )
+                self.assertEqual(launches, expected, f"list_kind={list_kind} stage={stage}")
+        finally:
+            with SessionLocal() as db:
+                db.query(FlowLaunchRequest).filter(FlowLaunchRequest.employee_id.in_(created_ids)).delete(
+                    synchronize_session=False
+                )
+                db.query(EmployeeMessengerAccount).filter(EmployeeMessengerAccount.employee_id.in_(created_ids)).delete(
+                    synchronize_session=False
+                )
+                db.query(Employee).filter(Employee.id.in_(created_ids)).delete(synchronize_session=False)
+                db.commit()
+
     def test_bot_start_keeps_blocked_matched_user_blocked(self) -> None:
         username = f"blocked_link_{self.unique_tag}"
         chat_id = str(964000000000 + (uuid4().int % 100000000000))
