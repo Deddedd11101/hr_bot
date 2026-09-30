@@ -10,6 +10,7 @@ import {
     updatePayloadState,
 } from "./helpers";
 import { PageDetailHeader } from "@/components/ui/page-header";
+import { EmployeeFeedbackSurveys } from "./feedback-surveys";
 import { type TelegramCustomEmoji, type TelegramTemplateTag } from "@/components/ui/telegram-message-tools";
 import {
     EmployeeDetailError,
@@ -888,6 +889,7 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
                         onHrNoteDraftChange={handleHrNoteDraftChange}
                         onFirstWorkdayChange={handleFirstWorkdayChange}
                     />
+                {!isCandidate && <EmployeeFeedbackSurveys employeeId={Number(form.id)} legacyUrl={form.adaptation_feedback_url} />}
                 <EmployeeOperationsSection
                     opsState={opsState}
                     offerUrl={offerUrl}

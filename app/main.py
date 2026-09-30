@@ -70,6 +70,7 @@ from .web.bulk_actions import (
 )
 from .web.dashboard_routes import router as dashboard_router
 from .web.employee_routes import router as employee_router
+from .web.feedback_surveys import router as feedback_surveys_router
 from .web.employees import (
     CANDIDATE_WORK_STAGE_VALUES,
     EMPLOYEE_STAGE_VALUES,
@@ -175,6 +176,7 @@ app.include_router(dashboard_router)
 app.include_router(document_router)
 app.include_router(grade_router)
 app.include_router(employee_router)
+app.include_router(feedback_surveys_router)
 app.include_router(bulk_action_router)
 app.include_router(scenario_router)
 app.include_router(settings_router)

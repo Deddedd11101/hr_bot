@@ -1856,7 +1856,7 @@ def export_survey_results(
     )
     answers = (
         db.query(SurveyAnswer)
-        .filter(SurveyAnswer.scenario_key == scenario.scenario_key)
+        .filter(SurveyAnswer.scenario_key == scenario.scenario_key, SurveyAnswer.feedback_run_id.is_(None))
         .order_by(SurveyAnswer.employee_id, SurveyAnswer.answered_at, SurveyAnswer.id)
         .all()
     )

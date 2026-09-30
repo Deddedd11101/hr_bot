@@ -852,12 +852,12 @@ export function EmployeeProfileSection(props: any) {
                                     />
                                 </Field>
                                 <Field>
-                                    <FieldLabel>Обратная связь</FieldLabel>
+                                    <FieldLabel>Ссылка на прежнюю обратную связь</FieldLabel>
                                     <Input
                                         type="url"
                                         inputMode="url"
                                         name="adaptation_feedback_url"
-                                        value={form.adaptation_feedback_url}
+                                        value={form.adaptation_feedback_url || ""}
                                         onChange={handleChange}
                                         placeholder="https://..."
                                     />

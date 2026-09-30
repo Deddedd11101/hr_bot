@@ -27,6 +27,8 @@ from ..models import (
     Employee,
     EmployeeAssignmentHistory,
     EmployeeDocumentLink,
+    EmployeeFeedbackRecipient,
+    EmployeeFeedbackRun,
     EmployeeFile,
     EmployeeGradeProfile,
     EmployeeHrNote,
@@ -37,6 +39,7 @@ from ..models import (
     GradeAssessmentValue,
     ScenarioProgress,
     ScenarioTemplate,
+    SurveyAnswer,
 )
 from ..positions import employee_position_values, resolve_employee_position_value
 from ..scenario_engine import (
@@ -1382,6 +1385,10 @@ def _incomplete_scenario_progress_filter():
 
 
 def _delete_employee_active_scenario_runtime_state(db: Session, employee_id: int) -> None:
+    db.query(EmployeeFeedbackRecipient).filter(
+        EmployeeFeedbackRecipient.respondent_employee_id == employee_id,
+        EmployeeFeedbackRecipient.delivery_status.in_(["pending", "sent"]),
+    ).update({EmployeeFeedbackRecipient.delivery_status: "unavailable"}, synchronize_session=False)
     db.query(ScenarioProgress).filter(
         _incomplete_scenario_progress_filter(),
         or_(
@@ -1421,7 +1428,23 @@ def _delete_employee_record(db: Session, employee: Employee) -> str:
     db.query(EmployeeMessengerAccount).filter(
         EmployeeMessengerAccount.employee_id == employee_id,
     ).delete(synchronize_session=False)
+    subject_run_ids = select(EmployeeFeedbackRun.id).where(EmployeeFeedbackRun.subject_employee_id == employee_id)
+    db.query(ScenarioProgress).filter(ScenarioProgress.feedback_run_id.in_(subject_run_ids)).delete(synchronize_session=False)
+    db.query(SurveyAnswer).filter(SurveyAnswer.feedback_run_id.in_(subject_run_ids)).delete(synchronize_session=False)
+    db.query(EmployeeFeedbackRecipient).filter(EmployeeFeedbackRecipient.run_id.in_(subject_run_ids)).delete(synchronize_session=False)
+    db.query(EmployeeFeedbackRun).filter(EmployeeFeedbackRun.subject_employee_id == employee_id).delete(synchronize_session=False)
+    db.query(EmployeeFeedbackRecipient).filter(
+        EmployeeFeedbackRecipient.respondent_employee_id == employee_id,
+        EmployeeFeedbackRecipient.delivery_status.in_(["pending", "sent"]),
+    ).update({EmployeeFeedbackRecipient.delivery_status: "unavailable"}, synchronize_session=False)
     _delete_employee_related_scenario_state(db, employee_id)
+    db.query(SurveyAnswer).filter(
+        SurveyAnswer.employee_id == employee_id,
+        SurveyAnswer.feedback_run_id.is_not(None),
+    ).delete(synchronize_session=False)
+    db.query(EmployeeFeedbackRecipient).filter(
+        EmployeeFeedbackRecipient.respondent_employee_id == employee_id,
+    ).delete(synchronize_session=False)
     employee_files = db.query(EmployeeFile).filter(EmployeeFile.employee_id == employee_id).all()
     for file_row in employee_files:
         path = Path(file_row.stored_path)

@@ -23,6 +23,8 @@ from ..flow_templates import (
 from ..positions import build_role_scope_labels, parse_role_scopes, role_scope_label
 from ..models import (
     DocumentLibraryItem,
+    EmployeeFeedbackRecipient,
+    EmployeeFeedbackRun,
     FlowLaunchRequest,
     FlowStepTemplate,
     ScenarioProgress,
@@ -1315,12 +1317,21 @@ def _copy_template_entity(db: Session, scenario: ScenarioTemplate) -> ScenarioTe
 
 
 def _delete_template_entity(db: Session, scenario: ScenarioTemplate) -> None:
+    feedback_run_ids = [run.id for run in db.query(EmployeeFeedbackRun).filter_by(scenario_key=scenario.scenario_key).all()]
+    if feedback_run_ids:
+        db.query(EmployeeFeedbackRecipient).filter(
+            EmployeeFeedbackRecipient.run_id.in_(feedback_run_ids),
+            EmployeeFeedbackRecipient.delivery_status.in_(["pending", "sent"]),
+        ).update({EmployeeFeedbackRecipient.delivery_status: "unavailable"}, synchronize_session=False)
     for step in db.query(FlowStepTemplate).filter(FlowStepTemplate.flow_key == scenario.scenario_key).all():
         _delete_step_attachment_file(step)
     db.query(StepButtonNotification).filter(StepButtonNotification.flow_key == scenario.scenario_key).delete()
     db.query(StepSendNotification).filter(StepSendNotification.flow_key == scenario.scenario_key).delete()
     db.query(FlowStepTemplate).filter(FlowStepTemplate.flow_key == scenario.scenario_key).delete()
     db.query(ScenarioProgress).filter(ScenarioProgress.scenario_key == scenario.scenario_key).delete()
-    db.query(SurveyAnswer).filter(SurveyAnswer.scenario_key == scenario.scenario_key).delete()
+    db.query(SurveyAnswer).filter(
+        SurveyAnswer.scenario_key == scenario.scenario_key,
+        SurveyAnswer.feedback_run_id.is_(None),
+    ).delete()
     db.query(FlowLaunchRequest).filter(FlowLaunchRequest.flow_key == scenario.scenario_key).delete()
     db.delete(scenario)
