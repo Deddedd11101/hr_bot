@@ -34,6 +34,15 @@ source_of_truth: true
 
 ## Записи
 
+### 2026-09-30 16:05 MSK - app deploy - сообщение без ответа в опросе и выгрузка по запускам
+
+- Deploy ref: `stage`; deployed SHA: `792a6b9cd9b938d005422aa01271f5f0880bb5de`; PR [#55](https://github.com/Deddedd11101/hr_bot/pull/55); [Deploy Stage 36718971096](https://github.com/Deddedd11101/hr_bot/actions/runs/36718971096) -> success.
+- Шаг опроса можно пометить «Сообщение без ответа» (`response_type=none`): бот не ждёт ответа и завершает опрос. Причина: в опросе 62 «Сбор ОС о сотруднике» благодарность последним шагом была вопросом и держала progress незавершённым (409 на следующий запуск).
+- В карточке у каждого адресного запуска свой XLSX (`/api/employees/{id}/feedback-surveys/runs/{run_id}/export`); `?v=` bump для app.css, employee-detail.js, scenario-workspace.js.
+- Проверки: 354 backend-теста, compileall, Ruff F821, `npm run build`, docs-check и CI PR #55 -> passed; локальная браузерная проверка на изолированной БД.
+- [Stage Diagnostics 36719227074](https://github.com/Deddedd11101/hr_bot/actions/runs/36719227074) -> success, 0 failing checks. Read-only проверка в UI: карточка #80 грузит `employee-detail.js?v=51`, у запусков №3 и №4 отдельные файлы `feedback_employee_80_run_{3,4}.xlsx` (200).
+- Осталось вручную: в опросе 62 отметить шаг «Спасибо за ответы!» как «Сообщение без ответа». Сценарий в Telegram после этого не проверен.
+
 ### 2026-09-30 13:53 MSK - app deploy - карточка сотрудника без автозапуска регистрации
 
 - Deploy ref: `stage`; deployed SHA: `f76f7e89ab8eb58e1364e800ec9db845290d1f9e`; PR [#53](https://github.com/Deddedd11101/hr_bot/pull/53); [Deploy Stage 36704986008](https://github.com/Deddedd11101/hr_bot/actions/runs/36704986008) -> success.
