@@ -34,6 +34,15 @@ source_of_truth: true
 
 ## Записи
 
+### 2026-09-30 12:52 MSK - app deploy - адресный опрос об обратной связи из карточки
+
+- Deploy ref: `stage`; deployed SHA: `306cee10599d1dd210e296d099ca25fe07439c00`; PR [#51](https://github.com/Deddedd11101/hr_bot/pull/51); [Deploy Stage 36698509913](https://github.com/Deddedd11101/hr_bot/actions/runs/36698509913) -> success.
+- В карточке сотрудника можно запустить опрос для выбранных коллег с фильтром по должности. Ответы с ФИО отвечавших собираются в один актуальный XLSX этой карточки; файл строится при скачивании по всем адресным запускам. Добавлены отдельное хранение запусков и снимок вопроса при отправке.
+- Проверки объединённого ref: 204 backend-теста, compileall, Ruff F821, docs-check, `npm ci`, frontend build -> passed; preflight Deploy Stage также прошёл полный набор тестов и сборку.
+- Backup: `backups/hr_bot.before-deploy.20260930-095016.db`, `PRAGMA quick_check` passed; scenario snapshot: `backups/scenarios.before-deploy.20260930-095016.json`; fingerprint конфигурации сценариев не изменился.
+- [Stage Diagnostics 36698718273](https://github.com/Deddedd11101/hr_bot/actions/runs/36698718273) -> success: deployed SHA подтверждён, tracked worktree clean, web/worker/WireGuard/Caddy active, Telegram IPv4 reachable, bot identity совпадает, HTTPS `/app/employees`, `/app/flows/workspace-v2`, `/app/grades` -> `303`, свежих Telegram/network ошибок нет; 0 failing checks.
+- Пользовательский сценарий в браузере и Telegram не проверен: запуск из карточки, ответы двух коллег с задержкой и скачивание общего Excel требуют тестовых участников. Остаточный риск: два строго одновременных запроса запуска не резервируются атомарно между HTTP-запросами.
+
 ### 2026-09-20 19:32 MSK - app deploy - sync дизайна из hrbot-ui
 
 - Deploy ref: `stage`; deployed SHA: `4bfcebcb2183e1f5afb3ea4c5d9f9cdd9d18ed3b`; run [35522815885](https://github.com/Deddedd11101/hr_bot/actions/runs/35522815885) -> success (preflight + deploy).
