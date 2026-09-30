@@ -518,13 +518,16 @@ def get_waiting_progress(db: Session, employee_id: int) -> Optional[ScenarioProg
     )
 
 
-def get_active_progress_for_recipient(db: Session, employee_id: int) -> Optional[ScenarioProgress]:
+def get_conflicting_progress_for_survey_launch(
+    db: Session, employee_id: int, scenario_key: str,
+) -> Optional[ScenarioProgress]:
     return (
         db.query(ScenarioProgress)
         .filter(
             or_(
                 ScenarioProgress.recipient_employee_id == employee_id,
                 ScenarioProgress.recipient_employee_id.is_(None) & (ScenarioProgress.employee_id == employee_id),
+                (ScenarioProgress.employee_id == employee_id) & (ScenarioProgress.scenario_key == scenario_key),
             ),
             ScenarioProgress.is_completed.is_(False),
             or_(
@@ -2725,7 +2728,7 @@ async def start_scenario(
         feedback_run = db.get(EmployeeFeedbackRun, feedback_run_id)
         if not feedback_run or feedback_run.scenario_key != scenario_key or not is_survey(scenario):
             return False
-        if get_active_progress_for_recipient(db, employee.id) is not None:
+        if get_conflicting_progress_for_survey_launch(db, employee.id, scenario_key) is not None:
             return False
     first_step = get_first_step(db, scenario_key)
     if not first_step:

@@ -184,6 +184,31 @@ class EmployeeFeedbackSurveyTests(TestCase):
         with SessionLocal() as db:
             self.assertEqual(db.query(EmployeeFeedbackRun).filter_by(subject_employee_id=self.subject_id).count(), 0)
 
+    def test_same_scenario_context_progress_for_other_recipient_is_not_reset(self):
+        with SessionLocal() as db:
+            progress = get_or_create_progress(db, self.first_id, self.scenario_key)
+            progress.recipient_employee_id = self.second_id
+            progress.current_step_key = "question"
+            progress.waiting_for_response = True
+            db.commit()
+            progress_id = progress.id
+        response = self._launch([self.first_id], FakeMessenger())
+        self.assertEqual(response.status_code, 409)
+        with SessionLocal() as db:
+            run = EmployeeFeedbackRun(
+                subject_employee_id=self.subject_id, scenario_key=self.scenario_key,
+                scenario_title="Обратная связь", created_at=datetime.now(UTC).replace(tzinfo=None),
+            )
+            db.add(run)
+            db.flush()
+            self.assertFalse(asyncio.run(start_scenario(
+                FakeMessenger(), db, db.get(Employee, self.first_id), self.scenario_key, feedback_run_id=run.id,
+            )))
+            progress = db.get(ScenarioProgress, progress_id)
+            self.assertEqual(progress.recipient_employee_id, self.second_id)
+            self.assertEqual(progress.current_step_key, "question")
+            self.assertTrue(progress.waiting_for_response)
+
     def test_excel_escapes_formula_answer(self):
         messenger = FakeMessenger()
         self.assertEqual(self._launch([self.first_id], messenger).status_code, 200)

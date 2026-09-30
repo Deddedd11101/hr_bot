@@ -21,7 +21,7 @@ from ..models import (
     ScenarioTemplate,
     SurveyAnswer,
 )
-from ..scenario_engine import get_active_progress_for_recipient, get_first_step, matches_role_scope, start_scenario
+from ..scenario_engine import get_conflicting_progress_for_survey_launch, get_first_step, matches_role_scope, start_scenario
 from ..time_utils import utc_now
 from .support import require_api_auth
 
@@ -156,14 +156,14 @@ async def launch_feedback_survey_api(
     ):
         raise HTTPException(status_code=400, detail="Некоторые сотрудники недоступны для этого опроса или не привязаны к боту.")
     for recipient in recipients:
-        active_progress = get_active_progress_for_recipient(db, recipient.id)
+        active_progress = get_conflicting_progress_for_survey_launch(db, recipient.id, scenario_key)
         if active_progress is not None:
             active_scenario = db.query(ScenarioTemplate).filter_by(scenario_key=active_progress.scenario_key).first()
             scenario_title = active_scenario.title if active_scenario else active_progress.scenario_key
             recipient_name = recipient.full_name or f"Сотрудник #{recipient.id}"
             raise HTTPException(
                 status_code=409,
-                detail=f"{recipient_name}: уже идёт сценарий «{scenario_title}». Опрос не отправлен, чтобы ответы не перепутались.",
+                detail=f"{recipient_name}: запуск конфликтует с незавершённым сценарием «{scenario_title}». Опрос не отправлен, чтобы ответы не перепутались.",
             )
     if not settings.TELEGRAM_BOT_TOKEN:
         raise HTTPException(status_code=400, detail="Не задан токен Telegram-бота.")
