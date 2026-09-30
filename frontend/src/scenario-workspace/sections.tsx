@@ -1372,7 +1372,28 @@ export function WorkspaceStepDetailPane(props: {
                   </div>
                 ) : null}
 
-                {isSurveyWorkspace || supportsButtonOptions(form?.response_type || "") ? (
+                {isSurveyWorkspace ? (
+                  <label className="flex items-start gap-3 rounded-lg border border-border bg-muted/40 p-3">
+                    <Checkbox
+                      checked={form?.response_type === "none"}
+                      onCheckedChange={(checked) =>
+                        onFormChange((prev) =>
+                          prev
+                            ? { ...prev, response_type: checked === true ? "none" : "text", button_options: checked === true ? "" : prev.button_options }
+                            : prev,
+                        )
+                      }
+                    />
+                    <span className="grid gap-1 text-sm">
+                      <span className="font-semibold text-foreground/80">Сообщение без ответа</span>
+                      <span className="text-muted-foreground">
+                        Бот отправит текст и не будет ждать ответа. Подходит для благодарности в конце: опрос завершится сразу после него.
+                      </span>
+                    </span>
+                  </label>
+                ) : null}
+
+                {(isSurveyWorkspace && form?.response_type !== "none") || (!isSurveyWorkspace && supportsButtonOptions(form?.response_type || "")) ? (
                   <label className="grid gap-2">
                     <span className="text-sm font-semibold text-foreground/75">
                       {isSurveyWorkspace ? "Варианты ответа" : "Кнопки"}

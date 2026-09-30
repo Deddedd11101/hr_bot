@@ -6,6 +6,7 @@ from io import BytesIO
 from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from openpyxl import Workbook
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from ..config import settings
@@ -79,10 +80,13 @@ def _feedback_payload(db: Session, subject: Employee) -> dict:
         db.query(EmployeeFeedbackRecipient).filter(EmployeeFeedbackRecipient.run_id.in_(run_ids)).all()
         if run_ids else []
     )
-    answer_count = (
-        db.query(SurveyAnswer).filter(SurveyAnswer.feedback_run_id.in_(run_ids)).count()
-        if run_ids else 0
-    )
+    run_answer_counts = dict(
+        db.query(SurveyAnswer.feedback_run_id, func.count(SurveyAnswer.id))
+        .filter(SurveyAnswer.feedback_run_id.in_(run_ids))
+        .group_by(SurveyAnswer.feedback_run_id)
+        .all()
+    ) if run_ids else {}
+    answer_count = sum(run_answer_counts.values())
     scenario_titles = {survey.scenario_key: survey.title for survey in surveys}
     return {
         "surveys": [
@@ -110,6 +114,11 @@ def _feedback_payload(db: Session, subject: Employee) -> dict:
                 "recipient_count": sum(row.run_id == run.id for row in recipient_rows),
                 "completed_count": sum(row.run_id == run.id and row.delivery_status == "completed" for row in recipient_rows),
                 "failed_count": sum(row.run_id == run.id and row.delivery_status == "failed" for row in recipient_rows),
+                "answer_count": run_answer_counts.get(run.id, 0),
+                "download_url": (
+                    f"/api/employees/{subject.id}/feedback-surveys/runs/{run.id}/export"
+                    if run_answer_counts.get(run.id) else None
+                ),
             }
             for run in runs
         ],
@@ -199,20 +208,14 @@ async def launch_feedback_survey_api(
     return _feedback_payload(db, subject)
 
 
-@router.get("/api/employees/{employee_id}/feedback-surveys/export")
-def export_feedback_survey_api(request: Request, employee_id: int, db: Session = Depends(get_db)):
-    require_api_auth(request)
-    subject = _subject(db, employee_id)
-    runs = db.query(EmployeeFeedbackRun).filter_by(subject_employee_id=subject.id).all()
+def _feedback_export_response(db: Session, runs: list[EmployeeFeedbackRun], filename: str) -> StreamingResponse:
     run_ids = [run.id for run in runs]
-    if not run_ids:
-        raise HTTPException(status_code=404, detail="Ответов обратной связи пока нет.")
     answers = (
         db.query(SurveyAnswer)
         .filter(SurveyAnswer.feedback_run_id.in_(run_ids))
         .order_by(SurveyAnswer.answered_at, SurveyAnswer.id)
         .all()
-    )
+    ) if run_ids else []
     if not answers:
         raise HTTPException(status_code=404, detail="Ответов обратной связи пока нет.")
     runs_by_id = {run.id: run for run in runs}
@@ -239,5 +242,23 @@ def export_feedback_survey_api(request: Request, employee_id: int, db: Session =
     return StreamingResponse(
         output,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f'attachment; filename="feedback_employee_{subject.id}.xlsx"'},
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+@router.get("/api/employees/{employee_id}/feedback-surveys/export")
+def export_feedback_survey_api(request: Request, employee_id: int, db: Session = Depends(get_db)):
+    require_api_auth(request)
+    subject = _subject(db, employee_id)
+    runs = db.query(EmployeeFeedbackRun).filter_by(subject_employee_id=subject.id).all()
+    return _feedback_export_response(db, runs, f"feedback_employee_{subject.id}.xlsx")
+
+
+@router.get("/api/employees/{employee_id}/feedback-surveys/runs/{run_id}/export")
+def export_feedback_survey_run_api(request: Request, employee_id: int, run_id: int, db: Session = Depends(get_db)):
+    require_api_auth(request)
+    subject = _subject(db, employee_id)
+    run = db.query(EmployeeFeedbackRun).filter_by(id=run_id, subject_employee_id=subject.id).first()
+    if run is None:
+        raise HTTPException(status_code=404, detail="Запуск опроса не найден.")
+    return _feedback_export_response(db, [run], f"feedback_employee_{subject.id}_run_{run.id}.xlsx")

@@ -12,7 +12,7 @@ type Recipient = { id: number; full_name: string; position: string; available: b
 type FeedbackPayload = {
     surveys: Array<{ key: string; title: string; eligible_recipient_ids: number[] }>;
     recipients: Recipient[];
-    runs: Array<{ id: number; title: string; created_at: string; recipient_count: number; completed_count: number; failed_count: number }>;
+    runs: Array<{ id: number; title: string; created_at: string; recipient_count: number; completed_count: number; failed_count: number; answer_count: number; download_url: string | null }>;
     answer_count: number;
     download_url: string | null;
 };
@@ -85,16 +85,19 @@ export function EmployeeFeedbackSurveys({ employeeId, legacyUrl }: { employeeId:
             {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
             {notice ? <p role="status" className="text-sm text-muted-foreground">{notice}</p> : null}
             {payload ? <>
-                <div className="flex flex-wrap items-center gap-3">
-                    {payload.download_url ? (
-                        <a className={buttonVariants({ variant: "outline", size: "sm" })} href={payload.download_url}>
-                            <Download aria-hidden="true" /> Скачать ответы (.xlsx)
-                        </a>
-                    ) : <span className="text-sm text-muted-foreground">Ответов пока нет</span>}
+                {!payload.answer_count || (legacyUrl && /^https?:\/\//i.test(legacyUrl)) ? <div className="flex flex-wrap items-center gap-3">
+                    {!payload.answer_count ? <span className="text-sm text-muted-foreground">Ответов пока нет</span> : null}
                     {legacyUrl && /^https?:\/\//i.test(legacyUrl) ? <a className="text-sm underline underline-offset-4" href={legacyUrl} target="_blank" rel="noreferrer">Ранее сохранённая ссылка</a> : null}
-                </div>
-                {payload.runs.length ? <div className="space-y-1 text-sm text-muted-foreground">
-                    {payload.runs.map(run => <p key={run.id}>{run.title}: {run.completed_count} из {run.recipient_count} завершили{run.failed_count ? `, ошибок отправки: ${run.failed_count}` : ""} · {new Date(run.created_at).toLocaleString("ru-RU")}</p>)}
+                </div> : null}
+                {payload.runs.length ? <div className="space-y-2 text-sm text-muted-foreground">
+                    {payload.runs.map(run => <div key={run.id} className="flex flex-wrap items-center justify-between gap-2">
+                        <p>{run.title}: {run.completed_count} из {run.recipient_count} завершили{run.failed_count ? `, ошибок отправки: ${run.failed_count}` : ""} · {new Date(run.created_at).toLocaleString("ru-RU")}</p>
+                        {run.download_url ? (
+                            <a className={buttonVariants({ variant: "outline", size: "sm" })} href={run.download_url}>
+                                <Download aria-hidden="true" /> Ответы (.xlsx)
+                            </a>
+                        ) : null}
+                    </div>)}
                 </div> : null}
                 <div className="grid gap-3 lg:grid-cols-2">
                     <div className="space-y-2">
