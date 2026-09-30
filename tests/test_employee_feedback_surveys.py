@@ -276,3 +276,67 @@ class EmployeeFeedbackSurveyTests(TestCase):
             self.assertEqual(db.query(EmployeeFeedbackRecipient).filter_by(respondent_employee_id=self.first_id).count(), 0)
         response = self.client.get(f"/api/employees/{self.subject_id}/feedback-surveys/export")
         self.assertEqual(response.status_code, 404)
+
+    def test_closing_message_without_answer_completes_survey_and_unblocks_next_launch(self):
+        with SessionLocal() as db:
+            closing = FlowStepTemplate(
+                flow_key=self.scenario_key, step_key="closing", step_title="Спасибо",
+                default_text="Спасибо", response_type="text", sort_order=10,
+            )
+            db.add(closing)
+            db.commit()
+            closing_id = closing.id
+        saved = self.client.post(
+            f"/api/flows/workspace/steps/{closing_id}",
+            json={"text": "Спасибо за ответы!", "response_type": "none", "button_options": "Ок"},
+        )
+        self.assertEqual(saved.status_code, 200, saved.text)
+        with SessionLocal() as db:
+            closing = db.get(FlowStepTemplate, closing_id)
+            self.assertEqual((closing.response_type, closing.button_options), ("none", None))
+        messenger = FakeMessenger()
+        self.assertEqual(self._launch([self.first_id], messenger).status_code, 200)
+        self._answer(self.first_id, "Хорошо", messenger)
+        self.assertEqual(messenger.messages[-1][1], "Спасибо за ответы!")
+        with SessionLocal() as db:
+            progress = db.query(ScenarioProgress).filter_by(employee_id=self.first_id, scenario_key=self.scenario_key).one()
+            self.assertTrue(progress.is_completed)
+            self.assertFalse(progress.waiting_for_response)
+            self.assertEqual(db.query(SurveyAnswer).filter_by(employee_id=self.first_id, scenario_key=self.scenario_key).count(), 1)
+        self.assertEqual(self._launch([self.first_id], messenger).status_code, 200)
+        text_again = self.client.post(
+            f"/api/flows/workspace/steps/{closing_id}",
+            json={"text": "Что добавить?", "response_type": "text", "button_options": ""},
+        )
+        self.assertEqual(text_again.status_code, 200, text_again.text)
+        with SessionLocal() as db:
+            self.assertEqual(db.get(FlowStepTemplate, closing_id).response_type, "text")
+
+    def test_each_run_has_its_own_download(self):
+        messenger = FakeMessenger()
+        self.assertEqual(self._launch([self.first_id], messenger).status_code, 200)
+        self._answer(self.first_id, "Первый запуск", messenger)
+        self.assertEqual(self._launch([self.first_id, self.second_id], messenger).status_code, 200)
+        self._answer(self.second_id, "Второй запуск", messenger)
+        payload = self.client.get(f"/api/employees/{self.subject_id}/feedback-surveys").json()
+        second_run, first_run = payload["runs"]
+        self.assertEqual((first_run["answer_count"], second_run["answer_count"]), (1, 1))
+        for run, expected in ((first_run, "Первый запуск"), (second_run, "Второй запуск")):
+            response = self.client.get(run["download_url"])
+            self.assertEqual(response.status_code, 200, response.text)
+            self.assertIn(f"_run_{run['id']}.xlsx", response.headers["content-disposition"])
+            rows = list(load_workbook(BytesIO(response.content), read_only=True).active.values)
+            self.assertEqual([row[4] for row in rows[1:]], [expected])
+        with SessionLocal() as db:
+            other = EmployeeFeedbackRun(
+                subject_employee_id=self.first_id, scenario_key=self.scenario_key,
+                scenario_title="Чужой", created_at=datetime.now(UTC).replace(tzinfo=None),
+            )
+            db.add(other)
+            db.commit()
+            other_id = other.id
+        foreign = self.client.get(f"/api/employees/{self.subject_id}/feedback-surveys/runs/{other_id}/export")
+        self.assertEqual(foreign.status_code, 404)
+        with SessionLocal() as db:
+            db.delete(db.get(EmployeeFeedbackRun, other_id))
+            db.commit()

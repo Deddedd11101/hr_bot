@@ -193,6 +193,8 @@ def _workspace_response_label(step: FlowStepTemplate, scenario_kind: str = "scen
     response_type = (step.response_type or "").strip()
     if scenario_kind == "survey" and response_type == "text" and (step.button_options or "").strip():
         return "Варианты ответа"
+    if scenario_kind == "survey" and response_type == "none":
+        return "Сообщение без ответа"
     extra_labels = {
         "chain": "Цепочка шагов",
         "launch_scenario": "Переход к сценарию",
@@ -870,11 +872,13 @@ def _apply_workspace_step_update(db: Session, step: FlowStepTemplate, payload: d
             or (step.default_text or "").strip()
             or "Без вопроса"
         )
-        button_options = str(payload.get("button_options") or "").strip()
+        # "none" is a closing/info message: sent without waiting, so the survey can complete after it.
+        is_message = str(payload.get("response_type") or "").strip() == "none"
+        button_options = "" if is_message else str(payload.get("button_options") or "").strip()
         step.step_title = question
         step.custom_text = question
         step.default_text = question
-        step.response_type = "text"
+        step.response_type = "none" if is_message else "text"
         step.button_options = button_options or None
         step.send_mode = "immediate"
         step.send_time = None
