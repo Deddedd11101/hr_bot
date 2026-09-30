@@ -34,6 +34,15 @@ source_of_truth: true
 
 ## Записи
 
+### 2026-09-30 13:53 MSK - app deploy - карточка сотрудника без автозапуска регистрации
+
+- Deploy ref: `stage`; deployed SHA: `f76f7e89ab8eb58e1364e800ec9db845290d1f9e`; PR [#53](https://github.com/Deddedd11101/hr_bot/pull/53); [Deploy Stage 36704986008](https://github.com/Deddedd11101/hr_bot/actions/runs/36704986008) -> success.
+- Причина 409 после #52: создание карточки в админке ставило `recruitment_hiring` («Стартовый сценарий сотрудника», аудитория «для всех сотрудников») в очередь для любой карточки; первый шаг ждал ответа и блокировал адресные опросы для этого сотрудника как отвечающего (карточка #76, запуск 30.09 07:42). Теперь автозапуск при создании только для кандидатских карточек; `/start` сотрудника лишь привязывает Telegram.
+- Проверки: полный backend-набор 352 теста, compileall, Ruff F821, docs-check и CI PR #53 -> passed; preflight Deploy Stage passed.
+- [Stage Diagnostics 36705231478](https://github.com/Deddedd11101/hr_bot/actions/runs/36705231478) -> success: deployed SHA подтверждён, 0 failing checks.
+- Ручной repair до деплоя: на карточке #76 через UI выполнен «Сбросить привязку к боту» (удалён зависший progress, очищены Telegram ID/username). Повторная привязка (`@avstrkv` в карточке, затем `/start`) остаётся за владельцем.
+- Пользовательский сценарий не проверен: после повторной привязки запустить опрос на карточке #75 с отвечающим #76 и подтвердить доставку в Telegram.
+
 ### 2026-09-30 13:24 MSK - app deploy - исправление блокировки адресного опроса
 
 - Deploy ref: `stage`; deployed SHA: `c5d793f55d7f10447ae59db416c6da65ece22172`; PR [#52](https://github.com/Deddedd11101/hr_bot/pull/52); [Deploy Stage 36701915910](https://github.com/Deddedd11101/hr_bot/actions/runs/36701915910) -> success.
