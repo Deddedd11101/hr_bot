@@ -34,6 +34,15 @@ source_of_truth: true
 
 ## Записи
 
+### 2026-09-30 13:24 MSK - app deploy - исправление блокировки адресного опроса
+
+- Deploy ref: `stage`; deployed SHA: `c5d793f55d7f10447ae59db416c6da65ece22172`; PR [#52](https://github.com/Deddedd11101/hr_bot/pull/52); [Deploy Stage 36701915910](https://github.com/Deddedd11101/hr_bot/actions/runs/36701915910) -> success.
+- Запуск опроса теперь игнорирует пустой незавершённый progress без шага/ожидания ответа и отличает фактического адресата от сотрудника-контекста. Незавершённый progress того же `(employee_id, scenario_key)` остаётся защищён от перезаписи. При реальном конфликте API называет отвечающего и сценарий.
+- Проверки: 206 backend smoke-тестов в feature-ветке, 12 точечных на объединённом ref, compileall, Ruff F821, docs-check и CI PR #52 -> passed; preflight Deploy Stage прошёл полный backend-набор и frontend build.
+- Workflow создал и проверил SQLite backup и scenario JSON snapshot до checkout; `PRAGMA quick_check` passed, fingerprint конфигурации сценариев не изменился. Конкретные пути backup в публичном run log частично замаскированы GitHub Secrets.
+- [Stage Diagnostics 36702108792](https://github.com/Deddedd11101/hr_bot/actions/runs/36702108792) -> success: deployed SHA подтверждён, tracked worktree clean, web/worker/WireGuard/Caddy active, Telegram IPv4 reachable, HTTPS `/app/employees`, `/app/flows/workspace-v2`, `/app/grades` -> `303`, свежих Telegram/network ошибок нет; 0 failing checks.
+- Пользовательский сценарий не проверен: повторить запуск опроса из карточки #76 для выбранного отвечающего. Если у него действительно активен другой сценарий, опрос по-прежнему не отправится; новое сообщение назовёт конфликт. Сохраняется известный риск двух строго одновременных HTTP-запусков без атомарной резервации.
+
 ### 2026-09-30 12:52 MSK - app deploy - адресный опрос об обратной связи из карточки
 
 - Deploy ref: `stage`; deployed SHA: `306cee10599d1dd210e296d099ca25fe07439c00`; PR [#51](https://github.com/Deddedd11101/hr_bot/pull/51); [Deploy Stage 36698509913](https://github.com/Deddedd11101/hr_bot/actions/runs/36698509913) -> success.
