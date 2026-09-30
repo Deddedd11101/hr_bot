@@ -518,6 +518,26 @@ def get_waiting_progress(db: Session, employee_id: int) -> Optional[ScenarioProg
     )
 
 
+def get_active_progress_for_recipient(db: Session, employee_id: int) -> Optional[ScenarioProgress]:
+    return (
+        db.query(ScenarioProgress)
+        .filter(
+            or_(
+                ScenarioProgress.recipient_employee_id == employee_id,
+                ScenarioProgress.recipient_employee_id.is_(None) & (ScenarioProgress.employee_id == employee_id),
+            ),
+            ScenarioProgress.is_completed.is_(False),
+            or_(
+                ScenarioProgress.current_step_key.is_not(None),
+                ScenarioProgress.waiting_for_response.is_(True),
+                ScenarioProgress.feedback_run_id.is_not(None),
+            ),
+        )
+        .order_by(ScenarioProgress.updated_at.desc())
+        .first()
+    )
+
+
 def get_waiting_progress_for_step(
     db: Session,
     employee_id: int,
@@ -2705,11 +2725,7 @@ async def start_scenario(
         feedback_run = db.get(EmployeeFeedbackRun, feedback_run_id)
         if not feedback_run or feedback_run.scenario_key != scenario_key or not is_survey(scenario):
             return False
-        active_progress = db.query(ScenarioProgress).filter(
-            ScenarioProgress.employee_id == employee.id,
-            ScenarioProgress.is_completed.is_(False),
-        ).first()
-        if active_progress is not None or get_waiting_progress(db, employee.id) is not None:
+        if get_active_progress_for_recipient(db, employee.id) is not None:
             return False
     first_step = get_first_step(db, scenario_key)
     if not first_step:

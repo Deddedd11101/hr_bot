@@ -13,7 +13,7 @@ from app.auth import authenticate_account, create_admin_session_token
 from app.database import SessionLocal, init_db
 from app.main import AUTH_COOKIE_NAME, app
 from app.models import Employee, EmployeeFeedbackRecipient, EmployeeFeedbackRun, FlowStepTemplate, ScenarioProgress, ScenarioTemplate, SurveyAnswer
-from app.scenario_engine import handle_text_response, start_scenario
+from app.scenario_engine import get_or_create_progress, handle_text_response, start_scenario
 from app.web.employees import _delete_employee_active_scenario_runtime_state, _delete_employee_record
 from app.web.scenarios import _delete_template_entity
 
@@ -155,6 +155,34 @@ class EmployeeFeedbackSurveyTests(TestCase):
             db.refresh(progress)
             self.assertEqual(progress.feedback_run_id, run_id)
             self.assertEqual(len(messenger.messages), 1)
+
+    def test_empty_progress_and_progress_addressed_to_someone_else_do_not_block(self):
+        with SessionLocal() as db:
+            get_or_create_progress(db, self.first_id, f"empty_{self.scenario_key}")
+            other = get_or_create_progress(db, self.first_id, f"other_{self.scenario_key}")
+            other.recipient_employee_id = self.second_id
+            other.current_step_key = "question"
+            other.waiting_for_response = True
+            db.commit()
+        messenger = FakeMessenger()
+        response = self._launch([self.first_id], messenger)
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(len(messenger.messages), 1)
+
+    def test_active_progress_addressed_to_respondent_explains_conflict(self):
+        other_key = f"other_{self.scenario_key}"
+        with SessionLocal() as db:
+            progress = get_or_create_progress(db, self.second_id, other_key)
+            progress.recipient_employee_id = self.first_id
+            progress.current_step_key = "question"
+            progress.waiting_for_response = True
+            db.commit()
+        response = self._launch([self.first_id], FakeMessenger())
+        self.assertEqual(response.status_code, 409)
+        self.assertIn("Борис Отвечающий", response.json()["detail"])
+        self.assertIn(other_key, response.json()["detail"])
+        with SessionLocal() as db:
+            self.assertEqual(db.query(EmployeeFeedbackRun).filter_by(subject_employee_id=self.subject_id).count(), 0)
 
     def test_excel_escapes_formula_answer(self):
         messenger = FakeMessenger()
