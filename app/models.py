@@ -927,6 +927,7 @@ class ScenarioProgress(Base):
     started_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    feedback_run_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
 
 
 class SurveyAnswer(Base):
@@ -941,3 +942,29 @@ class SurveyAnswer(Base):
     answer_value: Mapped[Optional[str]] = mapped_column(String(4096), nullable=True)
     file_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     answered_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    feedback_run_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
+    respondent_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+
+
+class EmployeeFeedbackRun(Base):
+    """Один запуск опроса об определённом сотруднике."""
+
+    __tablename__ = "employee_feedback_runs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    subject_employee_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    scenario_key: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    scenario_title: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+
+
+class EmployeeFeedbackRecipient(Base):
+    """Снимок адресатов запуска и результата отправки."""
+
+    __tablename__ = "employee_feedback_recipients"
+    __table_args__ = (UniqueConstraint("run_id", "respondent_employee_id"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    run_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    respondent_employee_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    delivery_status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending")

@@ -84,6 +84,8 @@ source_of_truth: true
 | `POST` | `/employees/{employee_id}/profile-photo/delete` | Form action | Удалить profile photo |
 | `GET` | `/employees/{employee_id}/card-image` | Generated media route | Сгенерировать PNG карточки сотрудника |
 
+Карточка сотрудника `/app/employees/{employee_id}` показывает блок «Обратная связь»: выбор опроса и адресатов, историю запусков и ссылку на `/api/employees/{employee_id}/feedback-surveys/export`. Ссылка на Excel появляется после первого ответа; файл не хранится как статический `EmployeeFile`, а собирается при скачивании из актуальных строк БД.
+
 ## Массовые действия
 
 | Method | Path | Surface | Примечания |

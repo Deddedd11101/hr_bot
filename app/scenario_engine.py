@@ -21,7 +21,7 @@ from .employee_card import render_employee_card_png
 from .hr_linking import is_numeric_telegram_id
 from .messaging import MessengerClient, as_messenger, find_employee_by_channel_user_id
 from .messaging.identity import get_primary_chat_id
-from .models import DocumentLibraryItem, Employee, EmployeeDocumentLink, EmployeeFile, FlowLaunchRequest, FlowStepTemplate, HrSettings, OnboardingEvent, ScenarioProgress, ScenarioTemplate, StepButtonNotification, StepSendNotification, SurveyAnswer
+from .models import DocumentLibraryItem, Employee, EmployeeDocumentLink, EmployeeFeedbackRecipient, EmployeeFeedbackRun, EmployeeFile, FlowLaunchRequest, FlowStepTemplate, HrSettings, OnboardingEvent, ScenarioProgress, ScenarioTemplate, StepButtonNotification, StepSendNotification, SurveyAnswer
 from .positions import position_matches_scope
 from .time_utils import utc_now
 
@@ -370,12 +370,14 @@ def store_survey_answer(
 ) -> None:
     if not is_survey(scenario):
         return
+    feedback_run_id = _survey_feedback_run_id(db, employee.id, scenario.scenario_key)
     answer = (
         db.query(SurveyAnswer)
         .filter(
             SurveyAnswer.employee_id == employee.id,
             SurveyAnswer.scenario_key == scenario.scenario_key,
             SurveyAnswer.step_key == step.step_key,
+            SurveyAnswer.feedback_run_id == feedback_run_id,
         )
         .order_by(SurveyAnswer.id.desc())
         .first()
@@ -385,12 +387,28 @@ def store_survey_answer(
             employee_id=employee.id,
             scenario_key=scenario.scenario_key,
             step_key=step.step_key,
+            feedback_run_id=feedback_run_id,
             answered_at=utc_now(),
         )
         db.add(answer)
     answer.answer_value = (answer_value or "").strip() or None
     answer.file_name = (file_name or "").strip() or None
     answer.answered_at = utc_now()
+    if feedback_run_id is not None:
+        answer.respondent_name = (employee.full_name or "").strip() or f"Сотрудник #{employee.id}"
+
+
+def _survey_feedback_run_id(db: Session, employee_id: int, scenario_key: str) -> int | None:
+    progress = db.query(ScenarioProgress).filter_by(employee_id=employee_id, scenario_key=scenario_key).first()
+    return progress.feedback_run_id if progress else None
+
+
+def _complete_feedback_recipient(db: Session, progress: ScenarioProgress) -> None:
+    if progress.feedback_run_id is not None:
+        db.query(EmployeeFeedbackRecipient).filter_by(
+            run_id=progress.feedback_run_id,
+            respondent_employee_id=progress.employee_id,
+        ).update({EmployeeFeedbackRecipient.delivery_status: "completed"})
 
 
 def apply_status_from_recruitment_choice(
@@ -464,6 +482,7 @@ def reset_progress(db: Session, employee_id: int, scenario_key: str) -> Scenario
     progress.started_at = now
     progress.updated_at = now
     progress.completed_at = None
+    progress.feedback_run_id = None
     return progress
 
 
@@ -659,12 +678,14 @@ def _get_latest_survey_answer(
 ) -> SurveyAnswer | None:
     if not is_survey(scenario):
         return None
+    feedback_run_id = _survey_feedback_run_id(db, employee.id, scenario.scenario_key)
     return (
         db.query(SurveyAnswer)
         .filter(
             SurveyAnswer.employee_id == employee.id,
             SurveyAnswer.scenario_key == scenario.scenario_key,
             SurveyAnswer.step_key == step.step_key,
+            SurveyAnswer.feedback_run_id == feedback_run_id,
         )
         .order_by(SurveyAnswer.id.desc())
         .first()
@@ -1953,6 +1974,7 @@ async def _finish_launch_transition(
     progress.is_completed = True
     progress.completed_at = utc_now()
     progress.updated_at = utc_now()
+    _complete_feedback_recipient(db, progress)
     db.commit()
     if step.launch_scenario_key:
         await start_scenario(messenger, db, employee, step.launch_scenario_key)
@@ -2004,6 +2026,14 @@ async def send_step(
         return False
 
     progress = get_or_create_progress(db, employee.id, scenario.scenario_key)
+    template_employee = employee
+    if progress.feedback_run_id is not None:
+        feedback_run = db.get(EmployeeFeedbackRun, progress.feedback_run_id)
+        template_employee = db.get(Employee, feedback_run.subject_employee_id) if feedback_run else None
+        if template_employee is None or feedback_run.scenario_key != scenario.scenario_key:
+            progress.last_delivery_error = "Сотрудник для опроса не найден."
+            db.commit()
+            return False
     resolution = resolve_scenario_recipient(
         db,
         employee,
@@ -2027,9 +2057,9 @@ async def send_step(
                 history.append(previous_step_key)
                 _serialize_step_history(progress, history)
 
-    anchor_date = scenario_anchor_date(employee, scenario) or datetime.now(_get_tz()).date()
+    anchor_date = scenario_anchor_date(template_employee, scenario) or datetime.now(_get_tz()).date()
     message_template = resolve_step_message_template(step)
-    message_text = format_message(db, message_template, employee, anchor_date, step.send_time)
+    message_text = format_message(db, message_template, template_employee, anchor_date, step.send_time)
     attachment_document_item, attachment_document_error = _resolve_step_attachment_document_item_with_error(db, step)
     attachment_document_configured = bool(getattr(step, "attachment_document_item_id", None))
     old_attachment_path = (getattr(step, "attachment_path", None) or "").strip()
@@ -2056,7 +2086,7 @@ async def send_step(
         await send_employee_card_image(
             messenger,
             chat_id,
-            employee,
+            template_employee,
             reply_markup=employee_card_reply_markup,
         )
     attachment_sent = False
@@ -2083,7 +2113,7 @@ async def send_step(
             )
             if not message_text.strip() and not send_employee_card and not reply_markup and not old_attachment_path:
                 return False
-    await send_tagged_employee_documents(messenger, db, chat_id, message_template, employee)
+    await send_tagged_employee_documents(messenger, db, chat_id, message_template, template_employee)
     if needs_fallback_inline_buttons_message:
         await messenger.send_text(
             chat_id=chat_id,
@@ -2111,7 +2141,7 @@ async def send_step(
             await send_custom_notification(
                 messenger,
                 db,
-                employee,
+                template_employee,
                 step_send_notification.message_text,
                 step_send_notification.recipient_ids,
                 step_send_notification.recipient_scope,
@@ -2121,7 +2151,7 @@ async def send_step(
         await send_custom_notification(
             messenger,
             db,
-            employee,
+            template_employee,
             getattr(step, "notify_on_send_text", None),
             getattr(step, "notify_on_send_recipient_ids", None),
             getattr(step, "notify_on_send_recipient_scope", None),
@@ -2141,6 +2171,7 @@ async def send_step(
             progress.is_completed = True
             progress.completed_at = utc_now()
             progress.updated_at = utc_now()
+            _complete_feedback_recipient(db, progress)
             db.commit()
             return True
         if scheduled_at is not None and next_step.send_mode == "specific_time":
@@ -2168,6 +2199,7 @@ async def advance_after_response(
     if not next_step:
         progress.is_completed = True
         progress.completed_at = utc_now()
+        _complete_feedback_recipient(db, progress)
         db.commit()
         return
 
@@ -2209,7 +2241,8 @@ async def handle_text_response(messenger_or_bot: Any, db: Session, employee: Emp
         if not apply_response_to_employee(db, context_employee, step, normalized_text):
             _restore_response_undo_snapshot(db, context_employee, scenario, step, undo_snapshot)
             return False
-        context_employee.candidate_status = step.step_key
+        if not is_survey(scenario):
+            context_employee.candidate_status = step.step_key
         _push_response_undo_snapshot(progress, undo_snapshot)
         db.commit()
         await advance_after_response(messenger_or_bot, db, context_employee, scenario, step)
@@ -2221,7 +2254,8 @@ async def handle_text_response(messenger_or_bot: Any, db: Session, employee: Emp
     if not apply_response_to_employee(db, context_employee, step, message.text):
         _restore_response_undo_snapshot(db, context_employee, scenario, step, undo_snapshot)
         return False
-    context_employee.candidate_status = step.step_key
+    if not is_survey(scenario):
+        context_employee.candidate_status = step.step_key
     _push_response_undo_snapshot(progress, undo_snapshot)
     db.commit()
     await advance_after_response(messenger_or_bot, db, context_employee, scenario, step)
@@ -2273,7 +2307,8 @@ async def handle_date_response_by_step_id(
     if not apply_response_to_employee(db, context_employee, step, selected_date.isoformat()):
         _restore_response_undo_snapshot(db, context_employee, scenario, step, undo_snapshot)
         return DateCallbackResult(False, "noop", None)
-    context_employee.candidate_status = step.step_key
+    if not is_survey(scenario):
+        context_employee.candidate_status = step.step_key
     _push_response_undo_snapshot(progress, undo_snapshot)
     # Consume this response before the first delivery await to reject callback replays.
     progress.waiting_for_response = False
@@ -2334,7 +2369,8 @@ async def _apply_confirmed_button_choice(
                 button_notification.recipient_scope,
                 step.send_time,
             )
-    context_employee.candidate_status = step.step_key
+    if not is_survey(scenario):
+        context_employee.candidate_status = step.step_key
     _push_response_undo_snapshot(progress, undo_snapshot)
     _clear_pending_choice_confirmation(progress)
     db.commit()
@@ -2354,6 +2390,7 @@ async def _apply_confirmed_button_choice(
         progress.waiting_for_response = False
         progress.is_completed = True
         progress.completed_at = utc_now()
+        _complete_feedback_recipient(db, progress)
         db.commit()
         return True
     if bool(getattr(step, "is_terminal", False)) and step.response_type != "branching":
@@ -2361,6 +2398,7 @@ async def _apply_confirmed_button_choice(
         progress.is_completed = True
         progress.completed_at = utc_now()
         progress.updated_at = utc_now()
+        _complete_feedback_recipient(db, progress)
         db.commit()
         return True
     if step.response_type == "branching" and not stale_option_index:
@@ -2559,7 +2597,8 @@ async def handle_file_response(
     if not apply_response_to_employee(db, context_employee, step, uploaded_file.original_filename, uploaded_file):
         _restore_response_undo_snapshot(db, context_employee, scenario, step, undo_snapshot)
         return False
-    context_employee.candidate_status = step.step_key
+    if not is_survey(scenario):
+        context_employee.candidate_status = step.step_key
     _push_response_undo_snapshot(progress, undo_snapshot)
     db.commit()
     await advance_after_response(messenger_or_bot, db, context_employee, scenario, step)
@@ -2623,18 +2662,37 @@ async def handle_back_response(messenger_or_bot: Any, db: Session, employee: Emp
     return True
 
 
-async def start_scenario(messenger_or_bot: Any, db: Session, employee: Employee, scenario_key: str) -> bool:
+async def start_scenario(
+    messenger_or_bot: Any,
+    db: Session,
+    employee: Employee,
+    scenario_key: str,
+    *,
+    feedback_run_id: int | None = None,
+) -> bool:
     messenger = as_messenger(messenger_or_bot)
     if employee.is_bot_blocked:
         return False
     scenario = db.query(ScenarioTemplate).filter(ScenarioTemplate.scenario_key == scenario_key).first()
     if not scenario or not matches_role_scope(employee, scenario):
         return False
+    if feedback_run_id is not None:
+        feedback_run = db.get(EmployeeFeedbackRun, feedback_run_id)
+        if not feedback_run or feedback_run.scenario_key != scenario_key or not is_survey(scenario):
+            return False
+        active_progress = db.query(ScenarioProgress).filter(
+            ScenarioProgress.employee_id == employee.id,
+            ScenarioProgress.is_completed.is_(False),
+            ScenarioProgress.current_step_key.is_not(None),
+        ).first()
+        if active_progress is not None or get_waiting_progress(db, employee.id) is not None:
+            return False
     first_step = get_first_step(db, scenario_key)
     if not first_step:
         return False
     reset_progress(db, employee.id, scenario_key)
     progress = get_or_create_progress(db, employee.id, scenario_key)
+    progress.feedback_run_id = feedback_run_id
     progress.recipient_mode = _scenario_recipient_mode(scenario)
     db.commit()
     return await send_step(messenger, db, employee, scenario, first_step)
