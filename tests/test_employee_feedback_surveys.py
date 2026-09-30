@@ -13,7 +13,7 @@ from app.auth import authenticate_account, create_admin_session_token
 from app.database import SessionLocal, init_db
 from app.main import AUTH_COOKIE_NAME, app
 from app.models import Employee, EmployeeFeedbackRecipient, EmployeeFeedbackRun, FlowStepTemplate, ScenarioProgress, ScenarioTemplate, SurveyAnswer
-from app.scenario_engine import handle_text_response
+from app.scenario_engine import handle_text_response, start_scenario
 from app.web.employees import _delete_employee_active_scenario_runtime_state, _delete_employee_record
 from app.web.scenarios import _delete_template_entity
 
@@ -123,7 +123,9 @@ class EmployeeFeedbackSurveyTests(TestCase):
         with SessionLocal() as db:
             _delete_template_entity(db, db.get(ScenarioTemplate, scenario_id))
             db.commit()
-        self.assertEqual(len(self._sheet_rows()), 4)
+        saved_rows = self._sheet_rows()
+        self.assertEqual(len(saved_rows), 4)
+        self.assertEqual({row[3] for row in saved_rows[1:]}, {"Как работает Анна Объект, Дизайнер?"})
 
     def test_active_progress_rejects_launch_without_replacing_answers(self):
         messenger = FakeMessenger()
@@ -134,6 +136,10 @@ class EmployeeFeedbackSurveyTests(TestCase):
             self.assertEqual(db.query(EmployeeFeedbackRun).filter_by(subject_employee_id=self.subject_id).count(), 1)
             progress = db.query(ScenarioProgress).filter_by(employee_id=self.first_id, scenario_key=self.scenario_key).one()
             self.assertTrue(progress.waiting_for_response)
+            run_id = progress.feedback_run_id
+            self.assertFalse(asyncio.run(start_scenario(messenger, db, db.get(Employee, self.first_id), self.scenario_key)))
+            db.refresh(progress)
+            self.assertEqual(progress.feedback_run_id, run_id)
 
     def test_excel_escapes_formula_answer(self):
         messenger = FakeMessenger()
@@ -172,3 +178,15 @@ class EmployeeFeedbackSurveyTests(TestCase):
             row = db.query(EmployeeFeedbackRecipient).filter_by(respondent_employee_id=self.first_id).one()
             self.assertEqual(row.delivery_status, "unavailable")
             self.assertEqual(db.query(ScenarioProgress).filter_by(employee_id=self.first_id, scenario_key=self.scenario_key).count(), 0)
+
+    def test_deleting_respondent_removes_personal_feedback(self):
+        messenger = FakeMessenger()
+        self.assertEqual(self._launch([self.first_id], messenger).status_code, 200)
+        self._answer(self.first_id, "Личный ответ", messenger)
+        with SessionLocal() as db:
+            _delete_employee_record(db, db.get(Employee, self.first_id))
+        with SessionLocal() as db:
+            self.assertEqual(db.query(SurveyAnswer).filter_by(employee_id=self.first_id, scenario_key=self.scenario_key).count(), 0)
+            self.assertEqual(db.query(EmployeeFeedbackRecipient).filter_by(respondent_employee_id=self.first_id).count(), 0)
+        response = self.client.get(f"/api/employees/{self.subject_id}/feedback-surveys/export")
+        self.assertEqual(response.status_code, 404)

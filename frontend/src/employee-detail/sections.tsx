@@ -852,6 +852,17 @@ export function EmployeeProfileSection(props: any) {
                                     />
                                 </Field>
                                 <Field>
+                                    <FieldLabel>Ссылка на прежнюю обратную связь</FieldLabel>
+                                    <Input
+                                        type="url"
+                                        inputMode="url"
+                                        name="adaptation_feedback_url"
+                                        value={form.adaptation_feedback_url || ""}
+                                        onChange={handleChange}
+                                        placeholder="https://..."
+                                    />
+                                </Field>
+                                <Field>
                                     <FieldLabel htmlFor="employee-ipr-url">Ссылка на ИПР</FieldLabel>
                                     <Input
                                         id="employee-ipr-url"

@@ -214,7 +214,7 @@ def export_feedback_survey_api(request: Request, employee_id: int, db: Session =
             run.created_at.strftime("%d.%m.%Y %H:%M"),
             _excel_text(run.scenario_title or scenarios.get(run.scenario_key, run.scenario_key)),
             _excel_text(answer.respondent_name or (respondent.full_name if respondent else f"Сотрудник #{answer.employee_id}")),
-            _excel_text(steps.get((run.scenario_key, answer.step_key), answer.step_key)),
+            _excel_text(answer.question_text or steps.get((run.scenario_key, answer.step_key), answer.step_key)),
             _excel_text(answer.file_name or answer.answer_value),
             answer.answered_at.strftime("%d.%m.%Y %H:%M"),
         ])

@@ -671,6 +671,7 @@ def _ensure_sqlite_schema() -> None:
                         answered_at DATETIME NOT NULL,
                         feedback_run_id INTEGER,
                         respondent_name VARCHAR(255),
+                        question_text VARCHAR(4096),
                         PRIMARY KEY (id)
                     )
                     """
@@ -685,6 +686,8 @@ def _ensure_sqlite_schema() -> None:
                 conn.execute(text("ALTER TABLE survey_answers ADD COLUMN feedback_run_id INTEGER"))
             if "respondent_name" not in survey_answer_columns:
                 conn.execute(text("ALTER TABLE survey_answers ADD COLUMN respondent_name VARCHAR(255)"))
+            if "question_text" not in survey_answer_columns:
+                conn.execute(text("ALTER TABLE survey_answers ADD COLUMN question_text VARCHAR(4096)"))
         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_survey_answers_feedback_run_id ON survey_answers (feedback_run_id)"))
 
         feedback_run_columns = {row[1] for row in conn.execute(text("PRAGMA table_info(employee_feedback_runs)"))}

@@ -396,6 +396,25 @@ def store_survey_answer(
     answer.answered_at = utc_now()
     if feedback_run_id is not None:
         answer.respondent_name = (employee.full_name or "").strip() or f"Сотрудник #{employee.id}"
+        run = db.get(EmployeeFeedbackRun, feedback_run_id)
+        subject = db.get(Employee, run.subject_employee_id) if run else None
+        if subject and answer.question_text is None:
+            rendered = format_message(
+                db, resolve_step_message_template(step), subject,
+                scenario_anchor_date(subject, scenario) or datetime.now(_get_tz()).date(), step.send_time,
+            )
+            parser = _PlainTextCollector()
+            parser.feed(rendered)
+            answer.question_text = "".join(parser.parts).strip() or step.step_title
+
+
+class _PlainTextCollector(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.parts: list[str] = []
+
+    def handle_data(self, data: str) -> None:
+        self.parts.append(data)
 
 
 def _survey_feedback_run_id(db: Session, employee_id: int, scenario_key: str) -> int | None:
@@ -2676,6 +2695,15 @@ async def start_scenario(
     scenario = db.query(ScenarioTemplate).filter(ScenarioTemplate.scenario_key == scenario_key).first()
     if not scenario or not matches_role_scope(employee, scenario):
         return False
+    if feedback_run_id is None:
+        active_feedback = db.query(ScenarioProgress).filter(
+            ScenarioProgress.employee_id == employee.id,
+            ScenarioProgress.feedback_run_id.is_not(None),
+            ScenarioProgress.is_completed.is_(False),
+            ScenarioProgress.current_step_key.is_not(None),
+        ).first()
+        if active_feedback is not None:
+            return False
     if feedback_run_id is not None:
         feedback_run = db.get(EmployeeFeedbackRun, feedback_run_id)
         if not feedback_run or feedback_run.scenario_key != scenario_key or not is_survey(scenario):

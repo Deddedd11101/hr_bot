@@ -1438,6 +1438,13 @@ def _delete_employee_record(db: Session, employee: Employee) -> str:
         EmployeeFeedbackRecipient.delivery_status.in_(["pending", "sent"]),
     ).update({EmployeeFeedbackRecipient.delivery_status: "unavailable"}, synchronize_session=False)
     _delete_employee_related_scenario_state(db, employee_id)
+    db.query(SurveyAnswer).filter(
+        SurveyAnswer.employee_id == employee_id,
+        SurveyAnswer.feedback_run_id.is_not(None),
+    ).delete(synchronize_session=False)
+    db.query(EmployeeFeedbackRecipient).filter(
+        EmployeeFeedbackRecipient.respondent_employee_id == employee_id,
+    ).delete(synchronize_session=False)
     employee_files = db.query(EmployeeFile).filter(EmployeeFile.employee_id == employee_id).all()
     for file_row in employee_files:
         path = Path(file_row.stored_path)

@@ -944,6 +944,7 @@ class SurveyAnswer(Base):
     answered_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     feedback_run_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
     respondent_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    question_text: Mapped[Optional[str]] = mapped_column(String(4096), nullable=True)
 
 
 class EmployeeFeedbackRun(Base):
