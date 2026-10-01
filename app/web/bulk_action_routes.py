@@ -20,6 +20,8 @@ from .bulk_actions import (
     _parse_bulk_run_at,
     _recipient_scope_label,
     _send_mass_message,
+    _parse_multi_target_payload,
+    _target_selection_storage,
 )
 from .employees import _scenario_matches_employee_role
 from .support import render_template, require_api_auth, require_auth
@@ -416,6 +418,7 @@ def bulk_actions_preview_api(
 ):
     require_api_auth(request)
     target_all, target_employee_stages, target_candidate_stages, target_employee_id, target_role_scope, recipients = _bulk_target_recipients(db, payload)
+    role_scopes, employee_ids = _parse_multi_target_payload(payload)
     return {
         "recipient_count": len(recipients),
         "recipient_scope": _recipient_scope_label(
@@ -426,6 +429,8 @@ def bulk_actions_preview_api(
             target_role_scope,
             serialize_target_values(target_employee_stages),
             serialize_target_values(target_candidate_stages),
+            role_scopes,
+            employee_ids,
         ),
     }
 
@@ -462,6 +467,7 @@ def bulk_schedule_scenario_api(
             target_role_scope=target_role_scope,
             target_employee_id=target_employee_id,
             recipient_count=len(recipients),
+            **_target_selection_storage(payload),
             created_at=utc_now(),
         )
     )
@@ -501,6 +507,7 @@ def bulk_schedule_survey_api(
             target_role_scope=target_role_scope,
             target_employee_id=target_employee_id,
             recipient_count=len(recipients),
+            **_target_selection_storage(payload),
             created_at=utc_now(),
         )
     )
@@ -535,6 +542,7 @@ def bulk_schedule_message_api(
             target_role_scope=target_role_scope,
             target_employee_id=target_employee_id,
             recipient_count=len(recipients),
+            **_target_selection_storage(payload),
             created_at=utc_now(),
         )
     )
@@ -586,6 +594,7 @@ async def bulk_launch_scenario_api(
                 target_role_scope=target_role_scope,
                 target_employee_id=target_employee_id,
                 recipient_count=started_count,
+                **_target_selection_storage(payload),
                 created_at=utc_now(),
             )
         )
@@ -641,6 +650,7 @@ async def bulk_launch_survey_api(
                 target_role_scope=target_role_scope,
                 target_employee_id=target_employee_id,
                 recipient_count=started_count,
+                **_target_selection_storage(payload),
                 created_at=utc_now(),
             )
         )
@@ -687,6 +697,7 @@ async def bulk_send_message_api(
                 target_role_scope=target_role_scope,
                 target_employee_id=target_employee_id,
                 recipient_count=sent_count,
+                **_target_selection_storage(payload),
                 created_at=utc_now(),
             )
         )

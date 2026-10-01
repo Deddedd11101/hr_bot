@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import json
 from typing import Optional
 
 from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
 from .models import Employee
-from .positions import position_titles_for_scope, resolve_scope_slug
+from .positions import parse_role_scopes, position_titles_for_scope, resolve_scope_slug
 
 
 MASS_TARGET_NONE = "__none__"
@@ -58,6 +59,24 @@ def serialize_target_values(values: list[str]) -> Optional[str]:
     return ",".join(normalized) if normalized else None
 
 
+def serialize_target_selection(values: list[str] | list[int] | None) -> Optional[str]:
+    return json.dumps(values, separators=(",", ":")) if values is not None else None
+
+
+def deserialize_target_selection(value: Optional[str], *, kind: str) -> list[str] | list[int] | None:
+    if value is None:
+        return None
+    try:
+        items = json.loads(value)
+    except (TypeError, ValueError):
+        return []
+    if not isinstance(items, list):
+        return []
+    if kind == "role":
+        return parse_role_scopes([item for item in items if isinstance(item, str)])
+    return list(dict.fromkeys(item for item in items if type(item) is int and item > 0))
+
+
 def deserialize_target_values(value: Optional[str], *, kind: str) -> list[str]:
     if not value:
         return []
@@ -104,16 +123,19 @@ def mass_target_employee_query(
     target_role_scope: Optional[str] = None,
     legacy_target_statuses: Optional[list[str]] = None,
     include_blocked: bool = False,
+    target_role_scopes: Optional[list[str]] = None,
+    target_employee_ids: Optional[list[int]] = None,
 ):
     query = db.query(Employee)
     if not include_blocked:
         query = query.filter(Employee.is_bot_blocked.is_(False))
 
-    if target_employee_id:
+    multi_target = target_role_scopes is not None or target_employee_ids is not None
+    if target_employee_id and not multi_target:
         return query.filter(Employee.id == target_employee_id)
 
     normalized_role_scope = (target_role_scope or "").strip()
-    if normalized_role_scope and normalized_role_scope != "all":
+    if normalized_role_scope and normalized_role_scope != "all" and not multi_target:
         normalized_scope = resolve_scope_slug(normalized_role_scope)
         target_titles = position_titles_for_scope(db, normalized_scope)
         if not target_titles:
@@ -165,6 +187,22 @@ def mass_target_employee_query(
                 legacy_employee_conditions.append(Employee.employee_stage == value)
         if legacy_employee_conditions:
             stage_conditions.append(or_(*legacy_employee_conditions))
+
+    if multi_target:
+        audience_conditions = []
+        group_conditions = []
+        scopes = parse_role_scopes(target_role_scopes or [])
+        if scopes:
+            titles = position_titles_for_scope(db, ",".join(scopes))
+            group_conditions.append(Employee.desired_position.in_(titles) if titles else Employee.id == -1)
+        if stage_conditions:
+            group_conditions.append(or_(*stage_conditions))
+        if group_conditions:
+            audience_conditions.append(and_(*group_conditions))
+        ids = [item for item in (target_employee_ids or []) if type(item) is int and item > 0]
+        if ids:
+            audience_conditions.append(Employee.id.in_(ids))
+        return query.filter(or_(*audience_conditions)) if audience_conditions else query.filter(Employee.id == -1)
 
     if not stage_conditions:
         return query.filter(Employee.id == -1)

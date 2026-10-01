@@ -53,6 +53,7 @@ export function BroadcastDialog(props: {
   const [workspace, setWorkspace] = React.useState<TargetingWorkspace | null>(null);
   const [targets, setTargets] = React.useState<TargetState>(defaultTargets);
   const [preview, setPreview] = React.useState<Preview | null>(null);
+  const previewRequestId = React.useRef(0);
   const [requestedAt, setRequestedAt] = React.useState("");
   const [state, setState] = React.useState({ working: false, message: "", error: false });
 
@@ -77,13 +78,16 @@ export function BroadcastDialog(props: {
   }, [open]);
 
   const buildPreview = async (nextTargets: TargetState) => {
+    const requestId = ++previewRequestId.current;
+    setPreview(null);
     try {
       const nextPreview = await requestJson<Preview>("/api/bulk-actions/preview", {
         method: "POST",
         body: JSON.stringify(targetPayload(nextTargets)),
       });
-      setPreview(nextPreview);
+      if (requestId === previewRequestId.current) setPreview(nextPreview);
     } catch (previewError) {
+      if (requestId !== previewRequestId.current) return;
       setPreview(null);
       setState({
         working: false,

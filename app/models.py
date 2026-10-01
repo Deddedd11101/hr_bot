@@ -641,6 +641,8 @@ class MassScenarioAction(Base):
     target_candidate_stages: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     target_role_scope: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     target_employee_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    target_role_scopes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    target_employee_ids: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     recipient_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
 
@@ -661,6 +663,8 @@ class MassMessageAction(Base):
     target_candidate_stages: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     target_role_scope: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     target_employee_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    target_role_scopes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    target_employee_ids: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     recipient_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
 

@@ -93,6 +93,36 @@ def _create_legacy_employees_table(path: Path, *, include_menu_state: bool, incl
 
 
 class DatabaseCompatibilityTests(unittest.TestCase):
+    def test_mass_actions_gain_plural_target_columns_without_changing_old_rows(self) -> None:
+        from app import models  # noqa: F401
+
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            path = Path(temporary_directory) / "legacy-mass.db"
+            engine = create_engine(f"sqlite:///{path}")
+            with engine.begin() as connection:
+                for table in ("mass_scenario_actions", "mass_message_actions"):
+                    connection.execute(text(f"CREATE TABLE {table} (id INTEGER PRIMARY KEY, target_role_scope TEXT, target_employee_id INTEGER)"))
+                    connection.execute(text(f"INSERT INTO {table} (id, target_role_scope, target_employee_id) VALUES (1, 'designer', 7)"))
+            database.Base.metadata.create_all(engine)
+
+            previous_engine = database.engine
+            previous_url = database.settings.DATABASE_URL
+            try:
+                database.engine = engine
+                database.settings.DATABASE_URL = f"sqlite:///{path}"
+                database._ensure_sqlite_schema()
+                database._ensure_sqlite_schema()
+                with engine.connect() as connection:
+                    for table in ("mass_scenario_actions", "mass_message_actions"):
+                        columns = {row[1] for row in connection.execute(text(f"PRAGMA table_info({table})"))}
+                        self.assertTrue({"target_role_scopes", "target_employee_ids"} <= columns)
+                        row = connection.execute(text(f"SELECT target_role_scope, target_employee_id, target_role_scopes, target_employee_ids FROM {table} WHERE id = 1")).one()
+                        self.assertEqual(tuple(row), ("designer", 7, None, None))
+            finally:
+                database.engine = previous_engine
+                database.settings.DATABASE_URL = previous_url
+                engine.dispose()
+
     def test_employee_rebuild_preserves_existing_menu_state(self) -> None:
         self._assert_menu_state(include_menu_state=True, expected=("7/9", 902))
 

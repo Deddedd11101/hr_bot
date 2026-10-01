@@ -172,6 +172,41 @@ class P0BehaviourTests(unittest.IsolatedAsyncioTestCase):
         matched_ids = [row.id for row in rows if row.id in self.employee_ids]
         self.assertEqual(matched_ids, [self.candidate_testing_id, self.candidate_offer_id])
 
+    def test_mass_targeting_unions_positions_and_explicit_people_without_duplicates(self) -> None:
+        with SessionLocal() as db:
+            designer = db.get(Employee, self.candidate_offer_id)
+            designer.desired_position = "Дизайнер"
+            db.commit()
+            rows = mass_target_employee_query(
+                db,
+                target_all=False,
+                target_employee_stages=[],
+                target_candidate_stages=[],
+                target_role_scopes=["designer", "analyst"],
+                target_employee_ids=[self.candidate_testing_id, self.employee_staff_id],
+            ).all()
+
+        matched_ids = [row.id for row in rows if row.id in self.employee_ids]
+        self.assertCountEqual(matched_ids, [self.candidate_testing_id, self.candidate_offer_id, self.employee_staff_id])
+        self.assertNotIn(self.blocked_employee_id, matched_ids)
+
+    def test_mass_targeting_stage_filters_groups_but_not_explicit_people(self) -> None:
+        with SessionLocal() as db:
+            designer = db.get(Employee, self.candidate_offer_id)
+            designer.desired_position = "Дизайнер"
+            db.commit()
+            rows = mass_target_employee_query(
+                db,
+                target_all=False,
+                target_employee_stages=[],
+                target_candidate_stages=["offer"],
+                target_role_scopes=["designer", "analyst"],
+                target_employee_ids=[self.candidate_testing_id],
+            ).all()
+
+        matched_ids = [row.id for row in rows if row.id in self.employee_ids]
+        self.assertCountEqual(matched_ids, [self.candidate_testing_id, self.candidate_offer_id])
+
     def test_resolve_inbound_access_marks_unknown_and_blocked(self) -> None:
         with SessionLocal() as db:
             unknown_access = resolve_inbound_access(db, "unknown-user", "nobody")
