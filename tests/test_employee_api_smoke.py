@@ -1988,6 +1988,33 @@ class EmployeeApiSmokeTests(unittest.TestCase):
                 self.assertEqual(response.status_code, 303)
                 self.assertEqual(response.headers.get("location"), expected_location)
 
+    def test_workspace_catalog_exposes_flow_key_for_broadcast(self) -> None:
+        with SessionLocal() as db:
+            for kind in ("scenario", "survey"):
+                db.add(
+                    ScenarioTemplate(
+                        scenario_key=f"codex_broadcast_{kind}_{self.unique_tag}",
+                        scenario_kind=kind,
+                        title=f"codex-broadcast-{kind}-{self.unique_tag}",
+                        sort_order=10,
+                        role_scope="all",
+                        employee_scope="all",
+                        trigger_mode="manual_only",
+                    )
+                )
+            db.commit()
+
+        for kind in ("scenario", "survey"):
+            with self.subTest(kind=kind):
+                response = self.client.get(f"/api/flows/workspace?kind={kind}")
+                self.assertEqual(response.status_code, 200, response.text)
+                item = next(
+                    scenario
+                    for scenario in response.json()["scenarios"]
+                    if scenario["title"] == f"codex-broadcast-{kind}-{self.unique_tag}"
+                )
+                self.assertEqual(item["scenario_key"], f"codex_broadcast_{kind}_{self.unique_tag}")
+
     def test_classic_scenario_editor_route_is_served_via_router(self) -> None:
         with SessionLocal() as db:
             scenario = ScenarioTemplate(
