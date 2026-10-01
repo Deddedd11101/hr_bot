@@ -34,6 +34,15 @@ source_of_truth: true
 
 ## Записи
 
+### 2026-10-01 12:28 MSK - app deploy - рассылка из каталогов сценариев и опросов
+
+- Deploy ref: `stage`; deployed SHA: `f5658275419e01474363f739b5ada5137e53b468`; PR [#56](https://github.com/Deddedd11101/hr_bot/pull/56); [Deploy Stage 36842515531](https://github.com/Deddedd11101/hr_bot/actions/runs/36842515531) -> success.
+- Каталог `/api/flows/workspace` теперь включает `scenario_key` в каждую запись `scenarios[]`. Раньше кнопка `Разослать` в каталогах опросов и сценариев была активной, но не открывала окно: frontend не находил ключ и молча прекращал действие.
+- Адресный API-тест для обоих `kind`, compileall, Ruff F821, docs-check и CI PR #56 прошли. Preflight Deploy Stage прошёл полный backend-набор и frontend build.
+- Workflow создал проверенный SQLite backup `backups/hr_bot.before-deploy.20261001-092551.db` и snapshot `backups/scenarios.before-deploy.20261001-092551.json`; fingerprint конфигурации сценариев не изменился.
+- [Stage Diagnostics 36842762397](https://github.com/Deddedd11101/hr_bot/actions/runs/36842762397) -> success: deployed SHA подтверждён, web/worker/WireGuard/Caddy active, HTTPS endpoints `303`, свежих Telegram/network ошибок нет, 0 failing checks.
+- Пользовательский сценарий проверен в браузере: после обновления страницы выбор одного опроса и одного сценария открывает соответствующее окно рассылки. Сам запуск рассылки и доставка в Telegram не проверялись и не выполнялись.
+
 ### 2026-09-30 16:05 MSK - app deploy - сообщение без ответа в опросе и выгрузка по запускам
 
 - Deploy ref: `stage`; deployed SHA: `792a6b9cd9b938d005422aa01271f5f0880bb5de`; PR [#55](https://github.com/Deddedd11101/hr_bot/pull/55); [Deploy Stage 36718971096](https://github.com/Deddedd11101/hr_bot/actions/runs/36718971096) -> success.
