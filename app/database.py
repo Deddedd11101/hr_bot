@@ -841,6 +841,9 @@ def _ensure_sqlite_schema() -> None:
             conn.execute(text("ALTER TABLE mass_scenario_actions ADD COLUMN target_employee_id INTEGER"))
         if mass_scenario_columns and "target_role_scope" not in mass_scenario_columns:
             conn.execute(text("ALTER TABLE mass_scenario_actions ADD COLUMN target_role_scope TEXT"))
+        for column in ("target_role_scopes", "target_employee_ids"):
+            if mass_scenario_columns and column not in mass_scenario_columns:
+                conn.execute(text(f"ALTER TABLE mass_scenario_actions ADD COLUMN {column} TEXT"))
         if mass_scenario_columns and "target_employee_stages" not in mass_scenario_columns:
             conn.execute(text("ALTER TABLE mass_scenario_actions ADD COLUMN target_employee_stages TEXT"))
         if mass_scenario_columns and "target_candidate_stages" not in mass_scenario_columns:
@@ -856,6 +859,9 @@ def _ensure_sqlite_schema() -> None:
             conn.execute(
                 text("CREATE INDEX IF NOT EXISTS ix_bot_menu_buttons_menu_set_id ON bot_menu_buttons (menu_set_id)")
             )
+        for column in ("target_role_scopes", "target_employee_ids"):
+            if mass_message_columns and column not in mass_message_columns:
+                conn.execute(text(f"ALTER TABLE mass_message_actions ADD COLUMN {column} TEXT"))
         if mass_message_columns and "target_employee_stages" not in mass_message_columns:
             conn.execute(text("ALTER TABLE mass_message_actions ADD COLUMN target_employee_stages TEXT"))
         if mass_message_columns and "target_candidate_stages" not in mass_message_columns:

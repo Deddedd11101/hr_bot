@@ -1,11 +1,9 @@
 import React from "react";
 import { Download, Play, RefreshCcw } from "lucide-react";
 
+import { AudienceMultiSelect } from "@/components/ui/audience-multi-select";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Input } from "@/components/ui/input";
 import { PageSection } from "@/components/ui/page-section";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 type Recipient = { id: number; full_name: string; position: string; available: boolean };
@@ -24,9 +22,8 @@ export function EmployeeFeedbackSurveys({ employeeId, legacyUrl }: { employeeId:
     const [loading, setLoading] = React.useState(true);
     const [submitting, setSubmitting] = React.useState(false);
     const [scenarioKey, setScenarioKey] = React.useState("");
-    const [position, setPosition] = React.useState("all");
-    const [search, setSearch] = React.useState("");
-    const [selectedIds, setSelectedIds] = React.useState<number[]>([]);
+    const [selectedPositions, setSelectedPositions] = React.useState<string[]>([]);
+    const [selectedIds, setSelectedIds] = React.useState<string[]>([]);
     const [revision, setRevision] = React.useState(0);
     const apiUrl = `/api/employees/${employeeId}/feedback-surveys`;
 
@@ -44,18 +41,18 @@ export function EmployeeFeedbackSurveys({ employeeId, legacyUrl }: { employeeId:
         return () => { active = false; };
     }, [apiUrl, revision]);
 
-    const positions = Array.from(new Set((payload?.recipients || []).map(item => item.position).filter(Boolean))).sort();
-    const visibleRecipients = (payload?.recipients || []).filter(item =>
-        (position === "all" || item.position === position) &&
-        item.full_name.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()),
-    );
     const selectedSurvey = payload?.surveys.find(item => item.key === scenarioKey);
     const canSelect = (item: Recipient) => item.available && !!selectedSurvey?.eligible_recipient_ids.includes(item.id);
-    const availableVisibleIds = visibleRecipients.filter(canSelect).map(item => item.id);
-    const allVisibleSelected = availableVisibleIds.length > 0 && availableVisibleIds.every(id => selectedIds.includes(id));
+    const eligibleRecipients = (payload?.recipients || []).filter(canSelect);
+    const positions = Array.from(new Set(eligibleRecipients.map(item => item.position).filter(Boolean))).sort();
+    const eligibleIds = new Set(eligibleRecipients.map(item => item.id));
+    const recipientIds = Array.from(new Set([
+        ...eligibleRecipients.filter(item => selectedPositions.includes(item.position)).map(item => item.id),
+        ...selectedIds.map(Number).filter(id => eligibleIds.has(id)),
+    ]));
 
     async function launch() {
-        if (!scenarioKey || selectedIds.length === 0) return;
+        if (!scenarioKey || recipientIds.length === 0 || recipientIds.length > 100) return;
         setSubmitting(true);
         setError("");
         setNotice("");
@@ -64,12 +61,13 @@ export function EmployeeFeedbackSurveys({ employeeId, legacyUrl }: { employeeId:
                 method: "POST",
                 credentials: "same-origin",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ scenario_key: scenarioKey, recipient_employee_ids: selectedIds }),
+                body: JSON.stringify({ scenario_key: scenarioKey, recipient_employee_ids: recipientIds }),
             });
             const next = await response.json();
             if (!response.ok) throw new Error(next.detail || "Не удалось запустить опрос.");
             setPayload(next as FeedbackPayload);
             setSelectedIds([]);
+            setSelectedPositions([]);
             const failedCount = (next as FeedbackPayload).runs[0]?.failed_count || 0;
             setNotice(failedCount ? `Не удалось отправить опрос ${failedCount} сотрудникам. Проверьте их связь с ботом.` : "Опрос запущен. Ответы появятся в общем файле после прохождения.");
         } catch (cause) {
@@ -102,36 +100,16 @@ export function EmployeeFeedbackSurveys({ employeeId, legacyUrl }: { employeeId:
                 <div className="grid gap-3 lg:grid-cols-2">
                     <div className="space-y-2">
                         <label className="text-sm font-medium" htmlFor="feedback-survey-select">Опрос</label>
-                        <Select items={payload.surveys.map(item => ({ value: item.key, label: item.title }))} value={scenarioKey || null} onValueChange={value => { setScenarioKey(value || ""); setSelectedIds([]); }}>
+                        <Select items={payload.surveys.map(item => ({ value: item.key, label: item.title }))} value={scenarioKey || null} onValueChange={value => { setScenarioKey(value || ""); setSelectedIds([]); setSelectedPositions([]); }}>
                             <SelectTrigger id="feedback-survey-select" className="w-full"><SelectValue placeholder="Выберите опрос" /></SelectTrigger>
                             <SelectContent>{payload.surveys.map(item => <SelectItem key={item.key} value={item.key}>{item.title}</SelectItem>)}</SelectContent>
                         </Select>
                     </div>
-                    <div className="space-y-2">
-                        <label className="text-sm font-medium" htmlFor="feedback-position-select">Должность отвечающих</label>
-                        <Select items={[{ value: "all", label: "Все должности" }, ...positions.map(value => ({ value, label: value }))]} value={position} onValueChange={value => setPosition(value || "all")}>
-                            <SelectTrigger id="feedback-position-select" className="w-full"><SelectValue /></SelectTrigger>
-                            <SelectContent><SelectItem value="all">Все должности</SelectItem>{positions.map(value => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent>
-                        </Select>
-                    </div>
+                    <AudienceMultiSelect label="Должности отвечающих" options={positions.map(value => ({ value, label: value }))} values={selectedPositions} onChange={setSelectedPositions} placeholder="Не выбраны" />
                 </div>
-                <Input aria-label="Найти сотрудника" value={search} onChange={event => setSearch(event.target.value)} placeholder="Найти сотрудника" />
-                <div className="flex items-center justify-between gap-3 text-sm">
-                    <span>Выбрано: {selectedIds.length}</span>
-                    <Button type="button" size="sm" variant="ghost" disabled={!availableVisibleIds.length} onClick={() => setSelectedIds(current => allVisibleSelected ? current.filter(id => !availableVisibleIds.includes(id)) : Array.from(new Set([...current, ...availableVisibleIds])))}>
-                        {allVisibleSelected ? "Снять видимые" : "Выбрать видимых"}
-                    </Button>
-                </div>
-                <ScrollArea className="h-48 rounded-md border">
-                    <div className="divide-y">
-                        {visibleRecipients.length ? visibleRecipients.map(item => <label key={item.id} className="flex min-w-0 items-center gap-3 px-3 py-2 text-sm">
-                            <Checkbox checked={selectedIds.includes(item.id)} disabled={!canSelect(item)} onCheckedChange={checked => setSelectedIds(current => checked ? [...current, item.id] : current.filter(id => id !== item.id))} aria-label={`Выбрать ${item.full_name}`} />
-                            <span className="min-w-0 flex-1 truncate">{item.full_name}</span>
-                            <span className="max-w-32 truncate text-muted-foreground">{!item.available ? "Нет доступа к боту" : selectedSurvey && !canSelect(item) ? "Не подходит" : item.position}</span>
-                        </label>) : <p className="p-3 text-sm text-muted-foreground">Сотрудники не найдены</p>}
-                    </div>
-                </ScrollArea>
-                <Button type="button" disabled={submitting || !scenarioKey || selectedIds.length === 0} onClick={launch}><Play aria-hidden="true" /> {submitting ? "Запуск..." : "Запустить опрос"}</Button>
+                <AudienceMultiSelect label="Конкретные сотрудники/кандидаты" options={eligibleRecipients.map(item => ({ value: String(item.id), label: `${item.full_name}${item.position ? ` · ${item.position}` : ""}` }))} values={selectedIds} onChange={setSelectedIds} placeholder="Не выбраны" />
+                <p className="text-sm text-muted-foreground">Получателей: {recipientIds.length}{recipientIds.length > 100 ? " (максимум 100)" : ""}</p>
+                <Button type="button" disabled={submitting || !scenarioKey || recipientIds.length === 0 || recipientIds.length > 100} onClick={launch}><Play aria-hidden="true" /> {submitting ? "Запуск..." : "Запустить опрос"}</Button>
             </> : null}
         </PageSection>
     );

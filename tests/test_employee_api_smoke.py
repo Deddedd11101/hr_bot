@@ -5043,6 +5043,30 @@ class EmployeeApiSmokeTests(unittest.TestCase):
             self.assertEqual(action.target_employee_stages, None)
             self.assertGreaterEqual(action.recipient_count, 1)
 
+    def test_bulk_actions_preview_and_schedule_union_positions_and_people(self) -> None:
+        target = {
+            "target_role_scopes": ["designer", "analyst"],
+            "target_employee_ids": [self.employee_id, self.employee_id],
+            "target_employee_stages": [],
+            "target_candidate_stages": [],
+        }
+        preview = self.client.post("/api/bulk-actions/preview", json=target)
+        self.assertEqual(preview.status_code, 200, preview.text)
+        self.assertIn("Должности", preview.json()["recipient_scope"])
+        self.assertGreaterEqual(preview.json()["recipient_count"], 1)
+
+        message_text = f"codex-multi-target-{self.unique_tag}"
+        response = self.client.post(
+            "/api/bulk-actions/messages/schedule",
+            json={**target, "message_text": message_text, "requested_at": "2026-06-01T10:30"},
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        with SessionLocal() as db:
+            action = db.query(MassMessageAction).filter(MassMessageAction.message_text == message_text).one()
+            self.assertEqual(action.target_role_scopes, '["designer","analyst"]')
+            self.assertEqual(action.target_employee_ids, f"[{self.employee_id}]")
+            self.assertEqual(action.recipient_count, preview.json()["recipient_count"])
+
     def test_bulk_actions_delete_scheduled_survey_uses_survey_route(self) -> None:
         scenario_key = f"codex_scheduled_survey_{self.unique_tag}"
         requested_at = datetime(2026, 6, 1, 10, 30)

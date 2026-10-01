@@ -8,14 +8,16 @@ from sqlalchemy.orm import Session
 from ..mass_targeting import (
     MASS_TARGET_NONE,
     build_legacy_target_statuses,
+    deserialize_target_selection,
     mass_target_employee_query,
     normalize_mass_target_candidate_stages,
     normalize_mass_target_employee_stages,
     resolve_target_groups,
     serialize_target_values,
+    serialize_target_selection,
 )
 from ..models import Employee, MassMessageAction, MassScenarioAction, ScenarioTemplate
-from ..positions import ROLE_SCOPE_ALL, build_role_scope_labels, resolve_scope_slug
+from ..positions import ROLE_SCOPE_ALL, build_role_scope_labels, parse_role_scopes, resolve_scope_slug
 from ..scenario_engine import format_message
 from .employees import (
     OFFER_DOCUMENT_TITLE,
@@ -65,7 +67,25 @@ def _recipient_scope_label(
     target_role_scope: Optional[str] = None,
     target_employee_stages: Optional[str] = None,
     target_candidate_stages: Optional[str] = None,
+    target_role_scopes: Optional[list[str]] = None,
+    target_employee_ids: Optional[list[int]] = None,
 ) -> str:
+    if target_role_scopes is not None or target_employee_ids is not None:
+        labels = build_role_scope_labels(db, include_inactive=True)
+        parts = ["Должности: " + ", ".join(labels.get(scope, scope) for scope in target_role_scopes)] if target_role_scopes else []
+        if target_employee_ids:
+            parts.append(f"Отдельно выбрано: {len(target_employee_ids)}")
+        employee_stages, candidate_stages, _ = resolve_target_groups(
+            target_employee_stages=target_employee_stages,
+            target_candidate_stages=target_candidate_stages,
+        )
+        if employee_stages:
+            stage_labels = dict(MASS_TARGET_EMPLOYEE_STAGE_OPTIONS)
+            parts.append("Сотрудники: " + ", ".join(stage_labels.get(value, value) for value in employee_stages))
+        if candidate_stages:
+            stage_labels = dict(MASS_TARGET_CANDIDATE_STAGE_OPTIONS)
+            parts.append("Кандидаты: " + ", ".join(stage_labels.get(value, value) for value in candidate_stages))
+        return "; ".join(parts) if parts else "Все"
     if target_employee_id:
         employee = db.get(Employee, target_employee_id)
         if employee:
@@ -106,6 +126,8 @@ def _mass_target_employees(
     target_employee_id: Optional[int] = None,
     target_role_scope: Optional[str] = None,
     legacy_target_statuses: Optional[list[str]] = None,
+    target_role_scopes: Optional[list[str]] = None,
+    target_employee_ids: Optional[list[int]] = None,
 ) -> list[Employee]:
     return (
         mass_target_employee_query(
@@ -116,6 +138,8 @@ def _mass_target_employees(
             target_employee_id=target_employee_id,
             target_role_scope=target_role_scope,
             legacy_target_statuses=legacy_target_statuses,
+            target_role_scopes=target_role_scopes,
+            target_employee_ids=target_employee_ids,
         )
         .order_by(Employee.id.asc())
         .all()
@@ -165,6 +189,8 @@ def _serialize_mass_scenario_action(db: Session, action: MassScenarioAction, sce
             action.target_role_scope,
             action.target_employee_stages,
             action.target_candidate_stages,
+            deserialize_target_selection(action.target_role_scopes, kind="role"),
+            deserialize_target_selection(action.target_employee_ids, kind="employee"),
         ),
     }
 
@@ -187,6 +213,8 @@ def _serialize_mass_message_action(db: Session, action: MassMessageAction) -> di
             action.target_role_scope,
             action.target_employee_stages,
             action.target_candidate_stages,
+            deserialize_target_selection(action.target_role_scopes, kind="role"),
+            deserialize_target_selection(action.target_employee_ids, kind="employee"),
         ),
     }
 
@@ -276,12 +304,37 @@ def _parse_mass_target_payload(payload: dict) -> tuple[bool, list[str], list[str
     target_employee_id = int(target_employee_id_value) if target_employee_id_value.isdigit() else None
     target_role_scope = resolve_scope_slug(str(payload.get("target_role_scope") or "").strip())
     normalized_role_scope = target_role_scope if target_role_scope != ROLE_SCOPE_ALL else None
+    role_scopes, employee_ids = _parse_multi_target_payload(payload)
+    if role_scopes is not None:
+        target_all = not any([target_employee_stages, target_candidate_stages, role_scopes, employee_ids])
+        return target_all, target_employee_stages, target_candidate_stages, None, None
     target_all = not any([target_employee_stages, target_candidate_stages, target_employee_id, normalized_role_scope])
     return target_all, target_employee_stages, target_candidate_stages, target_employee_id, normalized_role_scope
 
 
+def _parse_multi_target_payload(payload: dict) -> tuple[Optional[list[str]], Optional[list[int]]]:
+    if "target_role_scopes" not in payload and "target_employee_ids" not in payload:
+        return None, None
+    raw_roles = payload.get("target_role_scopes", [])
+    raw_ids = payload.get("target_employee_ids", [])
+    if not isinstance(raw_roles, list) or not isinstance(raw_ids, list) or len(raw_roles) > 100 or len(raw_ids) > 500:
+        raise HTTPException(status_code=400, detail="Неверный список получателей.")
+    if any(not isinstance(value, str) for value in raw_roles) or any(type(value) is not int or value <= 0 for value in raw_ids):
+        raise HTTPException(status_code=400, detail="Неверный список получателей.")
+    return parse_role_scopes(raw_roles), list(dict.fromkeys(raw_ids))
+
+
+def _target_selection_storage(payload: dict) -> dict[str, Optional[str]]:
+    roles, ids = _parse_multi_target_payload(payload)
+    return {
+        "target_role_scopes": serialize_target_selection(roles),
+        "target_employee_ids": serialize_target_selection(ids),
+    }
+
+
 def _bulk_target_recipients(db: Session, payload: dict) -> tuple[bool, list[str], list[str], Optional[int], Optional[str], list[Employee]]:
     target_all, target_employee_stages, target_candidate_stages, target_employee_id, target_role_scope = _parse_mass_target_payload(payload)
+    role_scopes, employee_ids = _parse_multi_target_payload(payload)
     recipients = _mass_target_employees(
         db,
         target_all,
@@ -289,6 +342,8 @@ def _bulk_target_recipients(db: Session, payload: dict) -> tuple[bool, list[str]
         target_candidate_stages,
         target_employee_id,
         target_role_scope,
+        target_role_scopes=role_scopes,
+        target_employee_ids=employee_ids,
     )
     return target_all, target_employee_stages, target_candidate_stages, target_employee_id, target_role_scope, recipients
 

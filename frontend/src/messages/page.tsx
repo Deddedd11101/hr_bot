@@ -95,6 +95,7 @@ function ComposeDialog({
 }) {
   const [targets, setTargets] = React.useState<TargetState>(defaultTargets);
   const [preview, setPreview] = React.useState<Preview | null>(null);
+  const previewRequestId = React.useRef(0);
   const [requestedAt, setRequestedAt] = React.useState("");
   const [messageText, setMessageText] = React.useState("");
   const messageInsertRef = React.useRef<((text: string) => void) | null>(null);
@@ -113,13 +114,16 @@ function ComposeDialog({
   }, [open]);
 
   const buildPreview = async (nextTargets: TargetState) => {
+    const requestId = ++previewRequestId.current;
+    setPreview(null);
     try {
       const nextPreview = await requestJson<Preview>("/api/bulk-actions/preview", {
         method: "POST",
         body: JSON.stringify(targetPayload(nextTargets)),
       });
-      setPreview(nextPreview);
+      if (requestId === previewRequestId.current) setPreview(nextPreview);
     } catch (previewError) {
+      if (requestId !== previewRequestId.current) return;
       setPreview(null);
       setState({
         working: false,

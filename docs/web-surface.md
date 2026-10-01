@@ -84,7 +84,7 @@ source_of_truth: true
 | `POST` | `/employees/{employee_id}/profile-photo/delete` | Form action | Удалить profile photo |
 | `GET` | `/employees/{employee_id}/card-image` | Generated media route | Сгенерировать PNG карточки сотрудника |
 
-Карточка сотрудника `/app/employees/{employee_id}` показывает блок «Обратная связь»: выбор опроса и адресатов, историю запусков и у каждого запуска свою ссылку на `/api/employees/{employee_id}/feedback-surveys/runs/{run_id}/export`. Ссылка на Excel запуска появляется после первого ответа в нём; файл не хранится как статический `EmployeeFile`, а собирается при скачивании из актуальных строк БД. Старое поле ссылки обратной связи остаётся редактируемым в профиле для прежних сценарных тегов.
+Карточка сотрудника `/app/employees/{employee_id}` показывает блок «Обратная связь»: выбор опроса, нескольких должностей и отдельных отвечающих с объединением без дублей, историю запусков и у каждого запуска свою ссылку на `/api/employees/{employee_id}/feedback-surveys/runs/{run_id}/export`. Ссылка на Excel запуска появляется после первого ответа в нём; файл не хранится как статический `EmployeeFile`, а собирается при скачивании из актуальных строк БД. Старое поле ссылки обратной связи остаётся редактируемым в профиле для прежних сценарных тегов.
 
 ## Массовые действия
 
@@ -92,7 +92,7 @@ source_of_truth: true
 | --- | --- | --- | --- |
 | `GET` | `/bulk-actions` | Redirect route | Legacy operator entrypoint; ведет на `/app/messages` |
 | `GET` | `/app/bulk-actions` | Redirect route | Прежний адрес страницы массовых действий; ведет на `/app/messages` |
-| `GET` | `/app/messages` | React bootstrap page | Страница массовых сообщений. Рассылка сценариев/опросов — диалог в детали записи, общий журнал — на дашборде |
+| `GET` | `/app/messages` | React bootstrap page | Страница массовых сообщений. Общий с диалогами сценариев/опросов множественный выбор должностей и отдельных адресатов; общий журнал — на дашборде |
 | `POST` | `/bulk-actions/scenarios/schedule` | Form action | Запланировать mass scenario |
 | `POST` | `/bulk-actions/surveys/schedule` | Form action | Запланировать mass survey |
 | `POST` | `/bulk-actions/scenarios/launch` | Form action | Запустить mass scenario сразу |

@@ -12,6 +12,7 @@ from .config import settings
 from .database import SessionLocal
 from .flow_templates import normalize_candidate_work_stage
 from .mass_targeting import (
+    deserialize_target_selection,
     deserialize_target_values,
     mass_target_employee_query,
 )
@@ -100,6 +101,8 @@ def _mass_target_employees(
     target_employee_id: Optional[int] = None,
     target_role_scope: Optional[str] = None,
     legacy_target_statuses: Optional[list[str]] = None,
+    target_role_scopes: Optional[list[str]] = None,
+    target_employee_ids: Optional[list[int]] = None,
 ) -> list[Employee]:
     return (
         mass_target_employee_query(
@@ -110,6 +113,8 @@ def _mass_target_employees(
             target_employee_id=target_employee_id,
             target_role_scope=target_role_scope,
             legacy_target_statuses=legacy_target_statuses,
+            target_role_scopes=target_role_scopes,
+            target_employee_ids=target_employee_ids,
         )
         .order_by(Employee.id.asc())
         .all()
@@ -310,6 +315,8 @@ async def schedule_all_employees(scheduler: AsyncIOScheduler, bot) -> None:
                 getattr(action, "target_employee_id", None),
                 getattr(action, "target_role_scope", None),
                 deserialize_target_values(action.target_statuses, kind="legacy"),
+                deserialize_target_selection(action.target_role_scopes, kind="role"),
+                deserialize_target_selection(action.target_employee_ids, kind="employee"),
             )
             started_count = 0
             for employee in recipients:
@@ -331,6 +338,8 @@ async def schedule_all_employees(scheduler: AsyncIOScheduler, bot) -> None:
                 getattr(action, "target_employee_id", None),
                 getattr(action, "target_role_scope", None),
                 deserialize_target_values(action.target_statuses, kind="legacy"),
+                deserialize_target_selection(action.target_role_scopes, kind="role"),
+                deserialize_target_selection(action.target_employee_ids, kind="employee"),
             )
             sent_count = 0
             for employee in recipients:

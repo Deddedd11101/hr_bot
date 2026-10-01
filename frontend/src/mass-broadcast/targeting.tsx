@@ -1,15 +1,8 @@
 import React from "react";
 
 import { Checkbox } from "@/components/ui/checkbox";
+import { AudienceMultiSelect } from "@/components/ui/audience-multi-select";
 import { Field, FieldContent, FieldGroup, FieldLabel, FieldTitle } from "@/components/ui/field";
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
 /**
@@ -26,8 +19,8 @@ export type EmployeeOption = { id: number; label: string; kind: string };
 export type ScenarioOption = { id: number; scenario_key: string; title: string; scenario_kind: string };
 
 export type TargetState = {
-  target_role_scope: string;
-  target_employee_id: string;
+  target_role_scopes: string[];
+  target_employee_ids: string[];
   target_employee_stages: string[];
   target_candidate_stages: string[];
 };
@@ -46,17 +39,17 @@ export type TargetingWorkspace = {
 };
 
 export const defaultTargets: TargetState = {
-  target_role_scope: "",
-  target_employee_id: "",
+  target_role_scopes: [],
+  target_employee_ids: [],
   target_employee_stages: [],
   target_candidate_stages: [],
 };
 
-/** Тело запроса рассылки: null вместо пустых строк, id числом. */
+/** Тело запроса рассылки с общей аудиторией должностей и отдельных людей. */
 export function targetPayload(targets: TargetState) {
   return {
-    target_role_scope: targets.target_role_scope || null,
-    target_employee_id: targets.target_employee_id ? Number(targets.target_employee_id) : null,
+    target_role_scopes: targets.target_role_scopes,
+    target_employee_ids: targets.target_employee_ids.map(Number),
     target_employee_stages: targets.target_employee_stages,
     target_candidate_stages: targets.target_candidate_stages,
   };
@@ -77,49 +70,6 @@ export async function requestJson<T>(path: string, options: RequestInit = {}) {
     throw new Error((payload as { detail?: string }).detail || "Запрос не выполнен");
   }
   return response.json() as Promise<T>;
-}
-
-const EMPTY_SELECT_VALUE = "__empty__";
-
-export function AppSelect({
-  value,
-  onChange,
-  options,
-  placeholder = "Не выбрано",
-  allowEmpty = true,
-}: {
-  value: string;
-  onChange: (value: string) => void;
-  options: Option[];
-  placeholder?: string;
-  allowEmpty?: boolean;
-}) {
-  const items = allowEmpty ? [{ value: EMPTY_SELECT_VALUE, label: placeholder }].concat(options) : options;
-  const currentValue = value || (allowEmpty ? EMPTY_SELECT_VALUE : options[0]?.value || "");
-
-  return (
-    <Select
-      items={items}
-      value={currentValue}
-      onValueChange={(nextValue) => {
-        const normalizedValue = String(nextValue);
-        onChange(normalizedValue === EMPTY_SELECT_VALUE ? "" : normalizedValue);
-      }}
-    >
-      <SelectTrigger className="w-full">
-        <SelectValue placeholder={placeholder} />
-      </SelectTrigger>
-      <SelectContent align="start" alignItemWithTrigger={false}>
-        <SelectGroup>
-          {items.map((item) => (
-            <SelectItem value={item.value} key={item.value}>
-              {item.label}
-            </SelectItem>
-          ))}
-        </SelectGroup>
-      </SelectContent>
-    </Select>
-  );
 }
 
 function MultiCheck({
@@ -187,24 +137,8 @@ export function TargetPicker({
   return (
     <FieldGroup className="grid gap-4">
       <div className="grid gap-4 lg:grid-cols-2">
-        <Field>
-          <FieldLabel>Привязка к должности</FieldLabel>
-          <AppSelect
-            value={targets.target_role_scope}
-            onChange={(value) => onChange({ ...targets, target_role_scope: value })}
-            options={roleOptions}
-            placeholder="Все должности"
-          />
-        </Field>
-        <Field>
-          <FieldLabel>Конкретный сотрудник/кандидат</FieldLabel>
-          <AppSelect
-            value={targets.target_employee_id}
-            onChange={(value) => onChange({ ...targets, target_employee_id: value })}
-            options={employeeOptions}
-            placeholder="Не выбран"
-          />
-        </Field>
+        <AudienceMultiSelect label="Привязка к должности" options={roleOptions} values={targets.target_role_scopes} onChange={(values) => onChange({ ...targets, target_role_scopes: values })} placeholder="Все должности" />
+        <AudienceMultiSelect label="Конкретные сотрудники/кандидаты" options={employeeOptions} values={targets.target_employee_ids} onChange={(values) => onChange({ ...targets, target_employee_ids: values })} placeholder="Не выбраны" />
       </div>
       <div className="grid gap-4 lg:grid-cols-2">
         <MultiCheck
