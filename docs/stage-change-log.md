@@ -2707,3 +2707,12 @@ source_of_truth: true
 - Проверки: CI PR #50, локальные `compileall`, `ruff F821`, `tools/check_docs_contracts.py`, `tests.test_p0_behaviour` (17 tests), `git diff --check` — passed.
 - Final Stage Diagnostics: [run 36443104071](https://github.com/Deddedd11101/hr_bot/actions/runs/36443104071) — `0 failing checks`; services, WireGuard, Telegram route, HTTPS and worker logs are healthy.
 - Ограничение приемки: реальный пользовательский ролик не классифицирован независимо как `video` или `animation`; ручная Telegram-проверка обычного видео и animation остается открытой. Реальные сообщения кандидатам без согласованного recipient не отправлялись.
+
+### 2026-10-01 - multi-target broadcasts and feedback selection
+
+- Feature: [PR #58](https://github.com/Deddedd11101/hr_bot/pull/58), merge commit `5685f5ea23add5c7f09bdc91c1eb335b63502a3c`.
+- Deploy Stage: [run 36850216936](https://github.com/Deddedd11101/hr_bot/actions/runs/36850216936) — preflight and deploy passed.
+- SQLite backup verified before checkout: `backups/hr_bot.before-deploy.20261001-103810.db`; scenario snapshot created and fingerprint unchanged.
+- Stage smoke: web and worker restarted; `/app/employees` and `/app/flows/workspace-v2` returned `303` without auth; Telegram API IPv4 returned `302`; deployed SHA `5685f5e`.
+- Аудитория сценариев, опросов и сообщений теперь объединяет несколько должностей и отдельных людей без дублей; блок обратной связи в карточке использует тот же выбор. Ручная проверка окна и реальной отправки остаётся открытой.
+- Следующий узкий deploy обновляет версии JS/CSS в шаблонах, чтобы браузер не использовал старые входные файлы после смены имён Vite chunks.
