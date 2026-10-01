@@ -743,6 +743,7 @@ def _build_scenario_workspace_payload(
         scenario_items.append(
             {
                 "id": scenario.id,
+                "scenario_key": scenario.scenario_key,
                 "title": scenario.title,
                 "description": scenario.description or "",
                 "employee_scope": getattr(scenario, "employee_scope", "all"),
