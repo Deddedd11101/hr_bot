@@ -15,12 +15,14 @@ export function AudienceMultiSelect({
   values,
   onChange,
   placeholder,
+  disabled = false,
 }: {
   label: string;
   options: AudienceOption[];
   values: string[];
   onChange: (values: string[]) => void;
   placeholder: string;
+  disabled?: boolean;
 }) {
   const [search, setSearch] = React.useState("");
   const filtered = options.filter((option) => option.label.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()));
@@ -30,7 +32,7 @@ export function AudienceMultiSelect({
     <div className="min-w-0 space-y-2">
       <span className="text-sm font-medium">{label}</span>
       <Popover>
-        <PopoverTrigger render={<Button type="button" variant="outline" className="w-full min-w-0 justify-between" aria-label={label} />}>
+        <PopoverTrigger render={<Button type="button" variant="outline" className="w-full min-w-0 justify-between" aria-label={label} disabled={disabled} />}>
           <span className="truncate">{values.length ? `Выбрано: ${values.length}` : placeholder}</span>
           <ChevronsUpDown className="size-4 shrink-0 opacity-60" aria-hidden="true" />
         </PopoverTrigger>

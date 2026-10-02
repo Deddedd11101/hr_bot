@@ -105,9 +105,9 @@ export function EmployeeFeedbackSurveys({ employeeId, legacyUrl }: { employeeId:
                             <SelectContent>{payload.surveys.map(item => <SelectItem key={item.key} value={item.key}>{item.title}</SelectItem>)}</SelectContent>
                         </Select>
                     </div>
-                    <AudienceMultiSelect label="Должности отвечающих" options={positions.map(value => ({ value, label: value }))} values={selectedPositions} onChange={setSelectedPositions} placeholder="Не выбраны" />
+                    <AudienceMultiSelect label="Должности отвечающих" options={positions.map(value => ({ value, label: value }))} values={selectedPositions} onChange={setSelectedPositions} placeholder="Не выбраны" disabled={selectedIds.length > 0} />
                 </div>
-                <AudienceMultiSelect label="Конкретные сотрудники/кандидаты" options={eligibleRecipients.map(item => ({ value: String(item.id), label: `${item.full_name}${item.position ? ` · ${item.position}` : ""}` }))} values={selectedIds} onChange={setSelectedIds} placeholder="Не выбраны" />
+                <AudienceMultiSelect label="Конкретные сотрудники/кандидаты" options={eligibleRecipients.map(item => ({ value: String(item.id), label: `${item.full_name}${item.position ? ` · ${item.position}` : ""}` }))} values={selectedIds} onChange={setSelectedIds} placeholder="Не выбраны" disabled={selectedPositions.length > 0} />
                 <p className="text-sm text-muted-foreground">Получателей: {recipientIds.length}{recipientIds.length > 100 ? " (максимум 100)" : ""}</p>
                 <Button type="button" disabled={submitting || !scenarioKey || recipientIds.length === 0 || recipientIds.length > 100} onClick={launch}><Play aria-hidden="true" /> {submitting ? "Запуск..." : "Запустить опрос"}</Button>
             </> : null}
