@@ -321,7 +321,11 @@ def _parse_multi_target_payload(payload: dict) -> tuple[Optional[list[str]], Opt
         raise HTTPException(status_code=400, detail="Неверный список получателей.")
     if any(not isinstance(value, str) for value in raw_roles) or any(type(value) is not int or value <= 0 for value in raw_ids):
         raise HTTPException(status_code=400, detail="Неверный список получателей.")
-    return parse_role_scopes(raw_roles), list(dict.fromkeys(raw_ids))
+    roles = parse_role_scopes(raw_roles)
+    ids = list(dict.fromkeys(raw_ids))
+    if roles and ids:
+        raise HTTPException(status_code=400, detail="Выберите либо должности, либо отдельных сотрудников.")
+    return roles, ids
 
 
 def _target_selection_storage(payload: dict) -> dict[str, Optional[str]]:

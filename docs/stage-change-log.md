@@ -2715,4 +2715,4 @@ source_of_truth: true
 - SQLite backup verified before checkout: `backups/hr_bot.before-deploy.20261001-103810.db`; scenario snapshot created and fingerprint unchanged.
 - Stage smoke: web and worker restarted; `/app/employees` and `/app/flows/workspace-v2` returned `303` without auth; Telegram API IPv4 returned `302`; deployed SHA `5685f5e`.
 - Аудитория сценариев, опросов и сообщений теперь объединяет несколько должностей и отдельных людей без дублей; блок обратной связи в карточке использует тот же выбор. Ручная проверка окна и реальной отправки остаётся открытой.
-- Следующий узкий deploy обновляет версии JS/CSS в шаблонах, чтобы браузер не использовал старые входные файлы после смены имён Vite chunks.
+- Следующий узкий deploy обновляет версии JS/CSS в шаблонах, чтобы браузер не использовал старые входные файлы после смены имён Vite chunks, и делает выбор должностей и отдельных людей взаимоисключающим.

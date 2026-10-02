@@ -137,8 +137,8 @@ export function TargetPicker({
   return (
     <FieldGroup className="grid gap-4">
       <div className="grid gap-4 lg:grid-cols-2">
-        <AudienceMultiSelect label="Привязка к должности" options={roleOptions} values={targets.target_role_scopes} onChange={(values) => onChange({ ...targets, target_role_scopes: values })} placeholder="Все должности" />
-        <AudienceMultiSelect label="Конкретные сотрудники/кандидаты" options={employeeOptions} values={targets.target_employee_ids} onChange={(values) => onChange({ ...targets, target_employee_ids: values })} placeholder="Не выбраны" />
+        <AudienceMultiSelect label="Привязка к должности" options={roleOptions} values={targets.target_role_scopes} onChange={(values) => onChange({ ...targets, target_role_scopes: values })} placeholder="Все должности" disabled={targets.target_employee_ids.length > 0} />
+        <AudienceMultiSelect label="Конкретные сотрудники/кандидаты" options={employeeOptions} values={targets.target_employee_ids} onChange={(values) => onChange({ ...targets, target_employee_ids: values })} placeholder="Не выбраны" disabled={targets.target_role_scopes.length > 0} />
       </div>
       <div className="grid gap-4 lg:grid-cols-2">
         <MultiCheck

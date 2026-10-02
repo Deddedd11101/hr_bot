@@ -5043,10 +5043,14 @@ class EmployeeApiSmokeTests(unittest.TestCase):
             self.assertEqual(action.target_employee_stages, None)
             self.assertGreaterEqual(action.recipient_count, 1)
 
-    def test_bulk_actions_preview_and_schedule_union_positions_and_people(self) -> None:
+    def test_bulk_actions_multi_positions_and_people_are_exclusive(self) -> None:
+        with SessionLocal() as db:
+            employee = db.get(Employee, self.employee_id)
+            employee.desired_position = "Аналитик"
+            db.commit()
         target = {
             "target_role_scopes": ["designer", "analyst"],
-            "target_employee_ids": [self.employee_id, self.employee_id],
+            "target_employee_ids": [],
             "target_employee_stages": [],
             "target_candidate_stages": [],
         }
@@ -5064,8 +5068,18 @@ class EmployeeApiSmokeTests(unittest.TestCase):
         with SessionLocal() as db:
             action = db.query(MassMessageAction).filter(MassMessageAction.message_text == message_text).one()
             self.assertEqual(action.target_role_scopes, '["designer","analyst"]')
-            self.assertEqual(action.target_employee_ids, f"[{self.employee_id}]")
+            self.assertEqual(action.target_employee_ids, "[]")
             self.assertEqual(action.recipient_count, preview.json()["recipient_count"])
+
+        person_target = {**target, "target_role_scopes": [], "target_employee_ids": [self.employee_id, self.employee_id]}
+        person_preview = self.client.post("/api/bulk-actions/preview", json=person_target)
+        self.assertEqual(person_preview.status_code, 200, person_preview.text)
+        self.assertEqual(person_preview.json()["recipient_count"], 1)
+
+        mixed_target = {**target, "target_employee_ids": [self.employee_id]}
+        mixed_preview = self.client.post("/api/bulk-actions/preview", json=mixed_target)
+        self.assertEqual(mixed_preview.status_code, 400, mixed_preview.text)
+        self.assertIn("либо должности", mixed_preview.json()["detail"])
 
     def test_bulk_actions_delete_scheduled_survey_uses_survey_route(self) -> None:
         scenario_key = f"codex_scheduled_survey_{self.unique_tag}"
