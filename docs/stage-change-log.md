@@ -2715,4 +2715,13 @@ source_of_truth: true
 - SQLite backup verified before checkout: `backups/hr_bot.before-deploy.20261001-103810.db`; scenario snapshot created and fingerprint unchanged.
 - Stage smoke: web and worker restarted; `/app/employees` and `/app/flows/workspace-v2` returned `303` without auth; Telegram API IPv4 returned `302`; deployed SHA `5685f5e`.
 - Аудитория сценариев, опросов и сообщений теперь объединяет несколько должностей и отдельных людей без дублей; блок обратной связи в карточке использует тот же выбор. Ручная проверка окна и реальной отправки остаётся открытой.
-- Следующий узкий deploy обновляет версии JS/CSS в шаблонах, чтобы браузер не использовал старые входные файлы после смены имён Vite chunks, и делает выбор должностей и отдельных людей взаимоисключающим.
+- Последующий узкий deploy обновил версии JS/CSS в шаблонах и сделал выбор должностей и отдельных людей взаимоисключающим; см. запись ниже.
+
+### 2026-10-02 - exclusive audience selectors and cache refresh
+
+- Hotfix: [PR #59](https://github.com/Deddedd11101/hr_bot/pull/59), merge commit `23a9e9760334d0d0e2013ca3197943d2725203e7`.
+- Deploy Stage: [run 36985380197](https://github.com/Deddedd11101/hr_bot/actions/runs/36985380197) — preflight and deploy passed.
+- SQLite backup verified: `backups/hr_bot.before-deploy.20261002-084150.db`; scenario snapshot created, fingerprint unchanged.
+- Stage smoke: `/app/employees` и `/app/flows/workspace-v2` вернули `303` без авторизации; Telegram API IPv4 вернул `302`; deployed SHA `23a9e97`.
+- В рассылках сценариев/опросов и блоке обратной связи выбор нескольких должностей блокирует выбор отдельных людей, и наоборот. Новый смешанный API-запрос возвращает `400`; ранее запланированные действия не переписаны. Версии JS/CSS в шаблонах обновлены, чтобы браузер загрузил новые entrypoints.
+- Ручная приемка селектов в браузере и реальная отправка Telegram-сообщений не выполнялись.
