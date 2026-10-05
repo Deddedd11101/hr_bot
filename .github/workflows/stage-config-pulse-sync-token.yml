@@ -1,0 +1,71 @@
+name: Stage Config Pulse Sync Token
+
+# Записывает PULSE_SYNC_TOKEN (GitHub secret) в systemd drop-in hr-bot-web на
+# стенде или удаляет этот drop-in (rollback). Ничего не деплоит, не делает
+# checkout и не перезапускает сервисы: значение вступает в силу после
+# ближайшего Deploy Stage (он делает systemctl restart). Значение секрета в
+# логи не печатается (GitHub дополнительно маскирует secrets).
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "write — записать drop-in из secret PULSE_SYNC_TOKEN; remove — удалить drop-in"
+        required: true
+        type: choice
+        options:
+          - write
+          - remove
+        default: write
+
+concurrency:
+  group: deploy-stage
+  cancel-in-progress: false
+
+jobs:
+  configure:
+    runs-on: ubuntu-latest
+    env:
+      MODE: ${{ inputs.mode }}
+      PULSE_SYNC_TOKEN: ${{ secrets.PULSE_SYNC_TOKEN }}
+
+    steps:
+      - name: Write or remove the drop-in over SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.STAGE_HOST }}
+          username: ${{ secrets.STAGE_USERNAME }}
+          password: ${{ secrets.STAGE_PASSWORD }}
+          port: ${{ secrets.STAGE_PORT }}
+          envs: MODE,PULSE_SYNC_TOKEN
+          script: |
+            set -eu
+            dropin=/etc/systemd/system/hr-bot-web.service.d/40-pulse-sync.conf
+            if [ "$MODE" = "remove" ]; then
+              rm -f "$dropin"
+              systemctl daemon-reload
+              echo "removed $dropin; restart hr-bot-web via Deploy Stage to apply"
+              exit 0
+            fi
+            if [ -z "${PULSE_SYNC_TOKEN:-}" ]; then
+              echo "GitHub secret PULSE_SYNC_TOKEN is empty; nothing written"
+              exit 1
+            fi
+            case "$PULSE_SYNC_TOKEN" in
+              *[!A-Za-z0-9_.~-]*) echo "token contains unsupported characters; nothing written"; exit 1 ;;
+            esac
+            if [ "${#PULSE_SYNC_TOKEN}" -lt 32 ]; then
+              echo "token shorter than 32 characters; nothing written"
+              exit 1
+            fi
+            mkdir -p "$(dirname "$dropin")"
+            umask 077
+            printf '[Service]\nEnvironment=PULSE_SYNC_TOKEN=%s\n' "$PULSE_SYNC_TOKEN" > "$dropin"
+            chmod 600 "$dropin"
+            systemctl daemon-reload
+            if systemctl show hr-bot-web --property=Environment --value | tr ' ' '\n' | grep -q '^PULSE_SYNC_TOKEN='; then
+              echo "written $dropin (mode 600, $(wc -c < "$dropin") bytes); unit env has PULSE_SYNC_TOKEN, effective after Deploy Stage restart"
+            else
+              echo "drop-in written but unit env lacks PULSE_SYNC_TOKEN; inspect $dropin"
+              exit 1
+            fi
