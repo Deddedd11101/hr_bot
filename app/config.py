@@ -47,6 +47,10 @@ class Settings:
     ADMIN_SESSION_MAX_AGE_SECONDS: int = int(os.getenv("ADMIN_SESSION_MAX_AGE_SECONDS", str(60 * 60 * 12)))
     ADMIN_SESSION_COOKIE_SECURE: bool = os.getenv("ADMIN_SESSION_COOKIE_SECURE", "false").lower() in {"1", "true", "yes"}
 
+    # Интеграция с Pulse: bearer-токен для read-only экспорта сотрудников.
+    # Пусто = endpoint отключён (503).
+    PULSE_SYNC_TOKEN: str = os.getenv("PULSE_SYNC_TOKEN", "")
+
     # Базовые аккаунты админки
     DEFAULT_ADMIN_LOGIN: str = os.getenv("DEFAULT_ADMIN_LOGIN", "admin")
     DEFAULT_ADMIN_PASSWORD: str = os.getenv("DEFAULT_ADMIN_PASSWORD", "admin123")
