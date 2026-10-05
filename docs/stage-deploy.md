@@ -120,6 +120,15 @@ source_of_truth: true
 - `STAGE_APP_DIR`
 - `STAGE_DB_PATH` — optional; абсолютный или относительный к `STAGE_APP_DIR` путь к SQLite. Если secret не задан, используется `hr_bot.db`.
 
+### Регистрация Stage Config Pulse Sync Token
+
+Ручной workflow `.github/workflows/stage-config-pulse-sync-token.yml` должен
+присутствовать в default-ветке `main`, иначе GitHub не принимает
+`workflow_dispatch`. Запускать его следует с `ref=stage` только после
+интеграции Pulse export API и stage-версии workflow. Регистрация в `main`
+сама по себе не устанавливает токен, не перезапускает сервис и не включает
+синхронизацию. Процедура настройки и отката описана в stage-версии этого runbook.
+
 ## Наблюдаемые факты stage
 
 Эти факты взяты из `docs/handoffs/telegram-linking-and-scope-handoff.md`. Их надо считать live operational notes, а не repo-enforced truth.
