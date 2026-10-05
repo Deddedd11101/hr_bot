@@ -2725,3 +2725,12 @@ source_of_truth: true
 - Stage smoke: `/app/employees` и `/app/flows/workspace-v2` вернули `303` без авторизации; Telegram API IPv4 вернул `302`; deployed SHA `23a9e97`.
 - В рассылках сценариев/опросов и блоке обратной связи выбор нескольких должностей блокирует выбор отдельных людей, и наоборот. Новый смешанный API-запрос возвращает `400`; ранее запланированные действия не переписаны. Версии JS/CSS в шаблонах обновлены, чтобы браузер загрузил новые entrypoints.
 - Ручная приемка селектов в браузере и реальная отправка Telegram-сообщений не выполнялись.
+
+### 2026-10-05 - HRBot export for Pulse enabled on stage
+
+- Pulse integration: [PR #62](https://github.com/Deddedd11101/hr_bot/pull/62), deployed SHA `78ccbb7d63042eb47d15b71f66586211130f6a26`.
+- Manual workflow registration in `main`: [PR #61](https://github.com/Deddedd11101/hr_bot/pull/61).
+- `PULSE_SYNC_TOKEN` установлен как GitHub Actions secret без публикации значения; [Stage Config run 37325979696](https://github.com/Deddedd11101/hr_bot/actions/runs/37325979696) записал systemd drop-in.
+- [Deploy Stage run 37326099509](https://github.com/Deddedd11101/hr_bot/actions/runs/37326099509) — preflight и deploy прошли; SQLite backup `backups/hr_bot.before-deploy.20261005-143755.db` проверен, scenario snapshot создан, fingerprint не изменился. Web, worker и WireGuard активны; `/app/employees` и `/app/flows/workspace-v2` вернули `303` без авторизации.
+- Публичный API smoke: `GET /api/integrations/pulse/employees` без bearer вернул `401`, с локально сохранённым токеном — `200`, `source=hrbot`, 40 сотрудников стадий `staff/adaptation/ipr`. Значение токена и персональные данные в журнал не записывались.
+- Pulse production ещё не настроен и sync apply не выполнялся; превью совпадений по ФИО, неизвестных должностей и архивирования остаётся обязательным перед первым применением.
