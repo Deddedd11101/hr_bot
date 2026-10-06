@@ -932,6 +932,7 @@ class ScenarioProgress(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     feedback_run_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
+    survey_launch_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
     feedback_question_text: Mapped[Optional[str]] = mapped_column(String(4096), nullable=True)
 
 
@@ -948,6 +949,7 @@ class SurveyAnswer(Base):
     file_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     answered_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     feedback_run_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
+    survey_launch_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
     respondent_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     question_text: Mapped[Optional[str]] = mapped_column(String(4096), nullable=True)
 

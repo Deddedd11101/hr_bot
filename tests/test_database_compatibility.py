@@ -93,6 +93,54 @@ def _create_legacy_employees_table(path: Path, *, include_menu_state: bool, incl
 
 
 class DatabaseCompatibilityTests(unittest.TestCase):
+    def test_survey_launch_columns_are_additive_for_existing_progress_and_answers(self) -> None:
+        from app import models  # noqa: F401
+
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            path = Path(temporary_directory) / "legacy-survey.db"
+            engine = create_engine(f"sqlite:///{path}")
+            with engine.begin() as connection:
+                connection.execute(text("""
+                    CREATE TABLE scenario_progress (
+                        id INTEGER PRIMARY KEY, employee_id INTEGER, scenario_key TEXT,
+                        started_at DATETIME, updated_at DATETIME, waiting_for_response BOOLEAN,
+                        is_completed BOOLEAN, feedback_run_id INTEGER
+                    )
+                """))
+                connection.execute(text("""
+                    INSERT INTO scenario_progress (id, employee_id, scenario_key, started_at, updated_at, waiting_for_response, is_completed)
+                    VALUES (1, 7, 'legacy', '2026-01-01', '2026-01-01', 0, 1)
+                """))
+                connection.execute(text("""
+                    CREATE TABLE survey_answers (
+                        id INTEGER PRIMARY KEY, employee_id INTEGER, scenario_key TEXT,
+                        step_key TEXT, answer_value TEXT, answered_at DATETIME,
+                        feedback_run_id INTEGER
+                    )
+                """))
+                connection.execute(text("""
+                    INSERT INTO survey_answers (id, employee_id, scenario_key, step_key, answer_value, answered_at)
+                    VALUES (1, 7, 'legacy', 'question', 'Ответ', '2026-01-01')
+                """))
+            database.Base.metadata.create_all(engine)
+            previous_engine = database.engine
+            previous_url = database.settings.DATABASE_URL
+            try:
+                database.engine = engine
+                database.settings.DATABASE_URL = f"sqlite:///{path}"
+                database._ensure_sqlite_schema()
+                database._ensure_sqlite_schema()
+                with engine.connect() as connection:
+                    for table in ("scenario_progress", "survey_answers"):
+                        columns = {row[1] for row in connection.execute(text(f"PRAGMA table_info({table})"))}
+                        self.assertIn("survey_launch_id", columns)
+                        self.assertIsNone(connection.execute(text(f"SELECT survey_launch_id FROM {table} WHERE id = 1")).scalar_one())
+                    self.assertEqual(connection.execute(text("SELECT answer_value FROM survey_answers WHERE id = 1")).scalar_one(), "Ответ")
+            finally:
+                database.engine = previous_engine
+                database.settings.DATABASE_URL = previous_url
+                engine.dispose()
+
     def test_mass_actions_gain_plural_target_columns_without_changing_old_rows(self) -> None:
         from app import models  # noqa: F401
 

@@ -599,7 +599,6 @@ export function WorkspaceCanvasSection(props: {
   isSurveyWorkspace: boolean;
   graph: WorkspaceGraph | null | undefined;
   payloadWorkspace: WorkspaceData | null | undefined;
-  exportUrl: string;
   dragStepId: number | null;
   onBreadcrumbClick: (index: number) => void;
   onAddRootStep: () => void;
@@ -623,7 +622,6 @@ export function WorkspaceCanvasSection(props: {
     isSurveyWorkspace,
     graph,
     payloadWorkspace,
-    exportUrl,
     dragStepId,
     onBreadcrumbClick,
     onAddRootStep,
@@ -686,11 +684,6 @@ export function WorkspaceCanvasSection(props: {
           </div>
           {currentContainer?.type === "root" ? (
             <>
-            {exportUrl ? (
-              <Button render={<a href={exportUrl} />} variant="outline" size="sm">
-                Выгрузить Excel
-              </Button>
-            ) : null}
             <Button variant="secondary" size="sm" onClick={onAddRootStep}>
               <Plus data-icon="inline-start" />
               {isSurveyWorkspace ? "Добавить" : "Добавить шаг"}
@@ -1373,27 +1366,36 @@ export function WorkspaceStepDetailPane(props: {
                 ) : null}
 
                 {isSurveyWorkspace ? (
-                  <label className="flex items-start gap-3 rounded-lg border border-border bg-muted/40 p-3">
-                    <Checkbox
-                      checked={form?.response_type === "none"}
-                      onCheckedChange={(checked) =>
-                        onFormChange((prev) =>
-                          prev
-                            ? { ...prev, response_type: checked === true ? "none" : "text", button_options: checked === true ? "" : prev.button_options }
-                            : prev,
-                        )
-                      }
-                    />
-                    <span className="grid gap-1 text-sm">
-                      <span className="font-semibold text-foreground/80">Сообщение без ответа</span>
-                      <span className="text-muted-foreground">
-                        Бот отправит текст и не будет ждать ответа. Подходит для благодарности в конце: опрос завершится сразу после него.
+                  <>
+                    <label className="grid gap-2">
+                      <span className="text-sm font-semibold text-foreground/75">Тип вопроса</span>
+                      <SingleSelectPicker
+                        options={responseTypePickerOptions}
+                        value={form?.response_type || "text"}
+                        placeholder="Выбери тип вопроса"
+                        onChange={(nextValue) =>
+                          onFormChange((prev) => prev ? {
+                            ...prev,
+                            response_type: nextValue,
+                            button_options: nextValue === "none" || nextValue === "chain" ? "" : prev.button_options,
+                          } : prev)
+                        }
+                      />
+                    </label>
+                    <label className="flex items-start gap-3 rounded-lg border border-border bg-muted/40 p-3">
+                      <Checkbox
+                        checked={Boolean(form?.is_terminal)}
+                        onCheckedChange={(checked) => onFormChange((prev) => prev ? { ...prev, is_terminal: checked === true } : prev)}
+                      />
+                      <span className="grid gap-1 text-sm">
+                        <span className="font-semibold text-foreground/80">Завершить опрос после этого шага</span>
+                        <span className="text-muted-foreground">После ответа или отправки сообщения бот не перейдёт к следующему вопросу.</span>
                       </span>
-                    </span>
-                  </label>
+                    </label>
+                  </>
                 ) : null}
 
-                {(isSurveyWorkspace && form?.response_type !== "none") || (!isSurveyWorkspace && supportsButtonOptions(form?.response_type || "")) ? (
+                {(isSurveyWorkspace && ["text", "branching"].includes(form?.response_type || "")) || (!isSurveyWorkspace && supportsButtonOptions(form?.response_type || "")) ? (
                   <label className="grid gap-2">
                     <span className="text-sm font-semibold text-foreground/75">
                       {isSurveyWorkspace ? "Варианты ответа" : "Кнопки"}
@@ -1411,7 +1413,7 @@ export function WorkspaceStepDetailPane(props: {
                           return {
                             ...prev,
                             button_options: event.target.value,
-                            response_type: isSurveyWorkspace ? "text" : prev.response_type,
+                            response_type: prev.response_type,
                             button_notifications: optionLabels.map((option_label, option_index) => {
                               const existing = prev.button_notifications.find((item) => item.option_index === option_index);
                               return {
@@ -1698,6 +1700,18 @@ export function WorkspaceStepDetailPane(props: {
                       </div>
                     </details>
                   </>
+                ) : null}
+
+                {isSurveyWorkspace && detailTarget?.kind === "branch_step" ? (
+                  <label className="grid gap-2">
+                    <span className="text-sm font-semibold text-foreground/75">Вернуться к вопросу опроса</span>
+                    <SingleSelectPicker
+                      options={rootStepOptions}
+                      value={form?.return_to_step_key || ""}
+                      placeholder="После ветки продолжить по порядку"
+                      onChange={(nextValue) => onFormChange((prev) => prev ? { ...prev, return_to_step_key: nextValue } : prev)}
+                    />
+                  </label>
                 ) : null}
 
                 <div className="flex flex-col gap-3">

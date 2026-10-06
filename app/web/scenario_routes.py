@@ -7,7 +7,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import text
+from sqlalchemy import func, or_, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -23,7 +23,7 @@ from ..flow_templates import (
     TRIGGER_MODE_LABELS,
     normalize_candidate_work_stage,
 )
-from ..models import Employee, FlowStepTemplate, ScenarioTemplate, StepButtonNotification, SurveyAnswer
+from ..models import Employee, EmployeeFeedbackRun, FlowStepTemplate, MassScenarioAction, ScenarioTemplate, StepButtonNotification, SurveyAnswer
 from ..positions import build_role_scope_labels, serialize_role_scopes
 from ..time_utils import utc_now
 from .scenarios import (
@@ -1821,6 +1821,128 @@ def copy_scenario(
     return _template_workspace_redirect(kind, scenario_copy.id, flash_message=f"{item_label} скопирован")
 
 
+@router.get("/api/surveys/{scenario_id}/runs")
+def survey_runs_api(request: Request, scenario_id: int, db: Session = Depends(get_db)):
+    require_api_auth(request)
+    scenario = db.get(ScenarioTemplate, scenario_id)
+    if not scenario or scenario.scenario_kind != "survey":
+        raise HTTPException(status_code=404, detail="Опрос не найден")
+    actions = (
+        db.query(MassScenarioAction)
+        .filter(
+            MassScenarioAction.flow_key == scenario.scenario_key,
+            MassScenarioAction.scenario_kind == "survey",
+            or_(MassScenarioAction.processed_at.is_not(None), MassScenarioAction.launch_type == "manual"),
+        )
+        .order_by(MassScenarioAction.created_at.desc(), MassScenarioAction.id.desc())
+        .all()
+    )
+    action_ids = [action.id for action in actions]
+    counts = dict(
+        db.query(SurveyAnswer.survey_launch_id, func.count(SurveyAnswer.id))
+        .filter(SurveyAnswer.survey_launch_id.in_(action_ids))
+        .group_by(SurveyAnswer.survey_launch_id)
+        .all()
+    ) if action_ids else {}
+    respondents = dict(
+        db.query(SurveyAnswer.survey_launch_id, func.count(func.distinct(SurveyAnswer.employee_id)))
+        .filter(SurveyAnswer.survey_launch_id.in_(action_ids))
+        .group_by(SurveyAnswer.survey_launch_id)
+        .all()
+    ) if action_ids else {}
+    runs = [
+        {
+            "id": action.id,
+            "kind": "broadcast",
+            "source_label": "Рассылка" if action.processed_at else "Рассылка не завершена",
+            "created_at": action.created_at.isoformat(),
+            "recipient_count": action.recipient_count,
+            "respondent_count": respondents.get(action.id, 0),
+            "answer_count": counts.get(action.id, 0),
+            "download_url": f"/api/surveys/{scenario.id}/runs/{action.id}/export" if counts.get(action.id) else None,
+        }
+        for action in actions
+    ]
+    feedback_runs = db.query(EmployeeFeedbackRun).filter_by(scenario_key=scenario.scenario_key).all()
+    feedback_ids = [run.id for run in feedback_runs]
+    feedback_counts = dict(
+        db.query(SurveyAnswer.feedback_run_id, func.count(SurveyAnswer.id))
+        .filter(SurveyAnswer.feedback_run_id.in_(feedback_ids))
+        .group_by(SurveyAnswer.feedback_run_id)
+        .all()
+    ) if feedback_ids else {}
+    for run in feedback_runs:
+        subject = db.get(Employee, run.subject_employee_id)
+        runs.append({
+            "id": run.id,
+            "kind": "feedback",
+            "source_label": f"Обратная связь: {subject.full_name or 'Сотрудник #' + str(subject.id)}" if subject else "Обратная связь",
+            "created_at": run.created_at.isoformat(),
+            "recipient_count": None,
+            "respondent_count": None,
+            "answer_count": feedback_counts.get(run.id, 0),
+            "download_url": (
+                f"/api/employees/{run.subject_employee_id}/feedback-surveys/runs/{run.id}/export"
+                if feedback_counts.get(run.id) and subject else None
+            ),
+        })
+    legacy_count = db.query(func.count(SurveyAnswer.id)).filter(
+        SurveyAnswer.scenario_key == scenario.scenario_key,
+        SurveyAnswer.feedback_run_id.is_(None),
+        SurveyAnswer.survey_launch_id.is_(None),
+    ).scalar() or 0
+    runs.sort(key=lambda run: run["created_at"], reverse=True)
+    return {
+        "runs": runs,
+        "legacy_answer_count": legacy_count,
+        "legacy_download_url": f"/surveys/{scenario.id}/export" if legacy_count else None,
+    }
+
+
+@router.get("/api/surveys/{scenario_id}/runs/{run_id}/export")
+def export_survey_run_api(request: Request, scenario_id: int, run_id: int, db: Session = Depends(get_db)):
+    require_api_auth(request)
+    scenario = db.get(ScenarioTemplate, scenario_id)
+    action = db.get(MassScenarioAction, run_id)
+    if not scenario or scenario.scenario_kind != "survey" or not action or action.scenario_kind != "survey" or action.flow_key != scenario.scenario_key:
+        raise HTTPException(status_code=404, detail="Запуск опроса не найден")
+    answers = (
+        db.query(SurveyAnswer)
+        .filter_by(scenario_key=scenario.scenario_key, survey_launch_id=run_id)
+        .order_by(SurveyAnswer.answered_at, SurveyAnswer.id)
+        .all()
+    )
+    if not answers:
+        raise HTTPException(status_code=404, detail="Ответов на этот запуск пока нет")
+    from openpyxl import Workbook
+
+    def excel_text(value: str | None) -> str:
+        content = value or ""
+        return f"'{content}" if content.lstrip().startswith(("=", "+", "-", "@")) else content
+
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "Ответы"
+    sheet.append(["ФИО отвечавшего", "Вопрос", "Ответ", "Дата ответа"])
+    steps = {step.step_key: step.step_title for step in db.query(FlowStepTemplate).filter_by(flow_key=scenario.scenario_key).all()}
+    for answer in answers:
+        employee = db.get(Employee, answer.employee_id)
+        sheet.append([
+            excel_text(answer.respondent_name or (employee.full_name if employee else f"Сотрудник #{answer.employee_id}")),
+            excel_text(answer.question_text or steps.get(answer.step_key, answer.step_key)),
+            excel_text(answer.file_name or answer.answer_value),
+            answer.answered_at.strftime("%d.%m.%Y %H:%M"),
+        ])
+    output = BytesIO()
+    workbook.save(output)
+    output.seek(0)
+    return StreamingResponse(
+        output,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="survey_{scenario.id}_run_{run_id}.xlsx"'},
+    )
+
+
 @router.get("/surveys/{scenario_id}/export")
 def export_survey_results(
     request: Request,
@@ -1856,7 +1978,11 @@ def export_survey_results(
     )
     answers = (
         db.query(SurveyAnswer)
-        .filter(SurveyAnswer.scenario_key == scenario.scenario_key, SurveyAnswer.feedback_run_id.is_(None))
+        .filter(
+            SurveyAnswer.scenario_key == scenario.scenario_key,
+            SurveyAnswer.feedback_run_id.is_(None),
+            SurveyAnswer.survey_launch_id.is_(None),
+        )
         .order_by(SurveyAnswer.employee_id, SurveyAnswer.answered_at, SurveyAnswer.id)
         .all()
     )

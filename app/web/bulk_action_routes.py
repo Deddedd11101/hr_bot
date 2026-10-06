@@ -248,6 +248,23 @@ async def bulk_launch_survey(
         return _mass_actions_redirect("Не найдено ни одного получателя для выбранных статусов.", "error")
     if not settings.TELEGRAM_BOT_TOKEN:
         return _mass_actions_redirect("Не задан TELEGRAM_BOT_TOKEN.", "error")
+    action = MassScenarioAction(
+        flow_key=scenario.scenario_key,
+        scenario_kind="survey",
+        requested_at=utc_now(),
+        processed_at=None,
+        launch_type="manual",
+        target_all=target_all,
+        target_statuses=serialize_target_values(build_legacy_target_statuses(target_employee_stages, target_candidate_stages)),
+        target_employee_stages=serialize_target_values(target_employee_stages),
+        target_candidate_stages=serialize_target_values(target_candidate_stages),
+        target_role_scope=target_role_scope,
+        target_employee_id=target_employee_id,
+        recipient_count=0,
+        created_at=utc_now(),
+    )
+    db.add(action)
+    db.commit()
     messenger = create_telegram_messenger(settings.TELEGRAM_BOT_TOKEN)
     started_count = 0
     try:
@@ -256,25 +273,10 @@ async def bulk_launch_survey(
                 continue
             if not _scenario_matches_employee_role(scenario, employee):
                 continue
-            if await start_scenario(messenger, db, employee, scenario.scenario_key):
+            if await start_scenario(messenger, db, employee, scenario.scenario_key, survey_launch_id=action.id):
                 started_count += 1
-        db.add(
-            MassScenarioAction(
-                flow_key=scenario.scenario_key,
-                scenario_kind="survey",
-                requested_at=utc_now(),
-                processed_at=utc_now(),
-                launch_type="manual",
-                target_all=target_all,
-                target_statuses=serialize_target_values(build_legacy_target_statuses(target_employee_stages, target_candidate_stages)),
-                target_employee_stages=serialize_target_values(target_employee_stages),
-                target_candidate_stages=serialize_target_values(target_candidate_stages),
-                target_role_scope=target_role_scope,
-                target_employee_id=target_employee_id,
-                recipient_count=started_count,
-                created_at=utc_now(),
-            )
-        )
+        action.recipient_count = started_count
+        action.processed_at = utc_now()
         db.commit()
     finally:
         await messenger.close()
@@ -626,6 +628,24 @@ async def bulk_launch_survey_api(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Не найдено ни одного получателя.")
     if not settings.TELEGRAM_BOT_TOKEN:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Не задан TELEGRAM_BOT_TOKEN.")
+    action = MassScenarioAction(
+        flow_key=scenario.scenario_key,
+        scenario_kind="survey",
+        requested_at=utc_now(),
+        processed_at=None,
+        launch_type="manual",
+        target_all=target_all,
+        target_statuses=serialize_target_values(build_legacy_target_statuses(target_employee_stages, target_candidate_stages)),
+        target_employee_stages=serialize_target_values(target_employee_stages),
+        target_candidate_stages=serialize_target_values(target_candidate_stages),
+        target_role_scope=target_role_scope,
+        target_employee_id=target_employee_id,
+        recipient_count=0,
+        **_target_selection_storage(payload),
+        created_at=utc_now(),
+    )
+    db.add(action)
+    db.commit()
     messenger = create_telegram_messenger(settings.TELEGRAM_BOT_TOKEN)
     started_count = 0
     try:
@@ -634,26 +654,10 @@ async def bulk_launch_survey_api(
                 continue
             if not _scenario_matches_employee_role(scenario, employee):
                 continue
-            if await start_scenario(messenger, db, employee, scenario.scenario_key):
+            if await start_scenario(messenger, db, employee, scenario.scenario_key, survey_launch_id=action.id):
                 started_count += 1
-        db.add(
-            MassScenarioAction(
-                flow_key=scenario.scenario_key,
-                scenario_kind="survey",
-                requested_at=utc_now(),
-                processed_at=utc_now(),
-                launch_type="manual",
-                target_all=target_all,
-                target_statuses=serialize_target_values(build_legacy_target_statuses(target_employee_stages, target_candidate_stages)),
-                target_employee_stages=serialize_target_values(target_employee_stages),
-                target_candidate_stages=serialize_target_values(target_candidate_stages),
-                target_role_scope=target_role_scope,
-                target_employee_id=target_employee_id,
-                recipient_count=started_count,
-                **_target_selection_storage(payload),
-                created_at=utc_now(),
-            )
-        )
+        action.recipient_count = started_count
+        action.processed_at = utc_now()
         db.commit()
     finally:
         await messenger.close()
