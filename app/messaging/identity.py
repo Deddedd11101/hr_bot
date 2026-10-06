@@ -193,7 +193,17 @@ def get_primary_chat_id(
     employee: Employee,
     db: Session | None = None,
     channel: str | None = None,
+    *,
+    include_unverified: bool = False,
 ) -> Optional[str]:
+    if (
+        not include_unverified
+        and channel in (None, "telegram")
+        and hasattr(employee, "employee_stage")
+        and (getattr(employee, "employee_stage", None) or "").strip() != "candidate"
+        and not getattr(employee, "telegram_verified_at", None)
+    ):
+        return None
     if db is not None and employee.id is not None:
         numeric_account = (
             db.query(EmployeeMessengerAccount)
@@ -208,10 +218,24 @@ def get_primary_chat_id(
             if channel and account.channel != channel:
                 continue
             if _looks_like_numeric_chat_id(account.external_user_id):
+                if (
+                    not include_unverified
+                    and hasattr(employee, "employee_stage")
+                    and (getattr(employee, "employee_stage", None) or "").strip() != "candidate"
+                    and getattr(employee, "telegram_verified_user_id", None) != _normalized(account.external_user_id)
+                ):
+                    continue
                 return _normalized(account.external_user_id)
 
     legacy_user_id = _normalized(employee.telegram_user_id)
     if _looks_like_numeric_chat_id(legacy_user_id):
+        if (
+            not include_unverified
+            and hasattr(employee, "employee_stage")
+            and (getattr(employee, "employee_stage", None) or "").strip() != "candidate"
+            and getattr(employee, "telegram_verified_user_id", None) != legacy_user_id
+        ):
+            return None
         return legacy_user_id
     return None
 

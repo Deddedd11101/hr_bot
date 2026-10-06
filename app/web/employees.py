@@ -34,6 +34,7 @@ from ..models import (
     EmployeeHrNote,
     EmployeeManualBotMessage,
     EmployeeMessengerAccount,
+    StaffTelegramChallenge,
     FlowLaunchRequest,
     GradeAssessment,
     GradeAssessmentValue,
@@ -1431,6 +1432,9 @@ def _delete_employee_record(db: Session, employee: Employee) -> str:
     db.query(EmployeeMessengerAccount).filter(
         EmployeeMessengerAccount.employee_id == employee_id,
     ).delete(synchronize_session=False)
+    db.query(StaffTelegramChallenge).filter(
+        StaffTelegramChallenge.employee_id == employee_id,
+    ).delete(synchronize_session=False)
     subject_run_ids = select(EmployeeFeedbackRun.id).where(EmployeeFeedbackRun.subject_employee_id == employee_id)
     db.query(ScenarioProgress).filter(ScenarioProgress.feedback_run_id.in_(subject_run_ids)).delete(synchronize_session=False)
     db.query(SurveyAnswer).filter(SurveyAnswer.feedback_run_id.in_(subject_run_ids)).delete(synchronize_session=False)
@@ -1493,6 +1497,9 @@ def _promote_candidate_to_adaptation(db: Session, employee: Employee) -> Employe
 
 
 def _reset_employee_bot_linkage(db: Session, employee: Employee) -> Employee:
+    db.query(StaffTelegramChallenge).filter(
+        StaffTelegramChallenge.employee_id == employee.id,
+    ).delete(synchronize_session=False)
     db.query(EmployeeMessengerAccount).filter(
         EmployeeMessengerAccount.employee_id == employee.id,
     ).delete(synchronize_session=False)
@@ -1504,6 +1511,8 @@ def _reset_employee_bot_linkage(db: Session, employee: Employee) -> Employee:
 
     employee.telegram_user_id = None
     employee.telegram_username = None
+    employee.telegram_verified_user_id = None
+    employee.telegram_verified_at = None
     employee.current_menu_set_id = None
     employee.current_menu_path = None
     employee.current_menu_message_id = None

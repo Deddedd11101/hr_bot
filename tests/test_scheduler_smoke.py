@@ -102,6 +102,8 @@ class SchedulerSmokeTests(unittest.IsolatedAsyncioTestCase):
             db.flush()
             self.employee_id = employee.id
             set_primary_chat_id(employee, "700000001", db=db)
+            employee.telegram_verified_user_id = "700000001"
+            employee.telegram_verified_at = now
             db.add_all(
                 [
                     FlowStepTemplate(

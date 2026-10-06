@@ -90,6 +90,7 @@ source_of_truth: true
 | `employee_manual_bot_messages` | Аудит ручных Telegram-сообщений из карточки сотрудника | `employee_id`, `sender_account_id`, `message_text`, `status`, `error_text`, `sent_at`, `created_at` | Не влияет на `scenario_progress` и `flow_launch_requests`; хранит операторские sends и ошибки доставки |
 | `positions` | Управляемый справочник должностей | `title`, `slug`, `is_active`, `sort_order`, timestamps | Используется settings UI, employee forms, scenario role scope и targeting; `employees.desired_position` пока остается строкой для backward compatibility |
 | `employee_messenger_accounts` | Channel-specific communication identities | `employee_id`, `channel`, `external_user_id`, `external_username`, `is_primary`, `is_active` | Один employee может иметь несколько channel identities; текущий runtime использует `telegram` |
+| `staff_telegram_challenges` | Ожидающее подтверждение рабочей почты для Telegram ID | `telegram_user_id`, `employee_id`, `email_snapshot`, `code_hash`, `expires_at`, `attempts_left`, `last_sent_at`, суточное окно отправок | Сырой код не хранится; одна активная строка на Telegram ID; удаляется после подтверждения или reset/delete |
 | `admin_accounts` | Пользователи админки | `login`, `password_hash`, `role`, `is_active` | Используется browser session auth |
 
 ### Редактирование и выполнение сценариев
@@ -191,6 +192,7 @@ source_of_truth: true
 - Unique constraint:
   - `(channel, external_user_id)`
 - Legacy fields `employees.telegram_user_id` и `employees.telegram_username` все еще существуют и активно синхронизируются.
+- Для не-кандидатов `employees.telegram_verified_user_id` и `telegram_verified_at` фиксируют подтвержденную рабочей почтой привязку. Старые numeric IDs без этих полей не дают доступ и не используются для исходящей доставки. Подтверждение должно совпадать с текущим numeric ID.
 - Значит, identity сейчас живет в двух местах. App старается держать их aligned, но модель transitional.
 
 ### `scenario_progress`

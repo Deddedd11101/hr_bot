@@ -62,6 +62,9 @@ class EmployeeFeedbackSurveyTests(TestCase):
                 full_name="Вера Отвечающая", telegram_user_id=f"{uuid4().int % 10**12}",
                 employee_stage="staff", created_at=datetime.now(UTC).replace(tzinfo=None), is_flow_scheduled=False,
             )
+            for respondent in (first, second):
+                respondent.telegram_verified_user_id = respondent.telegram_user_id
+                respondent.telegram_verified_at = datetime.now(UTC).replace(tzinfo=None)
             db.add_all([subject, first, second])
             db.flush()
             self.subject_id, self.first_id, self.second_id = subject.id, first.id, second.id

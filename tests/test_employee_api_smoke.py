@@ -765,6 +765,8 @@ class EmployeeApiSmokeTests(unittest.TestCase):
             manager = Employee(
                 full_name=f"Manager {self.unique_tag}",
                 telegram_user_id="700001",
+                telegram_verified_user_id="700001",
+                telegram_verified_at=now,
                 first_workday=None,
                 created_at=now,
                 is_flow_scheduled=False,
@@ -774,6 +776,8 @@ class EmployeeApiSmokeTests(unittest.TestCase):
             mentor_adaptation = Employee(
                 full_name=f"Mentor Adaptation {self.unique_tag}",
                 telegram_user_id="700002",
+                telegram_verified_user_id="700002",
+                telegram_verified_at=now,
                 first_workday=None,
                 created_at=now,
                 is_flow_scheduled=False,
@@ -783,6 +787,8 @@ class EmployeeApiSmokeTests(unittest.TestCase):
             mentor_ipr = Employee(
                 full_name=f"Mentor IPR {self.unique_tag}",
                 telegram_user_id="700003",
+                telegram_verified_user_id="700003",
+                telegram_verified_at=now,
                 first_workday=None,
                 created_at=now,
                 is_flow_scheduled=False,
@@ -792,6 +798,8 @@ class EmployeeApiSmokeTests(unittest.TestCase):
             plain_staff = Employee(
                 full_name=f"Plain Staff {self.unique_tag}",
                 telegram_user_id="700004",
+                telegram_verified_user_id="700004",
+                telegram_verified_at=now,
                 first_workday=None,
                 created_at=now,
                 is_flow_scheduled=False,
@@ -2454,12 +2462,13 @@ class EmployeeApiSmokeTests(unittest.TestCase):
 
             db.refresh(employee)
             other_employee = db.get(Employee, other_employee_id)
-            self.assertEqual(get_primary_chat_id(employee, db=db), chat_id)
-            self.assertEqual(employee.telegram_username, other_username)
+            self.assertIsNone(get_primary_chat_id(employee, db=db))
+            self.assertEqual(get_primary_chat_id(employee, db=db, include_unverified=True), chat_id)
+            self.assertEqual(employee.telegram_username, username)
             self.assertIsNotNone(other_employee)
             if other_employee is not None:
                 self.assertIsNone(get_primary_chat_id(other_employee, db=db))
-            self.assertEqual(db.query(Employee).filter(Employee.telegram_user_id == chat_id).count(), 1)
+            self.assertEqual(db.query(Employee).filter(Employee.telegram_user_id == chat_id).count(), 0)
 
     def test_bot_start_repairs_orphan_account_and_creates_candidate_without_duplicate_orphan(self) -> None:
         chat_id = str(900200000000 + (uuid4().int % 100000000000))
@@ -4106,6 +4115,8 @@ class EmployeeApiSmokeTests(unittest.TestCase):
             db.add(mentor_ipr)
             db.flush()
             set_primary_chat_id(mentor_ipr, "210003", db=db)
+            mentor_ipr.telegram_verified_user_id = "210003"
+            mentor_ipr.telegram_verified_at = now
             employee.mentor_ipr_employee_id = mentor_ipr.id
             employee.employee_stage = "candidate"
             scenario = ScenarioTemplate(
@@ -4179,6 +4190,8 @@ class EmployeeApiSmokeTests(unittest.TestCase):
             db.add(manager)
             db.flush()
             set_primary_chat_id(manager, "210001", db=db)
+            manager.telegram_verified_user_id = "210001"
+            manager.telegram_verified_at = now
             employee.manager_employee_id = manager.id
             employee.employee_stage = "candidate"
             scenario = ScenarioTemplate(
@@ -4241,6 +4254,8 @@ class EmployeeApiSmokeTests(unittest.TestCase):
             db.add(mentor)
             db.flush()
             set_primary_chat_id(mentor, "210002", db=db)
+            mentor.telegram_verified_user_id = "210002"
+            mentor.telegram_verified_at = now
             employee.mentor_adaptation_employee_id = mentor.id
             employee.employee_stage = "candidate"
             scenario = ScenarioTemplate(
@@ -4487,6 +4502,8 @@ class EmployeeApiSmokeTests(unittest.TestCase):
             db.add(observer)
             db.flush()
             set_primary_chat_id(observer, "210005", db=db)
+            observer.telegram_verified_user_id = "210005"
+            observer.telegram_verified_at = now
             scenario = ScenarioTemplate(
                 scenario_key=scenario_key,
                 title=f"codex-step-legacy-recipient-{self.unique_tag}",
@@ -5576,7 +5593,7 @@ class EmployeeApiSmokeTests(unittest.TestCase):
                     db.delete(created_employee)
                     db.commit()
 
-    def test_bot_start_links_staff_by_username_without_registration(self) -> None:
+    def test_bot_start_requires_staff_email_code_without_registration(self) -> None:
         scenario_key = f"codex-registration-staff-{self.unique_tag}"
         username = f"staff_link_{self.unique_tag}"
         chat_id = str(963000000000 + (uuid4().int % 100000000000))
@@ -5614,8 +5631,9 @@ class EmployeeApiSmokeTests(unittest.TestCase):
             asyncio.run(handle_start_command(messenger, db, chat_id, username.upper()))
 
             db.refresh(employee)
-            self.assertEqual(get_primary_chat_id(employee, db=db), chat_id)
-            self.assertEqual(messenger.sent_texts, [])
+            self.assertIsNone(get_primary_chat_id(employee, db=db))
+            self.assertIsNone(employee.telegram_user_id)
+            self.assertTrue(messenger.sent_texts)
             self.assertNotIn((chat_id, registration_text), messenger.sent_texts)
 
     def test_admin_create_queues_registration_only_for_candidate_cards(self) -> None:
