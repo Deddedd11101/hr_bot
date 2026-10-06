@@ -873,20 +873,24 @@ def _apply_workspace_step_update(db: Session, step: FlowStepTemplate, payload: d
             or (step.default_text or "").strip()
             or "Без вопроса"
         )
-        # "none" is a closing/info message: sent without waiting, so the survey can complete after it.
-        is_message = str(payload.get("response_type") or "").strip() == "none"
-        button_options = "" if is_message else str(payload.get("button_options") or "").strip()
+        response_type = str(payload.get("response_type") or "text").strip()
+        allowed_types = {"text", "branching", "none"}
+        if step.parent_step_id is not None and step.branch_option_index is not None:
+            allowed_types.add("chain")
+        if response_type not in allowed_types:
+            response_type = "text"
+        button_options = str(payload.get("button_options") or "").strip() if response_type in {"text", "branching"} else ""
         step.step_title = question
         step.custom_text = question
         step.default_text = question
-        step.response_type = "none" if is_message else "text"
+        step.response_type = response_type
         step.button_options = button_options or None
         step.send_mode = "immediate"
         step.send_time = None
         step.target_field = None
         step.launch_scenario_key = None
-        step.return_to_step_key = None
-        step.is_terminal = False
+        step.return_to_step_key = _resolve_branch_return_to_step_key(db, step, str(payload.get("return_to_step_key") or ""))
+        step.is_terminal = str(payload.get("is_terminal") or "").strip().lower() in {"1", "true", "yes", "on"}
         step.attachment_document_item_id = None
         step.confirm_choice = False
         step.send_employee_card = False

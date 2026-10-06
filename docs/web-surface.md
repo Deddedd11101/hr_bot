@@ -122,12 +122,12 @@ source_of_truth: true
 | `POST` | `/surveys/{scenario_id}/copy` | Form action | Скопировать survey; теперь redirect в React workspace |
 | `POST` | `/flows/{scenario_id}/delete` | Form action | Удалить scenario; теперь redirect в React workspace |
 | `POST` | `/surveys/{scenario_id}/delete` | Form action | Удалить survey; теперь redirect в React workspace |
-| `GET` | `/surveys/{scenario_id}/export` | Export route | Export survey answers |
+| `GET` | `/surveys/{scenario_id}/export` | Export route | Старые ответы без ID запуска; новые ответы доступны через историю запусков опроса |
 | `GET` | `/flows/steps/{step_id}/attachment` | Download route | Скачать step attachment |
 | `POST` | `/flows/steps/{step_id}/attachment/delete` | Form action | Удалить step attachment |
 | `GET` | `/app/flows/workspace` | Redirect route | Legacy redirect в React workspace |
 | `GET` | `/app/flows/workspace-v2` | React bootstrap page | Текущий scenario workspace |
-| `GET` | `/app/surveys/workspace` | React bootstrap page | React survey workspace; каталог опросов, `?scenario_id=` открывает редактор, использует `/api/flows/workspace?kind=survey` |
+| `GET` | `/app/surveys/workspace` | React bootstrap page | React survey workspace; каталог опросов, `?scenario_id=` открывает редактор с ветвлением вопросов и историей запусков, использует `/api/flows/workspace?kind=survey` и `/api/surveys/{scenario_id}/runs` |
 
 ## Общая библиотека документов
 

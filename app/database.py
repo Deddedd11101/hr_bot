@@ -593,6 +593,7 @@ def _ensure_sqlite_schema() -> None:
                         updated_at DATETIME NOT NULL,
                         completed_at DATETIME,
                         feedback_run_id INTEGER,
+                        survey_launch_id INTEGER,
                         feedback_question_text VARCHAR(4096),
                         PRIMARY KEY (id)
                     )
@@ -613,6 +614,7 @@ def _ensure_sqlite_schema() -> None:
                 )
             )
             conn.execute(text("CREATE INDEX IF NOT EXISTS ix_scenario_progress_feedback_run_id ON scenario_progress (feedback_run_id)"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_scenario_progress_survey_launch_id ON scenario_progress (survey_launch_id)"))
         else:
             progress_columns = {row[1] for row in progress_table_info}
             if "recipient_mode" not in progress_columns:
@@ -635,9 +637,12 @@ def _ensure_sqlite_schema() -> None:
                 conn.execute(text("ALTER TABLE scenario_progress ADD COLUMN last_delivery_error TEXT"))
             if "feedback_run_id" not in progress_columns:
                 conn.execute(text("ALTER TABLE scenario_progress ADD COLUMN feedback_run_id INTEGER"))
+            if "survey_launch_id" not in progress_columns:
+                conn.execute(text("ALTER TABLE scenario_progress ADD COLUMN survey_launch_id INTEGER"))
             if "feedback_question_text" not in progress_columns:
                 conn.execute(text("ALTER TABLE scenario_progress ADD COLUMN feedback_question_text VARCHAR(4096)"))
             conn.execute(text("CREATE INDEX IF NOT EXISTS ix_scenario_progress_feedback_run_id ON scenario_progress (feedback_run_id)"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_scenario_progress_survey_launch_id ON scenario_progress (survey_launch_id)"))
 
         employee_document_link_columns = {
             row[1] for row in conn.execute(text("PRAGMA table_info(employee_document_links)")).fetchall()
@@ -673,6 +678,7 @@ def _ensure_sqlite_schema() -> None:
                         file_name VARCHAR(255),
                         answered_at DATETIME NOT NULL,
                         feedback_run_id INTEGER,
+                        survey_launch_id INTEGER,
                         respondent_name VARCHAR(255),
                         question_text VARCHAR(4096),
                         PRIMARY KEY (id)
@@ -687,11 +693,14 @@ def _ensure_sqlite_schema() -> None:
             survey_answer_columns = {row[1] for row in survey_answers_info}
             if "feedback_run_id" not in survey_answer_columns:
                 conn.execute(text("ALTER TABLE survey_answers ADD COLUMN feedback_run_id INTEGER"))
+            if "survey_launch_id" not in survey_answer_columns:
+                conn.execute(text("ALTER TABLE survey_answers ADD COLUMN survey_launch_id INTEGER"))
             if "respondent_name" not in survey_answer_columns:
                 conn.execute(text("ALTER TABLE survey_answers ADD COLUMN respondent_name VARCHAR(255)"))
             if "question_text" not in survey_answer_columns:
                 conn.execute(text("ALTER TABLE survey_answers ADD COLUMN question_text VARCHAR(4096)"))
         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_survey_answers_feedback_run_id ON survey_answers (feedback_run_id)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_survey_answers_survey_launch_id ON survey_answers (survey_launch_id)"))
 
         feedback_run_columns = {row[1] for row in conn.execute(text("PRAGMA table_info(employee_feedback_runs)"))}
         if feedback_run_columns and "scenario_title" not in feedback_run_columns:

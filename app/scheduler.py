@@ -322,7 +322,13 @@ async def schedule_all_employees(scheduler: AsyncIOScheduler, bot) -> None:
             for employee in recipients:
                 if not matches_role_scope(employee, scenario):
                     continue
-                started = await start_scenario(bot, db, employee, scenario.scenario_key)
+                started = await start_scenario(
+                    bot,
+                    db,
+                    employee,
+                    scenario.scenario_key,
+                    survey_launch_id=action.id if action.scenario_kind == "survey" else None,
+                )
                 if started:
                     started_count += 1
             action.recipient_count = started_count

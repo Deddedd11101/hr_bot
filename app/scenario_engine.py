@@ -21,7 +21,7 @@ from .employee_card import render_employee_card_png
 from .hr_linking import is_numeric_telegram_id
 from .messaging import MessengerClient, as_messenger, find_employee_by_channel_user_id
 from .messaging.identity import get_primary_chat_id
-from .models import DocumentLibraryItem, Employee, EmployeeDocumentLink, EmployeeFeedbackRecipient, EmployeeFeedbackRun, EmployeeFile, FlowLaunchRequest, FlowStepTemplate, HrSettings, OnboardingEvent, ScenarioProgress, ScenarioTemplate, StepButtonNotification, StepSendNotification, SurveyAnswer
+from .models import DocumentLibraryItem, Employee, EmployeeDocumentLink, EmployeeFeedbackRecipient, EmployeeFeedbackRun, EmployeeFile, FlowLaunchRequest, FlowStepTemplate, HrSettings, MassScenarioAction, OnboardingEvent, ScenarioProgress, ScenarioTemplate, StepButtonNotification, StepSendNotification, SurveyAnswer
 from .positions import position_matches_scope
 from .time_utils import utc_now
 
@@ -370,7 +370,9 @@ def store_survey_answer(
 ) -> None:
     if not is_survey(scenario):
         return
-    feedback_run_id = _survey_feedback_run_id(db, employee.id, scenario.scenario_key)
+    progress = db.query(ScenarioProgress).filter_by(employee_id=employee.id, scenario_key=scenario.scenario_key).first()
+    feedback_run_id = progress.feedback_run_id if progress else None
+    survey_launch_id = progress.survey_launch_id if progress else None
     answer = (
         db.query(SurveyAnswer)
         .filter(
@@ -378,6 +380,7 @@ def store_survey_answer(
             SurveyAnswer.scenario_key == scenario.scenario_key,
             SurveyAnswer.step_key == step.step_key,
             SurveyAnswer.feedback_run_id == feedback_run_id,
+            SurveyAnswer.survey_launch_id == survey_launch_id,
         )
         .order_by(SurveyAnswer.id.desc())
         .first()
@@ -388,16 +391,16 @@ def store_survey_answer(
             scenario_key=scenario.scenario_key,
             step_key=step.step_key,
             feedback_run_id=feedback_run_id,
+            survey_launch_id=survey_launch_id,
             answered_at=utc_now(),
         )
         db.add(answer)
     answer.answer_value = (answer_value or "").strip() or None
     answer.file_name = (file_name or "").strip() or None
     answer.answered_at = utc_now()
-    if feedback_run_id is not None:
+    if feedback_run_id is not None or survey_launch_id is not None:
         answer.respondent_name = (employee.full_name or "").strip() or f"Сотрудник #{employee.id}"
         if answer.question_text is None:
-            progress = db.query(ScenarioProgress).filter_by(employee_id=employee.id, scenario_key=scenario.scenario_key).first()
             answer.question_text = (progress.feedback_question_text if progress else None) or step.step_title
 
 
@@ -413,6 +416,11 @@ class _PlainTextCollector(HTMLParser):
 def _survey_feedback_run_id(db: Session, employee_id: int, scenario_key: str) -> int | None:
     progress = db.query(ScenarioProgress).filter_by(employee_id=employee_id, scenario_key=scenario_key).first()
     return progress.feedback_run_id if progress else None
+
+
+def _survey_launch_id(db: Session, employee_id: int, scenario_key: str) -> int | None:
+    progress = db.query(ScenarioProgress).filter_by(employee_id=employee_id, scenario_key=scenario_key).first()
+    return progress.survey_launch_id if progress else None
 
 
 def _complete_feedback_recipient(db: Session, progress: ScenarioProgress) -> None:
@@ -495,6 +503,7 @@ def reset_progress(db: Session, employee_id: int, scenario_key: str) -> Scenario
     progress.updated_at = now
     progress.completed_at = None
     progress.feedback_run_id = None
+    progress.survey_launch_id = None
     progress.feedback_question_text = None
     return progress
 
@@ -534,6 +543,7 @@ def get_conflicting_progress_for_survey_launch(
                 ScenarioProgress.current_step_key.is_not(None),
                 ScenarioProgress.waiting_for_response.is_(True),
                 ScenarioProgress.feedback_run_id.is_not(None),
+                ScenarioProgress.survey_launch_id.is_not(None),
             ),
         )
         .order_by(ScenarioProgress.updated_at.desc())
@@ -715,6 +725,7 @@ def _get_latest_survey_answer(
     if not is_survey(scenario):
         return None
     feedback_run_id = _survey_feedback_run_id(db, employee.id, scenario.scenario_key)
+    survey_launch_id = _survey_launch_id(db, employee.id, scenario.scenario_key)
     return (
         db.query(SurveyAnswer)
         .filter(
@@ -722,6 +733,7 @@ def _get_latest_survey_answer(
             SurveyAnswer.scenario_key == scenario.scenario_key,
             SurveyAnswer.step_key == step.step_key,
             SurveyAnswer.feedback_run_id == feedback_run_id,
+            SurveyAnswer.survey_launch_id == survey_launch_id,
         )
         .order_by(SurveyAnswer.id.desc())
         .first()
@@ -2096,7 +2108,7 @@ async def send_step(
     anchor_date = scenario_anchor_date(template_employee, scenario) or datetime.now(_get_tz()).date()
     message_template = resolve_step_message_template(step)
     message_text = format_message(db, message_template, template_employee, anchor_date, step.send_time)
-    if progress.feedback_run_id is not None:
+    if progress.feedback_run_id is not None or progress.survey_launch_id is not None:
         parser = _PlainTextCollector()
         parser.feed(message_text)
         progress.feedback_question_text = "".join(parser.parts).strip() or step.step_title
@@ -2709,6 +2721,7 @@ async def start_scenario(
     scenario_key: str,
     *,
     feedback_run_id: int | None = None,
+    survey_launch_id: int | None = None,
 ) -> bool:
     messenger = as_messenger(messenger_or_bot)
     if employee.is_bot_blocked:
@@ -2716,17 +2729,23 @@ async def start_scenario(
     scenario = db.query(ScenarioTemplate).filter(ScenarioTemplate.scenario_key == scenario_key).first()
     if not scenario or not matches_role_scope(employee, scenario):
         return False
-    if feedback_run_id is None:
+    if feedback_run_id is not None and survey_launch_id is not None:
+        return False
+    if feedback_run_id is None and survey_launch_id is None:
         active_feedback = db.query(ScenarioProgress).filter(
             ScenarioProgress.employee_id == employee.id,
-            ScenarioProgress.feedback_run_id.is_not(None),
+            or_(ScenarioProgress.feedback_run_id.is_not(None), ScenarioProgress.survey_launch_id.is_not(None)),
             ScenarioProgress.is_completed.is_(False),
         ).first()
         if active_feedback is not None:
             return False
-    if feedback_run_id is not None:
-        feedback_run = db.get(EmployeeFeedbackRun, feedback_run_id)
-        if not feedback_run or feedback_run.scenario_key != scenario_key or not is_survey(scenario):
+    if feedback_run_id is not None or survey_launch_id is not None:
+        if survey_launch_id is not None:
+            launch = db.get(MassScenarioAction, survey_launch_id)
+            if not launch or launch.flow_key != scenario_key or launch.scenario_kind != "survey" or not is_survey(scenario):
+                return False
+        feedback_run = db.get(EmployeeFeedbackRun, feedback_run_id) if feedback_run_id is not None else None
+        if feedback_run_id is not None and (not feedback_run or feedback_run.scenario_key != scenario_key or not is_survey(scenario)):
             return False
         if get_conflicting_progress_for_survey_launch(db, employee.id, scenario_key) is not None:
             return False
@@ -2736,6 +2755,7 @@ async def start_scenario(
     reset_progress(db, employee.id, scenario_key)
     progress = get_or_create_progress(db, employee.id, scenario_key)
     progress.feedback_run_id = feedback_run_id
+    progress.survey_launch_id = survey_launch_id
     progress.recipient_mode = _scenario_recipient_mode(scenario)
     db.commit()
     return await send_step(messenger, db, employee, scenario, first_step)

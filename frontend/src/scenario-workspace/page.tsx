@@ -1,11 +1,13 @@
 import React from "react";
-import { Plus, Send, Settings, X } from "lucide-react";
+import { Download, History, Plus, RefreshCw, Send, Settings, X } from "lucide-react";
 
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { PageDetailHeader, PageHeader } from "@/components/ui/page-header";
 import { PageRow } from "@/components/ui/page-row";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
 import {
   buildChildContainer,
@@ -46,6 +48,27 @@ import type {
 } from "./types";
 
 const rootElement = document.getElementById("react-scenario-workspace-v2-root");
+
+type SurveyRun = {
+  id: number;
+  kind: "broadcast" | "feedback";
+  source_label: string;
+  created_at: string;
+  recipient_count: number | null;
+  respondent_count: number | null;
+  answer_count: number;
+  download_url: string | null;
+};
+
+type SurveyHistory = {
+  runs: SurveyRun[];
+  legacy_answer_count: number;
+  legacy_download_url: string | null;
+};
+
+function surveyRunDate(value: string) {
+  return new Date(`${value}Z`).toLocaleString("ru-RU", { dateStyle: "short", timeStyle: "short" });
+}
 
 function hasScenarioRouteParam() {
   return new URL(window.location.href).searchParams.has("scenario_id");
@@ -152,8 +175,28 @@ export function ScenarioWorkspacePage() {
   const [dragStepId, setDragStepId] = React.useState<number | null>(null);
   const [attachmentState, setAttachmentState] = React.useState({ uploading: false, message: "", error: false });
   const [flashState, setFlashState] = React.useState({ message: initialFlashMessage, error: initialFlashType === "error" });
-  const exportUrl =
-    isSurveyWorkspace && payload?.workspace?.scenario?.id ? `/surveys/${payload.workspace.scenario.id}/export` : "";
+  const [surveyHistoryOpen, setSurveyHistoryOpen] = React.useState(false);
+  const [surveyHistory, setSurveyHistory] = React.useState<SurveyHistory | null>(null);
+  const [surveyHistoryError, setSurveyHistoryError] = React.useState("");
+  const [surveyHistoryLoading, setSurveyHistoryLoading] = React.useState(false);
+  const [surveyHistoryVersion, setSurveyHistoryVersion] = React.useState(0);
+  const surveyId = isSurveyWorkspace ? payload?.workspace?.scenario?.id : null;
+
+  React.useEffect(() => {
+    if (!surveyHistoryOpen || !surveyId) return;
+    const controller = new AbortController();
+    setSurveyHistoryLoading(true);
+    setSurveyHistoryError("");
+    fetch(`/api/surveys/${surveyId}/runs`, { credentials: "same-origin", signal: controller.signal })
+      .then(async (response) => {
+        if (!response.ok) throw new Error("Не удалось загрузить историю запусков.");
+        return response.json() as Promise<SurveyHistory>;
+      })
+      .then(setSurveyHistory)
+      .catch((error) => { if (!controller.signal.aborted) setSurveyHistoryError(String(error.message || error)); })
+      .finally(() => { if (!controller.signal.aborted) setSurveyHistoryLoading(false); });
+    return () => controller.abort();
+  }, [surveyHistoryOpen, surveyHistoryVersion, surveyId]);
 
   const currentContainer = stack[stack.length - 1] || null;
   const isCatalogRoute = workspaceRouteMode === "catalog" && !routeScenarioId;
@@ -164,11 +207,20 @@ export function ScenarioWorkspacePage() {
   const openLabel = openActionLabel(selectedItem);
   const responseTypeOptions = React.useMemo(() => {
     const labels = payload?.workspace?.response_type_labels || FALLBACK_RESPONSE_TYPE_LABELS;
+    if (isSurveyWorkspace) {
+      const options: [string, string][] = [
+        ["text", "Вопрос с текстом или вариантами"],
+        ["branching", "Ветвление по вариантам"],
+        ["none", "Сообщение без ответа"],
+      ];
+      if (detailTarget?.kind === "branch_step") options.push(["chain", "Цепочка ветки"]);
+      return options;
+    }
     return Object.entries(labels).filter(([value]) => {
       if (value === "chain") return detailTarget?.kind === "branch_step";
       return true;
     });
-  }, [payload, detailTarget]);
+  }, [payload, detailTarget, isSurveyWorkspace]);
   const responseTypePickerOptions = React.useMemo<SingleOption[]>(
     () => responseTypeOptions.map(([value, label]) => ({ value, label })),
     [responseTypeOptions],
@@ -519,7 +571,7 @@ export function ScenarioWorkspacePage() {
         target_field: supportsTargetField(form.response_type) ? form.target_field : "",
         launch_scenario_key: form.launch_scenario_key,
         return_to_step_key: detailTarget?.kind === "branch_step" ? form.return_to_step_key : "",
-        is_terminal: isSurveyWorkspace ? false : form.is_terminal,
+        is_terminal: form.is_terminal,
         attachment_document_item_id: isSurveyWorkspace ? "" : form.attachment_document_item_id,
         send_employee_card: form.send_employee_card,
         notify_on_send_text: form.notify_on_send_text,
@@ -960,7 +1012,6 @@ export function ScenarioWorkspacePage() {
       isSurveyWorkspace={isSurveyWorkspace}
       graph={payload?.workspace?.graph}
       payloadWorkspace={payload?.workspace}
-      exportUrl={exportUrl}
       dragStepId={dragStepId}
       onBreadcrumbClick={(index) => {
         const next = stack.slice(0, index + 1);
@@ -1090,6 +1141,12 @@ export function ScenarioWorkspacePage() {
                 <Send data-icon="inline-start" />
                 Разослать
               </Button>
+              {isSurveyWorkspace ? (
+                <Button size="sm" variant="outline" onClick={() => setSurveyHistoryOpen(true)}>
+                  <History data-icon="inline-start" />
+                  История запусков
+                </Button>
+              ) : null}
               {!isSurveyWorkspace ? (
                 <Button size="sm" variant="outline" onClick={openScenarioSettings}>
                   <Settings data-icon="inline-start" />
@@ -1109,6 +1166,58 @@ export function ScenarioWorkspacePage() {
           if (!open) setBroadcastTarget(null);
         }}
       />
+      <Dialog open={surveyHistoryOpen} onOpenChange={setSurveyHistoryOpen}>
+        <DialogContent className="flex max-h-[85vh] flex-col overflow-hidden sm:max-w-[680px]">
+          <DialogHeader>
+            <DialogTitle>История запусков опроса</DialogTitle>
+          </DialogHeader>
+          <div className="flex justify-end">
+            <Button size="sm" variant="ghost" onClick={() => setSurveyHistoryVersion((value) => value + 1)}>
+              <RefreshCw data-icon="inline-start" />
+              Обновить
+            </Button>
+          </div>
+          <ScrollArea className="min-h-0 flex-1">
+            <div className="space-y-0 pr-4">
+              {surveyHistoryError ? <p className="text-sm text-destructive">{surveyHistoryError}</p> : null}
+              {surveyHistoryLoading && !surveyHistory ? <p className="text-sm text-muted-foreground">Загрузка…</p> : null}
+              {!surveyHistoryLoading && !surveyHistoryError && !surveyHistory?.runs.length && !surveyHistory?.legacy_answer_count ? (
+                <p className="text-sm text-muted-foreground">Запусков пока нет.</p>
+              ) : null}
+              {surveyHistory?.runs.map((run) => (
+                <div key={`${run.kind}-${run.id}`} className="flex flex-wrap items-center justify-between gap-3 border-b border-border py-3 first:pt-0">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold">{run.source_label} · {surveyRunDate(run.created_at)}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {run.recipient_count !== null ? `Отправлено: ${run.recipient_count} · ` : ""}
+                      {run.respondent_count !== null ? `Ответили: ${run.respondent_count} · ` : ""}
+                      Ответов: {run.answer_count}
+                    </p>
+                  </div>
+                  {run.download_url ? (
+                    <Button render={<a href={run.download_url} />} size="sm" variant="outline">
+                      <Download data-icon="inline-start" />
+                      Excel
+                    </Button>
+                  ) : <span className="text-xs text-muted-foreground">Ответов пока нет</span>}
+                </div>
+              ))}
+              {surveyHistory?.legacy_download_url ? (
+                <div className="flex flex-wrap items-center justify-between gap-3 py-3">
+                  <div>
+                    <p className="text-sm font-semibold">Ранее собранные ответы</p>
+                    <p className="text-xs text-muted-foreground">Без разделения по запускам · ответов: {surveyHistory.legacy_answer_count}</p>
+                  </div>
+                  <Button render={<a href={surveyHistory.legacy_download_url} />} size="sm" variant="outline">
+                    <Download data-icon="inline-start" />
+                    Excel
+                  </Button>
+                </div>
+              ) : null}
+            </div>
+          </ScrollArea>
+        </DialogContent>
+      </Dialog>
       <WorkspaceFlashNotice message={flashState.message} error={flashState.error} />
       <ScenarioSettingsDialog
         open={scenarioSettingsOpen}
