@@ -193,7 +193,17 @@ def get_primary_chat_id(
     employee: Employee,
     db: Session | None = None,
     channel: str | None = None,
+    *,
+    include_unverified: bool = False,
 ) -> Optional[str]:
+    def visible_chat_id(value: str) -> Optional[str]:
+        if db is not None and not include_unverified:
+            from ..staff_email_verification import is_verified
+
+            if not is_verified(db, employee, value):
+                return None
+        return value
+
     if db is not None and employee.id is not None:
         numeric_account = (
             db.query(EmployeeMessengerAccount)
@@ -208,11 +218,11 @@ def get_primary_chat_id(
             if channel and account.channel != channel:
                 continue
             if _looks_like_numeric_chat_id(account.external_user_id):
-                return _normalized(account.external_user_id)
+                return visible_chat_id(_normalized(account.external_user_id))
 
     legacy_user_id = _normalized(employee.telegram_user_id)
     if _looks_like_numeric_chat_id(legacy_user_id):
-        return legacy_user_id
+        return visible_chat_id(legacy_user_id)
     return None
 
 

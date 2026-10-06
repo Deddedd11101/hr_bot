@@ -6,6 +6,7 @@ from .database import SessionLocal
 from .hr_linking import is_numeric_telegram_id
 from .messaging import as_messenger
 from .models import Employee, HrSettings
+from .staff_email_verification import chat_id_allowed
 
 
 logger = logging.getLogger(__name__)
@@ -25,7 +26,7 @@ async def notify_hr(messenger_or_bot, text: str) -> None:
     messenger = as_messenger(messenger_or_bot)
     with SessionLocal() as db:
         settings = db.get(HrSettings, 1)
-        recipients = _notification_recipients(settings)
+        recipients = [chat_id for chat_id in _notification_recipients(settings) if chat_id_allowed(db, chat_id)]
     if not recipients:
         return
     for chat_id in recipients:
@@ -72,7 +73,7 @@ async def notify_hr_by_kind(messenger_or_bot, text: str, kind: str) -> None:
         settings = db.get(HrSettings, 1)
         if not _is_notification_enabled(settings, kind):
             return
-        recipients = _notification_recipients(settings)
+        recipients = [chat_id for chat_id in _notification_recipients(settings) if chat_id_allowed(db, chat_id)]
     if not recipients:
         return
     for chat_id in recipients:

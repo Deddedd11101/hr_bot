@@ -34,6 +34,7 @@ from ..models import (
     EmployeeHrNote,
     EmployeeManualBotMessage,
     EmployeeMessengerAccount,
+    EmployeeTelegramEmailVerification,
     FlowLaunchRequest,
     GradeAssessment,
     GradeAssessmentValue,
@@ -1431,6 +1432,9 @@ def _delete_employee_record(db: Session, employee: Employee) -> str:
     db.query(EmployeeMessengerAccount).filter(
         EmployeeMessengerAccount.employee_id == employee_id,
     ).delete(synchronize_session=False)
+    db.query(EmployeeTelegramEmailVerification).filter(
+        EmployeeTelegramEmailVerification.employee_id == employee_id,
+    ).delete(synchronize_session=False)
     subject_run_ids = select(EmployeeFeedbackRun.id).where(EmployeeFeedbackRun.subject_employee_id == employee_id)
     db.query(ScenarioProgress).filter(ScenarioProgress.feedback_run_id.in_(subject_run_ids)).delete(synchronize_session=False)
     db.query(SurveyAnswer).filter(SurveyAnswer.feedback_run_id.in_(subject_run_ids)).delete(synchronize_session=False)
@@ -1493,6 +1497,9 @@ def _promote_candidate_to_adaptation(db: Session, employee: Employee) -> Employe
 
 
 def _reset_employee_bot_linkage(db: Session, employee: Employee) -> Employee:
+    db.query(EmployeeTelegramEmailVerification).filter(
+        EmployeeTelegramEmailVerification.employee_id == employee.id,
+    ).delete(synchronize_session=False)
     db.query(EmployeeMessengerAccount).filter(
         EmployeeMessengerAccount.employee_id == employee.id,
     ).delete(synchronize_session=False)
@@ -1803,7 +1810,7 @@ def _build_employee_detail_payload(db: Session, employee: Employee) -> dict:
     today = datetime.now().date()
     list_kind = _employee_list_kind(employee)
     is_candidate = list_kind == "candidates"
-    primary_chat_id = get_primary_chat_id(employee, db=db) or ""
+    primary_chat_id = get_primary_chat_id(employee, db=db, include_unverified=True) or ""
 
     return {
         "meta": {

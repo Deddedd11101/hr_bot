@@ -21,6 +21,7 @@ from .employee_card import render_employee_card_png
 from .hr_linking import is_numeric_telegram_id
 from .messaging import MessengerClient, as_messenger, find_employee_by_channel_user_id
 from .messaging.identity import get_primary_chat_id
+from .staff_email_verification import chat_id_allowed
 from .models import DocumentLibraryItem, Employee, EmployeeDocumentLink, EmployeeFeedbackRecipient, EmployeeFeedbackRun, EmployeeFile, FlowLaunchRequest, FlowStepTemplate, HrSettings, MassScenarioAction, OnboardingEvent, ScenarioProgress, ScenarioTemplate, StepButtonNotification, StepSendNotification, SurveyAnswer
 from .positions import position_matches_scope
 from .time_utils import utc_now
@@ -633,6 +634,8 @@ def resolve_scenario_recipient(
     if not is_numeric_telegram_id(hr_chat_id):
         return ScenarioRecipientResolution(mode, None, None, hr_label, "В HR-настройках не указан Telegram user id.")
     hr_employee = find_employee_by_channel_user_id(db, channel="telegram", external_user_id=hr_chat_id)
+    if hr_employee and get_primary_chat_id(hr_employee, db=db) != hr_chat_id:
+        return ScenarioRecipientResolution(mode, hr_employee.id, None, hr_label, "HR-получатель не подтвердил рабочую почту.")
     if requires_response and hr_employee is None:
         return ScenarioRecipientResolution(
             mode,
@@ -1446,7 +1449,7 @@ def _resolve_explicit_notification_recipient(db: Session | None, raw_value: str)
     if normalized == "hr" and db is not None:
         hr_settings = db.get(HrSettings, 1)
         hr_chat_id = (getattr(hr_settings, "telegram_user_id", None) or "").strip()
-        return hr_chat_id if is_numeric_telegram_id(hr_chat_id) else None
+        return hr_chat_id if is_numeric_telegram_id(hr_chat_id) and chat_id_allowed(db, hr_chat_id) else None
     if normalized in NOTIFICATION_SCOPE_TO_EMPLOYEE_FIELD:
         return normalized
     if normalized.startswith("employee:") and db is not None:
@@ -1471,11 +1474,9 @@ def _resolve_related_employee_chat_id(
     if db is not None and related_employee_id:
         related_employee = db.get(Employee, related_employee_id)
         if related_employee:
-            related_chat_id = get_primary_chat_id(related_employee, db=db)
-            if related_chat_id:
-                return related_chat_id
+            return get_primary_chat_id(related_employee, db=db)
     legacy_chat_id = (getattr(employee, legacy_chat_field, None) or "").strip()
-    return legacy_chat_id or None
+    return legacy_chat_id if legacy_chat_id and (db is None or chat_id_allowed(db, legacy_chat_id)) else None
 
 
 def resolve_notification_recipients(

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import json
+import asyncio
 from typing import Literal, NamedTuple, Optional
 
 from sqlalchemy.orm import Session
@@ -30,6 +31,14 @@ from ..scenario_engine import (
     start_scenario,
 )
 from ..time_utils import utc_now
+from ..staff_email_verification import (
+    clear_failed_challenge,
+    confirm_code,
+    is_verified,
+    prepare_challenge,
+    send_code_email,
+    verification_required,
+)
 from .base import MessengerClient
 from .identity import (
     find_employees_by_public_chat_handle,
@@ -54,17 +63,18 @@ MENU_BACK_BUTTON_TEXT = "Назад"
 MENU_HOME_BUTTON_TEXT = "Главное меню"
 MENU_CALLBACK_PREFIX = "menu:"
 INITIAL_CANDIDATE_STAGE: str | None = None
+STAFF_EMAIL_VERIFICATION_TEXT = "Для доступа подтвердите рабочую почту: нажмите /start, затем отправьте сюда код из письма."
 
 
 class InboundAccess(NamedTuple):
     employee: Optional[Employee]
-    state: Literal["ok", "unknown", "blocked", "conflict"]
+    state: Literal["ok", "unknown", "blocked", "conflict", "verification_required"]
     newly_linked: bool = False
 
 
 class StartAccess(NamedTuple):
     employee: Optional[Employee]
-    state: Literal["ok", "blocked", "conflict"]
+    state: Literal["ok", "blocked", "conflict", "verification_required"]
     newly_linked: bool = False
     created: bool = False
 
@@ -150,6 +160,8 @@ def resolve_start_access(db: Session, chat_user_id: str, username: Optional[str]
     if access.employee is not None:
         if access.state == "blocked":
             return StartAccess(access.employee, "blocked", newly_linked=access.newly_linked, created=False)
+        if access.state == "verification_required":
+            return StartAccess(access.employee, "verification_required", newly_linked=False, created=False)
         return StartAccess(access.employee, "ok", newly_linked=access.newly_linked, created=False)
     if access.state == "conflict":
         return StartAccess(None, "conflict", newly_linked=False, created=False)
@@ -657,6 +669,8 @@ def resolve_inbound_access(db: Session, chat_user_id: str, username: Optional[st
         employee = numeric_matches[0]
         if employee.is_bot_blocked:
             return InboundAccess(employee, "blocked", False)
+        if verification_required(employee) and not is_verified(db, employee, chat_user_id):
+            return InboundAccess(employee, "verification_required", False)
         newly_linked = _sync_employee_after_inbound(db, employee, chat_user_id, username)
         return InboundAccess(employee, "ok", newly_linked)
 
@@ -677,6 +691,12 @@ def resolve_inbound_access(db: Session, chat_user_id: str, username: Optional[st
         employee = username_matches[0]
         if employee.is_bot_blocked:
             return InboundAccess(employee, "blocked", False)
+        if verification_required(employee):
+            existing_chat_id = get_primary_chat_id(employee, db=db, include_unverified=True)
+            if existing_chat_id and existing_chat_id != chat_user_id:
+                return InboundAccess(None, "conflict", False)
+            if not is_verified(db, employee, chat_user_id):
+                return InboundAccess(employee, "verification_required", False)
         newly_linked = _sync_employee_after_inbound(db, employee, chat_user_id, username)
         return InboundAccess(employee, "ok", newly_linked)
     return InboundAccess(None, "unknown", False)
@@ -690,12 +710,40 @@ def get_or_create_employee_by_chat(db: Session, chat_user_id: str, username: Opt
 async def send_access_state_message(
     messenger: MessengerClient,
     chat_user_id: str,
-    state: Literal["unknown", "blocked", "conflict"],
+    state: Literal["unknown", "blocked", "conflict", "verification_required"],
 ) -> None:
     if state == "blocked":
         await messenger.send_text(chat_id=chat_user_id, text=BLOCKED_USER_TEXT)
         return
+    if state == "verification_required":
+        await messenger.send_text(chat_id=chat_user_id, text=STAFF_EMAIL_VERIFICATION_TEXT)
+        return
     await messenger.send_text(chat_id=chat_user_id, text=UNKNOWN_USER_TEXT)
+
+
+async def _start_staff_email_verification(
+    messenger: MessengerClient, db: Session, employee: Employee, chat_user_id: str,
+) -> None:
+    challenge = prepare_challenge(db, employee, chat_user_id)
+    if challenge is None:
+        logger.warning("Staff email verification unavailable: employee_id=%s", employee.id)
+        await messenger.send_text(
+            chat_id=chat_user_id,
+            text="Не удалось отправить код на рабочую почту. Проверьте адрес в карточке через HR и попробуйте позже.",
+        )
+        return
+    code, address = challenge
+    if not code:
+        await messenger.send_text(chat_id=chat_user_id, text="Код уже отправлен. Проверьте рабочую почту и подождите минуту перед повторным запросом.")
+        return
+    try:
+        await asyncio.to_thread(send_code_email, address, code, chat_user_id)
+    except Exception:
+        clear_failed_challenge(db, employee.id, chat_user_id, code)
+        logger.exception("Staff verification email delivery failed: employee_id=%s", employee.id)
+        await messenger.send_text(chat_id=chat_user_id, text="Письмо с кодом не отправилось. Попробуйте позже или обратитесь к HR.")
+        return
+    await messenger.send_text(chat_id=chat_user_id, text="Отправили код на вашу рабочую почту. Пришлите сюда 6 цифр из письма. Код действует 10 минут.")
 
 
 async def handle_start_command(
@@ -714,6 +762,9 @@ async def handle_start_command(
         return
 
     access = resolve_start_access(db, chat_user_id, username)
+    if access.state == "verification_required" and access.employee is not None:
+        await _start_staff_email_verification(messenger, db, access.employee, chat_user_id)
+        return
     if access.state != "ok" or access.employee is None:
         await send_access_state_message(messenger, chat_user_id, access.state)
         return
@@ -788,6 +839,16 @@ async def handle_text_event(
     text: str,
 ) -> Literal["handled", "ignored", "unknown", "blocked"]:
     access = resolve_inbound_access(db, chat_user_id, username)
+    if access.state == "verification_required" and access.employee is not None:
+        if len(text.strip()) == 6 and text.strip().isascii() and text.strip().isdigit():
+            if confirm_code(db, access.employee, chat_user_id, text.strip()):
+                _sync_employee_after_inbound(db, access.employee, chat_user_id, username)
+                await show_main_menu(messenger, db, access.employee, "Рабочая почта подтверждена. Выберите действие.")
+            else:
+                await messenger.send_text(chat_id=chat_user_id, text="Код неверный или устарел. Проверьте письмо; после пяти ошибок запросите новый код через /start.")
+        else:
+            await messenger.send_text(chat_id=chat_user_id, text=STAFF_EMAIL_VERIFICATION_TEXT)
+        return "handled"
     if access.state != "ok" or access.employee is None:
         return access.state
     employee = access.employee
