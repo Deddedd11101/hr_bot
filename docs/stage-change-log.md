@@ -34,6 +34,14 @@ source_of_truth: true
 
 ## Записи
 
+### 2026-10-06 17:08 MSK - app deploy - ветки и история запусков опросов
+
+- Deploy ref: `stage`; deployed SHA: `19aba4558411471c260c9ddfda6b531e2ca40ca1`; PR [#65](https://github.com/Deddedd11101/hr_bot/pull/65); [Deploy Stage 37476100653](https://github.com/Deddedd11101/hr_bot/actions/runs/37476100653) -> success.
+- В опросах доступны ветвление и завершающие шаги. История на странице опроса показывает отдельные запуски; ответы каждого запуска выгружаются в свой XLSX, формируемый при скачивании по накопленным ответам. Старые ответы без привязки к запуску доступны отдельно.
+- CI PR #65, preflight Deploy Stage (полный backend-набор и frontend build), локальные проверки типов, сборки и docs-контрактов прошли. Workflow создал и проверил SQLite backup и snapshot сценариев до checkout; fingerprint конфигурации сценариев не изменился.
+- [Stage Diagnostics 37476336149](https://github.com/Deddedd11101/hr_bot/actions/runs/37476336149) -> success: deployed SHA подтверждён, сервисы и Telegram-маршрут в норме, свежих worker/network ошибок нет. HTTP smoke `/app/employees` и `/app/flows/workspace-v2` -> `303` (ожидаемый переход на вход).
+- Пользовательский сценарий не проверен: нужно создать тестовый опрос с веткой, запустить его для двух коллег, пройти ответы и убедиться, что XLSX одного запуска пополняется, а следующий запуск получает отдельный файл.
+
 ### 2026-10-01 12:28 MSK - app deploy - рассылка из каталогов сценариев и опросов
 
 - Deploy ref: `stage`; deployed SHA: `f5658275419e01474363f739b5ada5137e53b468`; PR [#56](https://github.com/Deddedd11101/hr_bot/pull/56); [Deploy Stage 36842515531](https://github.com/Deddedd11101/hr_bot/actions/runs/36842515531) -> success.
