@@ -17,6 +17,7 @@ from .file_storage import build_employee_file_path
 from .messaging import create_telegram_messenger
 from .messaging.service import (
     BLOCKED_USER_TEXT,
+    STAFF_VERIFICATION_TEXT,
     DATE_CALLBACK_PREFIX,
     UNKNOWN_USER_TEXT,
     detect_category_from_caption,
@@ -100,6 +101,10 @@ async def _handle_incoming_file_like(
             return
         if access.state == "blocked":
             await messenger.send_text(chat_id=str(user.id), text=BLOCKED_USER_TEXT)
+            await messenger.close()
+            return
+        if access.state == "verification_required":
+            await messenger.send_text(chat_id=str(user.id), text=STAFF_VERIFICATION_TEXT)
             await messenger.close()
             return
         employee = access.employee
@@ -263,6 +268,9 @@ async def on_candidate_text(message: Message) -> None:
         if handled == "blocked":
             await message.answer(BLOCKED_USER_TEXT)
             return
+        if handled == "verification_required":
+            await message.answer(STAFF_VERIFICATION_TEXT)
+            return
 
 
 async def on_scenario_button(callback: CallbackQuery) -> None:
@@ -317,6 +325,9 @@ async def on_scenario_button(callback: CallbackQuery) -> None:
         if handled == "blocked":
             await callback.answer(BLOCKED_USER_TEXT, show_alert=True)
             return
+        if handled == "verification_required":
+            await callback.answer(STAFF_VERIFICATION_TEXT, show_alert=True)
+            return
         if handled == "handled" and date_result is not None and callback.message:
             if getattr(date_result, "action", None) == "updated" and getattr(date_result, "reply_markup", None) is not None:
                 await callback.message.edit_reply_markup(reply_markup=date_result.reply_markup)
@@ -347,6 +358,8 @@ async def on_menu_button(callback: CallbackQuery) -> None:
         await callback.answer(UNKNOWN_USER_TEXT, show_alert=True)
     elif handled == "blocked":
         await callback.answer(BLOCKED_USER_TEXT, show_alert=True)
+    elif handled == "verification_required":
+        await callback.answer(STAFF_VERIFICATION_TEXT, show_alert=True)
     elif handled == "handled":
         await callback.answer("Принято")
     else:

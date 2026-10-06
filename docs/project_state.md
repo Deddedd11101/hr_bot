@@ -35,6 +35,8 @@ source_of_truth: true
 
 # Состояние проекта
 
+- Подготовлена feature-ветка для подтверждения Telegram сотрудника кодом на рабочую почту. Старые numeric-привязки без такого подтверждения после интеграции перестанут давать employee-доступ и исходящую доставку. На stage пока не выложено: нужен SMTP-ящик, DB/Docs review и ручной прогон письма/Telegram перед массовым приглашением.
+
 - Read-only экспорт штата для Pulse выложен на stage 2026-10-05: bearer-auth API проверен (`401` без токена, `200` с токеном, 40 записей). Pulse production и первый dry-run/apply ещё не настроены; синхронизация данных не выполнена. См. [[stage-change-log]].
 
 ## Текущий snapshot
@@ -77,7 +79,7 @@ source_of_truth: true
 - Telegram bot умеет отправлять шаги, собирать text/files/button responses и писать progress в SQLite.
 - Runtime сценариев больше не предполагает, что subject employee и Telegram-получатель всегда один и тот же человек: появился recipient-layer для сценариев руководителя/наставника/HR.
 - Mass actions, onboarding scheduler и scenario portability tooling уже есть в коде.
-- Unknown Telegram users больше не создают runtime data от stray text/file input, но `/start` снова является осознанной candidate-entry точкой: сначала идет match по numeric Telegram ID, затем по normalized public username, а при отсутствии match создается новая candidate-карточка. Если normalized username совпал с несколькими актуальными карточками, runtime fail-closed: не привязывает Telegram, не создает дубль и просит обратиться к HR.
+- Unknown Telegram users больше не создают runtime data от stray text/file input, но `/start` является candidate-entry точкой: сначала идет match по numeric Telegram ID, затем по normalized public username, а при отсутствии match создается новая candidate-карточка. В текущей feature-ветке username сотрудника становится только подсказкой для подтверждения через рабочую почту; duplicate/conflicting identity остаётся fail-closed.
 - Bot access можно заблокировать per employee через `is_bot_blocked`.
 - Incoming Telegram photos, videos и video notes обрабатываются как first-class inbound files вместе с documents; file-response шаги сценариев засчитывают их как валидный файл, а карточка показывает/скачивает через обычный `EmployeeFile` payload.
 - Ответы на тестовое больше не зависят от caption “тест”: scenario steps с `response_type=file` или `text` и `target_field=test_task_result` / `test_task_explanation` принимают document/photo/video/video_note или `http://` / `https://` ссылку в соответствии с назначением; основной результат и пояснение Loom записываются в разные slots. Обычный текст без ссылки получает подсказку и не засчитывается.

@@ -150,6 +150,33 @@ class DatabaseCompatibilityTests(unittest.TestCase):
                 database.settings.DATABASE_URL = previous_url
                 engine.dispose()
 
+    def test_employee_rebuild_preserves_staff_verification_and_work_email(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            path = Path(temporary_directory) / "legacy-verified.db"
+            engine = create_engine(f"sqlite:///{path}")
+            _create_non_employee_tables(engine)
+            _create_legacy_employees_table(path, include_menu_state=True)
+            with engine.begin() as connection:
+                connection.execute(text("ALTER TABLE employees ADD COLUMN telegram_verified_user_id TEXT"))
+                connection.execute(text("ALTER TABLE employees ADD COLUMN telegram_verified_at DATETIME"))
+                connection.execute(text("UPDATE employees SET telegram_verified_user_id='12345', telegram_verified_at='2026-10-06 12:00:00', work_email='staff@ze.studio', is_bot_blocked=1 WHERE id=1"))
+
+            previous_engine = database.engine
+            previous_url = database.settings.DATABASE_URL
+            try:
+                database.engine = engine
+                database.settings.DATABASE_URL = f"sqlite:///{path}"
+                database._ensure_sqlite_schema()
+                with engine.connect() as connection:
+                    row = connection.execute(text(
+                        "SELECT telegram_verified_user_id, telegram_verified_at, work_email, is_bot_blocked FROM employees WHERE id=1"
+                    )).one()
+                self.assertEqual(tuple(row), ("12345", "2026-10-06 12:00:00", "staff@ze.studio", 1))
+            finally:
+                database.engine = previous_engine
+                database.settings.DATABASE_URL = previous_url
+                engine.dispose()
+
     def _assert_menu_state(self, *, include_menu_state: bool, expected: tuple[str | None, int | None]) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             path = Path(temporary_directory) / "legacy.db"

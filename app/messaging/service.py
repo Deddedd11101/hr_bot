@@ -41,6 +41,7 @@ from .identity import (
     set_public_chat_handle,
     sync_legacy_telegram_account,
 )
+from .verification import get_challenge, is_staff, is_staff_verified, request_staff_code, verify_staff_code
 
 
 logger = logging.getLogger(__name__)
@@ -50,6 +51,7 @@ UNKNOWN_USER_TEXT = "Не удалось автоматически привяз
 BLOCKED_USER_TEXT = "Доступ к HR-боту отключен. Обратитесь в HR."
 HR_LINK_SUCCESS_TEXT = "Telegram успешно подключен к HR-настройкам."
 HR_LINK_INVALID_TEXT = "Ссылка подключения HR недействительна или уже истекла. Запросите новую ссылку в админке."
+STAFF_VERIFICATION_TEXT = "Подтвердите рабочую почту: нажмите /start и введите код из письма."
 MENU_BACK_BUTTON_TEXT = "Назад"
 MENU_HOME_BUTTON_TEXT = "Главное меню"
 MENU_CALLBACK_PREFIX = "menu:"
@@ -58,13 +60,13 @@ INITIAL_CANDIDATE_STAGE: str | None = None
 
 class InboundAccess(NamedTuple):
     employee: Optional[Employee]
-    state: Literal["ok", "unknown", "blocked", "conflict"]
+    state: Literal["ok", "unknown", "blocked", "conflict", "verification_required"]
     newly_linked: bool = False
 
 
 class StartAccess(NamedTuple):
     employee: Optional[Employee]
-    state: Literal["ok", "blocked", "conflict"]
+    state: Literal["ok", "blocked", "conflict", "verification_required"]
     newly_linked: bool = False
     created: bool = False
 
@@ -148,9 +150,7 @@ def _create_candidate_for_start(db: Session, chat_user_id: str, username: Option
 def resolve_start_access(db: Session, chat_user_id: str, username: Optional[str]) -> StartAccess:
     access = resolve_inbound_access(db, chat_user_id, username)
     if access.employee is not None:
-        if access.state == "blocked":
-            return StartAccess(access.employee, "blocked", newly_linked=access.newly_linked, created=False)
-        return StartAccess(access.employee, "ok", newly_linked=access.newly_linked, created=False)
+        return StartAccess(access.employee, access.state, newly_linked=access.newly_linked, created=False)
     if access.state == "conflict":
         return StartAccess(None, "conflict", newly_linked=False, created=False)
 
@@ -657,6 +657,14 @@ def resolve_inbound_access(db: Session, chat_user_id: str, username: Optional[st
         employee = numeric_matches[0]
         if employee.is_bot_blocked:
             return InboundAccess(employee, "blocked", False)
+        if (employee.employee_stage or "").strip() == "candidate":
+            username_matches = find_employees_by_public_chat_handle(
+                db, channel="telegram", external_username=username, repair_orphans=True,
+            )
+            if any(other.id != employee.id and is_staff(other) for other in username_matches):
+                return InboundAccess(None, "conflict", False)
+        if is_staff(employee) and not is_staff_verified(employee, chat_user_id):
+            return InboundAccess(employee, "verification_required", False)
         newly_linked = _sync_employee_after_inbound(db, employee, chat_user_id, username)
         return InboundAccess(employee, "ok", newly_linked)
 
@@ -677,6 +685,8 @@ def resolve_inbound_access(db: Session, chat_user_id: str, username: Optional[st
         employee = username_matches[0]
         if employee.is_bot_blocked:
             return InboundAccess(employee, "blocked", False)
+        if is_staff(employee):
+            return InboundAccess(employee, "verification_required", False)
         newly_linked = _sync_employee_after_inbound(db, employee, chat_user_id, username)
         return InboundAccess(employee, "ok", newly_linked)
     return InboundAccess(None, "unknown", False)
@@ -690,12 +700,58 @@ def get_or_create_employee_by_chat(db: Session, chat_user_id: str, username: Opt
 async def send_access_state_message(
     messenger: MessengerClient,
     chat_user_id: str,
-    state: Literal["unknown", "blocked", "conflict"],
+    state: Literal["unknown", "blocked", "conflict", "verification_required"],
 ) -> None:
     if state == "blocked":
         await messenger.send_text(chat_id=chat_user_id, text=BLOCKED_USER_TEXT)
         return
+    if state == "verification_required":
+        await messenger.send_text(chat_id=chat_user_id, text=STAFF_VERIFICATION_TEXT)
+        return
     await messenger.send_text(chat_id=chat_user_id, text=UNKNOWN_USER_TEXT)
+
+
+async def handle_staff_verification_text(
+    messenger: MessengerClient, db: Session, chat_user_id: str, username: Optional[str], text: str,
+) -> bool:
+    challenge = get_challenge(db, chat_user_id)
+    if not challenge:
+        return False
+    employee = db.get(Employee, challenge.employee_id)
+    if not employee or employee.is_bot_blocked or not is_staff(employee):
+        await messenger.send_text(chat_id=chat_user_id, text=UNKNOWN_USER_TEXT)
+        return True
+    if text.strip().lower() in {"новый код", "повторить код"}:
+        await _start_staff_verification(messenger, db, employee, chat_user_id)
+        return True
+    state, verified_employee = verify_staff_code(db, chat_user_id, username, text.strip())
+    if state == "verified" and verified_employee:
+        await messenger.send_text(chat_id=chat_user_id, text="Рабочая почта подтверждена. Telegram привязан к вашей карточке.")
+        await show_main_menu(messenger, db, verified_employee, "Меню обновлено. Выберите действие.")
+    elif state == "invalid":
+        await messenger.send_text(chat_id=chat_user_id, text="Код неверный. Проверьте письмо и попробуйте ещё раз.")
+    elif state == "expired":
+        await messenger.send_text(chat_id=chat_user_id, text="Код истёк или попытки закончились. Нажмите /start для нового кода.")
+    else:
+        await messenger.send_text(chat_id=chat_user_id, text="Не удалось подтвердить карточку. Обратитесь к HR.")
+    return True
+
+
+async def _start_staff_verification(messenger: MessengerClient, db: Session, employee: Employee, chat_user_id: str) -> None:
+    result = await request_staff_code(db, employee, chat_user_id)
+    if result == "sent":
+        await messenger.send_text(
+            chat_id=chat_user_id,
+            text="Код отправлен на рабочую почту из вашей карточки. Введите 8 цифр здесь. Код действует 10 минут.",
+        )
+    elif result == "cooldown":
+        await messenger.send_text(chat_id=chat_user_id, text="Код уже отправлен. Проверьте рабочую почту или повторите через минуту.")
+    elif result == "limit":
+        await messenger.send_text(chat_id=chat_user_id, text="Лимит отправок на сегодня исчерпан. Обратитесь к HR.")
+    elif result == "unavailable":
+        await messenger.send_text(chat_id=chat_user_id, text="Отправка кода сейчас недоступна. Попробуйте позже или обратитесь к HR.")
+    else:
+        await messenger.send_text(chat_id=chat_user_id, text="Не удалось проверить карточку сотрудника. Обратитесь к HR.")
 
 
 async def handle_start_command(
@@ -714,6 +770,9 @@ async def handle_start_command(
         return
 
     access = resolve_start_access(db, chat_user_id, username)
+    if access.state == "verification_required" and access.employee is not None:
+        await _start_staff_verification(messenger, db, access.employee, chat_user_id)
+        return
     if access.state != "ok" or access.employee is None:
         await send_access_state_message(messenger, chat_user_id, access.state)
         return
@@ -787,6 +846,8 @@ async def handle_text_event(
     username: Optional[str],
     text: str,
 ) -> Literal["handled", "ignored", "unknown", "blocked"]:
+    if await handle_staff_verification_text(messenger, db, chat_user_id, username, text):
+        return "handled"
     access = resolve_inbound_access(db, chat_user_id, username)
     if access.state != "ok" or access.employee is None:
         return access.state

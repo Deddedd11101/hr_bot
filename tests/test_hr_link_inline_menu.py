@@ -189,6 +189,8 @@ class HrLinkAndInlineMenuTests(unittest.TestCase):
             employee = Employee(
                 full_name=f"Inline {uuid4().hex[:8]}",
                 telegram_user_id=chat_id,
+                telegram_verified_user_id=chat_id,
+                telegram_verified_at=utc_now(),
                 employee_stage="staff",
                 created_at=utc_now(),
                 is_flow_scheduled=False,

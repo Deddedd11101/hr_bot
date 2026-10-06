@@ -26,7 +26,7 @@ Usernames нормализуются одинаково перед сравне�
 
 Текущий flow:
 
-1. Найти existing employee по active Telegram channel user ID. Numeric Telegram ID является главным надежным идентификатором.
+1. Найти existing employee по active Telegram channel user ID. Numeric Telegram ID является главным идентификатором, но для сотрудника старый ID без подтверждения почтой больше не даёт доступ.
 2. Если active account найден, но его employee отсутствует, runtime не считает это валидной привязкой и безопасно repair'ит orphan account перед дальнейшим `/start`.
 3. Если numeric ID не найден, попробовать normalized public Telegram username как fallback для первичной привязки.
 4. Если normalized username совпал с несколькими актуальными карточками, бот не угадывает:
@@ -40,15 +40,17 @@ Usernames нормализуются одинаково перед сравне�
    - `telegram_user_id = <numeric Telegram ID>`;
    - `telegram_username = <normalized public username>`, если он есть.
 6. Если username matched existing candidate without numeric chat ID, `/start` привязывает numeric Telegram ID к этой карточке и считает это регистрацией кандидата.
-7. Если username matched existing `staff` / `adaptation` / `ipr`, `/start` только привязывает numeric Telegram ID и не запускает candidate registration scenario.
+7. Если найден не-кандидат по numeric ID или username, `/start` запрашивает код на уникальную рабочую почту из карточки. Username служит только подсказкой для поиска; до верного кода numeric ID не привязывается и employee menu недоступно. Уже привязанные сотрудники также подтверждают почту повторно. Если рабочей почты нет, она дублируется или другой numeric ID уже привязан, автоматическая привязка не происходит.
 8. Если employee record есть, но `is_bot_blocked = true`, запретить все bot interaction с коротким отказом и не перепривязывать Telegram identity.
 9. Candidate registration scenario запускается только при первом candidate-linking/create event и только для сценария, который реально матчится по `employee_scope=candidates`.
-10. Повторный `/start` не создает дубль, не перезапускает registration-сценарий и работает как возврат к root menu.
+10. Повторный `/start` для подтвержденного пользователя возвращает root menu; во время ожидания кода повторная отправка ограничена паузой и суточным лимитом.
 11. `/start` не отправляет отдельное техническое приветствие. Если стартует registration-сценарий, пользователь получает первый шаг сценария; если сценарий не стартует, runtime пытается показать доступное root menu.
+
+Код состоит из 8 цифр, действует 10 минут, допускает 5 попыток и не хранится в открытом виде. Можно запросить новый текстом `новый код` после минутной паузы; не более 5 писем в сутки на Telegram ID и карточку. Все входящие сообщения, файлы и кнопки сотрудника до подтверждения закрыты. Существующие исходящие сценарии и меню не получают его старый неподтвержденный Telegram ID. Если SMTP не настроен или доставка письма не удалась, доступ не открывается; сотрудник получает нейтральное сообщение.
 
 Reset/delete contract:
 
-- Operator reset bot linkage из карточки чистит legacy Telegram поля, active `EmployeeMessengerAccount` rows для employee, незавершенный scenario runtime progress где employee является context или recipient, pending launch requests, `current_menu_set_id` и `current_menu_path`. Completed progress остается audit/history и не удаляется reset'ом.
+- Operator reset bot linkage из карточки чистит legacy Telegram поля, подтверждение почты, ожидающие коды, active `EmployeeMessengerAccount` rows для employee, незавершенный scenario runtime progress где employee является context или recipient, pending launch requests, `current_menu_set_id` и `current_menu_path`. Completed progress остается audit/history и не удаляется reset'ом.
 - Удаление карточки через operator API удаляет связанные messenger account rows, все progress rows где employee является context, и только незавершенный progress где employee является recipient. Completed recipient progress у других context-карточек сохраняется как audit/history, чтобы app-level delete path не стирал чужую завершенную историю.
 - Schema-level FK/cascade для `employee_messenger_accounts.employee_id` пока не введен; это отдельный data-model debt, а не часть текущего runtime repair.
 
@@ -91,7 +93,7 @@ Workspace возвращает `telegram_connection_state` со значения
 
 - `/start`, text, file-like media (`document` / `photo` / `video` / `video_note` / `animation`) и callback entrypoints теперь используют один inbound access resolution path.
 - Unknown users по-прежнему не могут создавать `employee_files` и не открывают runtime access через stray text/file input, но `/start` теперь является осознанной candidate-entry точкой и может создать новую candidate-карточку.
-- Known users все еще могут быть linked по сохраненному normalized public username, если пишут с нового Telegram ID и match однозначный.
+- Кандидаты всё ещё могут быть linked по сохраненному normalized public username при однозначном match; сотрудники по username только находятся для отправки кода, без автоматической привязки.
 - Duplicate normalized username теперь является fail-closed состоянием, а не поводом выбрать первую карточку или создать дубль.
 - Active orphan messenger accounts больше не считаются валидной identity; `/start` repair'ит такие строки на runtime path без destructive stage cleanup.
 - Registration-сценарий привязан к факту нового candidate-linking/create event, а не к scheduler interval или каждому повторному `/start`.
@@ -101,16 +103,12 @@ Workspace возвращает `telegram_connection_state` со значения
 
 ## Текущее практическое использование
 
-- Модель сознательно асимметрична:
-  - кандидат может войти в бот впервые через `/start` и быть создан автоматически;
-  - существующий сотрудник должен быть заранее известен по numeric ID или public username.
-- Это interim model до отдельной employee-auth/email verification схемы.
+- Модель асимметрична: кандидат может войти через `/start` и создать карточку, а сотрудник должен быть заранее известен по numeric ID или public username и подтвердить рабочую почту. Для смены уже привязанного numeric ID нужен reset через HR.
 
 ## Нужное будущее направление
 
 - Не расширять auto-create с `/start` на обычные text/file/callback события, иначе бот снова начнет плодить мусор от случайных входящих сообщений.
-- Выбрать intentional linking flow для existing employees beyond username fallback.
-- Решить, будет linking code-based, HR-approved или через другой verification path.
+- Перед массовым приглашением проверить уникальность рабочих адресов/ников и реальную доставку письма с выделенного SMTP-ящика; кодовый flow не считается принятым только по тестам без Telegram и почты.
 - Оформить отдельный re-entry flow для отказных/архивных кандидатов: новая попытка должна быть явным HR-действием, а не побочным эффектом `/start`.
 
 ## Связанная работа

@@ -1361,6 +1361,8 @@ class ScenarioEngineSmokeTests(unittest.IsolatedAsyncioTestCase):
             manager = Employee(
                 full_name="Manager Receiver",
                 telegram_user_id="555001",
+                telegram_verified_user_id="555001",
+                telegram_verified_at=now,
                 created_at=now,
                 is_flow_scheduled=False,
                 employee_stage="staff",
@@ -1541,6 +1543,8 @@ class ScenarioEngineSmokeTests(unittest.IsolatedAsyncioTestCase):
             manager = Employee(
                 full_name="Manager Trigger",
                 telegram_user_id="909001",
+                telegram_verified_user_id="909001",
+                telegram_verified_at=now,
                 created_at=now,
                 is_flow_scheduled=False,
                 employee_stage="staff",
@@ -1632,6 +1636,8 @@ class ScenarioEngineSmokeTests(unittest.IsolatedAsyncioTestCase):
             manager = Employee(
                 full_name="Manager Staff",
                 telegram_user_id="123456",
+                telegram_verified_user_id="123456",
+                telegram_verified_at=now,
                 first_workday=None,
                 created_at=now,
                 is_flow_scheduled=False,
@@ -2441,6 +2447,8 @@ class ScenarioEngineSmokeTests(unittest.IsolatedAsyncioTestCase):
             employee = Employee(
                 full_name="Recruitment Tester",
                 telegram_user_id="123456789",
+                telegram_verified_user_id="123456789",
+                telegram_verified_at=now,
                 created_at=now,
                 is_flow_scheduled=False,
                 employee_stage="candidate",

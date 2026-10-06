@@ -70,6 +70,8 @@ def _ensure_sqlite_schema() -> None:
         required = {
             "first_name": "TEXT",
             "telegram_username": "TEXT",
+            "telegram_verified_user_id": "TEXT",
+            "telegram_verified_at": "DATETIME",
             "current_menu_set_id": "INTEGER",
             "current_menu_path": "TEXT",
             "current_menu_message_id": "INTEGER",
@@ -105,6 +107,8 @@ def _ensure_sqlite_schema() -> None:
         for col, ddl in required.items():
             if col not in columns:
                 conn.execute(text(f"ALTER TABLE employees ADD COLUMN {col} {ddl}"))
+
+        Base.metadata.tables["staff_telegram_challenges"].create(conn, checkfirst=True)
 
         conn.execute(
             text(
@@ -278,6 +282,8 @@ def _ensure_sqlite_schema() -> None:
                         first_name VARCHAR(255),
                         telegram_user_id VARCHAR(64),
                         telegram_username TEXT,
+                        telegram_verified_user_id TEXT,
+                        telegram_verified_at DATETIME,
                         current_menu_set_id INTEGER,
                         current_menu_path TEXT,
                         current_menu_message_id INTEGER,
@@ -326,6 +332,8 @@ def _ensure_sqlite_schema() -> None:
                         first_name,
                         telegram_user_id,
                         telegram_username,
+                        telegram_verified_user_id,
+                        telegram_verified_at,
                         current_menu_set_id,
                         current_menu_path,
                         current_menu_message_id,
@@ -367,6 +375,8 @@ def _ensure_sqlite_schema() -> None:
                         {"first_name" if "first_name" in original_employee_columns else "NULL"},
                         NULLIF(telegram_user_id, ''),
                         telegram_username,
+                        {"telegram_verified_user_id" if "telegram_verified_user_id" in original_employee_columns else "NULL"},
+                        {"telegram_verified_at" if "telegram_verified_at" in original_employee_columns else "NULL"},
                         current_menu_set_id,
                         {"current_menu_path" if "current_menu_path" in original_employee_columns else "NULL"},
                         {"current_menu_message_id" if "current_menu_message_id" in original_employee_columns else "NULL"},
@@ -374,9 +384,9 @@ def _ensure_sqlite_schema() -> None:
                         NULL,
                         created_at,
                         is_flow_scheduled,
-                        0,
+                        {"is_bot_blocked" if "is_bot_blocked" in original_employee_columns else "0"},
                         desired_position,
-                        NULL,
+                        {"work_email" if "work_email" in original_employee_columns else "NULL"},
                         NULL,
                         0,
                         0,

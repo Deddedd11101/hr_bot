@@ -39,6 +39,11 @@ source_of_truth: true
 | `TELEGRAM_BOT_TOKEN`     | пусто                            | Telegram bot token                                | Обязателен для bot worker и любых отправок в Telegram |
 | `TELEGRAM_BOT_USERNAME`  | пусто                            | Username бота без `@` для HR deep-link             | Нужен, чтобы settings API сформировал готовую ссылку подключения HR |
 | `TELEGRAM_PROXY_URL`     | пусто                            | HTTP/SOCKS proxy для Telegram API                  | Использовать, если stage-сеть не имеет прямого доступа к `api.telegram.org:443` |
+| `SMTP_HOST`              | пусто                            | SMTP-сервер кодов привязки сотрудников             | Пусто = отправка кодов недоступна; секреты не коммитить |
+| `SMTP_PORT`              | `465`                           | Порт SMTP over TLS                                 | Для Яндекса использовать 465 |
+| `SMTP_USERNAME`          | пусто                            | Логин выделенного почтового ящика                  | Для доменной почты полный адрес |
+| `SMTP_PASSWORD`          | пусто                            | Пароль приложения для SMTP                         | Хранить только в закрытом runtime env worker |
+| `SMTP_FROM_EMAIL`        | пусто                            | Адрес отправителя кодов                            | Должен соответствовать ящику отправки |
 | `TIMEZONE`               | `Europe/Moscow`                  | Таймзона scheduler                                | Используется APScheduler и date-based scenario timing |
 | `DEMO_MODE`              | `false`                          | Ускоренный режим расписания для демо              | Существенно меняет semantics scheduler                |
 | `DEMO_STEP_MINUTES`      | `1`                              | Интервал шагов в demo mode                        | Используется только при `DEMO_MODE=true`              |

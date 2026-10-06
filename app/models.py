@@ -126,6 +126,8 @@ class Employee(Base):
         nullable=True,
         doc="Публичный username Telegram без @ для построения ссылки на профиль.",
     )
+    telegram_verified_user_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    telegram_verified_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     current_menu_set_id: Mapped[Optional[int]] = mapped_column(
         Integer,
         nullable=True,
@@ -400,6 +402,22 @@ class EmployeeMessengerAccount(Base):
     )
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+
+
+class StaffTelegramChallenge(Base):
+    """Pending work-email proof for one Telegram user; never stores the raw code."""
+
+    __tablename__ = "staff_telegram_challenges"
+
+    telegram_user_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    employee_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    email_snapshot: Mapped[str] = mapped_column(String(255), nullable=False)
+    code_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    attempts_left: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    last_sent_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    send_window_started_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    sends_in_window: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
 
 class OnboardingEvent(Base):
