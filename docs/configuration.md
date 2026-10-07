@@ -135,6 +135,9 @@ systemd drop-in web-сервиса и в env Pulse; при компромета�
 блокируемым по умолчанию портам. После обращения в поддержку `465` разблокирован:
 SMTP-авторизация и тестовая отправка со stage приняты Яндексом. При будущей
 смене сервера повторить preflight; не менять WireGuard route ради обхода.
+Активацию и откат флага на stage выполнять через `Stage Config Staff Email OTP`
+по [[stage-deploy]]: workflow сохраняет предыдущие systemd drop-in и проверяет
+effective env обоих сервисов. Не передавать SMTP-пароль в input workflow.
 
 ### Bootstrap-аккаунты
 
