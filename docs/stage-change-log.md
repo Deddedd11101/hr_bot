@@ -2754,6 +2754,16 @@ source_of_truth: true
 - OTP фактически не включен. Повторный enable запрещен до исправления verification workflow и нового review.
 - Rollback verification: [Stage Diagnostics #37668120695](https://github.com/Deddedd11101/hr_bot/actions/runs/37668120695) — `0 failing checks`; deployed SHA `b3a754e`, web/worker/WireGuard/Caddy active, Telegram API `302`, HTTPS `303`, worker logs clean.
 
+### 2026-10-07 - staff email OTP enabled for manual acceptance
+
+- Workflow readiness fix: PR #70 merged into `stage` (`e32b9e8`), PR #71 registered the same workflow in `main` (`dd9e455`). SSH action remains pinned to an exact commit.
+- Enable run: [Stage Config Staff Email OTP #37668801905](https://github.com/Deddedd11101/hr_bot/actions/runs/37668801905), mode `enable` — passed.
+- Read-only audit at enable time: target rows `40`, missing email `5`, invalid `0`, duplicates `0`; user explicitly accepted temporary lockout for records without email.
+- SQLite backup and config backup created by workflow: `/opt/hr_bot/backups/staff-email-otp-config.20261007-184201.1924749`.
+- Effective configuration verified in both `hr-bot-web` and `hr-bot-worker`: `STAFF_EMAIL_OTP_ENABLED=true`, `STAFF_EMAIL_DOMAIN=ze.studio`; worker SMTP password presence verified without printing its value.
+- Final Stage Diagnostics: [run 37668907915](https://github.com/Deddedd11101/hr_bot/actions/runs/37668907915) — `0 failing checks`; web/worker/WireGuard/Caddy active, Telegram API `302`, HTTPS `303`, worker logs clean.
+- User acceptance remains open: execute `/start`, follow the email prompt, enter the received code. Do not send or share the code in chat; report only whether the flow succeeded or where it stopped.
+
 ### 2026-10-01 - multi-target broadcasts and feedback selection
 
 - Feature: [PR #58](https://github.com/Deddedd11101/hr_bot/pull/58), merge commit `5685f5ea23add5c7f09bdc91c1eb335b63502a3c`.
