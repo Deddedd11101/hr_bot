@@ -10,7 +10,7 @@ from app.messaging.identity import get_primary_chat_id, set_primary_chat_id
 from app.messaging.service import handle_start_command, handle_text_event, resolve_inbound_access
 from app.models import Employee, EmployeeMessengerAccount, EmployeeTelegramEmailVerification
 from app.scenario_engine import resolve_notification_recipients
-from app.staff_email_verification import chat_id_allowed, confirm_code, is_verified, prepare_challenge
+from app.staff_email_verification import MAX_ATTEMPTS, chat_id_allowed, confirm_code, is_verified, prepare_challenge
 from app.time_utils import utc_now
 from app.web.bulk_actions import _send_mass_message
 from app.web.employees import _reset_employee_bot_linkage
@@ -103,6 +103,18 @@ class StaffEmailVerificationTests(unittest.TestCase):
             self.assertIsNone(row.code_hash)
             self.assertFalse(confirm_code(db, employee, self.chat_id, code))
             self.assertIsNone(get_primary_chat_id(employee, db=db))
+
+    def test_correct_code_succeeds_on_fifth_attempt(self):
+        code, _ = self._request_code()
+        wrong_code = "000000" if code != "000000" else "111111"
+        with SessionLocal() as db:
+            employee = db.get(Employee, self.employee_id)
+            for _ in range(MAX_ATTEMPTS - 1):
+                self.assertFalse(confirm_code(db, employee, self.chat_id, wrong_code))
+            self.assertTrue(confirm_code(db, employee, self.chat_id, code))
+            row = db.get(EmployeeTelegramEmailVerification, self.employee_id)
+            self.assertIsNone(row.code_hash)
+            self.assertEqual(row.attempts, MAX_ATTEMPTS)
 
     def test_expired_code_and_changed_email_are_rejected(self):
         code, _ = self._request_code()

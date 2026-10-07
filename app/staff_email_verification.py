@@ -156,10 +156,12 @@ def confirm_code(db: Session, employee: Employee, telegram_user_id: str, code: s
         _invalidate_pending_challenge(row)
         db.commit()
         return False
-    row.attempts += 1
+    attempts_before = row.attempts
     if not hmac.compare_digest(row.code_hash, _code_hash(employee.id, telegram_user_id, code.strip())):
-        if row.attempts >= MAX_ATTEMPTS:
+        if attempts_before + 1 >= MAX_ATTEMPTS:
             _invalidate_pending_challenge(row)
+        else:
+            row.attempts = attempts_before + 1
         db.commit()
         return False
 
@@ -182,6 +184,7 @@ def confirm_code(db: Session, employee: Employee, telegram_user_id: str, code: s
             EmployeeTelegramEmailVerification.pending_work_email == current_work_email,
             EmployeeTelegramEmailVerification.code_hash == row.code_hash,
             EmployeeTelegramEmailVerification.expires_at >= now,
+            EmployeeTelegramEmailVerification.attempts == attempts_before,
             EmployeeTelegramEmailVerification.attempts < MAX_ATTEMPTS,
         )
         .values(
@@ -192,6 +195,7 @@ def confirm_code(db: Session, employee: Employee, telegram_user_id: str, code: s
             pending_work_email=None,
             code_hash=None,
             expires_at=None,
+            attempts=attempts_before + 1,
         )
     )
     if claimed.rowcount != 1:
