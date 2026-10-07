@@ -231,6 +231,32 @@ gh workflow run stage-config-staff-email-otp.yml --repo Deddedd11101/hr_bot --re
 [[stage-change-log]], отдельно отметить реальный результат письма и ввода кода.
 Workflow делит concurrency group с `Deploy Stage` и не меняет исходники или БД.
 
+### Workflow Stage Config Admin Session Secret
+
+Источник: `.github/workflows/stage-config-admin-session-secret.yml`.
+
+После подтверждённого обнаружения default `ADMIN_SESSION_SECRET` на stage
+workflow генерирует новый 32-byte ключ на самом сервере и сохраняет его в
+root-only `/etc/hr-bot/admin-session.env`. Оба systemd-сервиса получают один
+ключ через `EnvironmentFile`; значение не передаётся через GitHub inputs и не
+печатается в логах. Workflow сохраняет прежние env/drop-in файлы в закрытом
+backup, перезапускает web и worker, сверяет effective env без вывода значения,
+проверяет HTTP и Telegram. Ошибка вызывает восстановление конфигурации.
+Повторный запуск при уже согласованном сильном ключе ничего не меняет;
+частичная конфигурация или другой существующий ключ блокируют ротацию до
+ручного разбора.
+
+Запускать только после интеграции workflow в `stage` и регистрации в `main`:
+
+```powershell
+gh workflow run stage-config-admin-session-secret.yml --repo Deddedd11101/hr_bot --ref stage -f confirmation=ROTATE_STAGE_ADMIN_SESSION_SECRET
+```
+
+Смена ключа разлогинит действующие сессии админки и отменит ещё не введённые
+OTP-коды; новый код запрашивается через `/start`. После успешного run проверить
+новый вход в админку, личный `/start` и получение письма. Факт и run ID внести в
+[[stage-change-log]]. Workflow не меняет БД или исходники приложения.
+
 ## Наблюдаемые факты stage
 
 Эти факты взяты из `docs/handoffs/telegram-linking-and-scope-handoff.md`. Их надо считать live operational notes, а не repo-enforced truth.
