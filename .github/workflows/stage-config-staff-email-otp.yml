@@ -1,0 +1,134 @@
+name: Stage Config Staff Email OTP
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "enable or disable staff email verification on stage"
+        required: true
+        type: choice
+        options:
+          - enable
+          - disable
+        default: disable
+
+concurrency:
+  group: deploy-stage
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  configure:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Apply and verify staff email OTP config
+        uses: appleboy/ssh-action@7eaf76671a0d7eec5d98ee897acda4f968735a17 # v1.2.0
+        env:
+          MODE: ${{ inputs.mode }}
+        with:
+          host: ${{ secrets.STAGE_HOST }}
+          username: ${{ secrets.STAGE_USERNAME }}
+          password: ${{ secrets.STAGE_PASSWORD }}
+          port: ${{ secrets.STAGE_PORT }}
+          envs: MODE
+          command_timeout: 10m
+          script: |
+            set -eu
+            case "$MODE" in
+              enable) desired=true ;;
+              disable) desired=false ;;
+              *) echo "invalid mode"; exit 1 ;;
+            esac
+
+            cd /opt/hr_bot
+            git diff --quiet
+            git diff --cached --quiet
+            git merge-base --is-ancestor 97097f968764ffc83873702c700a210bae82fe9d HEAD
+            test -f app/staff_email_verification.py
+
+            web_dropin=/etc/systemd/system/hr-bot-web.service.d/60-staff-email-otp.conf
+            worker_dropin=/etc/systemd/system/hr-bot-worker.service.d/60-staff-email-otp.conf
+            smtp_env=/etc/hr-bot/staff-email.env
+            if [ "$desired" = true ]; then
+              test -s "$smtp_env"
+              test "$(stat -c %a "$smtp_env")" = 600
+              grep -q '^STAFF_EMAIL_SMTP_PASSWORD=.' "$smtp_env"
+            fi
+
+            backup_dir="/opt/hr_bot/backups/staff-email-otp-config.$(date +%Y%m%d-%H%M%S).$$"
+            mkdir -m 700 "$backup_dir"
+            had_web=no
+            had_worker=no
+            if [ -e "$web_dropin" ]; then cp -a "$web_dropin" "$backup_dir/web.conf"; had_web=yes; fi
+            if [ -e "$worker_dropin" ]; then cp -a "$worker_dropin" "$backup_dir/worker.conf"; had_worker=yes; fi
+            BACKUP_DIR="$backup_dir" .venv/bin/python - <<'PY'
+            import os
+            import sqlite3
+            from collections import Counter
+
+            source = sqlite3.connect('file:/opt/hr_bot/hr_bot.db?mode=ro', uri=True)
+            rows = source.execute('SELECT employee_stage, work_email FROM employees').fetchall()
+            counts = Counter((email or '').strip().lower() for _, email in rows if (email or '').strip())
+            target = [(stage, email) for stage, email in rows if stage in ('staff', 'adaptation', 'ipr')]
+            missing = sum(not (email or '').strip() for _, email in target)
+            invalid = sum(bool((email or '').strip()) and ((email or '').strip().count('@') != 1 or not (email or '').strip().lower().endswith('@ze.studio')) for _, email in target)
+            duplicates = sum(counts[(email or '').strip().lower()] > 1 for _, email in target if (email or '').strip())
+            print(f'staff_email_audit: total={len(target)} missing={missing} invalid={invalid} duplicates={duplicates}')
+            if os.environ.get('MODE') == 'enable' and (invalid or duplicates):
+                raise SystemExit('invalid or duplicate staff work emails; refusing activation')
+            destination = sqlite3.connect(os.path.join(os.environ['BACKUP_DIR'], 'hr_bot.db'))
+            source.backup(destination)
+            if destination.execute('PRAGMA quick_check').fetchone()[0] != 'ok':
+                raise SystemExit('SQLite backup quick_check failed')
+            destination.close()
+            source.close()
+            print('SQLite backup quick_check: ok')
+            PY
+
+            rollback() {
+              status=$?
+              trap - EXIT
+              if [ "$status" -ne 0 ]; then
+                echo "OTP config verification failed; restoring previous drop-ins"
+                systemctl stop hr-bot-worker hr-bot-web || true
+                if [ "$had_web" = yes ]; then cp -a "$backup_dir/web.conf" "$web_dropin"; else rm -f "$web_dropin"; fi
+                if [ "$had_worker" = yes ]; then cp -a "$backup_dir/worker.conf" "$worker_dropin"; else rm -f "$worker_dropin"; fi
+                systemctl daemon-reload || true
+                systemctl start hr-bot-web hr-bot-worker || true
+              fi
+              exit "$status"
+            }
+            trap rollback EXIT
+
+            umask 022
+            mkdir -p "$(dirname "$web_dropin")" "$(dirname "$worker_dropin")"
+            for dropin in "$web_dropin" "$worker_dropin"; do
+              temp="$dropin.tmp.$$"
+              printf '[Service]\nEnvironment=STAFF_EMAIL_OTP_ENABLED=%s\nEnvironment=STAFF_EMAIL_DOMAIN=ze.studio\n' "$desired" > "$temp"
+              chmod 644 "$temp"
+              mv -f "$temp" "$dropin"
+            done
+            systemctl stop hr-bot-worker hr-bot-web
+            systemctl daemon-reload
+            systemctl start hr-bot-web hr-bot-worker
+            systemctl is-active --quiet hr-bot-web hr-bot-worker wg-quick@redshield
+
+            for service in hr-bot-web hr-bot-worker; do
+              pid="$(systemctl show "$service" --property=MainPID --value)"
+              test "$pid" -gt 0
+              tr '\0' '\n' < "/proc/$pid/environ" | grep -qx "STAFF_EMAIL_OTP_ENABLED=$desired"
+              tr '\0' '\n' < "/proc/$pid/environ" | grep -qx 'STAFF_EMAIL_DOMAIN=ze.studio'
+            done
+            worker_pid="$(systemctl show hr-bot-worker --property=MainPID --value)"
+            if [ "$desired" = true ]; then
+              tr '\0' '\n' < "/proc/$worker_pid/environ" | grep -q '^STAFF_EMAIL_SMTP_PASSWORD=.'
+            fi
+
+            for path in /app/employees /app/flows/workspace-v2; do
+              status="$(curl -s -o /dev/null -w '%{http_code}' --connect-timeout 10 --max-time 20 "http://127.0.0.1:8000$path")"
+              case "$status" in 200|303) ;; *) echo "HTTP smoke failed: $path ($status)"; exit 1 ;; esac
+            done
+            curl -fsS -o /dev/null --connect-timeout 10 --max-time 20 https://hr.zephyrlab.ru/login
+            curl -4 -fsSI -o /dev/null --connect-timeout 10 --max-time 20 https://api.telegram.org/
+            echo "staff email OTP $MODE verified on web and worker; backup: $backup_dir"

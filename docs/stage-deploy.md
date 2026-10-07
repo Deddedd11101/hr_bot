@@ -203,6 +203,34 @@ Workflow делит concurrency group с `Deploy Stage`, поэтому во в�
 
 Workflow делит concurrency group с `Deploy Stage`. Секреты SSH те же, что у deploy.
 
+### Workflow Stage Config Staff Email OTP
+
+Источник: `.github/workflows/stage-config-staff-email-otp.yml`.
+
+Включает или выключает `STAFF_EMAIL_OTP_ENABLED` одновременно для `hr-bot-web`
+и `hr-bot-worker`, задавая в обоих сервисах `STAFF_EMAIL_DOMAIN=ze.studio`.
+Режимы `enable` и `disable` не принимают пароль в workflow input: worker читает
+уже установленный root-only `/etc/hr-bot/staff-email.env`. Workflow проверяет
+наличие пароля без вывода значения, делает read-only аудит количества пустых,
+невалидных и повторяющихся рабочих адресов, сохраняет SQLite backup и копии
+предыдущих systemd drop-in. Для `enable` невалидные или повторяющиеся адреса
+блокируют операцию; пустые адреса показываются в отчёте и останутся без доступа.
+После изменения конфигурации workflow перезапускает оба сервиса, проверяет
+effective env, здоровье web/worker/WireGuard, HTTPS и доступность Telegram.
+При ошибке прежние drop-in восстанавливаются и сервисы перезапускаются.
+
+После интеграции workflow в default branch и `stage` запускать:
+
+```powershell
+gh workflow run stage-config-staff-email-otp.yml --repo Deddedd11101/hr_bot --ref stage -f mode=enable
+```
+
+Для отката использовать тот же workflow с `-f mode=disable`. Не запускать
+ручной `/start` для приёмки, пока run не завершился успешно и не подтверждено,
+что флаг включён в обоих сервисах. После run добавить запись в
+[[stage-change-log]], отдельно отметить реальный результат письма и ввода кода.
+Workflow делит concurrency group с `Deploy Stage` и не меняет исходники или БД.
+
 ## Наблюдаемые факты stage
 
 Эти факты взяты из `docs/handoffs/telegram-linking-and-scope-handoff.md`. Их надо считать live operational notes, а не repo-enforced truth.
