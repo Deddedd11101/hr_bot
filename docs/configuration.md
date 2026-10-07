@@ -39,6 +39,13 @@ source_of_truth: true
 | `TELEGRAM_BOT_TOKEN`     | пусто                            | Telegram bot token                                | Обязателен для bot worker и любых отправок в Telegram |
 | `TELEGRAM_BOT_USERNAME`  | пусто                            | Username бота без `@` для HR deep-link             | Нужен, чтобы settings API сформировал готовую ссылку подключения HR |
 | `TELEGRAM_PROXY_URL`     | пусто                            | HTTP/SOCKS proxy для Telegram API                  | Использовать, если stage-сеть не имеет прямого доступа к `api.telegram.org:443` |
+| `STAFF_EMAIL_OTP_ENABLED` | `false` | Требовать код с рабочей почты для сотрудников | Задать одинаково в web и worker после SMTP-проверки; кандидатский вход не меняется |
+| `STAFF_EMAIL_DOMAIN` | `ze.studio` | Разрешённый домен рабочей почты | Адрес в карточке должен быть уникальным |
+| `STAFF_EMAIL_FROM` | `info@ze.studio` | Отправитель писем с кодом | Должен быть разрешён для SMTP-аккаунта |
+| `STAFF_EMAIL_SMTP_HOST` | `smtp.yandex.ru` | SMTP Яндекс Почты | Только TLS-соединение |
+| `STAFF_EMAIL_SMTP_PORT` | `465` | Порт SMTP SSL | Для Яндекса 465 |
+| `STAFF_EMAIL_SMTP_USERNAME` | `info@ze.studio` | Логин SMTP | Полный адрес ящика; для алиаса указать владельца ящика |
+| `STAFF_EMAIL_SMTP_PASSWORD` | пусто | Пароль приложения Яндекс Почты | Только в закрытом env bot worker, не основной пароль и не в git |
 | `TIMEZONE`               | `Europe/Moscow`                  | Таймзона scheduler                                | Используется APScheduler и date-based scenario timing |
 | `DEMO_MODE`              | `false`                          | Ускоренный режим расписания для демо              | Существенно меняет semantics scheduler                |
 | `DEMO_STEP_MINUTES`      | `1`                              | Интервал шагов в demo mode                        | Используется только при `DEMO_MODE=true`              |
@@ -108,6 +115,27 @@ source_of_truth: true
 systemd drop-in web-сервиса и в env Pulse; при компрометации сменить с обеих
 сторон. Worker-сервису переменная не нужна.
 
+### Подтверждение почты сотрудника
+
+В Яндекс Почте для `info@ze.studio` разрешить доступ почтовых клиентов и пароли
+приложений, создать отдельный пароль типа «Почта» для HRBot. На stage добавить
+его напрямую в закрытый env `hr-bot-worker` как `STAFF_EMAIL_SMTP_PASSWORD`;
+основной пароль ящика не использовать. `STAFF_EMAIL_OTP_ENABLED=true` и
+`STAFF_EMAIL_DOMAIN=ze.studio` задать одинаково в web и worker только после
+пробного письма и проверки адресов сотрудников. До этого флаг оставлять `false`
+в обоих сервисах. При включённом флаге отсутствие SMTP-пароля или рабочего
+адреса закрывает вход сотруднику, а не возвращает старую привязку по username.
+`ADMIN_SESSION_SECRET` должен быть нестандартным: он служит и ключом HMAC для
+кода, который хранится в БД только в хешированном виде. Пароль приложения не
+передавать в чат и не коммитить. При рассинхронизации флага между web и worker
+веб-отправки могут обойти проверку, поэтому включение выполнять атомарно для
+обоих сервисов. До включения проверить исходящее подключение именно со stage к
+`smtp.yandex.ru:465` и отправку тестового письма. На 2026-10-07 исходящие
+`465` и `587` сначала истекали по таймауту; [Timeweb Cloud](https://timeweb.cloud/docs/cloud-servers/limitations) относит их к
+блокируемым по умолчанию портам. После обращения в поддержку `465` разблокирован:
+SMTP-авторизация и тестовая отправка со stage приняты Яндексом. При будущей
+смене сервера повторить preflight; не менять WireGuard route ради обхода.
+
 ### Bootstrap-аккаунты
 
 - `DEFAULT_ADMIN_LOGIN`
@@ -130,6 +158,7 @@ systemd drop-in web-сервиса и в env Pulse; при компромета�
 - реальный Telegram bot token;
 - реальный admin session secret;
 - реальный `PULSE_SYNC_TOKEN`;
+- реальный `STAFF_EMAIL_SMTP_PASSWORD`;
 - любые server-specific secret values;
 - скопированный stage `.env`.
 

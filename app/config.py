@@ -20,6 +20,15 @@ class Settings:
     TELEGRAM_BOT_USERNAME: str = os.getenv("TELEGRAM_BOT_USERNAME", "")
     TELEGRAM_PROXY_URL: str = os.getenv("TELEGRAM_PROXY_URL", "")
 
+    # Employee email verification is opt-in until SMTP is configured on stage.
+    STAFF_EMAIL_OTP_ENABLED: bool = os.getenv("STAFF_EMAIL_OTP_ENABLED", "false").lower() in {"1", "true", "yes"}
+    STAFF_EMAIL_DOMAIN: str = os.getenv("STAFF_EMAIL_DOMAIN", "ze.studio")
+    STAFF_EMAIL_FROM: str = os.getenv("STAFF_EMAIL_FROM", "info@ze.studio")
+    STAFF_EMAIL_SMTP_HOST: str = os.getenv("STAFF_EMAIL_SMTP_HOST", "smtp.yandex.ru")
+    STAFF_EMAIL_SMTP_PORT: int = int(os.getenv("STAFF_EMAIL_SMTP_PORT", "465"))
+    STAFF_EMAIL_SMTP_USERNAME: str = os.getenv("STAFF_EMAIL_SMTP_USERNAME", "info@ze.studio")
+    STAFF_EMAIL_SMTP_PASSWORD: str = os.getenv("STAFF_EMAIL_SMTP_PASSWORD", "")
+
     # Таймзона для расписания (для простоты — системная)
     TIMEZONE: str = os.getenv("TIMEZONE", "Europe/Moscow")
 

@@ -5,6 +5,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
+from app.config import settings
 from app.database import SessionLocal, init_db
 from app.models import (
     DocumentLibraryItem,
@@ -1676,6 +1677,23 @@ class ScenarioEngineSmokeTests(unittest.IsolatedAsyncioTestCase):
             recipients = resolve_notification_recipients(db, employee, explicit_ids="999999, raw-chat", recipient_scope="")
 
             self.assertEqual(recipients, [])
+
+    def test_resolve_notification_recipients_rejects_unmapped_legacy_staff_chat_with_otp(self) -> None:
+        init_db()
+        with patch.object(settings, "STAFF_EMAIL_OTP_ENABLED", True):
+            with SessionLocal() as db:
+                employee = SimpleNamespace(
+                    manager_employee_id=None,
+                    mentor_adaptation_employee_id=None,
+                    mentor_ipr_employee_id=None,
+                    manager_telegram_id="799900011",
+                    mentor_adaptation_telegram_id=None,
+                    mentor_ipr_telegram_id=None,
+                )
+
+                recipients = resolve_notification_recipients(db, employee, explicit_ids="", recipient_scope="manager")
+
+                self.assertEqual(recipients, [])
 
     def test_resolve_notification_recipients_supports_hr_token(self) -> None:
         init_db()

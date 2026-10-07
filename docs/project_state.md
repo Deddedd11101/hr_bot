@@ -36,6 +36,7 @@ source_of_truth: true
 # Состояние проекта
 
 - В feature-ветке подготовлены ветвление вопросов опроса и история запусков на странице опроса: у каждой обычной рассылки отдельные ответы и XLSX, который пополняется при скачивании. Адресные запуски из карточки отображаются в той же истории со своими файлами; старые ответы без ID запуска доступны отдельно. Кодовые проверки не равны stage deploy или реальной Telegram-приёмке.
+- Проверка сотрудников по рабочей почте подготовлена в PR #67, но не выложена и выключена. Пароль приложения для `info@ze.studio` подготовлен в закрытом env worker; после разблокировки исходящего порта 465 со stage прошли SMTP-авторизация и тестовая отправка. До включения нужны DB/Security review, интеграция и Telegram-приёмка; старые привязки после включения потребуют подтверждения.
 
 - Read-only экспорт штата для Pulse выложен на stage 2026-10-05: bearer-auth API проверен (`401` без токена, `200` с токеном, 40 записей). Pulse production и первый dry-run/apply ещё не настроены; синхронизация данных не выполнена. См. [[stage-change-log]].
 
@@ -235,7 +236,7 @@ source_of_truth: true
 - Для backend-слоя главный structural шаг уже завершен: `main.py` стал composition root, а vertical slices `employees`, `bulk-actions`, `settings`, `scenario/surveys` вынесены в `app/web/*` с green smoke после каждого этапа.
 - Следующий backend-шаг теперь не “еще один slice”, а финальный cleanup после декомпозиции: parity-pass remaining classic surfaces, точечное удаление ненужных fallback pages и отдельная нормализация shared helpers/tests там, где ownership уже разнесен.
 - После структурных pass по `employees-list`, `scenario-workspace` и `employee detail` следующий frontend-шаг уже не очередной split файлов, а parity-pass и последовательное удаление classic-only хвостов без rollback gap.
-- `HRB-DISC-01` выбрать long-term identity-linking flow для existing employees beyond interim username fallback и candidate auto-create on `/start`.
+- `HRB-DISC-01` завершить DB/Security review и интеграцию email-подтверждения сотрудников; SMTP preflight со stage прошел, но до Telegram-приёмки не считать сценарий завершенным.
 - После текущей стабилизации следующий продуктовый модуль — `HRB-P2-06` отпуска MVP; Telegram Mini Apps не начинать как отдельный frontend до решения `HRB-DISC-03` по scope/auth/API boundaries.
 - `HRB-DISC-04` определить модель раздельного хранения данных для двух ИП; `HRB-P2-07` не начинать без LLD, потому что это влияет на БД, deploy/runbook, backup и UI context.
 - `HRB-DISC-05` определить модель ролей и доступа админки до расширения account management: директору может быть нужен operational доступ без права управлять аккаунтами, а технический `admin` должен быть отделен от ежедневной HR-работы.

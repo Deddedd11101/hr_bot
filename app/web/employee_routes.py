@@ -611,7 +611,7 @@ def update_employee_api(
             full_name=str(payload.get("full_name") or ""),
             first_name=(str(payload["first_name"]) if "first_name" in payload else employee.first_name),
             ipr_url=(str(payload.get("ipr_url") or "") if "ipr_url" in payload else None),
-            chat_id=str(payload.get("chat_id") or get_primary_chat_id(employee, db=db) or ""),
+            chat_id=str(payload.get("chat_id") or get_primary_chat_id(employee, db=db, include_unverified=True) or ""),
             chat_handle=str(payload.get("chat_handle") or ""),
             first_workday=str(payload.get("first_workday") or ""),
             desired_position=str(payload.get("desired_position") or ""),

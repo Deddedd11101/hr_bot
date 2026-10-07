@@ -8,6 +8,21 @@ from .database import Base
 from .time_utils import utc_now
 
 
+class EmployeeTelegramEmailVerification(Base):
+    __tablename__ = "employee_telegram_email_verifications"
+
+    employee_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    verified_telegram_user_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    verified_work_email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    verified_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    pending_telegram_user_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    pending_work_email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    code_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    last_sent_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+
 class Grade(Base):
     __tablename__ = "grades"
     id: Mapped[int] = mapped_column(primary_key=True)

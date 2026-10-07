@@ -369,11 +369,9 @@ def _ensure_confirmed(payload: dict) -> None:
 async def _send_mass_message(db: Session, messenger, employee: Employee, message_text: str) -> bool:
     if employee.is_bot_blocked:
         return False
-    chat_id = employee.telegram_user_id
-    if not chat_id:
-        from ..messaging.identity import get_primary_chat_id
+    from ..messaging.identity import get_primary_chat_id
 
-        chat_id = get_primary_chat_id(employee, db=db)
+    chat_id = get_primary_chat_id(employee, db=db)
     if not chat_id:
         return False
     rendered_text = format_message(
