@@ -2746,6 +2746,14 @@ source_of_truth: true
   - existing verification rows: `0`.
 - Activation decision: OTP остается выключенным. Включение сейчас заблокировало бы шесть записей, включая четыре уже связанные по Telegram; сначала HR должна заполнить/проверить эти адреса либо пользователь явно принять такой lockout.
 
+### 2026-10-07 - OTP enable attempt rolled back
+
+- Config workflow: [run 37668049414](https://github.com/Deddedd11101/hr_bot/actions/runs/37668049414), mode `enable`.
+- Read-only audit внутри workflow: target rows `40`, missing email `5`, invalid `0`, duplicates `0`; SQLite backup `quick_check` passed.
+- После изменения drop-in post-change verification завершилась code `7`; workflow автоматически восстановил предыдущие drop-in и перезапустил сервисы.
+- OTP фактически не включен. Повторный enable запрещен до исправления verification workflow и нового review.
+- Rollback verification: [Stage Diagnostics #37668120695](https://github.com/Deddedd11101/hr_bot/actions/runs/37668120695) — `0 failing checks`; deployed SHA `b3a754e`, web/worker/WireGuard/Caddy active, Telegram API `302`, HTTPS `303`, worker logs clean.
+
 ### 2026-10-01 - multi-target broadcasts and feedback selection
 
 - Feature: [PR #58](https://github.com/Deddedd11101/hr_bot/pull/58), merge commit `5685f5ea23add5c7f09bdc91c1eb335b63502a3c`.
