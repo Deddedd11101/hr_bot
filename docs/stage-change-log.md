@@ -2716,6 +2716,28 @@ source_of_truth: true
 - Final Stage Diagnostics: [run 36443104071](https://github.com/Deddedd11101/hr_bot/actions/runs/36443104071) — `0 failing checks`; services, WireGuard, Telegram route, HTTPS and worker logs are healthy.
 - Ограничение приемки: реальный пользовательский ролик не классифицирован независимо как `video` или `animation`; ручная Telegram-проверка обычного видео и animation остается открытой. Реальные сообщения кандидатам без согласованного recipient не отправлялись.
 
+### 2026-10-07 - staff email OTP integration, flag disabled
+
+- Feature: [PR #67](https://github.com/Deddedd11101/hr_bot/pull/67), `feature/staff-email-otp`, reviewed HEAD `97097f968764ffc83873702c700a210bae82fe9d`.
+- Deployed commit: `b3a754e97f093cbf99822e1158ab85a3ced093f0`.
+- GitHub Actions Deploy Stage: [run 37623338421](https://github.com/Deddedd11101/hr_bot/actions/runs/37623338421) — passed.
+- Что выкачено:
+  - staff Telegram identity verification по рабочей почте и одноразовому коду;
+  - concurrency/safety fixes для OTP;
+  - additive SQLite compatibility changes, runtime и live docs.
+- Проверки объединенного ref:
+  - compileall, `ruff F821`, `tools/check_docs_contracts.py` — passed;
+  - OTP/identity/scenario/employee smoke — `211 tests OK` на чистой CI SQLite базе;
+  - Deploy Stage preflight: backend smoke, frontend build, import smoke — passed;
+  - SQLite backup/snapshot созданы, scenario fingerprint unchanged.
+- Stage Diagnostics: [run 37623600010](https://github.com/Deddedd11101/hr_bot/actions/runs/37623600010) — `0 failing checks`; web/worker/WireGuard/Caddy active, Telegram API `302`, bot identity совпадает, HTTPS smoke `303`, свежих worker errors нет.
+- Activation status: `STAFF_EMAIL_OTP_ENABLED=false`; web/worker не переводились в активный OTP-flow. Секреты в Git/chat не записывались.
+- SMTP preflight принят по отчету DB/Storage steward: TCP 465 и SMTP auth/test send были успешны, inbox receipt не подтвержден.
+- Открытая приемка:
+  - нужен read-only audit количества сотрудников с отсутствующей/некорректной/дублирующейся рабочей почтой и существующими numeric Telegram links;
+  - нужен staged OTP acceptance с тестовым сотрудником и подтверждением входящего письма;
+  - реальные привязки сотрудников и включение OTP без этой приемки не выполнять.
+
 ### 2026-10-01 - multi-target broadcasts and feedback selection
 
 - Feature: [PR #58](https://github.com/Deddedd11101/hr_bot/pull/58), merge commit `5685f5ea23add5c7f09bdc91c1eb335b63502a3c`.
