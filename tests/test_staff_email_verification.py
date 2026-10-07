@@ -10,7 +10,7 @@ from app.messaging.identity import get_primary_chat_id, set_primary_chat_id
 from app.messaging.service import handle_start_command, handle_text_event, resolve_inbound_access
 from app.models import Employee, EmployeeMessengerAccount, EmployeeTelegramEmailVerification
 from app.scenario_engine import resolve_notification_recipients
-from app.staff_email_verification import chat_id_allowed, confirm_code
+from app.staff_email_verification import chat_id_allowed, confirm_code, is_verified, prepare_challenge
 from app.time_utils import utc_now
 from app.web.bulk_actions import _send_mass_message
 from app.web.employees import _reset_employee_bot_linkage
@@ -120,6 +120,54 @@ class StaffEmailVerificationTests(unittest.TestCase):
             employee.work_email = f"changed-{self.suffix}@ze.studio"
             db.commit()
             self.assertFalse(confirm_code(db, employee, self.chat_id, second_code))
+            row = db.get(EmployeeTelegramEmailVerification, self.employee_id)
+            self.assertIsNone(row.code_hash)
+            self.assertIsNone(row.pending_work_email)
+
+    def test_confirm_code_is_single_use_across_stale_sessions(self):
+        code, _ = self._request_code()
+        first_db = SessionLocal()
+        second_db = SessionLocal()
+        try:
+            first_employee = first_db.get(Employee, self.employee_id)
+            second_employee = second_db.get(Employee, self.employee_id)
+            # Keep the second session's verification row stale to exercise the
+            # conditional UPDATE rather than an ORM-side mutable check.
+            second_db.get(EmployeeTelegramEmailVerification, self.employee_id)
+            self.assertTrue(confirm_code(first_db, first_employee, self.chat_id, code))
+            self.assertFalse(confirm_code(second_db, second_employee, self.chat_id, code))
+        finally:
+            first_db.close()
+            second_db.close()
+
+    def test_verified_state_rechecks_current_unique_work_email(self):
+        code, _ = self._request_code()
+        with SessionLocal() as db:
+            employee = db.get(Employee, self.employee_id)
+            self.assertTrue(confirm_code(db, employee, self.chat_id, code))
+            self.assertTrue(is_verified(db, employee, self.chat_id))
+            duplicate = Employee(
+                full_name="Duplicate Verified Staff",
+                work_email=self.email,
+                employee_stage="staff",
+                created_at=utc_now(),
+            )
+            db.add(duplicate)
+            db.commit()
+            duplicate_id = duplicate.id
+            self.assertFalse(is_verified(db, employee, self.chat_id))
+        with SessionLocal() as db:
+            db.query(Employee).filter_by(id=duplicate_id).delete()
+            db.commit()
+
+    def test_prepare_challenge_returns_existing_active_challenge_during_cooldown(self):
+        code, _ = self._request_code()
+        self.assertTrue(code)
+        with SessionLocal() as db:
+            employee = db.get(Employee, self.employee_id)
+            replacement_code, address = prepare_challenge(db, employee, self.chat_id)
+        self.assertEqual(replacement_code, "")
+        self.assertEqual(address, self.email)
 
     def test_username_cannot_replace_another_linked_telegram_id(self):
         with SessionLocal() as db:

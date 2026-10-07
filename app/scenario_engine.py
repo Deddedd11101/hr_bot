@@ -20,8 +20,8 @@ from .config import settings
 from .employee_card import render_employee_card_png
 from .hr_linking import is_numeric_telegram_id
 from .messaging import MessengerClient, as_messenger, find_employee_by_channel_user_id
-from .messaging.identity import get_primary_chat_id
-from .staff_email_verification import chat_id_allowed
+from .messaging.identity import find_employees_by_channel_user_id, get_primary_chat_id
+from .staff_email_verification import chat_id_allowed, is_verified
 from .models import DocumentLibraryItem, Employee, EmployeeDocumentLink, EmployeeFeedbackRecipient, EmployeeFeedbackRun, EmployeeFile, FlowLaunchRequest, FlowStepTemplate, HrSettings, MassScenarioAction, OnboardingEvent, ScenarioProgress, ScenarioTemplate, StepButtonNotification, StepSendNotification, SurveyAnswer
 from .positions import position_matches_scope
 from .time_utils import utc_now
@@ -1476,7 +1476,24 @@ def _resolve_related_employee_chat_id(
         if related_employee:
             return get_primary_chat_id(related_employee, db=db)
     legacy_chat_id = (getattr(employee, legacy_chat_field, None) or "").strip()
-    return legacy_chat_id if legacy_chat_id and (db is None or chat_id_allowed(db, legacy_chat_id)) else None
+    if not legacy_chat_id or (db is not None and not chat_id_allowed(db, legacy_chat_id)):
+        return None
+    if db is not None and settings.STAFF_EMAIL_OTP_ENABLED:
+        mapped_employees = find_employees_by_channel_user_id(
+            db,
+            channel="telegram",
+            external_user_id=legacy_chat_id,
+        )
+        if len(mapped_employees) != 1:
+            return None
+        mapped_employee = mapped_employees[0]
+        if (mapped_employee.employee_stage or "").strip() == "candidate" or not is_verified(
+            db,
+            mapped_employee,
+            legacy_chat_id,
+        ):
+            return None
+    return legacy_chat_id
 
 
 def resolve_notification_recipients(

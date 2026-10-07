@@ -8,7 +8,8 @@ import ssl
 from datetime import timedelta
 from email.message import EmailMessage
 
-from sqlalchemy import func
+from sqlalchemy import func, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from .config import settings
@@ -45,10 +46,15 @@ def has_unique_work_email(db: Session, employee: Employee) -> bool:
 def is_verified(db: Session, employee: Employee, telegram_user_id: str) -> bool:
     if not verification_required(employee):
         return True
+    current_work_email = normalized_work_email(employee)
     row = db.get(EmployeeTelegramEmailVerification, employee.id)
     return bool(
-        row and row.verified_at and row.verified_telegram_user_id == telegram_user_id
-        and row.verified_work_email == normalized_work_email(employee)
+        current_work_email
+        and has_unique_work_email(db, employee)
+        and row
+        and row.verified_at
+        and row.verified_telegram_user_id == telegram_user_id
+        and row.verified_work_email == current_work_email
     )
 
 
@@ -89,8 +95,27 @@ def prepare_challenge(db: Session, employee: Employee, telegram_user_id: str) ->
     row.expires_at = now + CODE_TTL
     row.last_sent_at = now
     row.attempts = 0
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        # Another /start may have inserted the single row concurrently. The
+        # winner's cooldown makes this request a no-op instead of surfacing a
+        # raw UNIQUE/PK error to the bot.
+        db.rollback()
+        existing_row = db.get(EmployeeTelegramEmailVerification, employee.id)
+        if existing_row and existing_row.last_sent_at and utc_now() - existing_row.last_sent_at < RESEND_COOLDOWN:
+            return "", address
+        raise
     return code, address
+
+
+def _invalidate_pending_challenge(row: EmployeeTelegramEmailVerification) -> None:
+    row.pending_telegram_user_id = None
+    row.pending_work_email = None
+    row.code_hash = None
+    row.expires_at = None
+    row.last_sent_at = None
+    row.attempts = 0
 
 
 def clear_failed_challenge(db: Session, employee_id: int, telegram_user_id: str, code: str) -> None:
@@ -128,29 +153,57 @@ def confirm_code(db: Session, employee: Employee, telegram_user_id: str, code: s
     if not row or not row.code_hash or row.pending_telegram_user_id != telegram_user_id:
         return False
     if not row.expires_at or row.expires_at < now or row.attempts >= MAX_ATTEMPTS:
-        row.code_hash = None
+        _invalidate_pending_challenge(row)
         db.commit()
         return False
     row.attempts += 1
     if not hmac.compare_digest(row.code_hash, _code_hash(employee.id, telegram_user_id, code.strip())):
         if row.attempts >= MAX_ATTEMPTS:
-            row.code_hash = None
+            _invalidate_pending_challenge(row)
         db.commit()
         return False
-    if not has_unique_work_email(db, employee) or row.pending_work_email != normalized_work_email(employee):
+
+    current_work_email = normalized_work_email(employee)
+    if not current_work_email or not has_unique_work_email(db, employee) or row.pending_work_email != current_work_email:
+        _invalidate_pending_challenge(row)
+        db.commit()
         return False
     from .messaging.identity import get_primary_chat_id, set_primary_chat_id
 
     existing_chat_id = get_primary_chat_id(employee, db=db, include_unverified=True)
     if existing_chat_id and existing_chat_id != telegram_user_id:
         return False
-    set_primary_chat_id(employee, telegram_user_id, db=db)
-    row.verified_telegram_user_id = telegram_user_id
-    row.verified_work_email = normalized_work_email(employee)
-    row.verified_at = now
-    row.pending_telegram_user_id = None
-    row.pending_work_email = None
-    row.code_hash = None
-    row.expires_at = None
-    db.commit()
+
+    claimed = db.execute(
+        update(EmployeeTelegramEmailVerification)
+        .where(
+            EmployeeTelegramEmailVerification.employee_id == employee.id,
+            EmployeeTelegramEmailVerification.pending_telegram_user_id == telegram_user_id,
+            EmployeeTelegramEmailVerification.pending_work_email == current_work_email,
+            EmployeeTelegramEmailVerification.code_hash == row.code_hash,
+            EmployeeTelegramEmailVerification.expires_at >= now,
+            EmployeeTelegramEmailVerification.attempts < MAX_ATTEMPTS,
+        )
+        .values(
+            verified_telegram_user_id=telegram_user_id,
+            verified_work_email=current_work_email,
+            verified_at=now,
+            pending_telegram_user_id=None,
+            pending_work_email=None,
+            code_hash=None,
+            expires_at=None,
+        )
+    )
+    if claimed.rowcount != 1:
+        db.rollback()
+        return False
+
+    try:
+        set_primary_chat_id(employee, telegram_user_id, db=db)
+        db.commit()
+    except (IntegrityError, ValueError):
+        # Roll back the conditional claim together with the identity change;
+        # a concurrent identity owner must never leave a verified row behind.
+        db.rollback()
+        return False
     return True
