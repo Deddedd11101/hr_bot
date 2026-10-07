@@ -2737,6 +2737,14 @@ source_of_truth: true
   - нужен read-only audit количества сотрудников с отсутствующей/некорректной/дублирующейся рабочей почтой и существующими numeric Telegram links;
   - нужен staged OTP acceptance с тестовым сотрудником и подтверждением входящего письма;
   - реальные привязки сотрудников и включение OTP без этой приемки не выполнять.
+- Read-only stage audit после deploy (URI SQLite mode, без записи и без PII):
+  - staff: `38`, adaptation/IPR: `2`, candidate: `2`;
+  - целевые staff/adaptation/IPR rows: `40`;
+  - без `work_email`: `6` (`4` staff, `2` adaptation), все не заблокированы;
+  - у `4` из этих `6` уже есть numeric Telegram ID;
+  - duplicate normalized work_email: `0`;
+  - existing verification rows: `0`.
+- Activation decision: OTP остается выключенным. Включение сейчас заблокировало бы шесть записей, включая четыре уже связанные по Telegram; сначала HR должна заполнить/проверить эти адреса либо пользователь явно принять такой lockout.
 
 ### 2026-10-01 - multi-target broadcasts and feedback selection
 
