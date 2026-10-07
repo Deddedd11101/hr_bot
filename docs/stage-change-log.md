@@ -2743,8 +2743,9 @@ source_of_truth: true
 - Публичный API smoke: `GET /api/integrations/pulse/employees` без bearer вернул `401`, с локально сохранённым токеном — `200`, `source=hrbot`, 40 сотрудников стадий `staff/adaptation/ipr`. Значение токена и персональные данные в журнал не записывались.
 - Pulse production ещё не настроен и sync apply не выполнялся; превью совпадений по ФИО, неизвестных должностей и архивирования остаётся обязательным перед первым применением.
 
-### 2026-10-07 - staff email SMTP credential staged, activation blocked
+### 2026-10-07 - staff email SMTP credential staged, activation pending review
 
 - Для будущего PR #67 на stage подготовлен root-only файл `/etc/hr-bot/staff-email.env` (`0600`) и worker systemd drop-in, который читает файл при следующем restart. `systemctl daemon-reload` выполнен; web/worker не перезапускались, код не деплоился, `STAFF_EMAIL_OTP_ENABLED` не включен. Stage HEAD остался `19aba45`, Git worktree clean; web, worker и WireGuard active.
 - SMTP-авторизация и отправка тестового письма `info@ze.studio` -> `info@ze.studio` прошли с локального компьютера. Со stage соединение с `smtp.yandex.ru:465` и `:587` по IPv4 истекает по таймауту, по IPv6 сеть недоступна; до SMTP-авторизации на stage дело не доходит. Отправка письма со stage и получение письма адресатом не подтверждены.
-- Следующий шаг: разблокировать исходящий SMTP-порт `465` для сервера `92.51.38.32` в Timeweb Cloud или через поддержку, повторить stage SMTP send, затем завершить DB/Security review и только после этого интегрировать/включать email OTP. Пароль и его хеш в журнал не записывались.
+- После первоначальной диагностики запросили разблокировку исходящего SMTP-порта `465` для сервера `92.51.38.32` в Timeweb Cloud. Пароль и его хеш в журнал не записывались.
+- После ответа поддержки исходящий порт `465` открыт. Повторный тест прямо со stage: TLS-подключение, SMTP-авторизация и отправка тестового письма `info@ze.studio` -> `info@ze.studio` приняты Яндексом. Получение письма во входящих отдельно не подтверждено. Сервисы остались active, Git worktree clean; код PR #67 не деплоился, флаг не включался. Остались DB/Security review, интеграция и реальный вход сотрудника в Telegram.
