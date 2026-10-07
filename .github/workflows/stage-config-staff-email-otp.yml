@@ -109,8 +109,8 @@ jobs:
               chmod 644 "$temp"
               mv -f "$temp" "$dropin"
             done
-            systemctl stop hr-bot-worker hr-bot-web
             systemctl daemon-reload
+            systemctl stop hr-bot-worker hr-bot-web
             systemctl start hr-bot-web hr-bot-worker
             systemctl is-active --quiet hr-bot-web hr-bot-worker wg-quick@redshield
 
@@ -125,10 +125,29 @@ jobs:
               tr '\0' '\n' < "/proc/$worker_pid/environ" | grep -q '^STAFF_EMAIL_SMTP_PASSWORD=.'
             fi
 
+            wait_http() {
+              kind="$1"
+              url="$2"
+              attempt=0
+              status=000
+              while [ "$attempt" -lt 15 ]; do
+                if [ "$kind" = telegram ]; then
+                  status="$(curl -4 -sSI -o /dev/null -w '%{http_code}' --connect-timeout 2 --max-time 5 "$url" || true)"
+                else
+                  status="$(curl -s -o /dev/null -w '%{http_code}' --connect-timeout 2 --max-time 5 "$url" || true)"
+                fi
+                case "$kind:$status" in
+                  app:200|app:303|public:2??|public:3??|telegram:2??|telegram:3??) return 0 ;;
+                esac
+                attempt=$((attempt + 1))
+                sleep 2
+              done
+              echo "HTTP smoke failed: $url (last status $status)"
+              return 1
+            }
             for path in /app/employees /app/flows/workspace-v2; do
-              status="$(curl -s -o /dev/null -w '%{http_code}' --connect-timeout 10 --max-time 20 "http://127.0.0.1:8000$path")"
-              case "$status" in 200|303) ;; *) echo "HTTP smoke failed: $path ($status)"; exit 1 ;; esac
+              wait_http app "http://127.0.0.1:8000$path"
             done
-            curl -fsS -o /dev/null --connect-timeout 10 --max-time 20 https://hr.zephyrlab.ru/login
-            curl -4 -fsSI -o /dev/null --connect-timeout 10 --max-time 20 https://api.telegram.org/
+            wait_http public https://hr.zephyrlab.ru/login
+            wait_http telegram https://api.telegram.org/
             echo "staff email OTP $MODE verified on web and worker; backup: $backup_dir"
