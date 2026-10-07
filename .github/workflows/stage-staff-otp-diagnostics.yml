@@ -1,0 +1,89 @@
+name: Stage Staff OTP Diagnostics
+
+on:
+  workflow_dispatch:
+    inputs:
+      employee_id:
+        description: "Employee card ID to inspect without logging personal data"
+        required: true
+        type: string
+
+concurrency:
+  group: deploy-stage
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Inspect staff OTP predicates on stage
+        uses: appleboy/ssh-action@7eaf76671a0d7eec5d98ee897acda4f968735a17 # v1.2.0
+        env:
+          EMPLOYEE_ID: ${{ inputs.employee_id }}
+        with:
+          host: ${{ secrets.STAGE_HOST }}
+          username: ${{ secrets.STAGE_USERNAME }}
+          password: ${{ secrets.STAGE_PASSWORD }}
+          port: ${{ secrets.STAGE_PORT }}
+          envs: EMPLOYEE_ID
+          script: |
+            set -eu
+            case "$EMPLOYEE_ID" in
+              ''|*[!0-9]*) echo "employee_id must be numeric"; exit 2 ;;
+            esac
+            cd /opt/hr_bot
+            .venv/bin/python - <<'PY'
+            import os
+            import re
+            import sqlite3
+            import subprocess
+            from pathlib import Path
+
+            def service_env(service):
+                pid = subprocess.check_output(
+                    ["systemctl", "show", service, "--property=MainPID", "--value"],
+                    text=True,
+                ).strip()
+                raw = Path("/proc", pid, "environ").read_bytes()
+                return dict(item.decode().split("=", 1) for item in raw.split(b"\0") if b"=" in item)
+
+            worker_env = service_env("hr-bot-worker")
+            os.environ.update(worker_env)
+            from app.config import settings
+
+            print("worker_otp_enabled:", settings.STAFF_EMAIL_OTP_ENABLED)
+            print("smtp_password_present:", bool(settings.STAFF_EMAIL_SMTP_PASSWORD))
+            print("smtp_username_present:", bool(settings.STAFF_EMAIL_SMTP_USERNAME))
+            print("smtp_from_present:", bool(settings.STAFF_EMAIL_FROM))
+            print("admin_session_secret_nondefault:", settings.ADMIN_SESSION_SECRET != "change-me-admin-session-secret")
+
+            db = sqlite3.connect("file:/opt/hr_bot/hr_bot.db?mode=ro", uri=True)
+            employee_id = int(os.environ["EMPLOYEE_ID"])
+            row = db.execute(
+                "SELECT employee_stage, work_email FROM employees WHERE id = ?", (employee_id,)
+            ).fetchone()
+            print("card_found:", row is not None)
+            if row is not None:
+                stage, email = row
+                address = (email or "").strip().lower()
+                domain = settings.STAFF_EMAIL_DOMAIN.strip().lower().lstrip("@")
+                valid = bool(domain and address.count("@") == 1 and address.endswith(f"@{domain}"))
+                count = db.execute(
+                    "SELECT COUNT(*) FROM employees WHERE lower(trim(work_email)) = ?", (address,)
+                ).fetchone()[0] if address else 0
+                print("stage:", stage)
+                print("work_email_present:", bool(address))
+                print("work_email_domain_valid:", valid)
+                print("work_email_unique:", count == 1)
+                print("work_email_match_count:", count)
+            db.close()
+
+            logs = subprocess.run(
+                ["journalctl", "-u", "hr-bot-worker", "--since", "2 hours ago", "--no-pager", "-n", "500"],
+                capture_output=True, text=True, check=True,
+            ).stdout
+            ids = re.findall(r"Staff email verification unavailable: employee_id=(\d+)", logs)
+            print("recent_unavailable_employee_ids:", ids[-10:])
+            PY
