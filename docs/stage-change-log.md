@@ -34,6 +34,15 @@ source_of_truth: true
 
 ## Записи
 
+### 2026-10-07 22:35 MSK - config - ключ сессий админки для почтового кода
+
+- Код приложения не перевыкатывался: deployed app SHA `b3a754e`. Workflow взят из `stage` merge `6a57582` (PR [#73](https://github.com/Deddedd11101/hr_bot/pull/73)); регистрация в `main` через PR [#74](https://github.com/Deddedd11101/hr_bot/pull/74).
+- Read-only [OTP Diagnostics 37673655955](https://github.com/Deddedd11101/hr_bot/actions/runs/37673655955) подтвердил для карточки #76: рабочая почта есть, домен и уникальность верны, SMTP настроен, но `ADMIN_SESSION_SECRET` был default. Поэтому `/start` не выдавал код ещё до SMTP.
+- [Stage Config Admin Session Secret 37675319546](https://github.com/Deddedd11101/hr_bot/actions/runs/37675319546) -> success: новый сильный ключ сгенерирован на сервере, записан в root-only env и одинаково подключён к web и worker; значение не выводилось. Предыдущая конфигурация сохранена для rollback. Текущие админские сессии разлогинены.
+- [Stage Diagnostics 37675418175](https://github.com/Deddedd11101/hr_bot/actions/runs/37675418175) -> success: web/worker/WireGuard/Caddy active, Telegram IPv4 `302`, HTTPS endpoints `303`, `0 failing checks`.
+- Повторная read-only [OTP Diagnostics 37675466308](https://github.com/Deddedd11101/hr_bot/actions/runs/37675466308) подтвердила `admin_session_secret_nondefault=True`, OTP enabled, SMTP present и валидную уникальную рабочую почту карточки #76.
+- Открытая приёмка: пользователь должен отправить `/start`, получить письмо и ввести код в боте; до этого доставку письма и завершение привязки не считать проверенными. Пять других карточек сотрудников пока без рабочей почты и не смогут пройти OTP.
+
 ### 2026-10-06 17:08 MSK - app deploy - ветки и история запусков опросов
 
 - Deploy ref: `stage`; deployed SHA: `19aba4558411471c260c9ddfda6b531e2ca40ca1`; PR [#65](https://github.com/Deddedd11101/hr_bot/pull/65); [Deploy Stage 37476100653](https://github.com/Deddedd11101/hr_bot/actions/runs/37476100653) -> success.
