@@ -34,6 +34,14 @@ source_of_truth: true
 
 ## Записи
 
+### 2026-10-08 12:05 MSK - app deploy - полноширинное письмо с кодом
+
+- Deploy ref: `stage`; deployed SHA: `1f6b07046e6fc5319f9add5e6547fa06f0b61970`; PR [#79](https://github.com/Deddedd11101/hr_bot/pull/79); [Deploy Stage 37753739432](https://github.com/Deddedd11101/hr_bot/actions/runs/37753739432) -> success.
+- У OTP-письма убраны узкая карточка, её рамка и чёрные поля; фон `#111622` и верхняя акцентная линия занимают всю ширину области письма. Логика кода, SMTP и БД не менялись.
+- Тесты сборки HTML/plain письма и escaping, PR CI и preflight Deploy Stage прошли. До checkout созданы и проверены SQLite backup `backups/hr_bot.before-deploy.20261008-090248.db` и snapshot сценариев `backups/scenarios.before-deploy.20261008-090248.json`; fingerprint сценариев не изменился.
+- [Stage Diagnostics 37754025050](https://github.com/Deddedd11101/hr_bot/actions/runs/37754025050) -> success: deployed SHA подтверждён, tracked worktree clean, web/worker/WireGuard/Caddy active, Telegram IPv4 `302`, HTTPS `/app/employees` и `/app/flows/workspace-v2` -> `303`, свежих Telegram/network ошибок worker нет.
+- Открытая приёмка: запросить новый код и проверить письмо в реальном почтовом клиенте на компьютере и телефоне. Существующие письма сохраняют прежнюю верстку.
+
 ### 2026-10-08 11:50 MSK - app deploy - очистка сообщений проверки почты в Telegram
 
 - Deploy ref: `stage`; deployed SHA: `451125c4e1d4393b8712582eaecbf068f8e87c88`; PR [#77](https://github.com/Deddedd11101/hr_bot/pull/77); [Deploy Stage 37752097442](https://github.com/Deddedd11101/hr_bot/actions/runs/37752097442) -> success.
