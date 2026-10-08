@@ -99,7 +99,7 @@ function ComposeDialog({
   const [requestedAt, setRequestedAt] = React.useState("");
   const [messageText, setMessageText] = React.useState("");
   const messageInsertRef = React.useRef<((text: string) => void) | null>(null);
-  const messageEmojiInsertRef = React.useRef<((emojiId: string) => void) | null>(null);
+  const messageEmojiInsertRef = React.useRef<((emojiId: string, fallback: string) => void) | null>(null);
   const [state, setState] = React.useState({ working: false, message: "", error: false });
 
   React.useEffect(() => {
@@ -186,7 +186,7 @@ function ComposeDialog({
                 ]}
                 customEmojis={workspace.custom_emojis}
                 onInsertTag={(token) => messageInsertRef.current?.(token)}
-                onInsertEmoji={(emojiId) => messageEmojiInsertRef.current?.(emojiId)}
+                onInsertEmoji={(emojiId, fallback) => messageEmojiInsertRef.current?.(emojiId, fallback)}
               />
             </label>
             <TargetPicker workspace={workspace} targets={targets} onChange={updateTargets} />

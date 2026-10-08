@@ -888,7 +888,7 @@ export function BotMenuPage({ apiUrl }: BotMenuPageProps) {
   const [buttonDrafts, setButtonDrafts] = React.useState<Record<number, DraftButton>>({});
   const [selectedMenuSetId, setSelectedMenuSetId] = React.useState<number | null>(() => readSelectedMenuSetId());
   const menuTextInsertRef = React.useRef<((text: string) => void) | null>(null);
-  const menuEmojiInsertRef = React.useRef<((emojiId: string) => void) | null>(null);
+  const menuEmojiInsertRef = React.useRef<((emojiId: string, fallback: string) => void) | null>(null);
 
   React.useEffect(() => {
     requestJson(apiUrl)
@@ -1211,7 +1211,7 @@ export function BotMenuPage({ apiUrl }: BotMenuPageProps) {
                       tags={workspace.menu_text_tags || []}
                       customEmojis={workspace.custom_emojis}
                       onInsertTag={(template) => menuTextInsertRef.current?.(template)}
-                      onInsertEmoji={(emojiId) => menuEmojiInsertRef.current?.(emojiId)}
+                      onInsertEmoji={(emojiId, fallback) => menuEmojiInsertRef.current?.(emojiId, fallback)}
                     />
                     <p className="text-xs text-muted-foreground">Сохраняется через backend-поле `menu_text`.</p>
                     {rootBadges(workspace, selectedMenuSet.id).length ? (

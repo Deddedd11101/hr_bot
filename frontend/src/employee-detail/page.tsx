@@ -75,7 +75,7 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
         custom_emojis?: TelegramCustomEmoji[];
     }>({});
     const manualBotMessageInsertRef = React.useRef<((text: string) => void) | null>(null);
-    const manualBotMessageEmojiInsertRef = React.useRef<((emojiId: string) => void) | null>(null);
+    const manualBotMessageEmojiInsertRef = React.useRef<((emojiId: string, fallback: string) => void) | null>(null);
 
     function applyEmployeePayload(payload: any) {
         const normalizedPayload = Object.assign({}, payload, {
