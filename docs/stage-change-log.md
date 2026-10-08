@@ -34,6 +34,14 @@ source_of_truth: true
 
 ## Записи
 
+### 2026-10-08 16:28 MSK - app deploy - видимость и раскладка кнопок меню
+
+- Deploy ref: `stage`; deployed SHA: `178889789efe9c00f050bcc2e6b223e1aaba9f1e`; PR [#81](https://github.com/Deddedd11101/hr_bot/pull/81); [Deploy Stage 37784148656](https://github.com/Deddedd11101/hr_bot/actions/runs/37784148656) -> success.
+- Для кнопок меню добавлен переключатель видимости; выключенные и ненастроенные кнопки не показываются и не исполняются через старые callback. Сохранённые строки кнопок можно применить командой «Сохранить и обновить в боте». Приветствие после почтового кода показывается сотруднику один раз; повторный текст главного меню настраивается отдельно.
+- PR CI, 390 локальных backend-тестов, проверка типов, воспроизводимая сборка frontend, docs check и preflight Deploy Stage прошли. До checkout созданы и проверены SQLite backup `backups/hr_bot.before-deploy.20261008-132634.db` и snapshot сценариев `backups/scenarios.before-deploy.20261008-132634.json`; fingerprint сценариев не изменился.
+- [Stage Diagnostics 37784470544](https://github.com/Deddedd11101/hr_bot/actions/runs/37784470544) -> success: deployed SHA подтверждён, tracked worktree clean, web/worker/WireGuard/Caddy active, Telegram IPv4 `302`, HTTPS `/app/employees`, `/app/flows/workspace-v2`, `/app/grades` -> `303`, свежих Telegram/network ошибок worker нет.
+- Открытая приёмка: применить короткий текст к существующему главному набору через админку, проверить скрытие кнопок и двухколоночную раскладку в Telegram. Технический deploy не заменяет текущий сохранённый текст меню в stage DB автоматически.
+
 ### 2026-10-08 12:05 MSK - app deploy - полноширинное письмо с кодом
 
 - Deploy ref: `stage`; deployed SHA: `1f6b07046e6fc5319f9add5e6547fa06f0b61970`; PR [#79](https://github.com/Deddedd11101/hr_bot/pull/79); [Deploy Stage 37753739432](https://github.com/Deddedd11101/hr_bot/actions/runs/37753739432) -> success.
