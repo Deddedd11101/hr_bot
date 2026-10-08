@@ -3,7 +3,7 @@ import json
 import unittest
 from datetime import timedelta
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
@@ -185,6 +185,65 @@ class HrLinkAndInlineMenuTests(unittest.TestCase):
         removed = self.client.delete(f"/api/settings/custom-emojis/{item['id']}")
         self.assertEqual(removed.status_code, 200)
         self.assertFalse(next(row for row in removed.json()["custom_emojis"] if row["id"] == item["id"])["is_active"])
+
+    def test_custom_emoji_set_import_is_idempotent_and_keeps_disabled_items(self) -> None:
+        first_id = str(990000000000000000 + (uuid4().int % 1000000))
+        second_id = str(990000000000000000 + (uuid4().int % 1000000))
+        sticker_set = SimpleNamespace(
+            title="Fraudex",
+            sticker_type="custom_emoji",
+            stickers=[
+                SimpleNamespace(custom_emoji_id=first_id, emoji="🙂"),
+                SimpleNamespace(custom_emoji_id=second_id, emoji="✨"),
+            ],
+        )
+        messenger = SimpleNamespace(
+            bot=SimpleNamespace(get_sticker_set=AsyncMock(return_value=sticker_set)),
+            close=AsyncMock(),
+        )
+        with patch("app.web.settings_routes.create_telegram_messenger", return_value=messenger), patch(
+            "app.web.settings_routes.settings.TELEGRAM_BOT_TOKEN", "test-token"
+        ):
+            imported = self.client.post(
+                "/api/settings/custom-emojis/import-set",
+                json={"url": "https://t.me/addemoji/fraudex"},
+            )
+            self.assertEqual(imported.status_code, 200)
+            self.assertEqual(imported.json()["added_count"], 2)
+            self.assertEqual(imported.json()["skipped_count"], 0)
+            messenger.bot.get_sticker_set.assert_awaited_with("fraudex")
+
+            first = next(row for row in imported.json()["workspace"]["custom_emojis"] if row["emoji_id"] == first_id)
+            self.assertEqual(first["fallback"], "🙂")
+            self.client.delete(f"/api/settings/custom-emojis/{first['id']}")
+            repeated = self.client.post(
+                "/api/settings/custom-emojis/import-set",
+                json={"url": "https://t.me/addemoji/fraudex"},
+            )
+            self.assertEqual(repeated.status_code, 200)
+            self.assertEqual(repeated.json()["added_count"], 0)
+            self.assertEqual(repeated.json()["skipped_count"], 2)
+            first_after = next(row for row in repeated.json()["workspace"]["custom_emojis"] if row["emoji_id"] == first_id)
+            self.assertFalse(first_after["is_active"])
+            messenger.close.assert_awaited()
+
+    def test_custom_emoji_set_import_rejects_other_links_and_stickers(self) -> None:
+        with patch("app.web.settings_routes.create_telegram_messenger") as factory:
+            for url in ("https://example.com/addemoji/fraudex", "https://t.me/addstickers/fraudex", "http://t.me/addemoji/fraudex"):
+                response = self.client.post("/api/settings/custom-emojis/import-set", json={"url": url})
+                self.assertEqual(response.status_code, 400)
+            factory.assert_not_called()
+
+        messenger = SimpleNamespace(
+            bot=SimpleNamespace(get_sticker_set=AsyncMock(return_value=SimpleNamespace(sticker_type="regular"))),
+            close=AsyncMock(),
+        )
+        with patch("app.web.settings_routes.create_telegram_messenger", return_value=messenger), patch(
+            "app.web.settings_routes.settings.TELEGRAM_BOT_TOKEN", "test-token"
+        ):
+            response = self.client.post("/api/settings/custom-emojis/import-set", json={"url": "https://t.me/addemoji/fraudex"})
+            self.assertEqual(response.status_code, 400)
+            messenger.close.assert_awaited_once()
 
     def test_inline_menu_navigation_edits_same_message(self) -> None:
         chat_id = str(980000000000 + (uuid4().int % 100000000000))

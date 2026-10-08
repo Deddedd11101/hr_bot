@@ -151,7 +151,7 @@ Scenario engine превращает scenario templates плюс employee state 
 - Runtime отправляет сообщения в Telegram HTML parse mode, но принимает только ограниченный safe subset:
   - `<b>`, `<strong>`, `<i>`, `<em>`, `<u>`, `<s>`, `<code>`, `<pre>`;
   - `<a href="...">` только с `http://`, `https://` или `mailto:`;
-  - `<tg-emoji emoji-id="...">` только с numeric `emoji-id`.
+  - `<tg-emoji emoji-id="...">обычный emoji</tg-emoji>` только с numeric `emoji-id`; обычный emoji внутри тега нужен Telegram как fallback.
 - Unknown tags, опасные attributes и ссылки с небезопасным protocol не уходят в Telegram как HTML.
 - Broken HTML не должен ломать отправку сценария: renderer закрывает незакрытые разрешенные tags или деградирует в escaped text.
 - Template values из карточки всегда HTML-escape'ятся перед подстановкой: ФИО, должность, даты, резюме и URL settings не могут вставить произвольный HTML.

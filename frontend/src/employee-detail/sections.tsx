@@ -473,7 +473,7 @@ export function ManualBotMessageSection(props: {
     templateTags?: TelegramTemplateTag[];
     customEmojis?: TelegramCustomEmoji[];
     insertRef?: React.MutableRefObject<((text: string) => void) | null>;
-    insertEmojiRef?: React.MutableRefObject<((emojiId: string) => void) | null>;
+    insertEmojiRef?: React.MutableRefObject<((emojiId: string, fallback: string) => void) | null>;
 }) {
     const hasNumericTelegramId = isNumericTelegramId(props.form?.chat_id);
     const isBlocked = !!props.form?.is_bot_blocked;
@@ -507,7 +507,7 @@ export function ManualBotMessageSection(props: {
                                 tags={props.templateTags || []}
                                 customEmojis={props.customEmojis}
                                 onInsertTag={(template) => props.insertRef?.current?.(template)}
-                                onInsertEmoji={(emojiId) => props.insertEmojiRef?.current?.(emojiId)}
+                                onInsertEmoji={(emojiId, fallback) => props.insertEmojiRef?.current?.(emojiId, fallback)}
                             />
                         </Field>
                         <Button type="submit" disabled={!canSend}>

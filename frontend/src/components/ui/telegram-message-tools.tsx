@@ -33,7 +33,7 @@ export function TelegramMessageTools({
   tags: TelegramTemplateTag[];
   customEmojis?: TelegramCustomEmoji[];
   onInsertTag: (template: string) => void;
-  onInsertEmoji?: (emojiId: string) => void;
+  onInsertEmoji?: (emojiId: string, fallback: string) => void;
 }) {
   const activeEmojis = customEmojis.filter((item) => item.is_active !== false && /^\d+$/.test(item.emoji_id));
   if (!tags.length && (!onInsertEmoji || !activeEmojis.length)) return null;
@@ -76,7 +76,7 @@ export function TelegramMessageTools({
               title={emoji.title}
               aria-label={`Вставить ${emoji.title}`}
               onMouseDown={(event) => event.preventDefault()}
-              onClick={() => onInsertEmoji(emoji.emoji_id)}
+              onClick={() => onInsertEmoji(emoji.emoji_id, emoji.fallback || "✨")}
             >
               <span aria-hidden="true">{emoji.fallback || "✨"}</span>
               <span className="sr-only">{emoji.title}</span>

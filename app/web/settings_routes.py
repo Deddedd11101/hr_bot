@@ -1,9 +1,13 @@
 from datetime import datetime, timedelta
+import re
 import secrets
+from urllib.parse import urlsplit
 
+from aiogram.exceptions import TelegramAPIError, TelegramBadRequest
 from fastapi import APIRouter, Body, Depends, Form, HTTPException, Request, status
 from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from ..auth import ROLE_LABELS, hash_password, validate_account_password
@@ -605,10 +609,81 @@ def _custom_emoji_payload(item: TelegramCustomEmoji, payload: dict) -> None:
         item.is_active = bool(payload.get("is_active"))
 
 
+def _custom_emoji_set_name(value: str) -> str:
+    try:
+        parsed = urlsplit(value.strip())
+        if (
+            parsed.scheme.lower() != "https"
+            or parsed.hostname not in {"t.me", "telegram.me"}
+            or parsed.port is not None
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.query
+            or parsed.fragment
+        ):
+            raise ValueError
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Укажите ссылку вида https://t.me/addemoji/название") from exc
+    match = re.fullmatch(r"/addemoji/([A-Za-z][A-Za-z0-9_]{0,63})/?", parsed.path)
+    if not match:
+        raise HTTPException(status_code=400, detail="Нужна ссылка на набор Telegram custom emoji")
+    return match.group(1)
+
+
 @router.get("/api/settings/custom-emojis")
 def custom_emojis_list_api(request: Request, db: Session = Depends(get_db)):
     require_api_auth(request)
     return {"custom_emojis": [_serialize_custom_emoji(item) for item in db.query(TelegramCustomEmoji).order_by(TelegramCustomEmoji.title, TelegramCustomEmoji.id).all()]}
+
+
+@router.post("/api/settings/custom-emojis/import-set")
+async def custom_emoji_import_set_api(request: Request, payload: dict = Body(...), db: Session = Depends(get_db)):
+    current_user = require_api_admin(request)
+    set_name = _custom_emoji_set_name(str(payload.get("url") or ""))
+    if not settings.TELEGRAM_BOT_TOKEN.strip():
+        raise HTTPException(status_code=503, detail="Telegram bot token не настроен")
+    messenger = create_telegram_messenger(settings.TELEGRAM_BOT_TOKEN)
+    try:
+        try:
+            sticker_set = await messenger.bot.get_sticker_set(set_name)
+        except TelegramBadRequest as exc:
+            raise HTTPException(status_code=400, detail="Набор эмодзи не найден в Telegram") from exc
+        except TelegramAPIError as exc:
+            raise HTTPException(status_code=502, detail="Не удалось получить набор эмодзи из Telegram") from exc
+    finally:
+        await messenger.close()
+    if sticker_set.sticker_type != "custom_emoji":
+        raise HTTPException(status_code=400, detail="Ссылка ведёт не на набор custom emoji")
+    stickers = [sticker for sticker in sticker_set.stickers if sticker.custom_emoji_id]
+    if not stickers:
+        raise HTTPException(status_code=400, detail="В наборе нет доступных custom emoji")
+    existing_ids = {row.emoji_id for row in db.query(TelegramCustomEmoji.emoji_id).all()}
+    added = 0
+    for index, sticker in enumerate(stickers, start=1):
+        emoji_id = str(sticker.custom_emoji_id)
+        if emoji_id in existing_ids:
+            continue
+        db.add(TelegramCustomEmoji(
+            title=f"{sticker_set.title} {index}",
+            emoji_id=emoji_id,
+            fallback=(sticker.emoji or "✨")[:32],
+            is_active=True,
+            created_at=utc_now(),
+            updated_at=utc_now(),
+        ))
+        existing_ids.add(emoji_id)
+        added += 1
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Каталог изменился во время импорта. Повторите запрос") from exc
+    return {
+        "workspace": _settings_workspace_payload(db, current_user),
+        "set_title": sticker_set.title,
+        "added_count": added,
+        "skipped_count": len(stickers) - added,
+    }
 
 
 @router.post("/api/settings/custom-emojis")
