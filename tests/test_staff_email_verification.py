@@ -55,6 +55,8 @@ class StaffCodeEmailTests(unittest.TestCase):
         self.assertIn("483912", plain)
         self.assertIn("483912", html)
         self.assertIn("cid:staff-otp-mark", html)
+        self.assertIn('width="100%" style="width:100%;background-color:#111622;border-top:3px solid #BADA1E;"', html)
+        self.assertNotIn("max-width:600px", html)
         self.assertIn("Telegram ID 123456789", html)
         self.assertNotIn("<script", html)
         self.assertNotIn("Ваш код для входа", html)
