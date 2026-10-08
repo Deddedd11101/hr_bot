@@ -642,11 +642,12 @@ class BotMenuButton(Base):
         String(32),
         nullable=False,
         default="inactive",
-        doc="inactive | launch_scenario | open_set | send_document",
+        doc="inactive | launch_scenario | open_set | send_document | open_url",
     )
     scenario_key: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     target_menu_set_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     document_item_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    url: Mapped[Optional[str]] = mapped_column(String(2048), nullable=True)
 
 
 class MassScenarioAction(Base):

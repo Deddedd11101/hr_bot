@@ -808,6 +808,7 @@ def _ensure_sqlite_schema() -> None:
                         scenario_key VARCHAR(64),
                         target_menu_set_id INTEGER,
                         document_item_id INTEGER,
+                        url VARCHAR(2048),
                         PRIMARY KEY (id)
                     )
                     """
@@ -820,6 +821,8 @@ def _ensure_sqlite_schema() -> None:
                 conn.execute(text("ALTER TABLE bot_menu_buttons ADD COLUMN is_active BOOLEAN NOT NULL DEFAULT 1"))
             if "document_item_id" not in menu_buttons_columns:
                 conn.execute(text("ALTER TABLE bot_menu_buttons ADD COLUMN document_item_id INTEGER"))
+            if "url" not in menu_buttons_columns:
+                conn.execute(text("ALTER TABLE bot_menu_buttons ADD COLUMN url VARCHAR(2048)"))
 
         document_library_info = conn.execute(text("PRAGMA table_info(document_library_items)")).fetchall()
         if not document_library_info:

@@ -156,7 +156,7 @@ source_of_truth: true
 | `POST` | `/accounts/{account_id}` | Form action | Обновить admin account |
 | `POST` | `/accounts/{account_id}/delete` | Form action | Удалить admin account |
 | `GET` | `/app/settings` | React bootstrap page | React settings/accounts. Menu sets и audience targeting больше не редактируются здесь, чтобы системные настройки не смешивались с bot UX rules. |
-| `GET` | `/app/bot-menu` | React bootstrap page | React surface для menu sets, audience targeting и переходов между наборами. |
+| `GET` | `/app/bot-menu` | React bootstrap page | React surface для menu sets, audience targeting и переходов между наборами. При действии кнопки «Переход по ссылке» показывает поле URL. |
 | `GET` | `/design-system` | Redirect route | Shortcut surface; ведет на `/app/design-system` |
 | `GET` | `/app/design-system` | React bootstrap page | Live frontend baseline для shared primitives, page patterns и review rules |
 
