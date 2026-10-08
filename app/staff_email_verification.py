@@ -7,6 +7,9 @@ import smtplib
 import ssl
 from datetime import timedelta
 from email.message import EmailMessage
+from html import escape
+from pathlib import Path
+from string import Template
 
 from sqlalchemy import func, update
 from sqlalchemy.exc import IntegrityError
@@ -20,6 +23,9 @@ from .time_utils import utc_now
 CODE_TTL = timedelta(minutes=10)
 RESEND_COOLDOWN = timedelta(seconds=60)
 MAX_ATTEMPTS = 5
+EMAIL_TEMPLATE = Path(__file__).with_name("email_templates") / "staff_otp.html"
+EMAIL_MARK = Path(__file__).with_name("email_templates") / "staff_otp_mark.png"
+EMAIL_MARK_CID = "staff-otp-mark"
 
 
 def verification_required(employee: Employee) -> bool:
@@ -127,7 +133,7 @@ def clear_failed_challenge(db: Session, employee_id: int, telegram_user_id: str,
         db.commit()
 
 
-def send_code_email(address: str, code: str, telegram_user_id: str) -> None:
+def build_code_email(address: str, code: str, telegram_user_id: str) -> EmailMessage:
     message = EmailMessage()
     message["From"] = settings.STAFF_EMAIL_FROM
     message["To"] = address
@@ -137,6 +143,22 @@ def send_code_email(address: str, code: str, telegram_user_id: str) -> None:
         f"Код действует 10 минут. Запрос пришёл из Telegram ID {telegram_user_id}.\n"
         "Если вы не запрашивали код, не сообщайте его никому и обратитесь в HR.\n"
     )
+    html = Template(EMAIL_TEMPLATE.read_text(encoding="utf-8")).substitute(
+        code=escape(code),
+        telegram_user_id=escape(telegram_user_id),
+    )
+    message.add_alternative(html, subtype="html")
+    message.get_payload()[-1].add_related(
+        EMAIL_MARK.read_bytes(),
+        maintype="image",
+        subtype="png",
+        cid=f"<{EMAIL_MARK_CID}>",
+    )
+    return message
+
+
+def send_code_email(address: str, code: str, telegram_user_id: str) -> None:
+    message = build_code_email(address, code, telegram_user_id)
     with smtplib.SMTP_SSL(
         settings.STAFF_EMAIL_SMTP_HOST,
         settings.STAFF_EMAIL_SMTP_PORT,

@@ -10,7 +10,7 @@ from app.messaging.identity import get_primary_chat_id, set_primary_chat_id
 from app.messaging.service import handle_start_command, handle_text_event, resolve_inbound_access
 from app.models import Employee, EmployeeMessengerAccount, EmployeeTelegramEmailVerification
 from app.scenario_engine import resolve_notification_recipients
-from app.staff_email_verification import MAX_ATTEMPTS, chat_id_allowed, confirm_code, is_verified, prepare_challenge
+from app.staff_email_verification import MAX_ATTEMPTS, build_code_email, chat_id_allowed, confirm_code, is_verified, prepare_challenge, send_code_email
 from app.time_utils import utc_now
 from app.web.bulk_actions import _send_mass_message
 from app.web.employees import _reset_employee_bot_linkage
@@ -25,6 +25,38 @@ class FakeMessenger:
 
     async def send_menu(self, *, chat_id, text, **kwargs):
         self.messages.append((chat_id, text))
+
+
+class StaffCodeEmailTests(unittest.TestCase):
+    def test_email_contains_plain_text_html_and_inline_mark(self):
+        message = build_code_email("employee@ze.studio", "483912", "123456789")
+        self.assertEqual(message["To"], "employee@ze.studio")
+        self.assertEqual(message.get_content_type(), "multipart/alternative")
+
+        plain = message.get_body(preferencelist=("plain",)).get_content()
+        html = message.get_body(preferencelist=("html",)).get_content()
+        images = [part for part in message.walk() if part.get_content_type() == "image/png"]
+
+        self.assertIn("483912", plain)
+        self.assertIn("483912", html)
+        self.assertIn("cid:staff-otp-mark", html)
+        self.assertIn("Telegram ID 123456789", html)
+        self.assertNotIn("<script", html)
+        self.assertNotIn("Ваш код для входа", html)
+        self.assertEqual(len(images), 1)
+        self.assertEqual(images[0]["Content-ID"], "<staff-otp-mark>")
+        self.assertTrue(images[0].get_content())
+
+    def test_html_escapes_dynamic_values_and_send_uses_built_message(self):
+        with patch("app.staff_email_verification.smtplib.SMTP_SSL") as smtp:
+            send_code_email("employee@ze.studio", "12<345", "123&456")
+        client = smtp.return_value.__enter__.return_value
+        client.login.assert_called_once()
+        message = client.send_message.call_args.args[0]
+        html = message.get_body(preferencelist=("html",)).get_content()
+        self.assertIn("12&lt;345", html)
+        self.assertIn("123&amp;456", html)
+        self.assertNotIn("12<345", html)
 
 
 class StaffEmailVerificationTests(unittest.TestCase):
