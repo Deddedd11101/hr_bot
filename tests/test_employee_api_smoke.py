@@ -5407,7 +5407,8 @@ class EmployeeApiSmokeTests(unittest.TestCase):
                 menu_set_id=root_menu.id,
                 label=f"codex-root-btn-{self.unique_tag}",
                 sort_order=10,
-                action_type="inactive",
+                action_type="launch_scenario",
+                scenario_key="menu-test",
             )
             db.add_all([child_button, root_button])
             db.commit()

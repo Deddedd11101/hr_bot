@@ -259,8 +259,10 @@ class StaffEmailVerificationTests(unittest.TestCase):
             self.assertEqual(messenger.deleted, [])
             self.assertEqual(db.query(EmployeeTelegramVerificationMessage).filter_by(employee_id=self.employee_id, telegram_user_id=self.chat_id).count(), 4)
 
-        async def show_menu(*args):
+        async def show_menu(*args, **kwargs):
             messenger.events.append(("menu", 1002))
+            self.assertTrue(kwargs["use_requested_text"])
+            self.assertIn("зефирный чат-бот", args[3])
             return True
 
         with patch("app.messaging.service.show_main_menu", side_effect=show_menu):

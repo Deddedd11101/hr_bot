@@ -65,8 +65,15 @@ HR_LINK_INVALID_TEXT = "Ссылка подключения HR недейств�
 MENU_BACK_BUTTON_TEXT = "Назад"
 MENU_HOME_BUTTON_TEXT = "Главное меню"
 MENU_CALLBACK_PREFIX = "menu:"
+ROOT_MENU_PROMPT_TEXT = "Что нужно сделать? Выберите раздел в меню ниже 👇"
 INITIAL_CANDIDATE_STAGE: str | None = None
 STAFF_EMAIL_VERIFICATION_TEXT = "Для доступа подтвердите рабочую почту: нажмите /start, затем отправьте сюда код из письма."
+STAFF_WELCOME_TEXT = (
+    "Привет, {employee_full_name}!👋 Я <b>зефирный чат-бот</b>! "
+    "Помогу тебе получить внутреннюю информацию о процессах, сотрудниках Зефира😎 "
+    "Ты можешь планировать отпуск или запрашивать справки, формы заявлений и иные документы прямо здесь! "
+    "Ознакомься с возможностями меню 👇"
+)
 
 
 class InboundAccess(NamedTuple):
@@ -324,7 +331,7 @@ def menu_button_labels(db: Session, employee: Employee) -> list[str]:
         return []
     buttons = (
         db.query(BotMenuButton)
-        .filter(BotMenuButton.menu_set_id == menu_set.id)
+        .filter(BotMenuButton.menu_set_id == menu_set.id, BotMenuButton.is_active.is_(True), BotMenuButton.action_type != "inactive")
         .order_by(BotMenuButton.sort_order, BotMenuButton.id)
         .all()
     )
@@ -344,7 +351,7 @@ def menu_button_options(db: Session, employee: Employee) -> list[tuple[str, str]
         return []
     buttons = (
         db.query(BotMenuButton)
-        .filter(BotMenuButton.menu_set_id == menu_set.id)
+        .filter(BotMenuButton.menu_set_id == menu_set.id, BotMenuButton.is_active.is_(True), BotMenuButton.action_type != "inactive")
         .order_by(BotMenuButton.sort_order, BotMenuButton.id)
         .all()
     )
@@ -359,7 +366,11 @@ def menu_button_options(db: Session, employee: Employee) -> list[tuple[str, str]
 
 
 def _menu_button_rows(db: Session, menu_set: BotMenuSet) -> list[list[BotMenuButton]]:
-    buttons = db.query(BotMenuButton).filter(BotMenuButton.menu_set_id == menu_set.id).order_by(BotMenuButton.sort_order, BotMenuButton.id).all()
+    buttons = db.query(BotMenuButton).filter(
+        BotMenuButton.menu_set_id == menu_set.id,
+        BotMenuButton.is_active.is_(True),
+        BotMenuButton.action_type != "inactive",
+    ).order_by(BotMenuButton.sort_order, BotMenuButton.id).all()
     by_id = {button.id: button for button in buttons}
     try:
         raw_rows = json.loads(menu_set.button_rows or "null")
@@ -415,8 +426,6 @@ async def send_menu(
         return
     safe_text = render_menu_text(text, employee)
     options = menu_button_option_rows(db, employee)
-    if not options:
-        return
     inline_sender = getattr(messenger, "send_inline_menu", None)
     inline_editor = getattr(messenger, "edit_inline_menu", None)
     if edit_message_id and inline_editor is not None:
@@ -442,7 +451,9 @@ async def send_menu(
     await messenger.send_menu(chat_id=chat_id, text=safe_text, buttons=reply_buttons)
 
 
-async def send_root_menu(messenger: MessengerClient, db: Session, employee: Employee, text: str) -> bool:
+async def send_root_menu(
+    messenger: MessengerClient, db: Session, employee: Employee, text: str, *, use_requested_text: bool = False,
+) -> bool:
     root_set = resolve_root_menu_set(db, employee)
     chat_id = get_primary_chat_id(employee, db=db)
     if not root_set or not chat_id:
@@ -454,18 +465,19 @@ async def send_root_menu(messenger: MessengerClient, db: Session, employee: Empl
         if not root_set.button_rows and button_rows
         else [[button.label.strip() for button in row if button.label and button.label.strip()] for row in button_rows]
     )
-    if not buttons:
-        return False
-    await messenger.send_menu(chat_id=chat_id, text=render_menu_text(root_set.description or root_set.title or text, employee), buttons=buttons)
+    menu_text = text if use_requested_text else root_set.description or root_set.title or text
+    await messenger.send_menu(chat_id=chat_id, text=render_menu_text(menu_text, employee), buttons=buttons)
     employee.current_menu_message_id = None
     db.commit()
     return True
 
 
-async def show_main_menu(messenger: MessengerClient, db: Session, employee: Employee, text: str) -> bool:
+async def show_main_menu(
+    messenger: MessengerClient, db: Session, employee: Employee, text: str, *, use_requested_text: bool = False,
+) -> bool:
     if employee.current_menu_message_id:
         await clear_nested_menu(messenger, db, employee)
-    return await send_root_menu(messenger, db, employee, text)
+    return await send_root_menu(messenger, db, employee, text, use_requested_text=use_requested_text)
 
 
 async def clear_nested_menu(messenger: MessengerClient, db: Session, employee: Employee) -> None:
@@ -528,6 +540,8 @@ async def _handle_menu_button_record(
 ) -> bool:
     if employee.is_bot_blocked:
         return False
+    if not button.is_active or button.action_type == "inactive":
+        return False
     if button.action_type == "launch_scenario" and button.scenario_key:
         scenario = db.query(ScenarioTemplate).filter(ScenarioTemplate.scenario_key == button.scenario_key).first()
         if not scenario:
@@ -589,8 +603,7 @@ async def _handle_menu_button_record(
         await messenger.send_document_path(chat_id=chat_id, path=path_value, filename=item.original_filename or None)
         return True
 
-    await send_menu(messenger, db, employee, "Эта кнопка пока неактивна.", edit_message_id=employee.current_menu_message_id)
-    return True
+    return False
 
 
 async def handle_menu_button(messenger: MessengerClient, db: Session, employee: Employee, text: str) -> bool:
@@ -599,7 +612,7 @@ async def handle_menu_button(messenger: MessengerClient, db: Session, employee: 
         return False
     button = (
         db.query(BotMenuButton)
-        .filter(BotMenuButton.menu_set_id == menu_set.id, BotMenuButton.label == text.strip())
+        .filter(BotMenuButton.menu_set_id == menu_set.id, BotMenuButton.label == text.strip(), BotMenuButton.is_active.is_(True), BotMenuButton.action_type != "inactive")
         .order_by(BotMenuButton.sort_order, BotMenuButton.id)
         .first()
     )
@@ -612,7 +625,7 @@ async def handle_root_menu_command(messenger: MessengerClient, db: Session, empl
         return False
     button = (
         db.query(BotMenuButton)
-        .filter(BotMenuButton.menu_set_id == root_set.id, BotMenuButton.label == text.strip())
+        .filter(BotMenuButton.menu_set_id == root_set.id, BotMenuButton.label == text.strip(), BotMenuButton.is_active.is_(True), BotMenuButton.action_type != "inactive")
         .order_by(BotMenuButton.sort_order, BotMenuButton.id)
         .first()
     )
@@ -645,7 +658,7 @@ async def handle_menu_callback(
         return "ignored"
     menu_set = current_menu_set(db, employee)
     button = db.get(BotMenuButton, int(raw_id))
-    if not menu_set or not button or button.menu_set_id != menu_set.id:
+    if not menu_set or not button or button.menu_set_id != menu_set.id or not button.is_active or button.action_type == "inactive":
         return "ignored"
     handled = await _handle_menu_button_record(messenger, db, employee, menu_set, button)
     if handled and message_id and employee.current_menu_message_id is None:
@@ -816,7 +829,7 @@ async def handle_start_command(
         scenario = _registration_scenario(db, employee)
         if scenario and await start_scenario(messenger, db, employee, scenario.scenario_key):
             return
-    await show_main_menu(messenger, db, employee, "Меню обновлено. Выберите действие.")
+    await show_main_menu(messenger, db, employee, ROOT_MENU_PROMPT_TEXT)
 
 
 async def save_incoming_file(
@@ -887,7 +900,7 @@ async def handle_text_event(
         if len(text.strip()) == 6 and text.strip().isascii() and text.strip().isdigit():
             if confirm_code(db, access.employee, chat_user_id, text.strip()):
                 _sync_employee_after_inbound(db, access.employee, chat_user_id, username)
-                if await show_main_menu(messenger, db, access.employee, "Рабочая почта подтверждена. Выберите действие."):
+                if await show_main_menu(messenger, db, access.employee, STAFF_WELCOME_TEXT, use_requested_text=True):
                     await _clear_staff_verification_messages(messenger, db, access.employee, chat_user_id)
             else:
                 await _send_staff_verification_text(messenger, db, access.employee, chat_user_id, "Код неверный или устарел. Проверьте письмо; после пяти ошибок запросите новый код через /start.")

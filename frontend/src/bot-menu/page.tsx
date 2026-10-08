@@ -40,6 +40,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Switch } from "@/components/ui/switch";
 import {
   Select,
   SelectContent,
@@ -64,6 +65,7 @@ type MenuButton = {
   menu_set_id: number;
   label: string;
   sort_order: number;
+  is_active: boolean;
   action_type: string;
   scenario_key: string;
   target_menu_set_id: number | null;
@@ -129,9 +131,10 @@ export type BotMenuPageProps = {
 };
 
 const EMPTY_SELECT_VALUE = "__empty__";
+const SUGGESTED_ROOT_MENU_TEXT = "Что нужно сделать? Выберите раздел в меню ниже 👇";
 
 const actionTypeOptions = [
-  { value: "inactive", label: "Неактивна" },
+  { value: "inactive", label: "Действие не назначено" },
   { value: "launch_scenario", label: "Запуск сценария" },
   { value: "open_set", label: "Переход к набору" },
   { value: "send_document", label: "Отправить документ" },
@@ -202,7 +205,7 @@ function normalizeWorkspace(workspace: Workspace): Workspace {
       button_rows: Array.isArray(menuSet.button_rows)
         ? menuSet.button_rows.map((row) => (Array.isArray(row) ? row.map(Number).filter(Number.isInteger) : []))
         : null,
-      buttons: menuSet.buttons || [],
+      buttons: (menuSet.buttons || []).map((button) => ({ ...button, is_active: button.is_active !== false })),
     })),
   };
 }
@@ -633,15 +636,17 @@ function buttonRows(menuSet: MenuSet): number[][] {
         nextRow.forEach((buttonId) => seen.add(buttonId));
       }
     }
-  } else if (buttonIds.length) {
-    rows.push(buttonIds);
-    buttonIds.forEach((buttonId) => seen.add(buttonId));
+  } else {
+    return buttonIds.map((buttonId) => [buttonId]);
   }
 
-  for (const buttonId of buttonIds) {
-    if (!seen.has(buttonId)) rows.push([buttonId]);
-  }
+  const unlisted = buttonIds.filter((buttonId) => !seen.has(buttonId));
+  if (unlisted.length) rows.push(unlisted);
   return rows;
+}
+
+function visibleMenuButton(button: MenuButton): boolean {
+  return button.is_active && button.action_type !== "inactive" && Boolean(button.label.trim());
 }
 
 function MenuButtonRowsEditor({
@@ -658,11 +663,19 @@ function MenuButtonRowsEditor({
 
   const moveButton = (buttonId: number, targetRow: number, targetIndex: number) => {
     const sourceRow = rows.findIndex((row) => row.includes(buttonId));
-    const nextRows = rows.map((row) => row.filter((id) => id !== buttonId)).filter((row) => row.length);
-    const adjustedTargetRow = sourceRow >= 0 && sourceRow < targetRow ? targetRow - 1 : targetRow;
+    if (sourceRow < 0) return;
+    const sourceIndex = rows[sourceRow].indexOf(buttonId);
+    const nextRows = rows.map((row) => [...row]);
+    nextRows[sourceRow].splice(sourceIndex, 1);
+    let adjustedTargetRow = targetRow;
+    if (!nextRows[sourceRow].length) {
+      nextRows.splice(sourceRow, 1);
+      if (sourceRow < targetRow) adjustedTargetRow -= 1;
+    }
     const safeRow = Math.min(Math.max(adjustedTargetRow, 0), nextRows.length);
     if (!nextRows[safeRow]) nextRows.splice(safeRow, 0, []);
-    nextRows[safeRow].splice(Math.max(0, targetIndex), 0, buttonId);
+    const adjustedIndex = sourceRow === targetRow && sourceIndex < targetIndex ? targetIndex - 1 : targetIndex;
+    nextRows[safeRow].splice(Math.min(Math.max(0, adjustedIndex), nextRows[safeRow].length), 0, buttonId);
     onChange(nextRows);
   };
 
@@ -784,10 +797,12 @@ function MenuButtonRowsEditor({
 function MenuPreview({ workspace, menuSet }: { workspace: Workspace; menuSet: MenuSet }) {
   const rootSet = rootPreviewMenuSet(workspace, menuSet);
   const nestedSet = rootBadges(workspace, menuSet.id).length ? childMenuSets(workspace, menuSet.id)[0] || null : menuSet;
-  const mainButtons = rootSet?.buttons.filter((button) => button.label.trim()) || [];
-  const nestedButtons = nestedSet?.buttons.filter((button) => button.label.trim()) || [];
-  const mainButtonRows = rootSet ? buttonRows(rootSet) : [];
-  const nestedButtonRows = nestedSet ? buttonRows(nestedSet) : [];
+  const mainButtons = rootSet?.buttons.filter(visibleMenuButton) || [];
+  const nestedButtons = nestedSet?.buttons.filter(visibleMenuButton) || [];
+  const mainIds = new Set(mainButtons.map((button) => button.id));
+  const nestedIds = new Set(nestedButtons.map((button) => button.id));
+  const mainButtonRows = rootSet ? buttonRows(rootSet).map((row) => row.filter((id) => mainIds.has(id))).filter((row) => row.length) : [];
+  const nestedButtonRows = nestedSet ? buttonRows(nestedSet).map((row) => row.filter((id) => nestedIds.has(id))).filter((row) => row.length) : [];
   const nestedHasRuntimeNavigation = Boolean(rootSet && nestedSet && rootSet.id !== nestedSet.id);
   const mainById = new Map(mainButtons.map((button) => [button.id, button]));
   const nestedById = new Map(nestedButtons.map((button) => [button.id, button]));
@@ -930,7 +945,7 @@ export function BotMenuPage({ apiUrl }: BotMenuPageProps) {
     });
   };
 
-  const saveMenuSet = async (menuSet: MenuSet) => {
+  const saveMenuSet = async (menuSet: MenuSet, refreshInBot = false) => {
     setError("");
     setMessage("");
     try {
@@ -945,7 +960,17 @@ export function BotMenuPage({ apiUrl }: BotMenuPageProps) {
         });
       }
       setWorkspace(normalizeWorkspace(nextWorkspace));
-      setMessage("Изменения набора сохранены");
+      if (refreshInBot) {
+        try {
+          const refreshed = await requestBroadcast(`/api/settings/menu-sets/${menuSet.id}/refresh`, { method: "POST" });
+          setWorkspace(normalizeWorkspace(refreshed.workspace));
+          setMessage(`Набор сохранён, меню обновлено у ${refreshed.refreshed_count} пользователей`);
+        } catch (err) {
+          setError(`Набор сохранён, но меню не обновилось в боте: ${err instanceof Error ? err.message : "ошибка отправки"}`);
+        }
+      } else {
+        setMessage("Изменения набора сохранены. Уже открытое меню в Telegram обновится после повторной отправки.");
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Не удалось сохранить набор");
     }
@@ -1180,11 +1205,19 @@ export function BotMenuPage({ apiUrl }: BotMenuPageProps) {
                       onInsertEmoji={(emojiId) => menuEmojiInsertRef.current?.(emojiId)}
                     />
                     <p className="text-xs text-muted-foreground">Сохраняется через backend-поле `menu_text`.</p>
+                    {rootBadges(workspace, selectedMenuSet.id).length ? (
+                      <Button type="button" variant="ghost" size="sm" className="self-start" onClick={() => updateMenuSetLocal(selectedMenuSet.id, { menu_text: SUGGESTED_ROOT_MENU_TEXT, description: SUGGESTED_ROOT_MENU_TEXT })}>
+                        Подставить короткий текст главного меню
+                      </Button>
+                    ) : null}
                   </Field>
-                  <div className="flex gap-2 xl:justify-end">
+                  <div className="flex flex-wrap gap-2 xl:justify-end">
                     <Button variant="secondary" onClick={() => saveMenuSet(selectedMenuSet)}>
                       <Save data-icon="inline-start" />
                       Сохранить
+                    </Button>
+                    <Button onClick={() => saveMenuSet(selectedMenuSet, true)}>
+                      Сохранить и обновить в боте
                     </Button>
                     <ConfirmAction
                       title="Удалить набор меню?"
@@ -1261,7 +1294,7 @@ export function BotMenuPage({ apiUrl }: BotMenuPageProps) {
                   {selectedMenuSet.buttons.length ? (
                     selectedMenuSet.buttons.map((button) => (
                       <div key={button.id} className="grid gap-3 rounded-lg border border-border bg-muted/35 p-3">
-                        <div className="grid gap-3 xl:grid-cols-[1.1fr_0.8fr_auto] xl:items-end">
+                        <div className="grid gap-3 xl:grid-cols-[1.1fr_0.8fr_auto_auto] xl:items-end">
                           <Field>
                             <FieldLabel>Название кнопки</FieldLabel>
                             <Input
@@ -1280,6 +1313,10 @@ export function BotMenuPage({ apiUrl }: BotMenuPageProps) {
                               allowEmpty={false}
                             />
                           </Field>
+                          <label className="flex items-center gap-2 text-sm">
+                            <Switch checked={button.is_active} onCheckedChange={(checked) => updateMenuButtonLocal(button.id, { is_active: Boolean(checked) })} />
+                            Показывать в меню
+                          </label>
                           <div className="flex gap-2 xl:justify-end">
                             {isOpenSetAction(button.action_type) && button.target_menu_set_id ? (
                               <Button variant="secondary" onClick={() => navigateToMenuSet(Number(button.target_menu_set_id))}>

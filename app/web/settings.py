@@ -71,6 +71,7 @@ def _serialize_menu_button(button: BotMenuButton) -> dict:
         "menu_set_id": button.menu_set_id,
         "label": button.label,
         "sort_order": button.sort_order,
+        "is_active": bool(button.is_active),
         "action_type": button.action_type,
         "scenario_key": button.scenario_key or "",
         "target_menu_set_id": button.target_menu_set_id,
@@ -327,6 +328,8 @@ def _normalize_menu_action(action_type: str) -> str:
 def _apply_menu_button_payload(button: BotMenuButton, payload: dict) -> None:
     normalized_action = _normalize_menu_action(str(payload.get("action_type") or "inactive"))
     button.label = str(payload.get("label") or "").strip() or button.label
+    if "is_active" in payload:
+        button.is_active = payload["is_active"] is True
     button.action_type = normalized_action
     scenario_key = str(payload.get("scenario_key") or "").strip()
     target_menu_set_id = payload.get("target_menu_set_id")
