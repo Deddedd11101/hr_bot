@@ -34,6 +34,14 @@ source_of_truth: true
 
 ## Записи
 
+### 2026-10-08 11:50 MSK - app deploy - очистка сообщений проверки почты в Telegram
+
+- Deploy ref: `stage`; deployed SHA: `451125c4e1d4393b8712582eaecbf068f8e87c88`; PR [#77](https://github.com/Deddedd11101/hr_bot/pull/77); [Deploy Stage 37752097442](https://github.com/Deddedd11101/hr_bot/actions/runs/37752097442) -> success.
+- При проверке рабочей почты бот запоминает идентификаторы `/start`, сообщений с кодом и служебных ответов. После успешного входа и показа главного меню он пытается удалить эти сообщения в данном Telegram-чате; ошибки удаления не отменяют вход. Содержимое сообщений и код в новой таблице не хранятся.
+- PR CI, локальные backend/tests/docs checks и preflight Deploy Stage прошли. До checkout создан и проверен SQLite backup `backups/hr_bot.before-deploy.20261008-084812.db` и snapshot сценариев `backups/scenarios.before-deploy.20261008-084812.json`; fingerprint сценариев не изменился.
+- [Stage Diagnostics 37752354888](https://github.com/Deddedd11101/hr_bot/actions/runs/37752354888) -> success: deployed SHA подтверждён, tracked worktree clean, web/worker/WireGuard/Caddy active, Telegram IPv4 `302`, HTTPS `/app/employees`, `/app/flows/workspace-v2`, `/app/grades` -> `303`, свежих Telegram/network ошибок worker нет.
+- Пользовательский сценарий не проверен: нужен новый вход через `/start`, получение и ввод кода, затем проверка, что осталось приветствие с меню, а сообщения проверки удалены. Ранее отправленные сообщения до этого релиза не отслеживаются.
+
 ### 2026-10-08 11:12 MSK - app deploy - оформление письма с кодом сотрудника
 
 - Deploy ref: `stage`; deployed SHA: `72dba86be4665b5537ee7d2e7b75cf4eed163117`; PR [#75](https://github.com/Deddedd11101/hr_bot/pull/75); [Deploy Stage 37748111513](https://github.com/Deddedd11101/hr_bot/actions/runs/37748111513) -> success.
