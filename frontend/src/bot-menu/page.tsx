@@ -70,6 +70,7 @@ type MenuButton = {
   scenario_key: string;
   target_menu_set_id: number | null;
   document_item_id: number | null;
+  url: string;
 };
 
 type MenuSet = {
@@ -119,6 +120,7 @@ type DraftButton = {
   scenario_key: string;
   target_menu_set_id: string;
   document_item_id: string;
+  url: string;
 };
 
 type SelectOption = {
@@ -138,6 +140,7 @@ const actionTypeOptions = [
   { value: "launch_scenario", label: "Запуск сценария" },
   { value: "open_set", label: "Переход к набору" },
   { value: "send_document", label: "Отправить документ" },
+  { value: "open_url", label: "Переход по ссылке" },
 ];
 
 async function requestJson(path: string, options: RequestInit = {}) {
@@ -205,7 +208,7 @@ function normalizeWorkspace(workspace: Workspace): Workspace {
       button_rows: Array.isArray(menuSet.button_rows)
         ? menuSet.button_rows.map((row) => (Array.isArray(row) ? row.map(Number).filter(Number.isInteger) : []))
         : null,
-      buttons: (menuSet.buttons || []).map((button) => ({ ...button, is_active: button.is_active !== false })),
+      buttons: (menuSet.buttons || []).map((button) => ({ ...button, is_active: button.is_active !== false, url: button.url || "" })),
     })),
   };
 }
@@ -536,6 +539,7 @@ function actionTypePatch(actionType: string) {
     scenario_key: "",
     target_menu_set_id: null,
     document_item_id: null,
+    url: "",
   };
 }
 
@@ -545,6 +549,7 @@ function draftActionTypePatch(actionType: string) {
     scenario_key: "",
     target_menu_set_id: "",
     document_item_id: "",
+    url: "",
   };
 }
 
@@ -558,6 +563,10 @@ function isOpenSetAction(actionType: string) {
 
 function isSendDocumentAction(actionType: string) {
   return actionType === "send_document";
+}
+
+function isOpenUrlAction(actionType: string) {
+  return actionType === "open_url";
 }
 
 function readSelectedMenuSetId() {
@@ -1371,6 +1380,18 @@ export function BotMenuPage({ apiUrl }: BotMenuPageProps) {
                             />
                           </Field>
                         </div>
+                        {isOpenUrlAction(button.action_type) ? (
+                          <Field>
+                            <FieldLabel>Ссылка</FieldLabel>
+                            <Input
+                              type="url"
+                              value={button.url}
+                              onChange={(event) => updateMenuButtonLocal(button.id, { url: event.target.value })}
+                              placeholder="https://example.com"
+                              autoComplete="url"
+                            />
+                          </Field>
+                        ) : null}
                       </div>
                     ))
                   ) : (
@@ -1387,6 +1408,7 @@ export function BotMenuPage({ apiUrl }: BotMenuPageProps) {
                         scenario_key: "",
                         target_menu_set_id: "",
                         document_item_id: "",
+                        url: "",
                       };
                     return (
                       <div className="grid gap-3 rounded-lg border border-dashed border-border p-3">
@@ -1438,6 +1460,7 @@ export function BotMenuPage({ apiUrl }: BotMenuPageProps) {
                                     scenario_key: "",
                                     target_menu_set_id: "",
                                     document_item_id: "",
+                                    url: "",
                                   },
                                 }));
                               })
@@ -1494,6 +1517,23 @@ export function BotMenuPage({ apiUrl }: BotMenuPageProps) {
                             />
                           </Field>
                         </div>
+                        {isOpenUrlAction(draft.action_type) ? (
+                          <Field>
+                            <FieldLabel>Ссылка</FieldLabel>
+                            <Input
+                              type="url"
+                              value={draft.url}
+                              onChange={(event) =>
+                                setButtonDrafts((current) => ({
+                                  ...current,
+                                  [selectedMenuSet.id]: { ...draft, url: event.target.value },
+                                }))
+                              }
+                              placeholder="https://example.com"
+                              autoComplete="url"
+                            />
+                          </Field>
+                        ) : null}
                       </div>
                     );
                   })()}

@@ -16,6 +16,8 @@ from aiogram.types import (
     ReplyKeyboardRemove,
 )
 
+from ..menu_urls import is_valid_menu_url
+
 
 class TelegramMessenger:
     def __init__(self, bot: Any) -> None:
@@ -47,7 +49,11 @@ class TelegramMessenger:
     def _inline_markup(buttons: list[tuple[str, str]] | list[list[tuple[str, str]]]) -> InlineKeyboardMarkup | None:
         rows = buttons if buttons and isinstance(buttons[0], list) else [[button] for button in buttons]
         rows = [
-            [InlineKeyboardButton(text=label, callback_data=callback_data) for label, callback_data in row if label.strip() and callback_data.strip()]
+            [
+                InlineKeyboardButton(text=label, url=target) if is_valid_menu_url(target)
+                else InlineKeyboardButton(text=label, callback_data=target)
+                for label, target in row if label.strip() and target.strip()
+            ]
             for row in rows
             if row
         ]

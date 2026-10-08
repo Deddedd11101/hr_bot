@@ -268,6 +268,66 @@ class HrLinkAndInlineMenuTests(unittest.TestCase):
         asyncio.run(TelegramMessenger(bot).send_inline_menu("1", "Nested", [("x", "menu:x")]))
         self.assertEqual(len(bot.calls), 1)
 
+    def test_url_action_validates_api_and_renders_nested_link(self) -> None:
+        from app.messaging.service import set_current_menu_set
+        from app.messaging.telegram import TelegramMessenger
+
+        chat_id = str(984000000000 + (uuid4().int % 100000000000))
+        url = "https://example.com/help?topic=documents&lang=ru"
+        with SessionLocal() as db:
+            employee = Employee(full_name="Link recipient", telegram_user_id=chat_id, employee_stage="candidate", created_at=utc_now())
+            root = BotMenuSet(title="Root links", employee_scope="candidates", sort_order=1)
+            child = BotMenuSet(title="Nested links", employee_scope="candidates", sort_order=2)
+            db.add_all([employee, root, child])
+            db.commit()
+            root.target_employee_ids = str(employee.id)
+            child.target_employee_ids = str(employee.id)
+            settings = _get_or_create_hr_settings(db)
+            settings.default_candidate_menu_set_id = root.id
+            root_button = BotMenuButton(menu_set_id=root.id, label="Сайт", action_type="open_url", url=url)
+            db.add(root_button)
+            db.commit()
+
+            for invalid_url in ("", "javascript:alert(1)", "https://user@example.com", "https://example.com\\@evil.com"):
+                invalid = self.client.post(
+                    f"/api/settings/menu-sets/{child.id}/buttons",
+                    json={"label": "Bad", "action_type": "open_url", "url": invalid_url},
+                )
+                self.assertEqual(invalid.status_code, 400, invalid_url)
+            self.assertEqual(db.query(BotMenuButton).filter_by(menu_set_id=child.id).count(), 0)
+
+            created = self.client.post(
+                f"/api/settings/menu-sets/{child.id}/buttons",
+                json={"label": "Помощь", "action_type": "open_url", "url": url},
+            )
+            self.assertEqual(created.status_code, 200)
+            child_button = db.query(BotMenuButton).filter_by(menu_set_id=child.id).one()
+            self.assertEqual(child_button.url, url)
+            self.assertEqual(next(menu for menu in created.json()["menu_sets"] if menu["id"] == child.id)["buttons"][0]["url"], url)
+
+            set_current_menu_set(db, employee, child, path_ids=[root.id, child.id])
+            options = menu_button_option_rows(db, employee)
+            self.assertEqual(options[0], ("Помощь", url))
+            markup = TelegramMessenger._inline_markup(options)
+            self.assertEqual(markup.inline_keyboard[0][0].url, url)
+            self.assertIsNone(markup.inline_keyboard[0][0].callback_data)
+            self.assertEqual(markup.inline_keyboard[-2][0].callback_data, "menu:back")
+            self.assertEqual(markup.inline_keyboard[-1][0].callback_data, "menu:home")
+
+            set_current_menu_set(db, employee, root, path_ids=[root.id])
+            messenger = InlineMessenger()
+            self.assertTrue(asyncio.run(handle_root_menu_command(messenger, db, employee, "Сайт")))
+            self.assertEqual(messenger.inline_sends[-1]["buttons"], [("Сайт", url)])
+            self.assertEqual(employee.current_menu_set_id, root.id)
+
+            changed = self.client.post(
+                f"/api/settings/menu-buttons/{child_button.id}",
+                json={"label": "Помощь", "action_type": "inactive", "url": url},
+            )
+            self.assertEqual(changed.status_code, 200)
+            db.refresh(child_button)
+            self.assertIsNone(child_button.url)
+
     def test_empty_root_menu_removes_previous_reply_keyboard(self) -> None:
         from aiogram.types import ReplyKeyboardRemove
         from app.messaging.telegram import TelegramMessenger

@@ -113,7 +113,9 @@ class DatabaseCompatibilityTests(unittest.TestCase):
                 with engine.connect() as connection:
                     columns = {row[1] for row in connection.execute(text("PRAGMA table_info(bot_menu_buttons)"))}
                     self.assertIn("is_active", columns)
+                    self.assertIn("url", columns)
                     self.assertEqual(connection.execute(text("SELECT label, is_active FROM bot_menu_buttons WHERE id = 1")).one(), ("Old button", 1))
+                    self.assertIsNone(connection.execute(text("SELECT url FROM bot_menu_buttons WHERE id = 1")).scalar_one())
             finally:
                 database.engine = previous_engine
                 database.settings.DATABASE_URL = previous_url

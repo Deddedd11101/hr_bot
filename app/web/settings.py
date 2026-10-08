@@ -6,6 +6,7 @@ from ..auth import ROLE_LABELS
 from ..hr_linking import hr_connection_state
 from ..flow_templates import EMPLOYEE_SCOPE_LABELS
 from ..messaging.service import MENU_BACK_BUTTON_TEXT, MENU_HOME_BUTTON_TEXT
+from ..menu_urls import is_valid_menu_url
 from ..models import AdminAccount, BotMenuButton, BotMenuSet, DocumentLibraryItem, Employee, HrSettings, ScenarioTemplate, TelegramCustomEmoji
 from ..positions import ROLE_SCOPE_ALL, build_role_scope_labels, position_options, resolve_scope_slug
 from ..scenario_engine import MENU_TEXT_TAGS, TELEGRAM_MESSAGE_CAPABILITIES
@@ -76,6 +77,7 @@ def _serialize_menu_button(button: BotMenuButton) -> dict:
         "scenario_key": button.scenario_key or "",
         "target_menu_set_id": button.target_menu_set_id,
         "document_item_id": button.document_item_id,
+        "url": button.url or "",
     }
 
 
@@ -322,7 +324,7 @@ def _settings_workspace_payload(db: Session, current_user: AdminAccount) -> dict
 
 
 def _normalize_menu_action(action_type: str) -> str:
-    return action_type if action_type in {"inactive", "launch_scenario", "open_set", "send_document"} else "inactive"
+    return action_type if action_type in {"inactive", "launch_scenario", "open_set", "send_document", "open_url"} else "inactive"
 
 
 def _apply_menu_button_payload(button: BotMenuButton, payload: dict) -> None:
@@ -345,6 +347,7 @@ def _apply_menu_button_payload(button: BotMenuButton, payload: dict) -> None:
         if normalized_action == "send_document" and str(document_item_id or "").isdigit()
         else None
     )
+    button.url = str(payload.get("url") or "").strip() if normalized_action == "open_url" else None
 
 
 def _validate_menu_button_payload_refs(db: Session, button: BotMenuButton) -> str | None:
@@ -357,6 +360,9 @@ def _validate_menu_button_payload_refs(db: Session, button: BotMenuButton) -> st
         document_item = db.get(DocumentLibraryItem, button.document_item_id)
         if document_item is None or not document_item.is_active:
             return "Выбранный документ недоступен"
+    if button.action_type == "open_url":
+        if not is_valid_menu_url(button.url):
+            return "Укажите корректную ссылку http:// или https://"
     return None
 
 

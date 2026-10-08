@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import json
 import asyncio
+from html import escape
 from typing import Literal, NamedTuple, Optional
 
 from sqlalchemy.orm import Session
@@ -10,6 +11,7 @@ from sqlalchemy.orm import Session
 from ..flow_templates import CANDIDATE_WORK_STAGE_LABELS, EMPLOYEE_SCOPE_CANDIDATES, EMPLOYEE_SCOPE_EMPLOYEES
 from ..hr_linking import consume_hr_link_token, normalize_telegram_username
 from ..models import BotMenuButton, BotMenuSet, DocumentLibraryItem, Employee, EmployeeFile, HrSettings, ScenarioTemplate
+from ..menu_urls import is_valid_menu_url
 from ..notifications import notify_hr_test_task_received
 from ..positions import position_matches_scope
 from ..scenario_engine import (
@@ -335,7 +337,7 @@ def menu_button_labels(db: Session, employee: Employee) -> list[str]:
         .order_by(BotMenuButton.sort_order, BotMenuButton.id)
         .all()
     )
-    labels = [button.label.strip() for button in buttons if button.label.strip()]
+    labels = [button.label.strip() for button in buttons if button.label.strip() and (button.action_type != "open_url" or is_valid_menu_url(button.url))]
     root_set = resolve_root_menu_set(db, employee)
     current_path = _deserialize_menu_path(employee)
     if len(current_path) > 1:
@@ -355,7 +357,7 @@ def menu_button_options(db: Session, employee: Employee) -> list[tuple[str, str]
         .order_by(BotMenuButton.sort_order, BotMenuButton.id)
         .all()
     )
-    options = [(button.label.strip(), f"{MENU_CALLBACK_PREFIX}button:{button.id}") for button in buttons if button.label.strip()]
+    options = [(button.label.strip(), button.url if button.action_type == "open_url" else f"{MENU_CALLBACK_PREFIX}button:{button.id}") for button in buttons if button.label.strip() and (button.action_type != "open_url" or is_valid_menu_url(button.url))]
     root_set = resolve_root_menu_set(db, employee)
     current_path = _deserialize_menu_path(employee)
     if len(current_path) > 1:
@@ -371,6 +373,7 @@ def _menu_button_rows(db: Session, menu_set: BotMenuSet) -> list[list[BotMenuBut
         BotMenuButton.is_active.is_(True),
         BotMenuButton.action_type != "inactive",
     ).order_by(BotMenuButton.sort_order, BotMenuButton.id).all()
+    buttons = [button for button in buttons if button.action_type != "open_url" or is_valid_menu_url(button.url)]
     by_id = {button.id: button for button in buttons}
     try:
         raw_rows = json.loads(menu_set.button_rows or "null")
@@ -397,7 +400,7 @@ def menu_button_option_rows(db: Session, employee: Employee) -> list[tuple[str, 
     menu_set = current_menu_set(db, employee)
     if not menu_set:
         return []
-    rows = [[(button.label.strip(), f"{MENU_CALLBACK_PREFIX}button:{button.id}") for button in row if button.label.strip()] for row in _menu_button_rows(db, menu_set)]
+    rows = [[(button.label.strip(), button.url if button.action_type == "open_url" else f"{MENU_CALLBACK_PREFIX}button:{button.id}") for button in row if button.label.strip()] for row in _menu_button_rows(db, menu_set)]
     root_set = resolve_root_menu_set(db, employee)
     current_path = _deserialize_menu_path(employee)
     footer: list[tuple[str, str]] = []
@@ -542,6 +545,18 @@ async def _handle_menu_button_record(
         return False
     if not button.is_active or button.action_type == "inactive":
         return False
+    if button.action_type == "open_url":
+        if not is_valid_menu_url(button.url):
+            return False
+        chat_id = get_primary_chat_id(employee, db=db)
+        if not chat_id:
+            return False
+        inline_sender = getattr(messenger, "send_inline_menu", None)
+        if inline_sender is not None:
+            await inline_sender(chat_id, "Открыть ссылку:", [(button.label.strip(), button.url)])
+        else:
+            await messenger.send_text(chat_id=chat_id, text=escape(button.url))
+        return True
     if button.action_type == "launch_scenario" and button.scenario_key:
         scenario = db.query(ScenarioTemplate).filter(ScenarioTemplate.scenario_key == button.scenario_key).first()
         if not scenario:
