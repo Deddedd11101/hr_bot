@@ -23,6 +23,15 @@ class EmployeeTelegramEmailVerification(Base):
     attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
 
+class EmployeeTelegramVerificationMessage(Base):
+    __tablename__ = "employee_telegram_verification_messages"
+
+    employee_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    telegram_user_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    message_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utc_now, index=True)
+
+
 class Grade(Base):
     __tablename__ = "grades"
     id: Mapped[int] = mapped_column(primary_key=True)

@@ -16,13 +16,14 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from .config import settings
-from .models import Employee, EmployeeTelegramEmailVerification
+from .models import Employee, EmployeeTelegramEmailVerification, EmployeeTelegramVerificationMessage
 from .time_utils import utc_now
 
 
 CODE_TTL = timedelta(minutes=10)
 RESEND_COOLDOWN = timedelta(seconds=60)
 MAX_ATTEMPTS = 5
+MESSAGE_RETENTION = timedelta(hours=48)
 EMAIL_TEMPLATE = Path(__file__).with_name("email_templates") / "staff_otp.html"
 EMAIL_MARK = Path(__file__).with_name("email_templates") / "staff_otp_mark.png"
 EMAIL_MARK_CID = "staff-otp-mark"
@@ -131,6 +132,38 @@ def clear_failed_challenge(db: Session, employee_id: int, telegram_user_id: str,
         row.expires_at = None
         row.last_sent_at = None
         db.commit()
+
+
+def remember_verification_message(db: Session, employee_id: int, telegram_user_id: str, message_id: int | None) -> None:
+    if not message_id or message_id <= 0:
+        return
+    db.query(EmployeeTelegramVerificationMessage).filter(
+        EmployeeTelegramVerificationMessage.created_at < utc_now() - MESSAGE_RETENTION,
+    ).delete(synchronize_session=False)
+    db.merge(EmployeeTelegramVerificationMessage(
+        employee_id=employee_id,
+        telegram_user_id=telegram_user_id,
+        message_id=message_id,
+        created_at=utc_now(),
+    ))
+    db.commit()
+
+
+def verification_message_ids(db: Session, employee_id: int, telegram_user_id: str) -> list[int]:
+    rows = db.query(EmployeeTelegramVerificationMessage.message_id).filter(
+        EmployeeTelegramVerificationMessage.employee_id == employee_id,
+        EmployeeTelegramVerificationMessage.telegram_user_id == telegram_user_id,
+        EmployeeTelegramVerificationMessage.created_at >= utc_now() - MESSAGE_RETENTION,
+    ).order_by(EmployeeTelegramVerificationMessage.message_id).all()
+    return [row.message_id for row in rows]
+
+
+def forget_verification_messages(db: Session, employee_id: int, telegram_user_id: str) -> None:
+    db.query(EmployeeTelegramVerificationMessage).filter(
+        EmployeeTelegramVerificationMessage.employee_id == employee_id,
+        EmployeeTelegramVerificationMessage.telegram_user_id == telegram_user_id,
+    ).delete(synchronize_session=False)
+    db.commit()
 
 
 def build_code_email(address: str, code: str, telegram_user_id: str) -> EmailMessage:

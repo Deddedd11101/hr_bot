@@ -21,8 +21,8 @@ class TelegramMessenger:
     def __init__(self, bot: Any) -> None:
         self.bot = bot
 
-    async def send_text(self, chat_id: str, text: str, reply_markup: Any | None = None) -> None:
-        await self.bot.send_message(chat_id=chat_id, text=text, reply_markup=reply_markup)
+    async def send_text(self, chat_id: str, text: str, reply_markup: Any | None = None) -> Any:
+        return await self.bot.send_message(chat_id=chat_id, text=text, reply_markup=reply_markup)
 
     async def edit_text(self, chat_id: str, message_id: int, text: str, reply_markup: Any | None = None) -> None:
         await self.bot.edit_message_text(

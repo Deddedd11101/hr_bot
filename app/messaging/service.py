@@ -34,9 +34,12 @@ from ..time_utils import utc_now
 from ..staff_email_verification import (
     clear_failed_challenge,
     confirm_code,
+    forget_verification_messages,
     is_verified,
     prepare_challenge,
+    remember_verification_message,
     send_code_email,
+    verification_message_ids,
     verification_required,
 )
 from .base import MessengerClient
@@ -721,29 +724,67 @@ async def send_access_state_message(
     await messenger.send_text(chat_id=chat_user_id, text=UNKNOWN_USER_TEXT)
 
 
-async def _start_staff_email_verification(
+def _remember_staff_verification_message(db: Session, employee: Employee, chat_user_id: str, message_id: int | None) -> None:
+    try:
+        remember_verification_message(db, employee.id, chat_user_id, message_id)
+    except Exception:
+        db.rollback()
+        logger.exception("Could not remember staff verification message: employee_id=%s", employee.id)
+
+
+async def _send_staff_verification_text(
+    messenger: MessengerClient, db: Session, employee: Employee, chat_user_id: str, text: str,
+) -> None:
+    sent = await messenger.send_text(chat_id=chat_user_id, text=text)
+    _remember_staff_verification_message(db, employee, chat_user_id, getattr(sent, "message_id", None))
+
+
+async def _clear_staff_verification_messages(
     messenger: MessengerClient, db: Session, employee: Employee, chat_user_id: str,
 ) -> None:
+    try:
+        message_ids = verification_message_ids(db, employee.id, chat_user_id)
+    except Exception:
+        db.rollback()
+        logger.exception("Could not load staff verification messages: employee_id=%s", employee.id)
+        return
+    for message_id in message_ids:
+        try:
+            await messenger.delete_message(chat_user_id, message_id)
+        except Exception:
+            logger.debug("Could not delete staff verification message: employee_id=%s message_id=%s", employee.id, message_id, exc_info=True)
+    try:
+        forget_verification_messages(db, employee.id, chat_user_id)
+    except Exception:
+        db.rollback()
+        logger.exception("Could not forget staff verification messages: employee_id=%s", employee.id)
+
+
+async def _start_staff_email_verification(
+    messenger: MessengerClient, db: Session, employee: Employee, chat_user_id: str,
+    start_message_id: int | None = None,
+) -> None:
+    _remember_staff_verification_message(db, employee, chat_user_id, start_message_id)
     challenge = prepare_challenge(db, employee, chat_user_id)
     if challenge is None:
         logger.warning("Staff email verification unavailable: employee_id=%s", employee.id)
-        await messenger.send_text(
-            chat_id=chat_user_id,
-            text="Не удалось отправить код на рабочую почту. Проверьте адрес в карточке через HR и попробуйте позже.",
+        await _send_staff_verification_text(
+            messenger, db, employee, chat_user_id,
+            "Не удалось отправить код на рабочую почту. Проверьте адрес в карточке через HR и попробуйте позже.",
         )
         return
     code, address = challenge
     if not code:
-        await messenger.send_text(chat_id=chat_user_id, text="Код уже отправлен. Проверьте рабочую почту и подождите минуту перед повторным запросом.")
+        await _send_staff_verification_text(messenger, db, employee, chat_user_id, "Код уже отправлен. Проверьте рабочую почту и подождите минуту перед повторным запросом.")
         return
     try:
         await asyncio.to_thread(send_code_email, address, code, chat_user_id)
     except Exception:
         clear_failed_challenge(db, employee.id, chat_user_id, code)
         logger.exception("Staff verification email delivery failed: employee_id=%s", employee.id)
-        await messenger.send_text(chat_id=chat_user_id, text="Письмо с кодом не отправилось. Попробуйте позже или обратитесь к HR.")
+        await _send_staff_verification_text(messenger, db, employee, chat_user_id, "Письмо с кодом не отправилось. Попробуйте позже или обратитесь к HR.")
         return
-    await messenger.send_text(chat_id=chat_user_id, text="Отправили код на вашу рабочую почту. Пришлите сюда 6 цифр из письма. Код действует 10 минут.")
+    await _send_staff_verification_text(messenger, db, employee, chat_user_id, "Отправили код на вашу рабочую почту. Пришлите сюда 6 цифр из письма. Код действует 10 минут.")
 
 
 async def handle_start_command(
@@ -752,6 +793,7 @@ async def handle_start_command(
     chat_user_id: str,
     username: Optional[str],
     start_parameter: Optional[str] = None,
+    start_message_id: int | None = None,
 ) -> None:
     if start_parameter and start_parameter.startswith("hr_link_"):
         token = start_parameter[len("hr_link_") :]
@@ -763,7 +805,7 @@ async def handle_start_command(
 
     access = resolve_start_access(db, chat_user_id, username)
     if access.state == "verification_required" and access.employee is not None:
-        await _start_staff_email_verification(messenger, db, access.employee, chat_user_id)
+        await _start_staff_email_verification(messenger, db, access.employee, chat_user_id, start_message_id)
         return
     if access.state != "ok" or access.employee is None:
         await send_access_state_message(messenger, chat_user_id, access.state)
@@ -837,17 +879,20 @@ async def handle_text_event(
     chat_user_id: str,
     username: Optional[str],
     text: str,
+    message_id: int | None = None,
 ) -> Literal["handled", "ignored", "unknown", "blocked"]:
     access = resolve_inbound_access(db, chat_user_id, username)
     if access.state == "verification_required" and access.employee is not None:
+        _remember_staff_verification_message(db, access.employee, chat_user_id, message_id)
         if len(text.strip()) == 6 and text.strip().isascii() and text.strip().isdigit():
             if confirm_code(db, access.employee, chat_user_id, text.strip()):
                 _sync_employee_after_inbound(db, access.employee, chat_user_id, username)
-                await show_main_menu(messenger, db, access.employee, "Рабочая почта подтверждена. Выберите действие.")
+                if await show_main_menu(messenger, db, access.employee, "Рабочая почта подтверждена. Выберите действие."):
+                    await _clear_staff_verification_messages(messenger, db, access.employee, chat_user_id)
             else:
-                await messenger.send_text(chat_id=chat_user_id, text="Код неверный или устарел. Проверьте письмо; после пяти ошибок запросите новый код через /start.")
+                await _send_staff_verification_text(messenger, db, access.employee, chat_user_id, "Код неверный или устарел. Проверьте письмо; после пяти ошибок запросите новый код через /start.")
         else:
-            await messenger.send_text(chat_id=chat_user_id, text=STAFF_EMAIL_VERIFICATION_TEXT)
+            await _send_staff_verification_text(messenger, db, access.employee, chat_user_id, STAFF_EMAIL_VERIFICATION_TEXT)
         return "handled"
     if access.state != "ok" or access.employee is None:
         return access.state
