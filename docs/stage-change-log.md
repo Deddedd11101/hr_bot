@@ -34,6 +34,14 @@ source_of_truth: true
 
 ## Записи
 
+### 2026-10-08 17:28 MSK - app deploy - ссылки и видимость кнопок меню
+
+- Deploy ref: `stage`; deployed SHA: `6d5a064a8061717b2e5c0edb581034390a57980d`; PR [#83](https://github.com/Deddedd11101/hr_bot/pull/83); [Deploy Stage 37792519510](https://github.com/Deddedd11101/hr_bot/actions/runs/37792519510) -> success.
+- В настройках кнопки добавлено действие `Переход по ссылке` с проверкой HTTP(S) адреса. Переключатель `Показывать кнопку в меню` вынесен в отдельную строку; версии JS/CSS обновлены, чтобы браузер не держал старую сборку. Для root reply-меню нажатие ссылки показывает inline-кнопку, поскольку reply-кнопка Telegram не открывает произвольный URL напрямую.
+- PR CI, локальные backend-тесты, TypeScript, повторная воспроизводимая frontend-сборка и preflight Deploy Stage прошли. До checkout созданы и проверены SQLite backup `backups/hr_bot.before-deploy.20261008-142816.db` и snapshot сценариев `backups/scenarios.before-deploy.20261008-142816.json`; fingerprint сценариев не изменился.
+- [Stage Diagnostics 37792813275](https://github.com/Deddedd11101/hr_bot/actions/runs/37792813275) -> success: deployed SHA подтверждён, web/worker/WireGuard/Caddy active, HTTPS `/app/employees`, `/app/flows/workspace-v2`, `/app/grades` -> `303`, свежих Telegram/network ошибок нет. Публичный `bot-menu.js?v=39` -> `200` и содержит новый переключатель и действие ссылки.
+- Открытая приёмка: в авторизованной админке скрыть кнопку, сохранить набор и проверить отсутствие кнопки в Telegram; затем включить обратно и проверить URL-кнопку в root и вложенном наборе. HTTP и сборка не подтверждают эти действия пользователя.
+
 ### 2026-10-08 16:28 MSK - app deploy - видимость и раскладка кнопок меню
 
 - Deploy ref: `stage`; deployed SHA: `178889789efe9c00f050bcc2e6b223e1aaba9f1e`; PR [#81](https://github.com/Deddedd11101/hr_bot/pull/81); [Deploy Stage 37784148656](https://github.com/Deddedd11101/hr_bot/actions/runs/37784148656) -> success.
