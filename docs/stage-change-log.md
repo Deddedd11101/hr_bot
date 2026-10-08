@@ -34,6 +34,14 @@ source_of_truth: true
 
 ## Записи
 
+### 2026-10-08 11:12 MSK - app deploy - оформление письма с кодом сотрудника
+
+- Deploy ref: `stage`; deployed SHA: `72dba86be4665b5537ee7d2e7b75cf4eed163117`; PR [#75](https://github.com/Deddedd11101/hr_bot/pull/75); [Deploy Stage 37748111513](https://github.com/Deddedd11101/hr_bot/actions/runs/37748111513) -> success.
+- Письмо для проверки рабочей почты теперь содержит HTML-оформление со встроенным фирменным знаком и крупным выделяемым кодом; текстовая версия сохранена. Логика выдачи/проверки кода, SMTP-конфигурация и схема БД не менялись.
+- PR CI и preflight Deploy Stage прошли. До checkout создан и проверен SQLite backup `backups/hr_bot.before-deploy.20261008-081208.db` и snapshot сценариев `backups/scenarios.before-deploy.20261008-081208.json`; fingerprint конфигурации сценариев не изменился.
+- [Stage Diagnostics 37748417846](https://github.com/Deddedd11101/hr_bot/actions/runs/37748417846) -> success: deployed SHA подтверждён, tracked worktree clean, web/worker/WireGuard/Caddy active, Telegram IPv4 `302`, HTTPS `/app/employees`, `/app/flows/workspace-v2`, `/app/grades` -> `303`, за последние 5 минут ошибок Telegram/network в worker нет; `0 failing checks`.
+- Открытая приёмка: запросить новый код через `/start`, проверить оформление и читаемость письма в реальном почтовом клиенте и ввод кода в Telegram. Автоматические checks не подтверждают отображение HTML у получателя.
+
 ### 2026-10-07 22:35 MSK - config - ключ сессий админки для почтового кода
 
 - Код приложения не перевыкатывался: deployed app SHA `b3a754e`. Workflow взят из `stage` merge `6a57582` (PR [#73](https://github.com/Deddedd11101/hr_bot/pull/73)); регистрация в `main` через PR [#74](https://github.com/Deddedd11101/hr_bot/pull/74).
