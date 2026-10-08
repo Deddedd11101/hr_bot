@@ -637,6 +637,7 @@ class BotMenuButton(Base):
     menu_set_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
     label: Mapped[str] = mapped_column(String(255), nullable=False)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     action_type: Mapped[str] = mapped_column(
         String(32),
         nullable=False,

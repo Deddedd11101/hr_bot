@@ -10,7 +10,7 @@ from ..auth import ROLE_LABELS, hash_password, validate_account_password
 from ..database import get_session
 from ..messaging import create_telegram_messenger
 from ..messaging.identity import get_primary_chat_id
-from ..messaging.service import show_main_menu
+from ..messaging.service import ROOT_MENU_PROMPT_TEXT, menu_set_matches_employee, resolve_root_menu_set, send_menu, show_main_menu
 from ..models import AdminAccount, BotMenuButton, BotMenuSet, Employee, Position, TelegramCustomEmoji
 from ..positions import ensure_position_exists, normalize_position_slug
 from ..config import settings
@@ -747,7 +747,7 @@ async def broadcast_bot_menu_api(
                 messenger,
                 db,
                 employee,
-                "Меню обновлено. Выберите действие.",
+                ROOT_MENU_PROMPT_TEXT,
             )
             if opened:
                 refreshed_count += 1
@@ -755,6 +755,38 @@ async def broadcast_bot_menu_api(
             "workspace": _settings_workspace_payload(db, current_user),
             "refreshed_count": refreshed_count,
         }
+    finally:
+        await messenger.close()
+
+
+@router.post("/api/settings/menu-sets/{menu_set_id}/refresh")
+async def refresh_menu_set_api(
+    request: Request,
+    menu_set_id: int,
+    db: Session = Depends(get_db),
+):
+    current_user = require_api_auth(request)
+    menu_set = db.get(BotMenuSet, menu_set_id)
+    if menu_set is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Набор кнопок не найден")
+    if not settings.TELEGRAM_BOT_TOKEN.strip():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Telegram bot token не настроен")
+    messenger = create_telegram_messenger(settings.TELEGRAM_BOT_TOKEN)
+    refreshed_count = 0
+    try:
+        for employee in db.query(Employee).order_by(Employee.id).all():
+            if employee.is_bot_blocked or not get_primary_chat_id(employee, db=db):
+                continue
+            root_set = resolve_root_menu_set(db, employee)
+            if root_set and root_set.id == menu_set_id:
+                refreshed_count += int(await show_main_menu(messenger, db, employee, ROOT_MENU_PROMPT_TEXT))
+            elif employee.current_menu_set_id == menu_set_id and menu_set_matches_employee(employee, menu_set):
+                await send_menu(
+                    messenger, db, employee, menu_set.description or menu_set.title,
+                    edit_message_id=employee.current_menu_message_id,
+                )
+                refreshed_count += 1
+        return {"workspace": _settings_workspace_payload(db, current_user), "refreshed_count": refreshed_count}
     finally:
         await messenger.close()
 

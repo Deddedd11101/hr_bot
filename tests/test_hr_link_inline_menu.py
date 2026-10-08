@@ -12,7 +12,7 @@ from app.auth import authenticate_account, create_admin_session_token
 from app.database import SessionLocal, init_db
 from app.hr_linking import consume_hr_link_token, hash_hr_link_token
 from app.main import AUTH_COOKIE_NAME, app
-from app.messaging.service import handle_menu_callback, handle_start_command, menu_button_option_rows
+from app.messaging.service import handle_menu_callback, handle_root_menu_command, handle_start_command, menu_button_option_rows, show_main_menu
 from app.models import BotMenuButton, BotMenuSet, Employee, HrSettings
 from app.scenario_engine import _resolve_explicit_notification_recipient
 from app.time_utils import utc_now
@@ -44,6 +44,9 @@ class InlineMessenger:
         self.reply_menus.append({"chat_id": chat_id, "text": text, "buttons": buttons})
 
     async def send_document_path(self, *args, **kwargs) -> None:
+        return None
+
+    async def close(self) -> None:
         return None
 
 
@@ -265,6 +268,18 @@ class HrLinkAndInlineMenuTests(unittest.TestCase):
         asyncio.run(TelegramMessenger(bot).send_inline_menu("1", "Nested", [("x", "menu:x")]))
         self.assertEqual(len(bot.calls), 1)
 
+    def test_empty_root_menu_removes_previous_reply_keyboard(self) -> None:
+        from aiogram.types import ReplyKeyboardRemove
+        from app.messaging.telegram import TelegramMessenger
+
+        class Bot:
+            async def send_message(self, **kwargs):
+                self.sent = kwargs
+
+        bot = Bot()
+        asyncio.run(TelegramMessenger(bot).send_menu("1", "Нет активных кнопок", []))
+        self.assertIsInstance(bot.sent["reply_markup"], ReplyKeyboardRemove)
+
     def test_menu_button_rows_are_preserved_and_rendered_as_nested_rows(self) -> None:
         chat_id = str(981000000000 + (uuid4().int % 100000000000))
         with SessionLocal() as db:
@@ -278,9 +293,9 @@ class HrLinkAndInlineMenuTests(unittest.TestCase):
             menu_set = BotMenuSet(title="Rows", sort_order=1, employee_scope="employees")
             db.add_all([employee, menu_set])
             db.commit()
-            first = BotMenuButton(menu_set_id=menu_set.id, label="First", sort_order=10, action_type="inactive")
-            second = BotMenuButton(menu_set_id=menu_set.id, label="Second", sort_order=20, action_type="inactive")
-            third = BotMenuButton(menu_set_id=menu_set.id, label="Third", sort_order=30, action_type="inactive")
+            first = BotMenuButton(menu_set_id=menu_set.id, label="First", sort_order=10, action_type="launch_scenario", scenario_key="test")
+            second = BotMenuButton(menu_set_id=menu_set.id, label="Second", sort_order=20, action_type="launch_scenario", scenario_key="test")
+            third = BotMenuButton(menu_set_id=menu_set.id, label="Third", sort_order=30, action_type="launch_scenario", scenario_key="test")
             db.add_all([first, second, third])
             db.commit()
             menu_set.button_rows = json.dumps([[second.id, first.id], [third.id]])
@@ -298,6 +313,76 @@ class HrLinkAndInlineMenuTests(unittest.TestCase):
                 ],
             )
             self.assertTrue(rows[-1] == [("Главное меню", "menu:home")] or rows[-1] == rows[1])
+
+    def test_disabled_and_unconfigured_buttons_are_hidden_and_stale_actions_ignored(self) -> None:
+        chat_id = str(982000000000 + (uuid4().int % 100000000000))
+        with SessionLocal() as db:
+            employee = Employee(full_name="Hidden Button", telegram_user_id=chat_id, employee_stage="candidate", created_at=utc_now())
+            menu_set = BotMenuSet(title="Visible root", employee_scope="candidates", sort_order=1)
+            db.add_all([employee, menu_set])
+            db.commit()
+            menu_set.target_employee_ids = str(employee.id)
+            settings = _get_or_create_hr_settings(db)
+            settings.default_candidate_menu_set_id = menu_set.id
+            visible = BotMenuButton(menu_set_id=menu_set.id, label="Visible", sort_order=10, action_type="launch_scenario", scenario_key="test")
+            disabled = BotMenuButton(menu_set_id=menu_set.id, label="Disabled", sort_order=20, is_active=False, action_type="launch_scenario", scenario_key="test")
+            unconfigured = BotMenuButton(menu_set_id=menu_set.id, label="Unconfigured", sort_order=30, action_type="inactive")
+            db.add_all([visible, disabled, unconfigured])
+            db.commit()
+            menu_set.button_rows = json.dumps([[visible.id, disabled.id], [unconfigured.id]])
+            db.commit()
+            messenger = InlineMessenger()
+
+            self.assertTrue(asyncio.run(show_main_menu(messenger, db, employee, "Fallback")))
+            self.assertEqual(messenger.reply_menus[-1]["buttons"], [["Visible"]])
+            self.assertFalse(asyncio.run(handle_root_menu_command(messenger, db, employee, "Disabled")))
+            self.assertFalse(asyncio.run(handle_root_menu_command(messenger, db, employee, "Unconfigured")))
+            self.assertEqual(asyncio.run(handle_menu_callback(messenger, db, chat_id, None, f"menu:button:{disabled.id}", None)), "ignored")
+
+            response = self.client.post(
+                f"/api/settings/menu-buttons/{visible.id}",
+                json={"label": "Visible", "action_type": "launch_scenario", "scenario_key": "test", "is_active": False},
+            )
+            self.assertEqual(response.status_code, 200)
+            db.refresh(visible)
+            self.assertFalse(visible.is_active)
+            self.assertFalse(next(button for menu in response.json()["menu_sets"] if menu["id"] == menu_set.id for button in menu["buttons"] if button["id"] == visible.id)["is_active"])
+
+    def test_saved_root_rows_are_sent_on_targeted_refresh(self) -> None:
+        chat_id = str(983000000000 + (uuid4().int % 100000000000))
+        with SessionLocal() as db:
+            employee = Employee(full_name="Rows Recipient", telegram_user_id=chat_id, employee_stage="candidate", created_at=utc_now())
+            menu_set = BotMenuSet(title="Rows root", description="Выберите раздел", employee_scope="candidates", sort_order=1)
+            db.add_all([employee, menu_set])
+            db.commit()
+            menu_set.target_employee_ids = str(employee.id)
+            settings = _get_or_create_hr_settings(db)
+            settings.default_candidate_menu_set_id = menu_set.id
+            first = BotMenuButton(menu_set_id=menu_set.id, label="First", sort_order=10, action_type="launch_scenario", scenario_key="test")
+            second = BotMenuButton(menu_set_id=menu_set.id, label="Second", sort_order=20, action_type="launch_scenario", scenario_key="test")
+            db.add_all([first, second])
+            db.commit()
+            messenger = InlineMessenger()
+            asyncio.run(show_main_menu(messenger, db, employee, "Fallback"))
+            self.assertEqual(messenger.reply_menus[-1]["buttons"], ["First", "Second"])
+
+            saved = self.client.post(
+                f"/api/settings/menu-sets/{menu_set.id}",
+                json={
+                    "title": menu_set.title,
+                    "menu_text": menu_set.description,
+                    "employee_scope": "candidates",
+                    "role_scope": "all",
+                    "target_employee_ids": [employee.id],
+                    "button_rows": [[first.id, second.id]],
+                },
+            )
+            self.assertEqual(saved.status_code, 200)
+            with patch("app.web.settings_routes.create_telegram_messenger", return_value=messenger), patch("app.web.settings_routes.settings.TELEGRAM_BOT_TOKEN", "test-token"):
+                refreshed = self.client.post(f"/api/settings/menu-sets/{menu_set.id}/refresh")
+            self.assertEqual(refreshed.status_code, 200)
+            self.assertEqual(refreshed.json()["refreshed_count"], 1)
+            self.assertEqual(messenger.reply_menus[-1]["buttons"], [["First", "Second"]])
 
     def test_deleting_menu_button_removes_it_from_saved_rows(self) -> None:
         with SessionLocal() as db:

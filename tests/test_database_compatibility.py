@@ -93,6 +93,32 @@ def _create_legacy_employees_table(path: Path, *, include_menu_state: bool, incl
 
 
 class DatabaseCompatibilityTests(unittest.TestCase):
+    def test_existing_menu_buttons_gain_active_flag_without_changing_rows(self) -> None:
+        from app import models  # noqa: F401
+
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            path = Path(temporary_directory) / "legacy-menu.db"
+            engine = create_engine(f"sqlite:///{path}")
+            with engine.begin() as connection:
+                connection.execute(text("CREATE TABLE bot_menu_buttons (id INTEGER PRIMARY KEY, menu_set_id INTEGER NOT NULL, label TEXT NOT NULL, sort_order INTEGER NOT NULL DEFAULT 0, action_type TEXT NOT NULL DEFAULT 'inactive', scenario_key TEXT, target_menu_set_id INTEGER, document_item_id INTEGER)"))
+                connection.execute(text("INSERT INTO bot_menu_buttons (id, menu_set_id, label, action_type) VALUES (1, 2, 'Old button', 'open_set')"))
+            database.Base.metadata.create_all(engine)
+            previous_engine = database.engine
+            previous_url = database.settings.DATABASE_URL
+            try:
+                database.engine = engine
+                database.settings.DATABASE_URL = f"sqlite:///{path}"
+                database._ensure_sqlite_schema()
+                database._ensure_sqlite_schema()
+                with engine.connect() as connection:
+                    columns = {row[1] for row in connection.execute(text("PRAGMA table_info(bot_menu_buttons)"))}
+                    self.assertIn("is_active", columns)
+                    self.assertEqual(connection.execute(text("SELECT label, is_active FROM bot_menu_buttons WHERE id = 1")).one(), ("Old button", 1))
+            finally:
+                database.engine = previous_engine
+                database.settings.DATABASE_URL = previous_url
+                engine.dispose()
+
     def test_survey_launch_columns_are_additive_for_existing_progress_and_answers(self) -> None:
         from app import models  # noqa: F401
 

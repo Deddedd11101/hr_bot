@@ -803,6 +803,7 @@ def _ensure_sqlite_schema() -> None:
                         menu_set_id INTEGER NOT NULL,
                         label VARCHAR(255) NOT NULL,
                         sort_order INTEGER NOT NULL DEFAULT 0,
+                        is_active BOOLEAN NOT NULL DEFAULT 1,
                         action_type VARCHAR(32) NOT NULL DEFAULT 'inactive',
                         scenario_key VARCHAR(64),
                         target_menu_set_id INTEGER,
@@ -815,6 +816,8 @@ def _ensure_sqlite_schema() -> None:
             conn.execute(text("CREATE INDEX IF NOT EXISTS ix_bot_menu_buttons_id ON bot_menu_buttons (id)"))
         else:
             menu_buttons_columns = {row[1] for row in menu_buttons_info}
+            if "is_active" not in menu_buttons_columns:
+                conn.execute(text("ALTER TABLE bot_menu_buttons ADD COLUMN is_active BOOLEAN NOT NULL DEFAULT 1"))
             if "document_item_id" not in menu_buttons_columns:
                 conn.execute(text("ALTER TABLE bot_menu_buttons ADD COLUMN document_item_id INTEGER"))
 

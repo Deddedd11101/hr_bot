@@ -34,7 +34,7 @@ class TelegramMessenger:
 
     async def send_menu(self, chat_id: str, text: str, buttons: list[str] | list[list[str]]) -> None:
         if not buttons:
-            await self.send_text(chat_id=chat_id, text=text)
+            await self.send_text(chat_id=chat_id, text=text, reply_markup=ReplyKeyboardRemove())
             return
         rows = buttons if buttons and isinstance(buttons[0], list) else [[button] for button in buttons]
         keyboard = ReplyKeyboardMarkup(
