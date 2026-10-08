@@ -55,13 +55,14 @@ Usernames нормализуются одинаково перед сравне�
 - Письмо содержит текстовую версию и HTML-версию с встроенным фирменным знаком. Код остаётся обычным выделяемым текстом: интерактивное копирование по клику в почтовом клиенте не используется.
 - Проверка `is_verified` каждый раз заново требует уникальный действующий `work_email` в разрешённом домене. Если адрес изменился, стал невалидным или перестал быть уникальным, текущая проверка закрывается.
 - Верный код подтверждает текущий Telegram ID и открывает меню. Уже привязанные сотрудники тоже должны пройти эту проверку; менять привязанный numeric ID через новый username нельзя, для нового аккаунта нужен операторский reset.
+- После успешного показа главного меню бот удаляет доступные сообщения текущей проверки почты (`/start`, подсказки, ввод кода) по сохранённым message IDs. Очистка best-effort и ограничена правилами Telegram; неуспешное удаление не отменяет вход. Старую историю чата бот не чистит.
 - Отсутствие или дубль рабочего адреса, неготовый SMTP и ошибка отправки закрывают вход; candidate `/start` остаётся прежним. При смене рабочего адреса подтверждение требуется заново.
 - Подтверждение кода выполняется условным одноразовым claim в БД вместе с сохранением Telegram identity. Параллельная попытка не принимается повторно; при несовпадении текущей почты pending-код инвалидируется.
 
 Reset/delete contract:
 
-- Operator reset bot linkage из карточки чистит legacy Telegram поля, active `EmployeeMessengerAccount` rows для employee, незавершенный scenario runtime progress где employee является context или recipient, pending launch requests, `current_menu_set_id` и `current_menu_path`. Completed progress остается audit/history и не удаляется reset'ом.
-- Удаление карточки через operator API удаляет связанные messenger account rows, все progress rows где employee является context, и только незавершенный progress где employee является recipient. Completed recipient progress у других context-карточек сохраняется как audit/history, чтобы app-level delete path не стирал чужую завершенную историю.
+- Operator reset bot linkage из карточки чистит legacy Telegram поля, active `EmployeeMessengerAccount` rows и pending verification message IDs для employee, незавершенный scenario runtime progress где employee является context или recipient, pending launch requests, `current_menu_set_id` и `current_menu_path`. Completed progress остается audit/history и не удаляется reset'ом.
+- Удаление карточки через operator API удаляет связанные messenger account и pending verification message rows, все progress rows где employee является context, и только незавершенный progress где employee является recipient. Completed recipient progress у других context-карточек сохраняется как audit/history, чтобы app-level delete path не стирал чужую завершенную историю.
 - Schema-level FK/cascade для `employee_messenger_accounts.employee_id` пока не введен; это отдельный data-model debt, а не часть текущего runtime repair.
 
 ## Подключение HR Telegram

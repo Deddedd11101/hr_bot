@@ -91,6 +91,7 @@ source_of_truth: true
 | `positions` | Управляемый справочник должностей | `title`, `slug`, `is_active`, `sort_order`, timestamps | Используется settings UI, employee forms, scenario role scope и targeting; `employees.desired_position` пока остается строкой для backward compatibility |
 | `employee_messenger_accounts` | Channel-specific communication identities | `employee_id`, `channel`, `external_user_id`, `external_username`, `is_primary`, `is_active` | Один employee может иметь несколько channel identities; текущий runtime использует `telegram` |
 | `employee_telegram_email_verifications` | Проверка рабочей почты перед доступом сотрудника в Telegram | `employee_id`, `verified_telegram_user_id`, `verified_work_email`, `verified_at`, `pending_telegram_user_id`, `pending_work_email`, `code_hash`, `expires_at`, `last_sent_at`, `attempts` | Один row на сотрудника; код хранится только как HMAC, первичная привязка и старая числовая привязка не дают доступа без действующего подтверждения |
+| `employee_telegram_verification_messages` | Идентификаторы сообщений текущей проверки почты для очистки чата после входа | `employee_id`, `telegram_user_id`, `message_id`, `created_at` | Composite primary key; содержимое сообщений и код не сохраняются, записи старше 48 часов отбрасываются, reset/delete карточки удаляют строки |
 | `admin_accounts` | Пользователи админки | `login`, `password_hash`, `role`, `is_active` | Используется browser session auth |
 
 ### Редактирование и выполнение сценариев
@@ -199,6 +200,11 @@ source_of_truth: true
 - Новая additive-таблица создаётся через `Base.metadata.create_all` и SQLite compatibility path; backfill для ранее привязанных сотрудников намеренно нет.
 - При включённом `STAFF_EMAIL_OTP_ENABLED` сотрудник (не candidate) доступен в боте только если `verified_telegram_user_id` совпадает с текущим numeric Telegram ID и `verified_work_email` с текущей рабочей почтой.
 - Pending-код действует 10 минут, не более пяти попыток; повторная отправка ограничена минутой. Смена почты, reset привязки и удаление карточки отменяют доступ или удаляют verification row. Candidate flow не меняется.
+
+### `employee_telegram_verification_messages`
+
+- Additive-таблица создаётся при старте через SQLite compatibility path. Сохраняет только Telegram message IDs `/start`, ответов бота и сообщений сотрудника во время проверки, раздельно по карточке и numeric Telegram ID.
+- После успешного показа меню бот best-effort удаляет эти сообщения в личном чате и очищает строки. Ошибка Telegram delete не откатывает подтверждение; чужая и более старая переписка не затрагивается.
 
 ### `scenario_progress`
 

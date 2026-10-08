@@ -1,6 +1,7 @@
 import asyncio
 import unittest
 from datetime import timedelta
+from types import SimpleNamespace
 from unittest.mock import patch
 from uuid import uuid4
 
@@ -8,9 +9,9 @@ from app.config import settings
 from app.database import SessionLocal, init_db
 from app.messaging.identity import get_primary_chat_id, set_primary_chat_id
 from app.messaging.service import handle_start_command, handle_text_event, resolve_inbound_access
-from app.models import Employee, EmployeeMessengerAccount, EmployeeTelegramEmailVerification
+from app.models import Employee, EmployeeMessengerAccount, EmployeeTelegramEmailVerification, EmployeeTelegramVerificationMessage
 from app.scenario_engine import resolve_notification_recipients
-from app.staff_email_verification import MAX_ATTEMPTS, build_code_email, chat_id_allowed, confirm_code, is_verified, prepare_challenge, send_code_email
+from app.staff_email_verification import MAX_ATTEMPTS, build_code_email, chat_id_allowed, confirm_code, is_verified, prepare_challenge, remember_verification_message, send_code_email
 from app.time_utils import utc_now
 from app.web.bulk_actions import _send_mass_message
 from app.web.employees import _reset_employee_bot_linkage
@@ -19,12 +20,26 @@ from app.web.employees import _reset_employee_bot_linkage
 class FakeMessenger:
     def __init__(self):
         self.messages = []
+        self.events = []
+        self.deleted = []
+        self.next_message_id = 1000
+        self.fail_deletes = False
 
     async def send_text(self, *, chat_id, text, **kwargs):
         self.messages.append((chat_id, text))
+        message_id = self.next_message_id
+        self.next_message_id += 1
+        self.events.append(("send", message_id))
+        return SimpleNamespace(message_id=message_id)
 
     async def send_menu(self, *, chat_id, text, **kwargs):
         self.messages.append((chat_id, text))
+
+    async def delete_message(self, chat_id, message_id):
+        self.events.append(("delete", message_id))
+        if self.fail_deletes:
+            raise RuntimeError("Telegram delete failed")
+        self.deleted.append(message_id)
 
 
 class StaffCodeEmailTests(unittest.TestCase):
@@ -93,6 +108,7 @@ class StaffEmailVerificationTests(unittest.TestCase):
 
     def tearDown(self):
         with SessionLocal() as db:
+            db.query(EmployeeTelegramVerificationMessage).filter_by(employee_id=self.employee_id).delete()
             db.query(EmployeeTelegramEmailVerification).filter_by(employee_id=self.employee_id).delete()
             db.query(EmployeeMessengerAccount).filter_by(employee_id=self.employee_id).delete()
             db.query(Employee).filter_by(id=self.employee_id).delete()
@@ -100,11 +116,11 @@ class StaffEmailVerificationTests(unittest.TestCase):
         for item in reversed(self.patches):
             item.stop()
 
-    def _request_code(self):
+    def _request_code(self, start_message_id=None):
         messenger = FakeMessenger()
         with patch("app.messaging.service.send_code_email") as email_sender:
             with SessionLocal() as db:
-                asyncio.run(handle_start_command(messenger, db, self.chat_id, self.username))
+                asyncio.run(handle_start_command(messenger, db, self.chat_id, self.username, start_message_id=start_message_id))
         self.assertEqual(email_sender.call_count, 1)
         self.assertEqual(email_sender.call_args.args[0], self.email)
         return email_sender.call_args.args[1], messenger
@@ -226,9 +242,46 @@ class StaffEmailVerificationTests(unittest.TestCase):
         with SessionLocal() as db:
             employee = db.get(Employee, self.employee_id)
             self.assertTrue(confirm_code(db, employee, self.chat_id, code))
+            self.assertGreater(db.query(EmployeeTelegramVerificationMessage).filter_by(employee_id=self.employee_id).count(), 0)
             _reset_employee_bot_linkage(db, employee)
             self.assertIsNone(db.get(EmployeeTelegramEmailVerification, self.employee_id))
+            self.assertEqual(db.query(EmployeeTelegramVerificationMessage).filter_by(employee_id=self.employee_id).count(), 0)
             self.assertIsNone(employee.telegram_user_id)
+
+    def test_successful_verification_deletes_only_current_login_messages_after_menu(self):
+        code, messenger = self._request_code(start_message_id=31)
+        wrong_code = "000000" if code != "000000" else "111111"
+        with SessionLocal() as db:
+            remember_verification_message(db, self.employee_id, "other-chat-id", 99)
+            asyncio.run(handle_text_event(messenger, db, self.chat_id, self.username, wrong_code, message_id=32))
+            self.assertEqual(messenger.deleted, [])
+            self.assertEqual(db.query(EmployeeTelegramVerificationMessage).filter_by(employee_id=self.employee_id, telegram_user_id=self.chat_id).count(), 4)
+
+        async def show_menu(*args):
+            messenger.events.append(("menu", 1002))
+            return True
+
+        with patch("app.messaging.service.show_main_menu", side_effect=show_menu):
+            with SessionLocal() as db:
+                asyncio.run(handle_text_event(messenger, db, self.chat_id, self.username, code, message_id=33))
+                employee = db.get(Employee, self.employee_id)
+                self.assertTrue(is_verified(db, employee, self.chat_id))
+                self.assertEqual(db.query(EmployeeTelegramVerificationMessage).filter_by(employee_id=self.employee_id, telegram_user_id=self.chat_id).count(), 0)
+                self.assertEqual(db.query(EmployeeTelegramVerificationMessage).filter_by(employee_id=self.employee_id, telegram_user_id="other-chat-id").count(), 1)
+
+        self.assertEqual(set(messenger.deleted), {31, 32, 33, 1000, 1001})
+        self.assertLess(messenger.events.index(("menu", 1002)), messenger.events.index(("delete", 31)))
+
+    def test_telegram_delete_failure_does_not_undo_verification(self):
+        code, messenger = self._request_code(start_message_id=41)
+        messenger.fail_deletes = True
+        with patch("app.messaging.service.show_main_menu", return_value=True):
+            with SessionLocal() as db:
+                asyncio.run(handle_text_event(messenger, db, self.chat_id, self.username, code, message_id=42))
+                employee = db.get(Employee, self.employee_id)
+                self.assertTrue(is_verified(db, employee, self.chat_id))
+                self.assertEqual(db.query(EmployeeTelegramVerificationMessage).filter_by(employee_id=self.employee_id).count(), 0)
+        self.assertEqual(messenger.deleted, [])
 
     def test_code_message_is_handled_before_scenario_answers(self):
         code, _ = self._request_code()

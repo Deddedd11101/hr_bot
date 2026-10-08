@@ -65,7 +65,7 @@ async def on_start(message: Message) -> None:
             start_parameter = parts[1].strip() or None
     with SessionLocal() as db:
         messenger = create_telegram_messenger(settings.TELEGRAM_BOT_TOKEN)
-        await handle_start_command(messenger, db, user_id_str, username, start_parameter)
+        await handle_start_command(messenger, db, user_id_str, username, start_parameter, message.message_id)
         await messenger.close()
 
 
@@ -258,7 +258,7 @@ async def on_candidate_text(message: Message) -> None:
     with SessionLocal() as db:
         messenger = create_telegram_messenger(settings.TELEGRAM_BOT_TOKEN)
         username = _telegram_username(user)
-        handled = await handle_text_event(messenger, db, str(user.id), username, message.text)
+        handled = await handle_text_event(messenger, db, str(user.id), username, message.text, message.message_id)
         await messenger.close()
         if handled == "handled":
             return
