@@ -1303,7 +1303,7 @@ export function BotMenuPage({ apiUrl }: BotMenuPageProps) {
                   {selectedMenuSet.buttons.length ? (
                     selectedMenuSet.buttons.map((button) => (
                       <div key={button.id} className="grid gap-3 rounded-lg border border-border bg-muted/35 p-3">
-                        <div className="grid gap-3 xl:grid-cols-[1.1fr_0.8fr_auto_auto] xl:items-end">
+                        <div className="grid gap-3 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.8fr)_auto] xl:items-end">
                           <Field>
                             <FieldLabel>Название кнопки</FieldLabel>
                             <Input
@@ -1322,10 +1322,6 @@ export function BotMenuPage({ apiUrl }: BotMenuPageProps) {
                               allowEmpty={false}
                             />
                           </Field>
-                          <label className="flex items-center gap-2 text-sm">
-                            <Switch checked={button.is_active} onCheckedChange={(checked) => updateMenuButtonLocal(button.id, { is_active: Boolean(checked) })} />
-                            Показывать в меню
-                          </label>
                           <div className="flex gap-2 xl:justify-end">
                             {isOpenSetAction(button.action_type) && button.target_menu_set_id ? (
                               <Button variant="secondary" onClick={() => navigateToMenuSet(Number(button.target_menu_set_id))}>
@@ -1348,6 +1344,11 @@ export function BotMenuPage({ apiUrl }: BotMenuPageProps) {
                             </ConfirmAction>
                           </div>
                         </div>
+                        <label className="flex w-fit items-center gap-3 text-sm font-medium">
+                          <Switch checked={button.is_active} onCheckedChange={(checked) => updateMenuButtonLocal(button.id, { is_active: Boolean(checked) })} />
+                          Показывать кнопку в меню
+                          <span className="text-xs font-normal text-muted-foreground">{button.is_active ? "Включена" : "Скрыта"}</span>
+                        </label>
                         <div className="grid gap-3 xl:grid-cols-3">
                           <Field>
                             <FieldLabel>Сценарий</FieldLabel>
