@@ -186,7 +186,7 @@ function UpcomingEvents({ events, onDelete }: { events: DashboardEvent[]; onDele
 
 function TelegramLinks({ items }: { items: TelegramLink[] }) {
   if (!items.length) {
-    return <PageSectionEmpty icon={<Bot />} title="Свежих привязок нет" description="Новые Telegram-привязки кандидатов появятся здесь." />;
+    return <PageSectionEmpty icon={<Bot />} title="Свежих привязок нет" description="Новые Telegram-привязки кандидатов и сотрудников появятся здесь." />;
   }
   return (
     <PageSectionRows>
@@ -194,7 +194,7 @@ function TelegramLinks({ items }: { items: TelegramLink[] }) {
         <a key={`${item.employee_id}-${item.linked_at}`} href={item.href} className={cn(rowLink, "grid gap-2")}>
           <div className="flex min-w-0 items-center justify-between gap-3">
             <div className="truncate text-sm font-semibold">{item.full_name}</div>
-            <Badge variant="outline">{item.channel}</Badge>
+            <Badge variant="outline">{item.person_label}</Badge>
           </div>
           <div className="flex min-w-0 flex-wrap items-center gap-2 text-xs text-muted-foreground">
             <MessageCircle />

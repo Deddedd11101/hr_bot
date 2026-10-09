@@ -58,7 +58,7 @@ source_of_truth: true
 
 | Method | Path | Surface | Примечания |
 | --- | --- | --- | --- |
-| `GET` | `/app/dashboard` | React bootstrap page | Default operator entry. Показывает ближайшие события, свежие Telegram-привязки, входящие документы, attention items и module links. |
+| `GET` | `/app/dashboard` | React bootstrap page | Default operator entry. Показывает ближайшие события, свежие Telegram-привязки кандидатов и сотрудников после почтового кода, входящие документы, attention items и module links. |
 
 ## Операторская поверхность сотрудников и кандидатов
 

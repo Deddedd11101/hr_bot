@@ -29,6 +29,7 @@ export type SentHistoryItem = DashboardEvent & {
 export type TelegramLink = {
   employee_id: number;
   full_name: string;
+  person_label: "Кандидат" | "Сотрудник";
   channel: string;
   handle_or_id: string;
   linked_at: string;

@@ -36,6 +36,7 @@ from app.models import (
     EmployeeDocumentLink,
     EmployeeHrNote,
     EmployeeMessengerAccount,
+    EmployeeTelegramEmailVerification,
     EmployeeFile,
     EmployeeManualBotMessage,
     FlowLaunchRequest,
@@ -1886,6 +1887,62 @@ class EmployeeApiSmokeTests(unittest.TestCase):
         self.assertTrue(any(item["employee_id"] == self.employee_id for item in payload["telegram_links"]))
         self.assertTrue(any(item["employee_id"] == self.employee_id for item in payload["inbound_files"]))
         self.assertTrue(any(item["title"] == f"codex-dashboard-{self.unique_tag}" for item in payload["upcoming_events"]))
+
+    def test_dashboard_includes_recent_staff_telegram_link_after_email_verification(self) -> None:
+        now = datetime.now(UTC).replace(tzinfo=None)
+        telegram_id = str(980000000000 + (uuid4().int % 100000000000))
+        stale_id = str(980000000000 + (uuid4().int % 100000000000))
+        verified_at = now + timedelta(seconds=2)
+        with SessionLocal() as db:
+            staff = Employee(
+                full_name=f"Verified Staff {self.unique_tag}",
+                employee_stage="staff",
+                work_email=f"verified_{self.unique_tag}@ze.studio",
+                created_at=now,
+                is_flow_scheduled=False,
+            )
+            stale_staff = Employee(
+                full_name=f"Stale Staff {self.unique_tag}",
+                employee_stage="staff",
+                work_email=f"stale_{self.unique_tag}@ze.studio",
+                created_at=now,
+                is_flow_scheduled=False,
+            )
+            db.add_all([staff, stale_staff])
+            db.flush()
+            staff_id, stale_staff_id = staff.id, stale_staff.id
+            for employee, user_id in ((staff, telegram_id), (stale_staff, stale_id)):
+                db.add(EmployeeMessengerAccount(
+                    employee_id=employee.id,
+                    channel="telegram",
+                    external_user_id=user_id,
+                    is_primary=True,
+                    is_active=True,
+                    created_at=now - timedelta(days=30),
+                    updated_at=now - timedelta(days=30),
+                ))
+            db.add(EmployeeTelegramEmailVerification(
+                employee_id=staff.id,
+                verified_telegram_user_id=telegram_id,
+                verified_work_email=staff.work_email,
+                verified_at=verified_at,
+            ))
+            db.add(EmployeeTelegramEmailVerification(
+                employee_id=stale_staff.id,
+                verified_telegram_user_id=stale_id,
+                verified_work_email="different@ze.studio",
+                verified_at=verified_at,
+            ))
+            db.commit()
+
+        response = self.client.get("/api/dashboard/workspace")
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        staff_link = next(item for item in payload["telegram_links"] if item["employee_id"] == staff_id)
+        self.assertEqual(staff_link["person_label"], "Сотрудник")
+        self.assertEqual(staff_link["linked_at"], verified_at.isoformat())
+        self.assertNotIn(stale_staff_id, {item["employee_id"] for item in payload["telegram_links"]})
+        self.assertGreaterEqual(payload["stats"]["recent_telegram_links"], 1)
 
     def test_dashboard_is_default_authenticated_entry(self) -> None:
         root_response = self.client.get("/", follow_redirects=False)
