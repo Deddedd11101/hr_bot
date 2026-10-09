@@ -34,6 +34,14 @@ source_of_truth: true
 
 ## Записи
 
+### 2026-10-09 13:36 MSK - app deploy - свежие Telegram-привязки сотрудников
+
+- Deploy ref: `stage`; deployed SHA: `02daa29379f07551c860d1053a3629b571af79ec`; PR [#86](https://github.com/Deddedd11101/hr_bot/pull/86); [Deploy Stage 37918328982](https://github.com/Deddedd11101/hr_bot/actions/runs/37918328982) -> success.
+- Дашборд включает сотрудников, подтвердивших Telegram через код на рабочую почту, в список и счетчик свежих привязок. Время привязки сотрудника берется из подтверждения почты, а не из последнего обновления Telegram-аккаунта.
+- PR CI, 200 локальных backend smoke-тестов, TypeScript, повторная воспроизводимая frontend-сборка, docs check и deploy preflight прошли. До checkout созданы и проверены SQLite backup `backups/hr_bot.before-deploy.20261009-103451.db` и snapshot сценариев `backups/scenarios.before-deploy.20261009-103451.json`.
+- [Stage Diagnostics 37918616652](https://github.com/Deddedd11101/hr_bot/actions/runs/37918616652) -> success: deployed SHA подтвержден, tracked worktree clean, web/worker/WireGuard/Caddy active, Telegram API IPv4 `302`, HTTPS `/app/employees`, `/app/flows/workspace-v2`, `/app/grades` -> `303`, свежих Telegram/network ошибок нет. В авторизованном дашборде визуально подтверждены строки сотрудников.
+- Ручная проверка нового входа сотрудника через почтовый код в рамках этой выкладки не выполнялась.
+
 ### 2026-10-08 17:28 MSK - app deploy - ссылки и видимость кнопок меню
 
 - Deploy ref: `stage`; deployed SHA: `6d5a064a8061717b2e5c0edb581034390a57980d`; PR [#83](https://github.com/Deddedd11101/hr_bot/pull/83); [Deploy Stage 37792519510](https://github.com/Deddedd11101/hr_bot/actions/runs/37792519510) -> success.
