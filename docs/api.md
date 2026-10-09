@@ -100,7 +100,8 @@ source_of_truth: true
 - `upcoming_events`
   - normalized individual scenario launches, mass scenario/survey launches and mass messages
 - `telegram_links`
-  - свежие active Telegram-привязки кандидатов
+  - свежие active Telegram-привязки кандидатов и сотрудников за `recent_days`; у сотрудников учитывается время успешного подтверждения кода на текущую рабочую почту при совпадающем active primary Telegram ID
+  - каждый элемент содержит `person_label` (`Кандидат` или `Сотрудник`) и `linked_at`; счётчик `stats.recent_telegram_links` включает обе группы, список ограничен первыми восемью
 - `inbound_files`
   - свежие inbound employee files
 - `attention_items`

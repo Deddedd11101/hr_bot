@@ -1,5 +1,6 @@
-from datetime import timedelta
+from datetime import datetime, timedelta
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from ..messaging.identity import get_primary_chat_id
@@ -7,6 +8,7 @@ from ..models import (
     Employee,
     EmployeeFile,
     EmployeeMessengerAccount,
+    EmployeeTelegramEmailVerification,
     FlowLaunchRequest,
     MassMessageAction,
     MassScenarioAction,
@@ -55,30 +57,51 @@ def _candidates_without_channel(db: Session, candidates: list[Employee]) -> list
     return [candidate for candidate in candidates if not get_primary_chat_id(candidate, db=db)]
 
 
-def _recent_telegram_links(db: Session, since) -> list[dict]:
-    rows = (
+def _recent_telegram_link_events(db: Session, since) -> list[tuple[EmployeeMessengerAccount, Employee, datetime]]:
+    candidate_rows = (
         db.query(EmployeeMessengerAccount, Employee)
         .join(Employee, Employee.id == EmployeeMessengerAccount.employee_id)
         .filter(
             Employee.employee_stage == "candidate",
+            EmployeeMessengerAccount.channel == "telegram",
             EmployeeMessengerAccount.is_active.is_(True),
             EmployeeMessengerAccount.updated_at >= since,
         )
-        .order_by(EmployeeMessengerAccount.updated_at.desc(), EmployeeMessengerAccount.id.desc())
-        .limit(BLOCK_LIMIT)
         .all()
     )
+    staff_rows = (
+        db.query(EmployeeMessengerAccount, Employee, EmployeeTelegramEmailVerification)
+        .join(Employee, Employee.id == EmployeeMessengerAccount.employee_id)
+        .join(EmployeeTelegramEmailVerification, EmployeeTelegramEmailVerification.employee_id == Employee.id)
+        .filter(
+            Employee.employee_stage == "staff",
+            EmployeeMessengerAccount.channel == "telegram",
+            EmployeeMessengerAccount.is_active.is_(True),
+            EmployeeMessengerAccount.is_primary.is_(True),
+            EmployeeMessengerAccount.external_user_id == EmployeeTelegramEmailVerification.verified_telegram_user_id,
+            func.lower(func.trim(Employee.work_email)) == EmployeeTelegramEmailVerification.verified_work_email,
+            EmployeeTelegramEmailVerification.verified_at >= since,
+        )
+        .all()
+    )
+    events = [(account, employee, account.updated_at) for account, employee in candidate_rows]
+    events.extend((account, employee, verification.verified_at) for account, employee, verification in staff_rows)
+    return sorted(events, key=lambda event: (event[2], event[0].id), reverse=True)
+
+
+def _recent_telegram_links(events: list[tuple[EmployeeMessengerAccount, Employee, datetime]]) -> list[dict]:
     return [
         {
             "employee_id": employee.id,
-            "full_name": employee.full_name or f"Кандидат #{employee.id}",
+            "full_name": employee.full_name or f"{'Сотрудник' if employee.employee_stage == 'staff' else 'Кандидат'} #{employee.id}",
+            "person_label": "Сотрудник" if employee.employee_stage == "staff" else "Кандидат",
             "channel": account.channel,
             "handle_or_id": account.external_username or account.external_user_id,
-            "linked_at": account.updated_at.isoformat() if account.updated_at else "",
-            "linked_at_label": _format_dt(account.updated_at),
+            "linked_at": linked_at.isoformat(),
+            "linked_at_label": _format_dt(linked_at),
             "href": f"/app/employees/{employee.id}",
         }
-        for account, employee in rows
+        for account, employee, linked_at in events[:BLOCK_LIMIT]
     ]
 
 
@@ -103,19 +126,6 @@ def _inbound_files(db: Session, since) -> list[dict]:
         }
         for file_row, employee in rows
     ]
-
-
-def _count_recent_telegram_links(db: Session, since) -> int:
-    return (
-        db.query(EmployeeMessengerAccount)
-        .join(Employee, Employee.id == EmployeeMessengerAccount.employee_id)
-        .filter(
-            Employee.employee_stage == "candidate",
-            EmployeeMessengerAccount.is_active.is_(True),
-            EmployeeMessengerAccount.updated_at >= since,
-        )
-        .count()
-    )
 
 
 def _count_recent_inbound_files(db: Session, since) -> int:
@@ -432,7 +442,7 @@ def dashboard_workspace_payload(db: Session) -> dict:
     stat_until = now + timedelta(days=STAT_UPCOMING_DAYS)
     candidates = _candidate_rows(db)
     candidates_without_channel = _candidates_without_channel(db, candidates)
-    telegram_links = _recent_telegram_links(db, recent_since)
+    telegram_link_events = _recent_telegram_link_events(db, recent_since)
     inbound_files = _inbound_files(db, recent_since)
     return {
         "meta": {
@@ -443,12 +453,12 @@ def dashboard_workspace_payload(db: Session) -> dict:
         },
         "stats": {
             "candidates_without_channel": len(candidates_without_channel),
-            "recent_telegram_links": _count_recent_telegram_links(db, recent_since),
+            "recent_telegram_links": len(telegram_link_events),
             "recent_inbound_files": _count_recent_inbound_files(db, recent_since),
             "scheduled_next_7_days": _count_scheduled(db, now, stat_until),
         },
         "upcoming_events": _upcoming_events(db, now, upcoming_until),
-        "telegram_links": telegram_links,
+        "telegram_links": _recent_telegram_links(telegram_link_events),
         "inbound_files": inbound_files,
         "attention_items": _attention_items(db, candidates_without_channel, now),
         "module_links": _module_links(),
