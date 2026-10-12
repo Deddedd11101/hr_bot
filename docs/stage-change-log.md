@@ -2854,3 +2854,11 @@ source_of_truth: true
 - SMTP-авторизация и отправка тестового письма `info@ze.studio` -> `info@ze.studio` прошли с локального компьютера. Со stage соединение с `smtp.yandex.ru:465` и `:587` по IPv4 истекает по таймауту, по IPv6 сеть недоступна; до SMTP-авторизации на stage дело не доходит. Отправка письма со stage и получение письма адресатом не подтверждены.
 - После первоначальной диагностики запросили разблокировку исходящего SMTP-порта `465` для сервера `92.51.38.32` в Timeweb Cloud. Пароль и его хеш в журнал не записывались.
 - После ответа поддержки исходящий порт `465` открыт. Повторный тест прямо со stage: TLS-подключение, SMTP-авторизация и отправка тестового письма `info@ze.studio` -> `info@ze.studio` приняты Яндексом. Получение письма во входящих отдельно не подтверждено. Сервисы остались active, Git worktree clean; код PR #67 не деплоился, флаг не включался. Остались DB/Security review, интеграция и реальный вход сотрудника в Telegram.
+
+### 2026-10-12 - rotate stage admin session secret for staff email OTP
+
+- Причина: OTP diagnostics показала, что карточка сотрудника, рабочая почта, SMTP и `STAFF_EMAIL_OTP_ENABLED` корректны, но `ADMIN_SESSION_SECRET` оставался дефолтным; из-за этого challenge не создавался.
+- Конфигурационный workflow: [Stage Config Admin Session Secret #38236609468](https://github.com/Deddedd11101/hr_bot/actions/runs/38236609468) — успешно. Секрет сгенерирован на stage, записан root-only конфигурацией для web/worker и проверен без вывода значения. Существующие admin-сессии инвалидированы.
+- После ротации [Stage Staff OTP Diagnostics #38236660499](https://github.com/Deddedd11101/hr_bot/actions/runs/38236660499) подтвердил: OTP включен, SMTP-настройки присутствуют, секрет не дефолтный, карточка сотрудника и рабочая почта валидны/уникальны, свежих `unavailable` нет.
+- Финальный read-only health-check: [Stage Diagnostics #38236734235](https://github.com/Deddedd11101/hr_bot/actions/runs/38236734235) — `0 failing checks`; web/worker/WireGuard/Caddy active, Telegram route, bot identity и HTTPS smoke в норме. Предыдущий запуск с окном логов 5 минут видел только старый traceback от неудачной попытки до ротации.
+- База, SMTP-значения и Telegram-привязки не изменялись. Осталась пользовательская приемка: повторить `/start` и пройти отправку кода, не передавая сам код в чат.
