@@ -154,6 +154,7 @@ function SelectField(props: {
     onChange: any;
     placeholder: string;
     options: Array<{ value: string; label: string }> | string[];
+    scrollEndPadding?: boolean;
 }) {
     const normalizedOptions = props.options.map(function (item) {
         return typeof item === "string" ? { value: item, label: item } : item;
@@ -172,7 +173,7 @@ function SelectField(props: {
                 <SelectValue placeholder={props.placeholder} />
             </SelectTrigger>
             <SelectContent>
-                <SelectGroup>
+                <SelectGroup className={props.scrollEndPadding ? "pb-8" : undefined}>
                     {selectItems.map(function (option) {
                         return (
                             <SelectItem value={option.value} key={option.value}>
@@ -687,6 +688,7 @@ export function EmployeeProfileSection(props: any) {
                                 onChange={handleChange}
                                 placeholder="Не указана"
                                 options={options.employee_role_values}
+                                scrollEndPadding
                             />
                         </Field>
                         <Field>
