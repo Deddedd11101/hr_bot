@@ -1,6 +1,9 @@
 import React from "react";
+import { BriefcaseBusiness, CalendarDays, Send, ShieldCheck } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { PageSection } from "@/components/ui/page-section";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 const GradeTab = React.lazy(() => import("./grade-tab").then(module => ({ default: module.GradeTab })));
 import {
@@ -10,6 +13,7 @@ import {
     updatePayloadState,
 } from "./helpers";
 import { PageDetailHeader } from "@/components/ui/page-header";
+import { CandidateStage } from "./candidate-stage";
 import { EmployeeFeedbackSurveys } from "./feedback-surveys";
 import { type TelegramCustomEmoji, type TelegramTemplateTag } from "@/components/ui/telegram-message-tools";
 import {
@@ -31,6 +35,7 @@ export type EmployeeDetailPageProps = {
 export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
     const { apiUrl, saveUrl, listUrl, flashMessage, flashType } = props;
     const [gradeOpened, setGradeOpened] = React.useState(false);
+    const [activeTab, setActiveTab] = React.useState("overview");
 
     const [state, setState] = React.useState({
         loading: true,
@@ -838,106 +843,80 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
         };
     });
 
+    const operationsProps = {
+        opsState, offerUrl, setOfferUrl, offerFile, setOfferFile, offerDocumentItem,
+        resumeFile, setResumeFile, resumeDocumentItem, payload, form, scheduleForm,
+        setScheduleForm, launchFlowKey, setLaunchFlowKey, fileForm, setFileForm,
+        handleOfferSubmit, handleOfferFileSubmit, handleOfferDelete, handleResumeFileSubmit,
+        handleScheduleSubmit, handleLaunchSubmit, handleFileSubmit, handlePromoteToAdaptation,
+        handleResetBotLinkage, handleDeleteEmployee, hrFileItems, testAssignmentDocumentItem,
+        testExplanationDocumentItem, launchItems, manualLaunchItems, manualBotMessageText,
+        manualBotMessageState, setManualBotMessageText, handleManualBotMessageSubmit,
+        manualBotMessageHistory, manualBotMessageTemplateTags: telegramMessageWorkspace.menu_text_tags,
+        manualBotMessageCustomEmojis: telegramMessageWorkspace.custom_emojis,
+        manualBotMessageInsertRef, manualBotMessageEmojiInsertRef, assignmentHistory, isCandidate,
+    };
+    const profileProps = {
+        form, isCandidate, meta, options: payload.options, workHoursParts, handleChange,
+        handleWorkHoursChange, handleSubmit, saveState, hrNoteDraft, hrNotesHistory,
+        onHrNoteDraftChange: handleHrNoteDraftChange, onFirstWorkdayChange: handleFirstWorkdayChange,
+    };
+
     return (
         <>
-            {/*
-              Статус и этап — свойства записи, а не действия, но полоса
-              заголовка — единственное место, где они видны без прокрутки;
-              компактные бейджи в слоте действий разрешены самой полосой.
-            */}
             <PageDetailHeader
+                className="employee-card-header"
                 title={form.full_name || "Сотрудник #" + form.id}
-                sectionTitle={meta.list_title || (isCandidate ? "Кандидаты" : "Сотрудники")}
+                sectionTitle={isCandidate ? "Кандидаты" : "Сотрудники"}
                 backHref={meta.list_url || listUrl}
+                titleAdornment={form.chat_id ? <span role="img" aria-label="Telegram привязан" title="Telegram привязан" className="shrink-0 text-primary"><ShieldCheck size={19} /></span> : null}
                 actions={
                     <>
                         <Badge variant="secondary">{meta.status_label || "Без статуса"}</Badge>
-                        {isCandidate ? (
-                            <Badge variant="outline">{meta.candidate_work_stage_label || "Без этапа"}</Badge>
-                        ) : (
+                        {!isCandidate ? (
                             <Badge variant="outline">{"Стаж: " + meta.tenure_years + " лет"}</Badge>
-                        )}
+                        ) : null}
+                        <Button type="button" size="sm" variant="outline" onClick={() => setActiveTab("messages")}><Send aria-hidden="true" /> Написать</Button>
                     </>
                 }
             />
-            {/*
-              Полоса заголовка стоит перед стеком, а не внутри: стек ограничен
-              --admin-page-max-width, а разделитель полосы тянется на всё поле.
-              Стек даёт содержимому тот же предел и центр, что у строки полосы,
-              поэтому крошка и первая карточка начинаются с одной вертикали —
-              как на списках. До этого предел был снят с контейнера и ничем
-              не заменён: на 2200px карточки начинались на 127px левее крошки.
-            */}
             <div className="admin-page-stack">
-            <EmployeeFlashNotice message={flashState.message} error={flashState.error} />
-            <Tabs defaultValue="profile" className="min-w-0 flex-col" onValueChange={value => { if (value === "grade") setGradeOpened(true); }}>
-            <TabsList variant="line" aria-label="Разделы карточки"><TabsTrigger value="profile">Профиль</TabsTrigger><TabsTrigger value="grade">Грейд</TabsTrigger></TabsList>
-            {/* Профиль и операции — полосы равных долей в стеке (hrbot-ui #27), без прежней дробной сетки. */}
-            <TabsContent value="profile" keepMounted className="admin-page-stack min-w-0">
-                    <EmployeeProfileSection
-                        form={form}
-                        isCandidate={isCandidate}
-                        meta={meta}
-                        options={payload.options}
-                        workHoursParts={workHoursParts}
-                        handleChange={handleChange}
-                        handleWorkHoursChange={handleWorkHoursChange}
-                        handleSubmit={handleSubmit}
-                        saveState={saveState}
-                        hrNoteDraft={hrNoteDraft}
-                        hrNotesHistory={hrNotesHistory}
-                        onHrNoteDraftChange={handleHrNoteDraftChange}
-                        onFirstWorkdayChange={handleFirstWorkdayChange}
-                    />
-                {!isCandidate && <EmployeeFeedbackSurveys employeeId={Number(form.id)} legacyUrl={form.adaptation_feedback_url} />}
-                <EmployeeOperationsSection
-                    opsState={opsState}
-                    offerUrl={offerUrl}
-                    setOfferUrl={setOfferUrl}
-                    offerFile={offerFile}
-                    setOfferFile={setOfferFile}
-                    offerDocumentItem={offerDocumentItem}
-                    resumeFile={resumeFile}
-                    setResumeFile={setResumeFile}
-                    resumeDocumentItem={resumeDocumentItem}
-                    payload={payload}
-                    form={form}
-                    scheduleForm={scheduleForm}
-                    setScheduleForm={setScheduleForm}
-                    launchFlowKey={launchFlowKey}
-                    setLaunchFlowKey={setLaunchFlowKey}
-                    fileForm={fileForm}
-                    setFileForm={setFileForm}
-                    handleOfferSubmit={handleOfferSubmit}
-                    handleOfferFileSubmit={handleOfferFileSubmit}
-                    handleOfferDelete={handleOfferDelete}
-                    handleResumeFileSubmit={handleResumeFileSubmit}
-                    handleScheduleSubmit={handleScheduleSubmit}
-                    handleLaunchSubmit={handleLaunchSubmit}
-                    handleFileSubmit={handleFileSubmit}
-                    handlePromoteToAdaptation={handlePromoteToAdaptation}
-                    handleResetBotLinkage={handleResetBotLinkage}
-                    handleDeleteEmployee={handleDeleteEmployee}
-                    hrFileItems={hrFileItems}
-                    testAssignmentDocumentItem={testAssignmentDocumentItem}
-                    testExplanationDocumentItem={testExplanationDocumentItem}
-                    launchItems={launchItems}
-                    manualLaunchItems={manualLaunchItems}
-                    manualBotMessageText={manualBotMessageText}
-                    manualBotMessageState={manualBotMessageState}
-                    setManualBotMessageText={setManualBotMessageText}
-                    handleManualBotMessageSubmit={handleManualBotMessageSubmit}
-                    manualBotMessageHistory={manualBotMessageHistory}
-                    manualBotMessageTemplateTags={telegramMessageWorkspace.menu_text_tags}
-                    manualBotMessageCustomEmojis={telegramMessageWorkspace.custom_emojis}
-                    manualBotMessageInsertRef={manualBotMessageInsertRef}
-                    manualBotMessageEmojiInsertRef={manualBotMessageEmojiInsertRef}
-                    assignmentHistory={assignmentHistory}
-                    isCandidate={isCandidate}
-                />
-            </TabsContent>
-            <TabsContent value="grade" keepMounted className="admin-page-surface min-w-0 p-4">{gradeOpened && <React.Suspense fallback={<p role="status">Загрузка грейда...</p>}><GradeTab employeeId={Number(form.id)} /></React.Suspense>}</TabsContent>
-            </Tabs>
+                <div className="employee-card-meta">
+                    <span><BriefcaseBusiness aria-hidden="true" />{form.desired_position || "Должность не указана"}</span>
+                    {form.first_workday ? <span><CalendarDays aria-hidden="true" />{isCandidate ? "Плановый выход" : "Первый день"}: {form.first_workday}</span> : null}
+                    {form.chat_handle ? <span><Send aria-hidden="true" />{form.chat_handle}</span> : null}
+                </div>
+                {isCandidate ? <CandidateStage value={form.candidate_work_stage || ""} label={meta.candidate_work_stage_label || "Не указан"} /> : null}
+                <EmployeeFlashNotice message={flashState.message} error={flashState.error} />
+                <Tabs value={activeTab} onValueChange={value => { setActiveTab(value); if (value === "grade") setGradeOpened(true); }} className="min-w-0 flex-col">
+                    <div className="employee-card-tabs-scroll"><TabsList variant="line" aria-label="Разделы карточки">
+                        <TabsTrigger value="overview">Обзор</TabsTrigger>
+                        {isCandidate ? <TabsTrigger value="test">Тестовое</TabsTrigger> : null}
+                        <TabsTrigger value="scenarios">Сценарии</TabsTrigger>
+                        <TabsTrigger value="messages">Сообщения</TabsTrigger>
+                        <TabsTrigger value="files">Файлы</TabsTrigger>
+                        <TabsTrigger value="history">История</TabsTrigger>
+                        {!isCandidate ? <TabsTrigger value="adaptation">Адаптация</TabsTrigger> : null}
+                        {!isCandidate ? <TabsTrigger value="grade">Грейд</TabsTrigger> : null}
+                    </TabsList></div>
+                    <TabsContent value="overview" keepMounted className="admin-page-stack min-w-0">
+                        <EmployeeProfileSection {...profileProps} view="overview" />
+                        <EmployeeOperationsSection {...operationsProps} view="overview" />
+                    </TabsContent>
+                    {isCandidate ? <TabsContent value="test" keepMounted className="admin-page-stack min-w-0">
+                        <PageSection title="Тестовое задание"><p className="text-sm text-muted-foreground">Дедлайн: {form.test_task_due_at || "Не указан"}. Ответ кандидата отображается ниже после получения файла, видео или ссылки.</p></PageSection>
+                        <EmployeeOperationsSection {...operationsProps} view="test" />
+                    </TabsContent> : null}
+                    <TabsContent value="scenarios" keepMounted className="admin-page-stack min-w-0">
+                        <EmployeeOperationsSection {...operationsProps} view="scenarios" />
+                        {!isCandidate ? <EmployeeFeedbackSurveys employeeId={Number(form.id)} legacyUrl={form.adaptation_feedback_url} /> : null}
+                    </TabsContent>
+                    <TabsContent value="messages" keepMounted className="admin-page-stack min-w-0"><EmployeeOperationsSection {...operationsProps} view="messages" /></TabsContent>
+                    <TabsContent value="files" keepMounted className="admin-page-stack min-w-0"><EmployeeOperationsSection {...operationsProps} view="files" /></TabsContent>
+                    <TabsContent value="history" keepMounted className="admin-page-stack min-w-0"><EmployeeOperationsSection {...operationsProps} view="history" /></TabsContent>
+                    {!isCandidate ? <TabsContent value="adaptation" keepMounted className="admin-page-stack min-w-0"><EmployeeProfileSection {...profileProps} view="adaptation" /></TabsContent> : null}
+                    {!isCandidate ? <TabsContent value="grade" keepMounted className="admin-page-surface min-w-0 p-4">{gradeOpened && <React.Suspense fallback={<p role="status">Загрузка грейда...</p>}><GradeTab employeeId={Number(form.id)} /></React.Suspense>}</TabsContent> : null}
+                </Tabs>
             </div>
         </>
     );

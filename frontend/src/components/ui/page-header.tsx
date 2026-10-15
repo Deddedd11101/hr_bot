@@ -107,10 +107,11 @@ export interface PageDetailHeaderProps {
   backHref?: string;
   /** Компактные действия справа от имени. */
   actions?: React.ReactNode;
+  titleAdornment?: React.ReactNode;
   className?: string;
 }
 
-export function PageDetailHeader({ title, sectionTitle, onBack, backHref, actions, className }: PageDetailHeaderProps) {
+export function PageDetailHeader({ title, sectionTitle, onBack, backHref, actions, titleAdornment, className }: PageDetailHeaderProps) {
   return (
     <header
       className={cn(
@@ -138,7 +139,10 @@ export function PageDetailHeader({ title, sectionTitle, onBack, backHref, action
             </BreadcrumbItem>
             <BreadcrumbSeparator className="shrink-0">/</BreadcrumbSeparator>
             <BreadcrumbItem className="min-w-0">
-              <h1 className="min-w-0 truncate font-semibold text-foreground">{title}</h1>
+              <div className="flex min-w-0 items-center gap-2">
+                <h1 className="min-w-0 truncate font-semibold text-foreground">{title}</h1>
+                {titleAdornment}
+              </div>
             </BreadcrumbItem>
           </BreadcrumbList>
         </Breadcrumb>
