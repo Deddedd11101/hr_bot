@@ -632,15 +632,11 @@ export function EmployeeProfileSection(props: any) {
         onHrNoteDraftChange,
         onFirstWorkdayChange,
     } = props;
+    const view = props.view || "overview";
     return (
-        /*
-         * Форма записи оборачивает свои полосы и задаёт им тот же шаг, что
-         * у стека страницы: для стека она один ребёнок, для полос — родитель.
-         * Кнопка «Сохранить» остаётся в модуле «Доступ к боту», поэтому все
-         * модули формы должны лежать внутри неё, а модули операций — снаружи.
-         */
         <form className="grid gap-[var(--admin-page-gap)]" onSubmit={handleSubmit}>
-            <PageRow columns={isCandidate ? 2 : 3}>
+            <PageRow columns={isCandidate ? 2 : view === "adaptation" ? 1 : 2}>
+            {view === "overview" ? (
             <PageSection title={isCandidate ? "Профиль кандидата" : "Профиль сотрудника"}>
                     <FieldGroup className="employee-field-grid">
                         <Field>
@@ -698,16 +694,11 @@ export function EmployeeProfileSection(props: any) {
                                 onChange={handleChange}
                             />
                         </Field>
-                        <Field>
-                            <FieldLabel>Telegram-привязка</FieldLabel>
-                            <div className="employee-readonly-field">
-                                {form.chat_id ? "Привязан к боту" : "Не привязан. Нужен Start в боте."}
-                            </div>
-                        </Field>
                     </FieldGroup>
             </PageSection>
+            ) : null}
 
-            {isCandidate ? (
+            {isCandidate && view === "overview" ? (
                 <>
                     <PageSection title="Найм" contentClassName="gap-4">
                             <FieldGroup className="employee-field-grid">
@@ -739,8 +730,9 @@ export function EmployeeProfileSection(props: any) {
                             />
                     </PageSection>
                 </>
-            ) : (
+            ) : !isCandidate ? (
                 <>
+                    {view === "overview" ? (
                     <PageSection title="Рабочий профиль" contentClassName="gap-4">
                             <FieldGroup className="employee-field-grid">
                                 <Field>
@@ -807,7 +799,9 @@ export function EmployeeProfileSection(props: any) {
                                 />
                             </div>
                     </PageSection>
+                    ) : null}
 
+                    {view === "adaptation" ? (
                     <PageSection title="Сопровождение" contentClassName="gap-4">
                             <FieldGroup className="employee-field-grid">
                                 <Field>
@@ -901,30 +895,26 @@ export function EmployeeProfileSection(props: any) {
                                 title="Согласие на ПДн"
                             />
                     </PageSection>
+                    ) : null}
                 </>
-            )}
+            ) : null}
             </PageRow>
 
-            <PageRow columns={2}>
+            {view === "overview" ? <>
             <HrNotesSection
                 value={hrNoteDraft}
                 items={hrNotesHistory}
                 onChange={onHrNoteDraftChange}
             />
 
-            <PageSection title="Доступ к боту" contentClassName="gap-4">
+            <div className="employee-profile-footer">
                         <CheckboxField
                             name="is_bot_blocked"
                             checked={!!form.is_bot_blocked}
                             onChange={handleChange}
                             title="Заблокировать доступ к чат-боту"
                         />
-                    {/*
-                      Подвал модуля: статус сохранения и кнопка отправки формы.
-                      Пустота тянет тело до высоты соседа по полосе, и кнопка
-                      встаёт по низу — mt-auto.
-                    */}
-                    <div className="mt-auto flex items-center justify-between gap-3">
+                    <div className="employee-save-action">
                         <span
                             role="status"
                             className={cn("text-sm text-muted-foreground", saveState.error && "text-destructive")}
@@ -935,8 +925,11 @@ export function EmployeeProfileSection(props: any) {
                             {saveState.saving ? "Сохраняю..." : "Сохранить"}
                         </Button>
                     </div>
-            </PageSection>
-            </PageRow>
+            </div>
+            </> : <div className="employee-save-action">
+                <span role="status" className={cn("text-sm text-muted-foreground", saveState.error && "text-destructive")}>{saveState.message || " "}</span>
+                <Button type="submit" disabled={saveState.saving}>{saveState.saving ? "Сохраняю..." : "Сохранить"}</Button>
+            </div>}
         </form>
     );
 }
@@ -987,6 +980,7 @@ export function EmployeeOperationsSection(props: any) {
         assignmentHistory,
         isCandidate,
     } = props;
+    const view = props.view || "all";
     const canPromoteToAdaptation = isCandidate && !!String(form?.first_workday || "").trim();
     const scenarioItems = [{ value: EMPTY_SELECT_VALUE, label: "Выберите сценарий" }].concat(
         payload.options.scenarios.map(function (item: any) {
@@ -1010,8 +1004,8 @@ export function EmployeeOperationsSection(props: any) {
                 </Alert>
             ) : null}
 
-            <PageRow columns={isCandidate ? 4 : 3}>
-            {isCandidate ? (
+            {(view === "all" || view === "messages" || view === "scenarios" || (view === "overview" && isCandidate)) ? <PageRow columns={view === "all" ? (isCandidate ? 4 : 3) : view === "scenarios" ? 2 : 1}>
+            {isCandidate && (view === "all" || view === "overview") ? (
                 <PageSection title="Переход в адаптацию" contentClassName="gap-4">
                         <p className="text-sm text-muted-foreground">
                             Переводит кандидата в статус адаптации и подготавливает даты адаптационного периода.
@@ -1039,7 +1033,7 @@ export function EmployeeOperationsSection(props: any) {
                 </PageSection>
             ) : null}
 
-            <ManualBotMessageSection
+            {(view === "all" || view === "messages") ? <ManualBotMessageSection
                 form={form}
                 messageText={manualBotMessageText}
                 sendState={manualBotMessageState}
@@ -1049,9 +1043,9 @@ export function EmployeeOperationsSection(props: any) {
                 customEmojis={manualBotMessageCustomEmojis}
                 insertRef={manualBotMessageInsertRef}
                 insertEmojiRef={manualBotMessageEmojiInsertRef}
-            />
+            /> : null}
 
-            <PageSection title="Сценарии" contentClassName="gap-4">
+            {(view === "all" || view === "scenarios") ? <PageSection title="Сценарии" contentClassName="gap-4">
                     <form onSubmit={handleLaunchSubmit}>
                         <FieldGroup>
                             <Field>
@@ -1134,14 +1128,19 @@ export function EmployeeOperationsSection(props: any) {
                             </Button>
                         </FieldGroup>
                     </form>
-            </PageSection>
+            </PageSection> : null}
 
-            <PageSection title="Запланированные сценарии" counter={launchItems.length}>
+            {(view === "all" || view === "scenarios") ? <PageSection title="Запланированные сценарии" counter={launchItems.length}>
                     <ScenarioList items={launchItems} />
-            </PageSection>
-            </PageRow>
+            </PageSection> : null}
+            </PageRow> : null}
 
-            <PageRow columns={4}>
+            {view === "scenarios" ? <PageSection title="История ручных запусков" counter={manualLaunchItems.length}>
+                <ScenarioList items={manualLaunchItems} />
+            </PageSection> : null}
+
+            {(view === "all" || view === "files" || view === "test") ? <PageRow columns={view === "test" ? 1 : view === "files" ? 2 : 4}>
+            {(view === "all" || view === "files") ? <>
             <DocumentList
                 title="Резюме"
                 items={resumeDocumentItem ? [resumeDocumentItem] : []}
@@ -1180,13 +1179,15 @@ export function EmployeeOperationsSection(props: any) {
                     </FieldGroup>
                 </form>
             </DocumentList>
+            </> : null}
 
-            <DocumentList
-                title="Тестовое задание"
+            {(view === "all" || view === "files" || view === "test") ? <DocumentList
+                title={view === "test" ? "Ответ кандидата" : "Тестовое задание"}
                 items={[testAssignmentDocumentItem, testExplanationDocumentItem].filter(Boolean)}
                 emptyTitle="Ответ кандидата пока не получен"
-            />
+            /> : null}
 
+            {(view === "all" || view === "files") ? <>
             <DocumentList
                 title="Оффер"
                 items={offerDocumentItem ? [offerDocumentItem] : []}
@@ -1286,19 +1287,22 @@ export function EmployeeOperationsSection(props: any) {
                         </FieldGroup>
                     </form>
             </DocumentList>
-            </PageRow>
+            </> : null}
+            </PageRow> : null}
 
-            <PageRow columns={3}>
+            {(view === "all" || view === "history" || view === "messages") ? <PageRow columns={view === "all" ? 3 : 1}>
+            {(view === "all" || view === "history") ? (
             <AssignmentHistorySection items={assignmentHistory} />
+            ) : null}
 
-            <ManualBotMessageHistorySection items={manualBotMessageHistory} />
+            {(view === "all" || view === "messages") ? <ManualBotMessageHistorySection items={manualBotMessageHistory} /> : null}
 
-            <PageSection title="История ручных запусков" counter={manualLaunchItems.length}>
+            {(view === "all" || view === "history") ? <PageSection title="История ручных запусков" counter={manualLaunchItems.length}>
                     <ScenarioList items={manualLaunchItems} />
-            </PageSection>
-            </PageRow>
+            </PageSection> : null}
+            </PageRow> : null}
 
-            <PageRow columns={1}>
+            {(view === "all" || view === "overview") ? <PageRow columns={1}>
             <PageSection title="Редкие действия" className="employee-danger-card">
                 <div className="employee-action-row">
                     <ConfirmAction
@@ -1325,7 +1329,7 @@ export function EmployeeOperationsSection(props: any) {
                     </ConfirmAction>
                 </div>
             </PageSection>
-            </PageRow>
+            </PageRow> : null}
         </>
     );
 }
