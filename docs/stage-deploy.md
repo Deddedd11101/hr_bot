@@ -170,6 +170,8 @@ Read-only проверка стенда без checkout, restart и записи
 - HTTPS `/app/employees`, `/app/flows/workspace-v2`, `/app/grades` -> `200`/`303`;
 - worker logs за `worker_log_minutes` (default 5) без `TelegramNetworkError`, `Request timeout`, `Traceback`, `Unclosed client session`.
 
+Для диагностики ошибки worker можно передать `-f traceback_frames=true -f worker_log_minutes=20` (допустимо 1–60 минут). В лог Actions выводятся только пути Python-файлов, номера строк и классы исключений, без текста сообщений и данных карточек. Наличие `Traceback` по-прежнему делает run failed.
+
 Любое несовпадение делает run failed, а не только печатает: `success` здесь
 означает, что все проверки прошли. Запуск:
 

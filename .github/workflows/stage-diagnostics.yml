@@ -11,6 +11,10 @@ on:
         description: "За сколько минут смотреть worker logs на Telegram/network ошибки"
         required: false
         default: "5"
+      traceback_frames:
+        description: "Показать только Python frames и класс исключения, без текста логов"
+        required: false
+        default: "false"
 
 concurrency:
   group: deploy-stage
@@ -21,6 +25,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       WORKER_LOG_MINUTES: ${{ inputs.worker_log_minutes }}
+      TRACEBACK_FRAMES: ${{ inputs.traceback_frames }}
 
     steps:
       - name: Read-only stage checks over SSH
@@ -30,7 +35,7 @@ jobs:
           username: ${{ secrets.STAGE_USERNAME }}
           password: ${{ secrets.STAGE_PASSWORD }}
           port: ${{ secrets.STAGE_PORT }}
-          envs: WORKER_LOG_MINUTES
+          envs: WORKER_LOG_MINUTES,TRACEBACK_FRAMES
           script: |
             set -eu
             cd "${{ secrets.STAGE_APP_DIR }}"
@@ -122,6 +127,39 @@ jobs:
               failures=$((failures + 1))
             else
               echo "no Telegram/network errors"
+            fi
+
+            if [ "$TRACEBACK_FRAMES" = "true" ]; then
+              echo "== Sanitized worker traceback frames =="
+              python3 - <<'PY'
+            import os
+            import re
+            import subprocess
+
+            minutes = int(os.environ["WORKER_LOG_MINUTES"])
+            if not 1 <= minutes <= 60:
+                raise SystemExit("worker_log_minutes must be between 1 and 60")
+            output = subprocess.check_output(
+                ["journalctl", "-u", "hr-bot-worker", "--since", f"{minutes} minutes ago", "--no-pager", "-o", "cat", "-n", "1000"],
+                text=True,
+            )
+            in_traceback = False
+            for line in output.splitlines():
+                if line.startswith("Traceback (most recent call last):"):
+                    in_traceback = True
+                    print("Traceback:")
+                    continue
+                if not in_traceback:
+                    continue
+                frame = re.match(r'\s*File "([^"]+)", line (\d+), in ([\w<>]+)', line)
+                if frame:
+                    print(f"  {frame.group(1)}:{frame.group(2)} in {frame.group(3)}")
+                    continue
+                error = re.match(r'^([A-Za-z_][\w.]*(?:Error|Exception|Warning))(?::|$)', line)
+                if error:
+                    print(f"  {error.group(1)}")
+                    in_traceback = False
+              PY
             fi
 
             echo "== Result: ${failures} failing check(s) =="
