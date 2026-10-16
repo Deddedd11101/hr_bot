@@ -34,6 +34,14 @@ source_of_truth: true
 
 ## Записи
 
+### 2026-10-16 11:14 MSK - app deploy - московское время плановых запусков
+
+- Deploy ref: `stage`; deployed SHA: `2af05c31cff860c96921de1884a593e9d42d2b7a`; PR [#91](https://github.com/Deddedd11101/hr_bot/pull/91); [Deploy Stage 38872142258](https://github.com/Deddedd11101/hr_bot/actions/runs/38872142258) -> success.
+- Админские плановые запуски из карточки и массовые сценарии/сообщения теперь сравниваются с временем `TIMEZONE`; внутренние trigger/follow-up запросы сохраняют прежнюю шкалу времени. БД не менялась.
+- CI, 208 локальных backend smoke-тестов, compileall, Ruff F821, docs check и deploy preflight прошли. До checkout созданы и проверены SQLite backup `backups/hr_bot.before-deploy.20261016-081400.db` и snapshot сценариев `backups/scenarios.before-deploy.20261016-081400.json`.
+- Workflow подтвердил активность web/worker/WireGuard, HTTP `/app/employees` и `/app/flows/workspace-v2` -> `303`, доступность Telegram API; свежих Telegram network errors в worker не обнаружено.
+- Открытая приёмка: фактическую доставку планового сценария в Telegram после наступления времени ещё не проверяли.
+
 ### 2026-10-15 12:36 MSK - app deploy - вкладки карточки человека
 
 - Deploy ref: `stage`; deployed SHA: `5d51f0052505bc1a82761d5d57c5b73e49f242f8`; PR [#90](https://github.com/Deddedd11101/hr_bot/pull/90); [Deploy Stage 38713987754](https://github.com/Deddedd11101/hr_bot/actions/runs/38713987754) -> success.
