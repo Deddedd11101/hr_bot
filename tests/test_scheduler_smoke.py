@@ -6,9 +6,9 @@ from uuid import uuid4
 from app.config import settings
 from app.database import SessionLocal, init_db
 from app.messaging.identity import set_primary_chat_id
-from app.models import Employee, EmployeeMessengerAccount, FlowLaunchRequest, FlowStepTemplate, OnboardingEvent, ScenarioProgress, ScenarioTemplate
-from app.scheduler import run_scheduled_step, schedule_all_employees, schedule_employee_scenario
-from app.scenario_engine import send_step
+from app.models import Employee, EmployeeMessengerAccount, FlowLaunchRequest, FlowStepTemplate, MassMessageAction, MassScenarioAction, OnboardingEvent, ScenarioProgress, ScenarioTemplate
+from app.scheduler import _load_pending_flow_requests, _load_pending_mass_message_actions, _load_pending_mass_scenario_actions, run_scheduled_step, schedule_all_employees, schedule_employee_scenario
+from app.scenario_engine import SINGLE_STEP_REQUEST_PREFIX, send_step
 
 
 class _FakeScheduler:
@@ -63,6 +63,8 @@ class SchedulerSmokeTests(unittest.IsolatedAsyncioTestCase):
 
     def tearDown(self) -> None:
         with SessionLocal() as db:
+            db.query(MassScenarioAction).filter(MassScenarioAction.flow_key == self.scenario_key).delete(synchronize_session=False)
+            db.query(MassMessageAction).filter(MassMessageAction.message_text == self.scenario_key).delete(synchronize_session=False)
             if self.employee_id is not None:
                 db.query(OnboardingEvent).filter(OnboardingEvent.employee_id == self.employee_id).delete(synchronize_session=False)
                 db.query(FlowLaunchRequest).filter(FlowLaunchRequest.employee_id == self.employee_id).delete(synchronize_session=False)
@@ -74,6 +76,48 @@ class SchedulerSmokeTests(unittest.IsolatedAsyncioTestCase):
             db.query(FlowStepTemplate).filter(FlowStepTemplate.flow_key == self.scenario_key).delete(synchronize_session=False)
             db.query(ScenarioTemplate).filter(ScenarioTemplate.scenario_key == self.scenario_key).delete(synchronize_session=False)
             db.commit()
+
+    async def test_scheduled_queues_use_moscow_time_while_internal_requests_use_utc(self) -> None:
+        self._create_scenario_with_employee()
+        utc_instant = datetime(2026, 10, 16, 9, 5)
+        scheduled_due = datetime(2026, 10, 16, 12, 0)
+        scheduled_future = datetime(2026, 10, 16, 12, 10)
+        with SessionLocal() as db:
+            requests = [
+                FlowLaunchRequest(employee_id=self.employee_id, flow_key=self.scenario_key, requested_at=scheduled_due, launch_type="scheduled"),
+                FlowLaunchRequest(employee_id=self.employee_id, flow_key=self.scenario_key, requested_at=scheduled_future, launch_type="scheduled"),
+                FlowLaunchRequest(employee_id=self.employee_id, flow_key=self.scenario_key, requested_at=datetime(2026, 10, 16, 9, 0), launch_type="trigger"),
+                FlowLaunchRequest(employee_id=self.employee_id, flow_key=self.scenario_key, requested_at=datetime(2026, 10, 16, 9, 10), launch_type="trigger"),
+                FlowLaunchRequest(employee_id=self.employee_id, flow_key=self.scenario_key, requested_at=datetime(2026, 10, 16, 9, 0), launch_type="scheduled", skip_step_key=f"{SINGLE_STEP_REQUEST_PREFIX}first_step"),
+                FlowLaunchRequest(employee_id=self.employee_id, flow_key=self.scenario_key, requested_at=datetime(2026, 10, 16, 9, 10), launch_type="scheduled", skip_step_key=f"{SINGLE_STEP_REQUEST_PREFIX}second_step"),
+            ]
+            scenario_actions = [
+                MassScenarioAction(flow_key=self.scenario_key, scenario_kind="scenario", requested_at=value, launch_type="scheduled", created_at=utc_instant)
+                for value in (scheduled_due, scheduled_future)
+            ]
+            message_actions = [
+                MassMessageAction(message_text=self.scenario_key, requested_at=value, launch_type="scheduled", created_at=utc_instant)
+                for value in (scheduled_due, scheduled_future)
+            ]
+            db.add_all([*requests, *scenario_actions, *message_actions])
+            db.commit()
+
+            with patch.object(settings, "TIMEZONE", "Europe/Moscow"), patch("app.scheduler.datetime") as scheduler_datetime, patch("app.scheduler.utc_now", return_value=utc_instant):
+                scheduler_datetime.now.side_effect = lambda tz=None: utc_instant.replace(tzinfo=UTC).astimezone(tz) if tz else utc_instant
+                due_request_ids = {item.id for item in _load_pending_flow_requests(db)}
+                due_scenario_ids = {item.id for item in _load_pending_mass_scenario_actions(db)}
+                due_message_ids = {item.id for item in _load_pending_mass_message_actions(db)}
+
+            self.assertIn(requests[0].id, due_request_ids)
+            self.assertNotIn(requests[1].id, due_request_ids)
+            self.assertIn(requests[2].id, due_request_ids)
+            self.assertNotIn(requests[3].id, due_request_ids)
+            self.assertIn(requests[4].id, due_request_ids)
+            self.assertNotIn(requests[5].id, due_request_ids)
+            self.assertIn(scenario_actions[0].id, due_scenario_ids)
+            self.assertNotIn(scenario_actions[1].id, due_scenario_ids)
+            self.assertIn(message_actions[0].id, due_message_ids)
+            self.assertNotIn(message_actions[1].id, due_message_ids)
 
     def _create_scenario_with_employee(self) -> tuple[Employee, ScenarioTemplate]:
         now = datetime.now(UTC).replace(tzinfo=None)

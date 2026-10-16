@@ -227,6 +227,8 @@ Scenario engine превращает scenario templates плюс employee state 
 - если timed step был вызван самим scheduler, `send_step` не должен самостоятельно queue'ить следующий `specific_time` шаг через `FlowLaunchRequest`: дальнейшее расписание в этом режиме принадлежит scheduler, иначе возникают дубли и late-start skips.
 - перед фактической отправкой scheduler обязан повторно проверить, что сценарий все еще совместим с текущим состоянием карточки; stale jobs и pending requests после смены `employee_stage` / даты-якоря должны silently отбрасываться, а не утекать в чат.
 
+Запуски, вручную запланированные в карточке, и плановые массовые сценарии/опросы/сообщения используют локальное время `TIMEZONE` (по умолчанию `Europe/Moscow`). Сохраненные `requested_at` у этих админских `scheduled` строк остаются naive wall time; worker сравнивает их с текущим временем указанной зоны, а не с системным временем сервера. Внутренние launch requests (`trigger`, `status_transition`, follow-up с `skip_step_key`) сохраняют прежнюю UTC-naive семантику на stage и не переинтерпретируются как московское время. Существующие pending admin scheduled rows не переписываются: они исполняются согласно введенному времени.
+
 ## Editor guardrails
 
 - В React scenario workspace тип ответа теперь явно показывает, блокирует ли шаг поток.
