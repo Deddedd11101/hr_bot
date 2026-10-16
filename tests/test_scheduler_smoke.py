@@ -1,3 +1,4 @@
+import asyncio
 import unittest
 from datetime import UTC, date, datetime
 from unittest.mock import patch
@@ -76,6 +77,28 @@ class SchedulerSmokeTests(unittest.IsolatedAsyncioTestCase):
             db.query(FlowStepTemplate).filter(FlowStepTemplate.flow_key == self.scenario_key).delete(synchronize_session=False)
             db.query(ScenarioTemplate).filter(ScenarioTemplate.scenario_key == self.scenario_key).delete(synchronize_session=False)
             db.commit()
+
+    async def test_scan_and_scheduled_step_do_not_run_concurrently(self) -> None:
+        scan_started = asyncio.Event()
+        release_scan = asyncio.Event()
+        step_started = asyncio.Event()
+
+        async def scan_stub(_scheduler, _bot):
+            scan_started.set()
+            await release_scan.wait()
+
+        async def step_stub(_bot, _employee_id, _scenario_key, _step_key, _scheduled_at):
+            step_started.set()
+
+        with patch("app.scheduler._scheduler_execution_lock", asyncio.Lock()), patch("app.scheduler._scan_employees_and_requests", side_effect=scan_stub), patch("app.scheduler._run_scheduled_step", side_effect=step_stub):
+            scan_task = asyncio.create_task(schedule_all_employees(None, None))
+            await scan_started.wait()
+            step_task = asyncio.create_task(run_scheduled_step(None, 1, "test", "step", datetime(2026, 10, 16)))
+            await asyncio.sleep(0)
+            self.assertFalse(step_started.is_set())
+            release_scan.set()
+            await asyncio.gather(scan_task, step_task)
+            self.assertTrue(step_started.is_set())
 
     async def test_scheduled_queues_use_moscow_time_while_internal_requests_use_utc(self) -> None:
         self._create_scenario_with_employee()
