@@ -177,6 +177,36 @@ class SchedulerSmokeTests(unittest.IsolatedAsyncioTestCase):
             db.refresh(scenario)
             return employee, scenario
 
+    async def test_explicit_scheduled_launch_without_first_workday_is_queued(self) -> None:
+        employee, scenario = self._create_scenario_with_employee()
+        scheduler = _FakeScheduler()
+        with SessionLocal() as db:
+            db_employee = db.get(Employee, employee.id)
+            assert db_employee is not None
+            db_employee.first_workday = None
+            request = FlowLaunchRequest(
+                employee_id=employee.id,
+                flow_key=scenario.scenario_key,
+                requested_at=datetime(2025, 1, 1, 12, 0),
+                launch_type="scheduled",
+            )
+            db.add(request)
+            db.commit()
+            request_id = request.id
+
+        with patch.object(settings, "DEMO_MODE", False), patch("app.scheduler._load_all_employees", return_value=[]), patch("app.scheduler._load_scenarios", return_value=[]):
+            await schedule_all_employees(scheduler, bot=None)
+
+        first_job = scheduler.get_job(f"employee-{employee.id}-{scenario.scenario_key}-first_step")
+        self.assertIsNotNone(first_job)
+        with SessionLocal() as db:
+            self.assertIsNotNone(db.get(FlowLaunchRequest, request_id).processed_at)
+            db_employee = db.get(Employee, employee.id)
+            db_scenario = db.query(ScenarioTemplate).filter(ScenarioTemplate.scenario_key == scenario.scenario_key).one()
+            automatic_scheduler = _FakeScheduler()
+            schedule_employee_scenario(db, automatic_scheduler, None, db_employee, db_scenario, set(), manual=False)
+            self.assertEqual(automatic_scheduler.jobs, {})
+
     def test_schedule_employee_scenario_catches_up_first_overdue_step_same_day(self) -> None:
         employee, scenario = self._create_scenario_with_employee()
         scheduler = _FakeScheduler()
