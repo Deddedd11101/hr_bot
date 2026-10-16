@@ -6,6 +6,7 @@ from typing import Optional
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from pytz import timezone as tz_get
+from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
 from .config import settings
@@ -47,43 +48,56 @@ def _get_tz():
     return tz_get(settings.TIMEZONE)
 
 
+def _local_now_naive() -> datetime:
+    return datetime.now(_get_tz()).replace(tzinfo=None)
+
+
 def _load_all_employees(db: Session) -> list[Employee]:
     return list(db.query(Employee).all())
 
 
 def _load_pending_flow_requests(db: Session) -> list[FlowLaunchRequest]:
-    now = datetime.now()
+    local_now = _local_now_naive()
+    utc_now_value = utc_now()
     return list(
         db.query(FlowLaunchRequest)
         .filter(
             FlowLaunchRequest.processed_at.is_(None),
-            FlowLaunchRequest.requested_at <= now,
+            or_(
+                and_(
+                    FlowLaunchRequest.launch_type == "scheduled",
+                    FlowLaunchRequest.skip_step_key.is_(None),
+                    FlowLaunchRequest.requested_at <= local_now,
+                ),
+                and_(
+                    or_(FlowLaunchRequest.launch_type != "scheduled", FlowLaunchRequest.skip_step_key.isnot(None)),
+                    FlowLaunchRequest.requested_at <= utc_now_value,
+                ),
+            ),
         )
         .all()
     )
 
 
 def _load_pending_mass_scenario_actions(db: Session) -> list[MassScenarioAction]:
-    now = datetime.now()
     return list(
         db.query(MassScenarioAction)
         .filter(
             MassScenarioAction.processed_at.is_(None),
             MassScenarioAction.launch_type == "scheduled",
-            MassScenarioAction.requested_at <= now,
+            MassScenarioAction.requested_at <= _local_now_naive(),
         )
         .all()
     )
 
 
 def _load_pending_mass_message_actions(db: Session) -> list[MassMessageAction]:
-    now = datetime.now()
     return list(
         db.query(MassMessageAction)
         .filter(
             MassMessageAction.processed_at.is_(None),
             MassMessageAction.launch_type == "scheduled",
-            MassMessageAction.requested_at <= now,
+            MassMessageAction.requested_at <= _local_now_naive(),
         )
         .all()
     )

@@ -34,6 +34,14 @@ source_of_truth: true
 
 ## Записи
 
+### 2026-10-15 12:36 MSK - app deploy - вкладки карточки человека
+
+- Deploy ref: `stage`; deployed SHA: `5d51f0052505bc1a82761d5d57c5b73e49f242f8`; PR [#90](https://github.com/Deddedd11101/hr_bot/pull/90); [Deploy Stage 38713987754](https://github.com/Deddedd11101/hr_bot/actions/runs/38713987754) -> success.
+- Карточка кандидата/сотрудника распределена по вкладкам; сохранены формы и действия, добавлена шкала текущего этапа кандидата. Backend/API/DB не менялись.
+- PR CI, локальные 147 employee API/feedback tests, TypeScript, повторная воспроизводимая frontend-сборка, docs check и deploy preflight прошли. До checkout созданы SQLite backup `backups/hr_bot.before-deploy.20261015-093616.db` и snapshot сценариев `backups/scenarios.before-deploy.20261015-093616.json`; fingerprint сценариев не изменился.
+- Deploy workflow подтвердил запуск web/worker, HTTP `/app/employees` и `/app/flows/workspace-v2` -> `303`, доступность Telegram API. На следующий день в авторизованной карточке №80 видны новые вкладки и ее плановые запуски; отправка сценариев, сообщения, файлы и destructive actions после выкладки не тестировались.
+- Открытая приемка: сохранение профиля, запуск сценария, отправка сообщения, файлы, обратная связь, сброс привязки и удаление на тестовых карточках. Отдельно обнаружена семантика московского времени плановых запусков, исправление готовится отдельно.
+
 ### 2026-10-09 13:36 MSK - app deploy - свежие Telegram-привязки сотрудников
 
 - Deploy ref: `stage`; deployed SHA: `02daa29379f07551c860d1053a3629b571af79ec`; PR [#86](https://github.com/Deddedd11101/hr_bot/pull/86); [Deploy Stage 37918328982](https://github.com/Deddedd11101/hr_bot/actions/runs/37918328982) -> success.
