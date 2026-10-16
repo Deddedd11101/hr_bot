@@ -157,7 +157,20 @@ jobs:
                     continue
                 error = re.match(r'^([A-Za-z_][\w.]*(?:Error|Exception|Warning))(?::|$)', line)
                 if error:
-                    print(f"  {error.group(1)}")
+                    category = ""
+                    if error.group(1).endswith("OperationalError"):
+                        detail = line.lower()
+                        category = next(
+                            (label for needle, label in (
+                                ("database is locked", "database_locked"),
+                                ("no such column", "missing_column"),
+                                ("no such table", "missing_table"),
+                                ("readonly database", "readonly_database"),
+                                ("disk i/o error", "disk_io_error"),
+                            ) if needle in detail),
+                            "other",
+                        )
+                    print(f"  {error.group(1)}" + (f" category={category}" if category else ""))
                     in_traceback = False
             PY
             fi
