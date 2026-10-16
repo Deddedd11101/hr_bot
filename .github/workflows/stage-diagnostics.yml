@@ -159,7 +159,7 @@ jobs:
                 if error:
                     print(f"  {error.group(1)}")
                     in_traceback = False
-              PY
+            PY
             fi
 
             echo "== Result: ${failures} failing check(s) =="
