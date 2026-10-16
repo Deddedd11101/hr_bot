@@ -34,6 +34,14 @@ source_of_truth: true
 
 ## Записи
 
+### 2026-10-16 12:10 MSK - app deploy - явные плановые запуски без даты-якоря
+
+- Deploy ref: `stage`; deployed SHA: `f35a73e1b3df6bba1fe26373bd64afb53984e14c`; PR [#93](https://github.com/Deddedd11101/hr_bot/pull/93); [Deploy Stage 38878379609](https://github.com/Deddedd11101/hr_bot/actions/runs/38878379609) -> success.
+- Явный запуск, назначенный HR из карточки, больше не пропускается при пустом `first_workday`. Автоматические сценарии по датам-якорям по-прежнему требуют дату. Уже обработанные запросы не повторяются.
+- CI, 209 локальных backend smoke-тестов, compileall, Ruff F821, docs check и deploy preflight прошли. До checkout созданы и проверены SQLite backup `backups/hr_bot.before-deploy.20261016-090942.db` и snapshot сценариев `backups/scenarios.before-deploy.20261016-090942.json`.
+- Workflow подтвердил активность web/worker/WireGuard, HTTP `/app/employees` и `/app/flows/workspace-v2` -> `303`, доступность Telegram API; свежих сетевых ошибок worker нет.
+- Открытая приёмка: фактическая отправка следующего планового сценария карточки №80 в Telegram после 12:15 МСК. Пропущенный запрос на 12:00 автоматически не восстановлен.
+
 ### 2026-10-16 11:14 MSK - app deploy - московское время плановых запусков
 
 - Deploy ref: `stage`; deployed SHA: `2af05c31cff860c96921de1884a593e9d42d2b7a`; PR [#91](https://github.com/Deddedd11101/hr_bot/pull/91); [Deploy Stage 38872142258](https://github.com/Deddedd11101/hr_bot/actions/runs/38872142258) -> success.
