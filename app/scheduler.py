@@ -233,7 +233,7 @@ def schedule_employee_scenario(
         return
 
     anchor_date = scenario_anchor_date(employee, scenario)
-    if not anchor_date:
+    if not anchor_date and not manual:
         return
 
     steps = get_scenario_steps(db, scenario.scenario_key)
@@ -381,7 +381,7 @@ async def schedule_all_employees(scheduler: AsyncIOScheduler, bot) -> None:
             if not matches_role_scope(employee, scenario):
                 request.processed_at = utc_now()
                 continue
-            if (
+            if request.launch_type != "scheduled" and (
                 scenario.trigger_mode not in IMMEDIATE_TRIGGER_MODES
                 and not scenario_anchor_date(employee, scenario)
             ):
