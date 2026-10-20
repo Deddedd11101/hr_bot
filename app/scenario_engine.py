@@ -121,6 +121,10 @@ SCENARIO_NOTIFICATION_TEMPLATE_TAGS = [
 MENU_TEXT_TAGS = [
     *SCENARIO_STEP_TEMPLATE_TAGS,
 ]
+SCENARIO_STEP_TEMPLATE_TAGS.extend([
+    tag for tag in SCENARIO_NOTIFICATION_TEMPLATE_TAGS
+    if tag["template"] in {"{ipr}", "{probation_plan}"}
+])
 TELEGRAM_MESSAGE_CAPABILITIES = {
     "safe_html": True,
     "custom_emoji": {
@@ -369,12 +373,12 @@ def store_survey_answer(
     answer_value: Optional[str],
     file_name: Optional[str] = None,
 ) -> None:
-    if not is_survey(scenario):
+    if not (is_survey(scenario) or step.target_field == "survey_answer"):
         return
     progress = db.query(ScenarioProgress).filter_by(employee_id=employee.id, scenario_key=scenario.scenario_key).first()
     feedback_run_id = progress.feedback_run_id if progress else None
     survey_launch_id = progress.survey_launch_id if progress else None
-    answer = (
+    answer_query = (
         db.query(SurveyAnswer)
         .filter(
             SurveyAnswer.employee_id == employee.id,
@@ -383,9 +387,10 @@ def store_survey_answer(
             SurveyAnswer.feedback_run_id == feedback_run_id,
             SurveyAnswer.survey_launch_id == survey_launch_id,
         )
-        .order_by(SurveyAnswer.id.desc())
-        .first()
     )
+    if step.target_field == "survey_answer" and progress and progress.started_at:
+        answer_query = answer_query.filter(SurveyAnswer.answered_at >= progress.started_at)
+    answer = answer_query.order_by(SurveyAnswer.id.desc()).first()
     if not answer:
         answer = SurveyAnswer(
             employee_id=employee.id,
@@ -399,7 +404,7 @@ def store_survey_answer(
     answer.answer_value = (answer_value or "").strip() or None
     answer.file_name = (file_name or "").strip() or None
     answer.answered_at = utc_now()
-    if feedback_run_id is not None or survey_launch_id is not None:
+    if feedback_run_id is not None or survey_launch_id is not None or step.target_field == "survey_answer":
         answer.respondent_name = (employee.full_name or "").strip() or f"Сотрудник #{employee.id}"
         if answer.question_text is None:
             answer.question_text = (progress.feedback_question_text if progress else None) or step.step_title
@@ -725,11 +730,11 @@ def _get_latest_survey_answer(
     scenario: ScenarioTemplate,
     step: FlowStepTemplate,
 ) -> SurveyAnswer | None:
-    if not is_survey(scenario):
+    if not (is_survey(scenario) or step.target_field == "survey_answer"):
         return None
     feedback_run_id = _survey_feedback_run_id(db, employee.id, scenario.scenario_key)
     survey_launch_id = _survey_launch_id(db, employee.id, scenario.scenario_key)
-    return (
+    query = (
         db.query(SurveyAnswer)
         .filter(
             SurveyAnswer.employee_id == employee.id,
@@ -738,9 +743,12 @@ def _get_latest_survey_answer(
             SurveyAnswer.feedback_run_id == feedback_run_id,
             SurveyAnswer.survey_launch_id == survey_launch_id,
         )
-        .order_by(SurveyAnswer.id.desc())
-        .first()
     )
+    if step.target_field == "survey_answer":
+        progress = db.query(ScenarioProgress).filter_by(employee_id=employee.id, scenario_key=scenario.scenario_key).first()
+        if progress and progress.started_at:
+            query = query.filter(SurveyAnswer.answered_at >= progress.started_at)
+    return query.order_by(SurveyAnswer.id.desc()).first()
 
 
 def _capture_response_undo_snapshot(
@@ -763,14 +771,14 @@ def _capture_response_undo_snapshot(
         employee_before["employee_stage"] = employee.employee_stage
     survey_answer = _get_latest_survey_answer(db, employee, scenario, step)
     survey_before: dict[str, Any] | None = None
-    if is_survey(scenario):
+    if is_survey(scenario) or step.target_field == "survey_answer":
         survey_before = {
             "existed": survey_answer is not None,
             "answer_value": survey_answer.answer_value if survey_answer else None,
             "file_name": survey_answer.file_name if survey_answer else None,
         }
     file_before: dict[str, Any] | None = None
-    if uploaded_file is not None or step.target_field == RESUME_DOCUMENT_SLOT or is_test_task_answer_step(step):
+    if uploaded_file is not None or step.target_field == RESUME_DOCUMENT_SLOT or is_document_answer_step(step):
         file_before = {}
         if uploaded_file is not None:
             file_before = {
@@ -783,8 +791,8 @@ def _capture_response_undo_snapshot(
                 default_slot_key=RESUME_DOCUMENT_SLOT,
                 default_title=RESUME_DOCUMENT_TITLE,
             )
-        if is_test_task_answer_step(step):
-            slot_key, slot_title, _ = _test_task_slot_details(step)
+        if is_document_answer_step(step):
+            slot_key, slot_title, _ = _response_document_slot_details(step)
             file_before["document_slot_before"] = _capture_document_slot_snapshot(
                 _get_employee_document_slot(db, employee.id, slot_key),
                 default_slot_key=slot_key,
@@ -814,7 +822,7 @@ def _restore_response_undo_snapshot(
                 setattr(employee, field_name, previous_value)
 
     survey_before = snapshot.get("survey_before")
-    if isinstance(survey_before, dict) and is_survey(scenario):
+    if isinstance(survey_before, dict) and (is_survey(scenario) or step.target_field == "survey_answer"):
         current_answer = _get_latest_survey_answer(db, employee, scenario, step)
         existed_before = bool(survey_before.get("existed"))
         if not existed_before:
@@ -1114,9 +1122,8 @@ def render_telegram_message_html(db: Session, template: str, employee: Employee,
     position = (getattr(employee, "desired_position", None) or "").strip() or "не указана"
     first_workday = employee.first_workday.strftime("%d.%m.%Y") if getattr(employee, "first_workday", None) else "не указана"
     resume = resolve_employee_resume_template_value(db, employee)
-    ipr_slot = _get_employee_document_slot(db, employee.id, "ipr")
-    ipr = _render_employee_link(ipr_slot.url if ipr_slot else None, "ИПР")
-    probation_plan = _render_employee_link(employee.adaptation_tasks_url, "План испытательного срока")
+    ipr = _render_employee_document(db, employee, "ipr", "ИПР")
+    probation_plan = _render_employee_document(db, employee, "probation_plan", "План испытательного срока", employee.adaptation_tasks_url)
     colleague_feedback = _render_employee_link(employee.adaptation_feedback_url, "Обратная связь коллег")
     time_text = step_time or "10:00"
     links = (
@@ -1207,6 +1214,18 @@ def resolve_employee_resume_label(db: Session, employee: Employee) -> str:
     if resume_file and (resume_file.original_filename or "").strip():
         return resume_file.original_filename.strip()
     return "резюме не загружено"
+
+
+def _render_employee_document(db: Session, employee: Employee, slot_key: str, label: str, fallback_url: str | None = None) -> str:
+    slot = _get_employee_document_slot(db, employee.id, slot_key)
+    # A manually replaced link takes precedence over an older uploaded plan.
+    if fallback_url:
+        return _render_employee_link(fallback_url, label)
+    if slot and slot.item_kind == "file" and slot.employee_file_id:
+        file_row = db.get(EmployeeFile, slot.employee_file_id)
+        if file_row and file_row.employee_id == employee.id:
+            return _escape_template_value(file_row.original_filename or label)
+    return _render_employee_link(slot.url if slot else None, label)
 
 
 def resolve_employee_resume_template_value(db: Session, employee: Employee) -> str:
@@ -1349,14 +1368,16 @@ def _mark_employee_file_as_resume_slot(db: Session, employee: Employee, employee
     )
 
 
-def _test_task_slot_details(step: FlowStepTemplate | None) -> tuple[str, str, str]:
+def _response_document_slot_details(step: FlowStepTemplate | None) -> tuple[str, str, str]:
+    if step and step.target_field == "adaptation_tasks_url":
+        return "probation_plan", "План испытательного срока", "probation_plan"
     if step and step.target_field == TEST_TASK_EXPLANATION_SLOT:
         return TEST_TASK_EXPLANATION_SLOT, "Пояснение к тестовому (Loom)", "test_explanation"
     return TEST_TASK_RESULT_SLOT, TEST_TASK_RESULT_TITLE, TEST_TASK_RESULT_FILE_CATEGORY
 
 
 def _mark_employee_file_as_test_task_result_slot(db: Session, employee: Employee, employee_file: EmployeeFile, step: FlowStepTemplate | None = None) -> None:
-    slot_key, title, _ = _test_task_slot_details(step)
+    slot_key, title, _ = _response_document_slot_details(step)
     link_row = _get_employee_document_slot(db, employee.id, slot_key)
     if link_row:
         link_row.slot_key = slot_key
@@ -1379,7 +1400,7 @@ def _mark_employee_file_as_test_task_result_slot(db: Session, employee: Employee
 
 
 def _mark_link_as_test_task_result_slot(db: Session, employee: Employee, url: str, step: FlowStepTemplate | None = None) -> None:
-    slot_key, title, _ = _test_task_slot_details(step)
+    slot_key, title, _ = _response_document_slot_details(step)
     link_row = _get_employee_document_slot(db, employee.id, slot_key)
     if link_row:
         link_row.slot_key = slot_key
@@ -1407,8 +1428,12 @@ def is_test_task_answer_step(step: FlowStepTemplate | None) -> bool:
     return (step.target_field or "").strip() in TEST_TASK_RESULT_TARGET_FIELDS
 
 
+def is_document_answer_step(step: FlowStepTemplate | None) -> bool:
+    return is_test_task_answer_step(step) or bool(step and step.target_field == "adaptation_tasks_url")
+
+
 def normalize_test_task_answer_file_category(step: FlowStepTemplate | None, category: str) -> str:
-    return _test_task_slot_details(step)[2] if is_test_task_answer_step(step) else category
+    return _response_document_slot_details(step)[2] if is_document_answer_step(step) else category
 
 
 def is_http_answer_link(value: str | None) -> bool:
@@ -1586,6 +1611,19 @@ def resolve_tagged_employee_documents(
     }
     files: list[EmployeeFile] = []
     seen_file_ids: set[int] = set()
+    for slot_key, tokens in (
+        ("probation_plan", ("{probation_plan}", "{adaptation_tasks_url}")),
+        ("ipr", ("{ipr}",)),
+    ):
+        if not any(token in template for token in tokens):
+            continue
+        if slot_key == "probation_plan" and employee.adaptation_tasks_url:
+            continue
+        slot = links_by_slot.get(slot_key)
+        file_row = db.get(EmployeeFile, slot.employee_file_id) if slot and slot.item_kind == "file" and slot.employee_file_id else None
+        if file_row and file_row.employee_id == employee.id and file_row.id not in seen_file_ids:
+            seen_file_ids.add(file_row.id)
+            files.append(file_row)
     for match in DOCUMENT_TAG_RE.finditer(template):
         document_key = match.group(1).strip().lower()
         link = links_by_title.get(document_key) or links_by_slot.get(document_key)
@@ -2024,6 +2062,9 @@ def apply_response_to_employee(
         return uploaded_file is not None
     if target_field in TEST_TASK_RESULT_TARGET_FIELDS:
         return uploaded_file is not None or extract_test_task_answer_link(normalized) is not None
+    if target_field == "adaptation_tasks_url":
+        employee.adaptation_tasks_url = None if uploaded_file else extract_test_task_answer_link(normalized)
+        return uploaded_file is not None or employee.adaptation_tasks_url is not None
     return True
 
 
@@ -2126,7 +2167,7 @@ async def send_step(
     anchor_date = scenario_anchor_date(template_employee, scenario) or datetime.now(_get_tz()).date()
     message_template = resolve_step_message_template(step)
     message_text = format_message(db, message_template, template_employee, anchor_date, step.send_time)
-    if progress.feedback_run_id is not None or progress.survey_launch_id is not None:
+    if progress.feedback_run_id is not None or progress.survey_launch_id is not None or step.target_field == "survey_answer":
         parser = _PlainTextCollector()
         parser.feed(message_text)
         progress.feedback_question_text = "".join(parser.parts).strip() or step.step_title
@@ -2296,14 +2337,15 @@ async def handle_text_response(messenger_or_bot: Any, db: Session, employee: Emp
     if not scenario:
         return False
     step = get_step_by_key(db, scenario.scenario_key, progress.current_step_key)
-    if step and step.response_type in {"file", "text"} and is_test_task_answer_step(step):
+    if step and step.response_type in {"file", "text"} and is_document_answer_step(step):
         messenger = as_messenger(messenger_or_bot)
         normalized_text = (message.text or "").strip()
         answer_url = extract_test_task_answer_link(normalized_text)
         if not answer_url:
             chat_id = progress.recipient_chat_id or get_primary_chat_id(employee, db=db)
             if chat_id:
-                await messenger.send_text(chat_id=chat_id, text=TEST_TASK_RESULT_TEXT_PROMPT)
+                prompt = "Пришлите файл плана ИС или одну ссылку http:// / https://." if step.target_field == "adaptation_tasks_url" else TEST_TASK_RESULT_TEXT_PROMPT
+                await messenger.send_text(chat_id=chat_id, text=prompt)
             return True
         undo_snapshot = _capture_response_undo_snapshot(db, context_employee, scenario, step)
         store_survey_answer(db, context_employee, scenario, step, normalized_text)
@@ -2652,7 +2694,7 @@ async def handle_file_response(
     if not scenario:
         return False
     step = get_step_by_key(db, scenario.scenario_key, progress.current_step_key)
-    if not step or not (step.response_type == "file" or (step.response_type == "text" and is_test_task_answer_step(step))):
+    if not step or not (step.response_type == "file" or (step.response_type == "text" and is_document_answer_step(step))):
         return False
     if uploaded_file.employee_id != context_employee.id:
         uploaded_file.employee_id = context_employee.id
@@ -2661,8 +2703,8 @@ async def handle_file_response(
     if step.target_field == "resume":
         uploaded_file.category = RESUME_DOCUMENT_SLOT
         _mark_employee_file_as_resume_slot(db, context_employee, uploaded_file)
-    if is_test_task_answer_step(step):
-        uploaded_file.category = _test_task_slot_details(step)[2]
+    if is_document_answer_step(step):
+        uploaded_file.category = _response_document_slot_details(step)[2]
         _mark_employee_file_as_test_task_result_slot(db, context_employee, uploaded_file, step)
     if not apply_response_to_employee(db, context_employee, step, uploaded_file.original_filename, uploaded_file):
         _restore_response_undo_snapshot(db, context_employee, scenario, step, undo_snapshot)

@@ -2,7 +2,7 @@ import React from "react";
 import { Download, History, Plus, RefreshCw, Send, Settings, X } from "lucide-react";
 
 import { Card } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { PageDetailHeader, PageHeader } from "@/components/ui/page-header";
@@ -1141,6 +1141,11 @@ export function ScenarioWorkspacePage() {
                 <Send data-icon="inline-start" />
                 Разослать
               </Button>
+              {payload?.workspace?.scenario?.answers_export_url ? (
+                <a className={buttonVariants({ size: "sm", variant: "outline" })} href={payload.workspace.scenario.answers_export_url}>
+                  Скачать ответы (Excel)
+                </a>
+              ) : null}
               {isSurveyWorkspace ? (
                 <Button size="sm" variant="outline" onClick={() => setSurveyHistoryOpen(true)}>
                   <History data-icon="inline-start" />

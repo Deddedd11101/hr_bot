@@ -153,6 +153,7 @@ export type WorkspaceData = {
     id: number;
     scenario_key: string;
     scenario_kind: "scenario" | "survey";
+    answers_export_url?: string | null;
     title: string;
     description: string;
     role_scope: string;

@@ -816,6 +816,11 @@ def _build_scenario_workspace_payload(
                 "target_employee_id": getattr(selected_scenario, "target_employee_id", None),
                 "classic_url": f"{_workspace_collection_path(kind)}/{selected_scenario.id}",
                 "scenario_kind": kind,
+                "answers_export_url": (
+                    f"/flows/{selected_scenario.id}/export"
+                    if any(step.target_field == "survey_answer" for step in editor_data["steps"])
+                    else None
+                ),
             },
             "root_steps": root_steps,
             "graph": workspace_graph,
@@ -960,6 +965,8 @@ def _validate_step_answer_destination(response_type: str, target_field: str | No
         raise HTTPException(status_code=422, detail="Для резюме или файла кандидата выберите тип ответа «Загрузка файла». Для файла или ссылки на тестовое выберите «Ответ на тестовое».")
     if target_field in {"test_task_result", "test_task_explanation"} and response_type not in {"file", "text"}:
         raise HTTPException(status_code=422, detail="Для ответа на тестовое выберите «Загрузка файла» или «Текстовый ответ».")
+    if target_field == "adaptation_tasks_url" and response_type not in {"file", "text"}:
+        raise HTTPException(status_code=422, detail="Для плана ИС выберите файл или текстовую ссылку.")
 
 
 def _sync_workspace_button_notifications(db: Session, step: FlowStepTemplate, payload: dict, scenario_kind: str = "scenario") -> None:

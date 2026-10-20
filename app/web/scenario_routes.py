@@ -3,6 +3,7 @@ from datetime import datetime
 from io import BytesIO
 from pathlib import Path
 from typing import List, Optional
+from uuid import uuid4
 
 from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
@@ -392,7 +393,7 @@ def create_workspace_root_step_api(
 
     step = FlowStepTemplate(
         flow_key=scenario.scenario_key,
-        step_key=f"{scenario.scenario_key}_step_{int(utc_now().timestamp())}",
+        step_key=f"{scenario.scenario_key}_step_{uuid4().hex[:12]}",
         step_title=title,
         sort_order=next_order,
         default_text="Новый вопрос" if scenario.scenario_kind == "survey" else "",
@@ -557,7 +558,7 @@ def create_workspace_chain_step_api(
 
     chain_step = FlowStepTemplate(
         flow_key=parent_step.flow_key,
-        step_key=f"{parent_step.step_key}__chain_{int(utc_now().timestamp())}",
+        step_key=f"{parent_step.step_key}__chain_{uuid4().hex[:12]}",
         parent_step_id=parent_step.id,
         branch_option_index=None,
         step_title=title,
@@ -1235,7 +1236,7 @@ async def update_scenario(
             db.add(
                 FlowStepTemplate(
                     flow_key=scenario.scenario_key,
-                    step_key=f"{scenario.scenario_key}_step_{int(utc_now().timestamp())}",
+                    step_key=f"{scenario.scenario_key}_step_{uuid4().hex[:12]}",
                     step_title="Новый вопрос" if scenario.scenario_kind == "survey" else "Новый шаг",
                     sort_order=next_order,
                     default_text="Новое сообщение опроса." if scenario.scenario_kind == "survey" else "",
@@ -1943,6 +1944,7 @@ def export_survey_run_api(request: Request, scenario_id: int, run_id: int, db: S
     )
 
 
+@router.get("/flows/{scenario_id}/export")
 @router.get("/surveys/{scenario_id}/export")
 def export_survey_results(
     request: Request,
@@ -1953,7 +1955,8 @@ def export_survey_results(
     if auth_redirect:
         return auth_redirect
     scenario = db.get(ScenarioTemplate, scenario_id)
-    if not scenario or scenario.scenario_kind != "survey":
+    collects_answers = scenario and db.query(FlowStepTemplate.id).filter_by(flow_key=scenario.scenario_key, target_field="survey_answer").first() is not None
+    if not scenario or (scenario.scenario_kind != "survey" and not collects_answers):
         return RedirectResponse(url="/surveys", status_code=status.HTTP_303_SEE_OTHER)
 
     try:
@@ -2000,7 +2003,7 @@ def export_survey_results(
             label = f"{label[:237]}..."
         step_labels[step.step_key] = label
 
-    sheet.append(["Пользователь ФИО", "Вопрос", "Ответ"])
+    sheet.append(["Пользователь ФИО", "Вопрос", "Ответ", "Дата ответа (UTC)"])
 
     for answer in answers:
         employee = db.get(Employee, answer.employee_id)
@@ -2008,11 +2011,16 @@ def export_survey_results(
             continue
         answer_value = answer.file_name or answer.answer_value or ""
         sheet.append([
-            employee.full_name or "",
-            step_labels.get(answer.step_key, answer.step_key),
+            answer.respondent_name or employee.full_name or "",
+            answer.question_text or step_labels.get(answer.step_key, answer.step_key),
             answer_value,
+            answer.answered_at.isoformat(sep=" ") if answer.answered_at else "",
         ])
 
+    for row in sheet.iter_rows():
+        for cell in row:
+            if isinstance(cell.value, str):
+                cell.data_type = "s"
     output = BytesIO()
     workbook.save(output)
     output.seek(0)

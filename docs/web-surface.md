@@ -26,6 +26,8 @@ source_of_truth: true
 
 # Карта web-поверхности
 
+- `GET /flows/{scenario_id}/export` — авторизованная Excel-выгрузка ответов обычного сценария с целью `survey_answer`. Сохраняет все прохождения; строки Excel записываются как текст. Существующий `GET /surveys/{scenario_id}/export` сохранён.
+
 ## Назначение
 
 Документ описывает non-JSON HTTP surface:

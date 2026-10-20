@@ -52,6 +52,8 @@ source_of_truth: true
 
 ### Workflow Deploy Stage
 
+После выкладки пакета адаптации/Пульса `Repair Candidate Answer Steps` допускает отдельный `package=adaptation_pulse`. Для него `ref` обязан быть полным текущим deployed SHA; сначала `mode=dry_run`, затем `mode=apply` с `expected_plan_sha256` из проверенного dry-run. Workflow сверяет SHA приложения, отсутствие tracked drift и неизменность плана, использует guarded tool с backup/quick_check и проверяет пустой план после ремонта. Перезапуск сервисов не выполняется; шаги перечитываются runtime из БД. Старые callback с дублирующим ключом могут повторно показать второй шаг.
+
 Источник: `.github/workflows/deploy-stage.yml`
 
 Текущее поведение deploy:

@@ -884,7 +884,7 @@ async def save_incoming_file(
     db.add(db_file)
     db.commit()
     db.refresh(db_file)
-    return context_employee, db_file, "saved"
+    return employee, db_file, "saved"
 
 
 async def handle_saved_document(
@@ -895,7 +895,8 @@ async def handle_saved_document(
 ) -> bool:
     if db_file.category == "test_result":
         try:
-            await notify_hr_test_task_received(messenger, employee, db_file.original_filename)
+            context_employee = db.get(Employee, db_file.employee_id) or employee
+            await notify_hr_test_task_received(messenger, context_employee, db_file.original_filename)
         except Exception:
             pass
     return await handle_file_response(messenger, db, employee, db_file)

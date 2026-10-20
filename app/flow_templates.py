@@ -113,6 +113,8 @@ TARGET_FIELD_LABELS = {
     "candidate_file": "Файл кандидата",
     "test_task_result": "Ответ на тестовое",
     "test_task_explanation": "Пояснение к тестовому (Loom)",
+    "adaptation_tasks_url": "Задачи на ИС (файл или ссылка)",
+    "survey_answer": "Ответ опроса (Excel)",
 }
 
 NOTIFICATION_RECIPIENT_SCOPE_LABELS = {

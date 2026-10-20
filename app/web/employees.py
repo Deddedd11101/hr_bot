@@ -1900,6 +1900,11 @@ def _build_employee_detail_payload(db: Session, employee: Employee) -> dict:
         "test_assignment_answer": test_task_result,
         "test_task_result": test_task_result,
         "test_task_explanation": _get_employee_test_task_result_payload(db, employee.id, "test_task_explanation"),
+        "probation_plan_document": (
+            _serialize_document_link(plan_slot, employee.id)
+            if (plan_slot := _get_employee_document_slot(db, employee.id, slot_key="probation_plan"))
+            and not employee.adaptation_tasks_url else None
+        ),
         "scheduled_launches": [
             _serialize_launch_request(launch_request, scenario_by_key, employee.id)
             for launch_request in pending_scheduled_launches

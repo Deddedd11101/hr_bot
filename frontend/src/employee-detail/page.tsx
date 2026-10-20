@@ -857,6 +857,7 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
         manualBotMessageInsertRef, manualBotMessageEmojiInsertRef, assignmentHistory, isCandidate,
     };
     const profileProps = {
+        probationPlanDocument: payload.probation_plan_document,
         form, isCandidate, meta, options: payload.options, workHoursParts, handleChange,
         handleWorkHoursChange, handleSubmit, saveState, hrNoteDraft, hrNotesHistory,
         onHrNoteDraftChange: handleHrNoteDraftChange, onFirstWorkdayChange: handleFirstWorkdayChange,
