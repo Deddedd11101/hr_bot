@@ -34,6 +34,14 @@ source_of_truth: true
 
 ## Записи
 
+### 2026-10-20 14:25–14:27 MSK - app deploy и guarded repair - адаптация/Пульс
+
+- PR [#99](https://github.com/Deddedd11101/hr_bot/pull/99), deployed SHA `8fc1c82b3bf4ec510e8b9ac70d3e43e786e1082c`; [Deploy Stage 39414640515](https://github.com/Deddedd11101/hr_bot/actions/runs/39414640515) -> success. CI, 222 локальных backend tests, TypeScript, воспроизводимая сборка и docs check прошли.
+- До deploy созданы `backups/hr_bot.before-deploy.20261020-112511.db` и `backups/scenarios.before-deploy.20261020-112511.json`. Web/worker/WireGuard active, HTTP employees/workspace -> `303`, Telegram API доступен, свежих ошибок worker после restart не обнаружено workflow.
+- [Repair dry-run 39414915341](https://github.com/Deddedd11101/hr_bot/actions/runs/39414915341) подтвердил 14 изменений. [Guarded apply 39415053653](https://github.com/Deddedd11101/hr_bot/actions/runs/39415053653) -> success, hash плана повторно проверен внутри транзакции, backup `backups/hr_bot.before-adaptation-pulse.20261020-112724.db`. После apply план пустой; сервисы active и HTTP `303`.
+- Исправлен ключ шага 257; шаг 254 сохраняет `adaptation_tasks_url`; 12 вопросов Пульса сохраняют `survey_answer`, `scenario_kind=scenario`. Авторизованный API подтвердил ключи, цели и `answers_export_url=/flows/53/export`; в редакторе видны теги ИПР/плана ИС.
+- Старый browser cache скрывал новую кнопку Excel; подготовлена отдельная правка версий JS entrypoints. Реальная загрузка плана/прохождение сценариев/ответы Пульса в Telegram после выкладки ещё не проверены. Старые callback с прежним неоднозначным ключом могут один раз повторить второй шаг.
+
 ### 2026-10-16 12:10 MSK - app deploy - явные плановые запуски без даты-якоря
 
 - Deploy ref: `stage`; deployed SHA: `f35a73e1b3df6bba1fe26373bd64afb53984e14c`; PR [#93](https://github.com/Deddedd11101/hr_bot/pull/93); [Deploy Stage 38878379609](https://github.com/Deddedd11101/hr_bot/actions/runs/38878379609) -> success.
