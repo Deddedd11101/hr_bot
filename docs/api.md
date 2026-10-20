@@ -344,6 +344,9 @@ Auth: только `Authorization: Bearer <PULSE_SYNC_TOKEN>` (сравнени�
 
 ## API scenario/survey workspace
 
+- `target_field=adaptation_tasks_url` принимает файл или HTTP(S)-ссылку плана ИС; `target_field=survey_answer` включает сохранение ответа обычного сценария для Excel. Payload workspace содержит `scenario.answers_export_url`, если есть такие вопросы.
+- Employee detail payload содержит `probation_plan_document`: file/link slot плана ИС либо `null`; введённая вручную `adaptation_tasks_url` имеет приоритет над прежним файлом.
+
 Один workspace API обслуживает сценарии и опросы. Default режим — `kind=scenario`; режим опросов включается через `kind=survey`. Отдельного `/api/surveys/*` API для редактирования шагов нет; `/api/surveys/{scenario_id}/runs` обслуживает только историю и выгрузку запусков.
 
 | Method | Path | Назначение | Основные inputs | Response | Side effects | Частые errors |

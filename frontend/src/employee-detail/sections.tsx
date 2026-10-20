@@ -844,6 +844,11 @@ export function EmployeeProfileSection(props: any) {
                                         onChange={handleChange}
                                         placeholder="https://..."
                                     />
+                                    {props.probationPlanDocument?.download_url ? (
+                                        <a href={props.probationPlanDocument.download_url} className="inline-flex items-center gap-2 text-sm text-primary">
+                                            <Download size={16} />{props.probationPlanDocument.title || "Скачать план ИС"}
+                                        </a>
+                                    ) : null}
                                 </Field>
                                 <Field>
                                     <FieldLabel>Ссылка на прежнюю обратную связь</FieldLabel>

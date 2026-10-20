@@ -17,6 +17,9 @@ source_of_truth: true
 
 # Модель данных
 
+- План ИС, полученный ответом сценария: существующий `employee_document_links.slot_key=probation_plan`, `item_kind=file|link`; файл принадлежит контекстному сотруднику, а не руководителю-отправителю. Link-backed вариант также сохраняет `employees.adaptation_tasks_url`, file-backed очищает поле ссылки. Schema не меняется.
+- Обычные сценарии с целью ответа `survey_answer` используют `survey_answers` без новых колонок. Для повторного прохождения ответы выбираются начиная с `scenario_progress.started_at`; старые прохождения сохраняются. Стандартные survey launch IDs и feedback run IDs остаются без изменений.
+
 ## Каноническое правило
 
 Для HR Bot документация схемы данных строится как **code-first плюс tracking observed drift**:
