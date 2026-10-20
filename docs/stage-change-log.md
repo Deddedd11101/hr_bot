@@ -34,6 +34,13 @@ source_of_truth: true
 
 ## Записи
 
+### 2026-10-20 14:33 MSK - app deploy - обновление cache карточки и сценариев
+
+- PR [#100](https://github.com/Deddedd11101/hr_bot/pull/100), deployed SHA `262cbd087cd8e0d9758b48edd08feb643cf4430e`; [Deploy Stage 39415535940](https://github.com/Deddedd11101/hr_bot/actions/runs/39415535940) -> success. Entry versions `employee-detail.js?v=53` и `scenario-workspace.js?v=104` обновлены после PR #99.
+- Preflight и серверные smoke прошли: web/worker/WireGuard active, HTTP employees/workspace -> `303`, Telegram API доступен. Backup `backups/hr_bot.before-deploy.20261020-113241.db`, snapshot `backups/scenarios.before-deploy.20261020-113241.json`; исправленная конфигурация сценариев сохранена.
+- В авторизованном браузере после обычного reload подтверждены кнопка «Скачать ответы (Excel)» у Пульса и теги ИПР/плана ИС. В API проверены уникальные ключи первого дня, цель `adaptation_tasks_url` у шага 254 и `survey_answer` у 12 вопросов Пульса.
+- Реальный Telegram-прогон после выкладки ещё открыт; старые сообщения с прежним дублирующим ключом могут один раз повторить второй шаг. Проверять чистым новым запуском сценария.
+
 ### 2026-10-20 14:25–14:27 MSK - app deploy и guarded repair - адаптация/Пульс
 
 - PR [#99](https://github.com/Deddedd11101/hr_bot/pull/99), deployed SHA `8fc1c82b3bf4ec510e8b9ac70d3e43e786e1082c`; [Deploy Stage 39414640515](https://github.com/Deddedd11101/hr_bot/actions/runs/39414640515) -> success. CI, 222 локальных backend tests, TypeScript, воспроизводимая сборка и docs check прошли.
