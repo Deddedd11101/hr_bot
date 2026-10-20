@@ -3,6 +3,17 @@ name: Repair Candidate Answer Steps
 on:
   workflow_dispatch:
     inputs:
+      package:
+        description: "Reviewed repair package"
+        type: choice
+        options:
+          - candidate
+          - adaptation_pulse
+        default: "candidate"
+      expected_plan_sha256:
+        description: "For adaptation_pulse apply: SHA256 printed by the reviewed dry-run"
+        required: false
+        default: ""
       ref:
         description: "Git ref containing the reviewed repair tool"
         required: true
@@ -22,6 +33,7 @@ concurrency:
 
 jobs:
   repair:
+    if: inputs.package != 'adaptation_pulse'
     runs-on: ubuntu-latest
     env:
       REPAIR_REF: ${{ inputs.ref }}
@@ -173,3 +185,59 @@ jobs:
             wait_http_status "/app/employees"
             wait_http_status "/app/flows/workspace-v2"
             echo "Candidate answer target repair applied with verified backup: ${backup_path}"
+
+  adaptation_pulse:
+    if: inputs.package == 'adaptation_pulse'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Guarded adaptation and Pulse repair
+        uses: appleboy/ssh-action@7eaf76671a0d7eec5d98ee897acda4f968735a17 # v1.2.0
+        env:
+          REPAIR_REF: ${{ inputs.ref }}
+          REPAIR_MODE: ${{ inputs.mode }}
+          EXPECTED_PLAN_SHA256: ${{ inputs.expected_plan_sha256 }}
+          STAGE_DB_PATH: ${{ secrets.STAGE_DB_PATH }}
+        with:
+          host: ${{ secrets.STAGE_HOST }}
+          username: ${{ secrets.STAGE_USERNAME }}
+          password: ${{ secrets.STAGE_PASSWORD }}
+          port: ${{ secrets.STAGE_PORT }}
+          envs: REPAIR_REF,REPAIR_MODE,EXPECTED_PLAN_SHA256,STAGE_DB_PATH
+          script: |
+            set -euo pipefail
+            cd "${{ secrets.STAGE_APP_DIR }}"
+            [[ "$REPAIR_REF" =~ ^[0-9a-f]{40}$ ]] || { echo "Use the approved full deployed SHA"; exit 1; }
+            [ "$(git rev-parse HEAD)" = "$REPAIR_REF" ] || { echo "Deployed SHA differs from reviewed ref"; exit 1; }
+            [ -z "$(git status --porcelain --untracked-files=no)" ] || { echo "Tracked code drift; refusing repair"; exit 1; }
+            case "$REPAIR_MODE" in dry_run|apply) ;; *) exit 1;; esac
+            db_path="${STAGE_DB_PATH:-hr_bot.db}"
+            [ -f "$db_path" ] || { echo "Database missing"; exit 1; }
+            plan_path="$(mktemp)"
+            trap 'rm -f "$plan_path"' EXIT
+            .venv/bin/python tools/repair_adaptation_pulse_steps.py --db "$db_path" > "$plan_path"
+            cat "$plan_path"
+            actual_plan_sha256="$(sha256sum "$plan_path" | cut -d ' ' -f1)"
+            echo "PLAN_SHA256=$actual_plan_sha256"
+            if [ "$REPAIR_MODE" = "dry_run" ]; then
+              exit 0
+            fi
+            [[ "$EXPECTED_PLAN_SHA256" =~ ^[0-9a-f]{64}$ ]] || { echo "Apply needs the reviewed plan SHA256"; exit 1; }
+            [ "$actual_plan_sha256" = "$EXPECTED_PLAN_SHA256" ] || { echo "Plan changed; rerun and review dry-run"; exit 1; }
+            mkdir -p backups
+            backup_path="backups/hr_bot.before-adaptation-pulse.$(date -u +%Y%m%d-%H%M%S).db"
+            .venv/bin/python tools/repair_adaptation_pulse_steps.py --db "$db_path" --apply --backup "$backup_path" --expected-plan-sha256 "$EXPECTED_PLAN_SHA256"
+            .venv/bin/python tools/repair_adaptation_pulse_steps.py --db "$db_path" > "$plan_path"
+            .venv/bin/python - "$plan_path" <<'PY'
+            import json
+            import sys
+            with open(sys.argv[1], encoding="utf-8") as handle:
+                if json.load(handle) != []:
+                    raise SystemExit("Post-repair plan is not empty")
+            print("Post-repair verification: empty plan")
+            PY
+            systemctl is-active hr-bot-web hr-bot-worker wg-quick@redshield
+            for path in /app/employees /app/flows/workspace-v2; do
+              code="$(curl -s -o /dev/null -w '%{http_code}' --connect-timeout 5 --max-time 10 "http://127.0.0.1:8000${path}")"
+              case "$code" in 200|303) echo "$path status: $code";; *) exit 1;; esac
+            done
+            echo "Guarded repair applied; backup: $backup_path"

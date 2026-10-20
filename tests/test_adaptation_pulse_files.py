@@ -115,6 +115,9 @@ class AdaptationRepairTests(unittest.TestCase):
             before = path.read_bytes()
             self.assertEqual(len(repair(path)), 14)
             self.assertEqual(path.read_bytes(), before)
+            with self.assertRaises(ValueError):
+                repair(path, apply=True, backup=backup, expected_plan_sha256="0" * 64)
+            self.assertFalse(backup.exists())
             repair(path, apply=True, backup=backup)
             self.assertEqual(repair(path), [])
             with closing(sqlite3.connect(backup)) as db:

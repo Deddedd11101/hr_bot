@@ -2,6 +2,7 @@
 
 import argparse
 from contextlib import closing
+import hashlib
 import json
 from pathlib import Path
 import sqlite3
@@ -43,7 +44,7 @@ def build_plan(db: sqlite3.Connection) -> list[dict]:
     return plan
 
 
-def repair(path: Path, *, apply: bool = False, backup: Path | None = None) -> list[dict]:
+def repair(path: Path, *, apply: bool = False, backup: Path | None = None, expected_plan_sha256: str | None = None) -> list[dict]:
     path = path.resolve(strict=True)
     if apply and (backup is None or backup.exists() or not backup.parent.exists()):
         raise ValueError("Apply requires a new --backup path in an existing directory")
@@ -51,6 +52,10 @@ def repair(path: Path, *, apply: bool = False, backup: Path | None = None) -> li
         try:
             db.execute("BEGIN IMMEDIATE" if apply else "BEGIN")
             plan = build_plan(db)
+            if expected_plan_sha256 is not None:
+                actual = hashlib.sha256((json.dumps(plan, indent=2) + "\n").encode("utf-8")).hexdigest()
+                if actual != expected_plan_sha256:
+                    raise ValueError("Plan changed inside transaction; no changes applied")
             if apply and plan:
                 with backup.open("xb"):
                     pass
@@ -77,5 +82,6 @@ if __name__ == "__main__":
     parser.add_argument("--db", required=True, type=Path)
     parser.add_argument("--apply", action="store_true")
     parser.add_argument("--backup", type=Path)
+    parser.add_argument("--expected-plan-sha256")
     args = parser.parse_args()
-    print(json.dumps(repair(args.db, apply=args.apply, backup=args.backup), indent=2))
+    print(json.dumps(repair(args.db, apply=args.apply, backup=args.backup, expected_plan_sha256=args.expected_plan_sha256), indent=2))
