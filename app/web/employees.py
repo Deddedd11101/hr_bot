@@ -1090,6 +1090,7 @@ def _serialize_launch_request(
     return {
         "id": launch_request.id,
         "flow_key": launch_request.flow_key,
+        "purpose": scenario.purpose if scenario else "general",
         "launch_type": launch_type,
         "launch_type_label": LAUNCH_TYPE_LABELS.get(launch_type, launch_type),
         "scenario_title": scenario.title if scenario else launch_request.flow_key,
@@ -1903,8 +1904,14 @@ def _build_employee_detail_payload(db: Session, employee: Employee) -> dict:
                     if value
                 ],
             ),
-            "scenarios": [{"value": scenario.scenario_key, "label": scenario.title} for scenario in scenarios],
+            "scenarios": [{"value": scenario.scenario_key, "label": scenario.title, "purpose": scenario.purpose} for scenario in scenarios],
         },
+        "adaptation_scenarios": [
+            {"key": scenario.scenario_key, "title": scenario.title,
+             "status": ("delivery_error" if progress.last_delivery_error else "completed" if progress.is_completed else "in_progress") if progress else "not_started"}
+            for scenario in scenarios if scenario.purpose == "adaptation"
+            for progress in [db.query(ScenarioProgress).filter_by(employee_id=employee.id, scenario_key=scenario.scenario_key).first()]
+        ],
         "files": [_serialize_employee_file(file_row, employee.id, bool(primary_chat_id)) for file_row in employee_files],
         "document_links": [_serialize_document_link(link_row, employee.id) for link_row in employee_document_links],
         "offer_document": _serialize_document_link(offer_document_link, employee.id) if offer_document_link else None,

@@ -24,7 +24,7 @@ from ..flow_templates import (
     TRIGGER_MODE_LABELS,
     normalize_candidate_work_stage,
 )
-from ..models import Employee, EmployeeFeedbackRun, FlowStepTemplate, MassScenarioAction, ScenarioTemplate, StepButtonNotification, SurveyAnswer
+from ..models import Employee, EmployeeFeedbackRun, FlowLaunchRequest, FlowStepTemplate, MassScenarioAction, ScenarioProgress, ScenarioTemplate, StepButtonNotification, SurveyAnswer
 from ..positions import build_role_scope_labels, serialize_role_scopes
 from ..time_utils import utc_now
 from .scenarios import (
@@ -199,6 +199,19 @@ def update_workspace_scenario_api(
     if not scenario or scenario.scenario_kind not in {"scenario", "survey"}:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Сценарий или опрос не найден")
 
+    from ..scenario_purposes import PURPOSE_LABELS
+    purpose = str(payload.get("purpose", scenario.purpose) or "general")
+    new_kind = str(payload.get("scenario_kind", scenario.scenario_kind))
+    if purpose not in PURPOSE_LABELS or new_kind not in {"scenario", "survey"}:
+        raise HTTPException(status_code=422, detail="Недопустимый тип или назначение")
+    if new_kind != scenario.scenario_kind:
+        if (db.query(FlowStepTemplate.id).filter_by(flow_key=scenario.scenario_key).first()
+                or db.query(ScenarioProgress.id).filter_by(scenario_key=scenario.scenario_key).first()
+                or db.query(FlowLaunchRequest.id).filter_by(flow_key=scenario.scenario_key).first()
+                or db.query(MassScenarioAction.id).filter_by(flow_key=scenario.scenario_key).first()):
+            raise HTTPException(status_code=409, detail="Тип сущности с настроенными шагами нельзя менять автоматически. Создайте отдельный опрос или сценарий.")
+        scenario.scenario_kind = new_kind
+    scenario.purpose = purpose
     title = str(payload.get("title") or "").strip()
     description = str(payload.get("description") or "").strip()
     role_scopes_payload = payload.get("role_scopes")

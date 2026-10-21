@@ -535,6 +535,8 @@ export function ScenarioWorkspacePage() {
       return;
     }
     setScenarioSettingsForm({
+      scenario_kind: scenario.scenario_kind,
+      purpose: scenario.purpose || "general",
       title: scenario.title || "",
       description: scenario.description || "",
       role_scope: scenario.role_scope || "all",
@@ -626,6 +628,11 @@ export function ScenarioWorkspacePage() {
         return response.json();
       })
       .then((result: { message?: string; payload: WorkspacePayload }) => {
+        if (result.payload.workspace?.scenario.scenario_kind !== payload?.workspace?.scenario.scenario_kind) {
+          const kind = result.payload.workspace?.scenario.scenario_kind;
+          window.location.assign(`/app/${kind === "survey" ? "surveys" : "flows"}/workspace${kind === "survey" ? "" : "-v2"}?scenario_id=${scenarioId}`);
+          return;
+        }
         applyPayload(result.payload);
         setScenarioSettingsState({ saving: false, message: result.message || "Настройки сохранены", error: false });
         setScenarioSettingsOpen(false);

@@ -1658,7 +1658,7 @@ def resolve_tagged_employee_documents(
         if not employee_file_id or employee_file_id in seen_file_ids:
             continue
         employee_file = db.get(EmployeeFile, employee_file_id)
-        if employee_file:
+        if employee_file and employee_file.employee_id == employee.id:
             seen_file_ids.add(employee_file_id)
             files.append(employee_file)
     if include_resume and RESUME_TAG_RE.search(template):
