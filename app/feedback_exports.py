@@ -8,6 +8,11 @@ from sqlalchemy.orm import Session
 from .models import Employee, EmployeeFeedbackRun, FlowStepTemplate, ScenarioTemplate, SurveyAnswer
 
 
+def _excel_text(value: str | None) -> str:
+    text = value or ""
+    return f"'{text}" if text.lstrip().startswith(("=", "+", "-", "@")) else text
+
+
 def latest_feedback_run(db: Session, employee_id: int) -> EmployeeFeedbackRun | None:
     return (db.query(EmployeeFeedbackRun).filter_by(subject_employee_id=employee_id)
             .order_by(EmployeeFeedbackRun.created_at.desc(), EmployeeFeedbackRun.id.desc()).first())
@@ -31,10 +36,10 @@ def feedback_workbook(db: Session, runs: list[EmployeeFeedbackRun]) -> bytes | N
         run = runs_by_id[answer.feedback_run_id]
         respondent = db.get(Employee, answer.employee_id)
         sheet.append([run.created_at.strftime("%d.%m.%Y %H:%M"),
-                      run.scenario_title or scenarios.get(run.scenario_key, run.scenario_key),
-                      answer.respondent_name or (respondent.full_name if respondent else f"Сотрудник #{answer.employee_id}"),
-                      answer.question_text or steps.get((run.scenario_key, answer.step_key), answer.step_key),
-                      answer.file_name or answer.answer_value or "",
+                      _excel_text(run.scenario_title or scenarios.get(run.scenario_key, run.scenario_key)),
+                      _excel_text(answer.respondent_name or (respondent.full_name if respondent else f"Сотрудник #{answer.employee_id}")),
+                      _excel_text(answer.question_text or steps.get((run.scenario_key, answer.step_key), answer.step_key)),
+                      _excel_text(answer.file_name or answer.answer_value),
                       answer.answered_at.strftime("%d.%m.%Y %H:%M")])
     for row in sheet.iter_rows():
         for cell in row:
