@@ -13,6 +13,17 @@ source_of_truth: true
 
 # Журнал изменений тестового стенда
 
+## 22.10.2026 01:02 МСК — адаптация и результаты сценариев
+
+- Тип: app deploy. PR #102, #103, #104 объединены в stage, deployed SHA `da4c3052c873372fb0cd6b4b583ee89e7a6784cb`.
+- Deploy Stage: https://github.com/Deddedd11101/hr_bot/actions/runs/39683335144 — success. Preflight объединённого ref: backend smoke, compile/Ruff, frontend build, imports — passed. CI feature PR выполняет полный unittest discover; финальный PR #104 прошёл после сохранения прежнего formula-escaping контракта Excel ОС.
+- SQLite backup с quick_check и JSON snapshot созданы workflow до изменения; snapshot старых колонок конфигурации сценариев после рестарта неизменен. Полные имена backup в Actions маскированы; каталог `/opt/hr_bot/backups`, timestamp UTC 20261021-220207.
+- Additive schema: scenario_answer_runs, nullable answer_run_id с индексами, scenario_templates.purpose. Восемь сверенных ключей адаптации категоризированы только при первичном добавлении purpose. Триггеры/старые расписания/ответы не переписывались.
+- Результат: отдельная история XLSX по запускам в карточке; последние ОС и ИПР доступны как теги и вложения; запуск/планирование адаптации на своей вкладке, шкала фактических context progress; защищённая смена типа и переносимость purpose.
+- Stage smoke: hr-bot-web, hr-bot-worker, wg-quick@redshield active; `/app/employees` и `/app/flows/workspace-v2` — 303; Telegram egress check passed, свежих сетевых traceback после рестарта workflow не обнаружил.
+- Browser/API: карточка №80 загружается, вкладка «Адаптация» показывает 6/7 завершённых по существующей истории, формы запуска/планирования присутствуют. План ИС доступен в карточке №80; блок ОС сохранён на вкладке сценариев, новая история результатов имеет корректное пустое состояние. API сценария №26: purpose adaptation, recipient manager, file target adaptation_tasks_url, теги ОС и ИПР присутствуют.
+- Не проверено: новая реальная отправка/прохождение в Telegram и получение XLSX адресатом; сотрудникам тестовые рассылки не запускались. Производственный календарь — проект импорта, не реализация. Новое автоматическое планирование first_workday и порядок сценариев не включались.
+
 Этот файл фиксирует только то, что реально выведено на test/stage и проверено после выкладки. Он не заменяет [[backlog]], [[project_state]] или feature docs: здесь короткий operational ledger, чтобы быстро понять, какие доработки уже дошли до стенда.
 
 ## Правило ведения
