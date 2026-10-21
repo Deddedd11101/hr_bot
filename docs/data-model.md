@@ -18,7 +18,11 @@ source_of_truth: true
 # Модель данных
 
 - План ИС, полученный ответом сценария: существующий `employee_document_links.slot_key=probation_plan`, `item_kind=file|link`; файл принадлежит контекстному сотруднику, а не руководителю-отправителю. Link-backed вариант также сохраняет `employees.adaptation_tasks_url`, file-backed очищает поле ссылки. Schema не меняется.
-- Обычные сценарии с целью ответа `survey_answer` используют `survey_answers` без новых колонок. Для повторного прохождения ответы выбираются начиная с `scenario_progress.started_at`; старые прохождения сохраняются. Стандартные survey launch IDs и feedback run IDs остаются без изменений.
+- Обычные сценарии с целью ответа `survey_answer` создают `scenario_answer_runs`: владелец context employee, снимок названия, время начала/завершения, status (`in_progress`, `completed`, `interrupted`). Nullable `answer_run_id` в `scenario_progress` и `survey_answers` с индексами отделяет повторные прохождения. Существующие ответы без ID не переносятся; для legacy progress сохраняется fallback по started_at. SQLite compatibility patching добавляет только nullable колонки/индексы, новая таблица создаётся через metadata. Стандартные survey launch IDs и feedback run IDs остаются без изменений.
+
+| Таблица | Назначение | Поля | Ограничения |
+| --- | --- | --- | --- |
+| `scenario_answer_runs` | История результатов сценариев в карточке | `id`, `employee_id`, `scenario_key`, `scenario_title`, `started_at`, `completed_at`, `status` | Один запуск — один результат; reset сохраняет ответы, delete карточки удаляет её результаты; XLSX генерируется на скачивании, физической копии нет |
 
 ## Каноническое правило
 

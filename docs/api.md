@@ -50,6 +50,11 @@ source_of_truth: true
 
 # JSON API
 
+## Результаты сценариев в карточке
+
+- `GET /api/employees/{employee_id}/scenario-results` — authenticated history of ordinary answer-collecting scenario launches: `runs[]` contains id, title snapshot, started_at (UTC), status, answer_count, download_url (null before the first answer).
+- `GET /api/employees/{employee_id}/scenario-results/{run_id}/export` — authenticated XLSX of that employee's single launch, generated from current persisted answers. A run belonging to a different employee returns 404. No public storage URL or persistent physical XLSX is created. Repeated launches remain separate; feedback and mass-survey launch exports are unchanged.
+
 ## Область покрытия
 
 Этот документ описывает реализованную `/api/*` поверхность FastAPI-приложения.
