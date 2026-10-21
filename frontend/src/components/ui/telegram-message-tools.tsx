@@ -24,6 +24,11 @@ export const DEFAULT_TELEGRAM_TEMPLATE_TAGS: TelegramTemplateTag[] = [
   { label: "Первый рабочий день", template: "{first_workday}", description: "Дата первого рабочего дня" },
 ];
 
+export const TELEGRAM_DOCUMENT_TEMPLATE_TAGS: TelegramTemplateTag[] = [
+  { label: "ОС (Excel)", template: "{ос}", description: "Excel последнего сбора ОС по сотруднику" },
+  { label: "План ИПР", template: "{ipr}", description: "Файл или ссылка ИПР из карточки" },
+];
+
 export function TelegramMessageTools({
   tags,
   customEmojis = [],

@@ -18,7 +18,7 @@ from ..mass_targeting import (
 )
 from ..models import Employee, MassMessageAction, MassScenarioAction, ScenarioTemplate
 from ..positions import ROLE_SCOPE_ALL, build_role_scope_labels, parse_role_scopes, resolve_scope_slug
-from ..scenario_engine import format_message
+from ..scenario_engine import format_message, send_tagged_employee_documents
 from .employees import (
     OFFER_DOCUMENT_TITLE,
     _all_employee_options,
@@ -384,6 +384,7 @@ async def _send_mass_message(db: Session, messenger, employee: Employee, message
     if not rendered_text:
         return False
     await messenger.send_text(chat_id=chat_id, text=rendered_text)
+    await send_tagged_employee_documents(messenger, db, chat_id, message_text, employee, include_resume=True)
     return True
 
 

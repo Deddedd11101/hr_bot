@@ -52,6 +52,7 @@ from ..scenario_engine import (
     get_first_step,
     matches_role_scope,
     start_scenario,
+    send_tagged_employee_documents,
 )
 from ..time_utils import utc_now
 
@@ -1725,6 +1726,7 @@ async def _send_manual_bot_message(
     messenger = create_telegram_messenger(settings.TELEGRAM_BOT_TOKEN, parse_mode="HTML")
     try:
         await messenger.send_text(chat_id=chat_id, text=rendered_text)
+        await send_tagged_employee_documents(messenger, db, chat_id, message_text, employee, include_resume=True)
     except Exception as exc:
         error_message = str(exc).strip() or exc.__class__.__name__
         _append_manual_bot_message_log(

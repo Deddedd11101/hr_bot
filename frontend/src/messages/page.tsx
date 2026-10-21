@@ -19,7 +19,7 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/u
 import { RecordCard } from "@/components/ui/record-card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { TelegramRichTextEditor } from "@/components/ui/telegram-rich-text-editor";
-import { DEFAULT_TELEGRAM_TEMPLATE_TAGS, TelegramMessageTools, type TelegramCustomEmoji } from "@/components/ui/telegram-message-tools";
+import { DEFAULT_TELEGRAM_TEMPLATE_TAGS, TELEGRAM_DOCUMENT_TEMPLATE_TAGS, TelegramMessageTools, type TelegramCustomEmoji } from "@/components/ui/telegram-message-tools";
 import { ПРОЯВЛЕНИЕ } from "@/lib/reveal";
 
 import {
@@ -179,6 +179,7 @@ function ComposeDialog({
               <TelegramMessageTools
                 tags={[
                   ...(workspace.menu_text_tags?.length ? workspace.menu_text_tags : DEFAULT_TELEGRAM_TEMPLATE_TAGS),
+                  ...TELEGRAM_DOCUMENT_TEMPLATE_TAGS,
                   ...workspace.document_tag_titles.map((title) => ({
                     label: `Документ: ${title}`,
                     template: `{doc:${title}}`,

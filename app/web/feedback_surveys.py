@@ -5,11 +5,11 @@ from io import BytesIO
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
-from openpyxl import Workbook
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from ..config import settings
+from ..feedback_exports import feedback_workbook
 from ..database import get_session
 from ..messaging import create_telegram_messenger
 from ..messaging.identity import get_primary_chat_id
@@ -209,36 +209,10 @@ async def launch_feedback_survey_api(
 
 
 def _feedback_export_response(db: Session, runs: list[EmployeeFeedbackRun], filename: str) -> StreamingResponse:
-    run_ids = [run.id for run in runs]
-    answers = (
-        db.query(SurveyAnswer)
-        .filter(SurveyAnswer.feedback_run_id.in_(run_ids))
-        .order_by(SurveyAnswer.answered_at, SurveyAnswer.id)
-        .all()
-    ) if run_ids else []
-    if not answers:
+    contents = feedback_workbook(db, runs)
+    if contents is None:
         raise HTTPException(status_code=404, detail="Ответов обратной связи пока нет.")
-    runs_by_id = {run.id: run for run in runs}
-    scenarios = {row.scenario_key: row.title for row in db.query(ScenarioTemplate).filter(ScenarioTemplate.scenario_kind == "survey").all()}
-    steps = {(row.flow_key, row.step_key): (row.custom_text if row.custom_text is not None else row.default_text or row.step_title) for row in db.query(FlowStepTemplate).all()}
-    workbook = Workbook()
-    sheet = workbook.active
-    sheet.title = "Обратная связь"
-    sheet.append(["Дата запуска", "Опрос", "ФИО отвечавшего", "Вопрос", "Ответ", "Дата ответа"])
-    for answer in answers:
-        run = runs_by_id[answer.feedback_run_id]
-        respondent = db.get(Employee, answer.employee_id)
-        sheet.append([
-            run.created_at.strftime("%d.%m.%Y %H:%M"),
-            _excel_text(run.scenario_title or scenarios.get(run.scenario_key, run.scenario_key)),
-            _excel_text(answer.respondent_name or (respondent.full_name if respondent else f"Сотрудник #{answer.employee_id}")),
-            _excel_text(answer.question_text or steps.get((run.scenario_key, answer.step_key), answer.step_key)),
-            _excel_text(answer.file_name or answer.answer_value),
-            answer.answered_at.strftime("%d.%m.%Y %H:%M"),
-        ])
-    output = BytesIO()
-    workbook.save(output)
-    output.seek(0)
+    output = BytesIO(contents)
     return StreamingResponse(
         output,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
