@@ -8,6 +8,25 @@ from .database import Base
 from .time_utils import utc_now
 
 
+class ProductionCalendarYear(Base):
+    __tablename__ = "production_calendar_years"
+
+    year: Mapped[int] = mapped_column(Integer, primary_key=True)
+    current_version_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+
+
+class ProductionCalendarVersion(Base):
+    __tablename__ = "production_calendar_versions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    year: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    digest: Mapped[str] = mapped_column(String(64), nullable=False)
+    days_json: Mapped[str] = mapped_column(Text, nullable=False)
+    source_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    created_by: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
 class EmployeeTelegramEmailVerification(Base):
     __tablename__ = "employee_telegram_email_verifications"
 

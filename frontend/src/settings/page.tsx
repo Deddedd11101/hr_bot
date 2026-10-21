@@ -1,4 +1,5 @@
 import React from "react";
+import { ProductionCalendarSettings } from "./production-calendar";
 import {
   BriefcaseBusiness,
   Check,
@@ -645,6 +646,7 @@ export function SettingsPage({ apiUrl }: SettingsPageProps) {
 
       <StatusAlert type="success" message={message} />
       <StatusAlert type="error" message={error} />
+      {isAdmin ? <ProductionCalendarSettings /> : null}
 
       <SettingsCard
         title="Интерфейс"
