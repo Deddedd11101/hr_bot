@@ -13,6 +13,15 @@ source_of_truth: true
 
 # Журнал изменений тестового стенда
 
+## 22.10.2026 — импорт производственного календаря
+
+- Тип: app deploy + календарная конфигурация через админку. PR #106: `ee8e3895038847adc0a0b306d9d85d459d54906b`, Deploy Stage 39685858577 — success. PR #107: XML DTD/entity hardening, финальный deployed SHA `903edae9bce2daa02ed1564fbca75d9cd1623d5d`, Deploy Stage 39686229534 — success.
+- CI обоих PR, combined-ref deploy preflight (compile/Ruff, backend tests, frontend build/imports), локальные 6 calendar parser/API/permission/concurrency tests и TypeScript прошли. Docs check: `D:\HRBot\hr_bot_stage_pipeline\.venv\Scripts\python.exe tools\check_docs_contracts.py` — passed.
+- Схема additive: production_calendar_years и production_calendar_versions через metadata; employee/scenario storage не изменялось. Оба workflow создали консистентный SQLite backup и scenario JSON snapshot, fingerprint конфигурации сценариев сохранён. Web/worker/WireGuard active, HTTP employees/workspace 303, Telegram egress и worker log gates passed.
+- В 01:23 МСК через admin UI загружен исходный календарь пользователя 2026: preview показал 365 дат, 247 рабочих, 118 выходных, 4 сокращённых, затем явный Apply. UI показал «Календарь сохранён. Расписания не изменены», текущую версию 2026 в истории. После финального deploy API подтвердил version id 1, is_current true и digest `eba2457d623745b7e724300d34fd0e9b0b035c15bc9b44960900044a2abfae6d`.
+- Файл пользователя не добавлялся в Git, исходник не сохраняется приложением на сервере; в БД нормализованный snapshot дат с аудитом администратора. Снимок UI: локальный `D:\HRBot\outputs\production-calendar\saved-2026.png`.
+- Граница: календарь хранится, но автоматическое планирование/перенос и изменение существующих расписаний НЕ включены; правила порядка адаптации/first_workday остаются отдельным согласованием.
+
 ## 22.10.2026 01:02 МСК — адаптация и результаты сценариев
 
 - Тип: app deploy. PR #102, #103, #104 объединены в stage, deployed SHA `da4c3052c873372fb0cd6b4b583ee89e7a6784cb`.
