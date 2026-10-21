@@ -16,7 +16,7 @@ import { PageDetailHeader } from "@/components/ui/page-header";
 import { CandidateStage } from "./candidate-stage";
 import { EmployeeFeedbackSurveys } from "./feedback-surveys";
 import { EmployeeScenarioResults } from "./scenario-results";
-import { type TelegramCustomEmoji, type TelegramTemplateTag } from "@/components/ui/telegram-message-tools";
+import { TELEGRAM_DOCUMENT_TEMPLATE_TAGS, type TelegramCustomEmoji, type TelegramTemplateTag } from "@/components/ui/telegram-message-tools";
 import {
     EmployeeDetailError,
     EmployeeFlashNotice,
@@ -853,7 +853,7 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
         handleResetBotLinkage, handleDeleteEmployee, hrFileItems, testAssignmentDocumentItem,
         testExplanationDocumentItem, launchItems, manualLaunchItems, manualBotMessageText,
         manualBotMessageState, setManualBotMessageText, handleManualBotMessageSubmit,
-        manualBotMessageHistory, manualBotMessageTemplateTags: telegramMessageWorkspace.menu_text_tags,
+        manualBotMessageHistory, manualBotMessageTemplateTags: [...(telegramMessageWorkspace.menu_text_tags || []), ...TELEGRAM_DOCUMENT_TEMPLATE_TAGS],
         manualBotMessageCustomEmojis: telegramMessageWorkspace.custom_emojis,
         manualBotMessageInsertRef, manualBotMessageEmojiInsertRef, assignmentHistory, isCandidate,
     };

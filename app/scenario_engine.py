@@ -8,6 +8,7 @@ import re
 from datetime import date, datetime, time, timedelta
 from html.parser import HTMLParser
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from urllib.parse import urlsplit
 from typing import Any, Literal, NamedTuple, Optional
 
@@ -26,6 +27,7 @@ from .models import DocumentLibraryItem, Employee, EmployeeDocumentLink, Employe
 from .positions import position_matches_scope
 from .time_utils import utc_now
 from .models import ScenarioAnswerRun
+from .feedback_exports import feedback_workbook, latest_feedback_run
 
 
 logger = logging.getLogger(__name__)
@@ -117,14 +119,15 @@ SCENARIO_NOTIFICATION_TEMPLATE_TAGS = [
     },
     {"label": "ИПР", "template": "{ipr}", "description": "Ссылка на ИПР из карточки сотрудника."},
     {"label": "План испытательного срока", "template": "{probation_plan}", "description": "Ссылка из поля «Задачи на ИС» карточки сотрудника."},
-    {"label": "Обратная связь коллег", "template": "{colleague_feedback}", "description": "Ссылка из поля «Обратная связь» карточки сотрудника, не текст ответов коллег."},
+    {"label": "Обратная связь коллег", "template": "{colleague_feedback}", "description": "Excel последнего запуска ОС; прежняя ссылка только при отсутствии запусков."},
+    {"label": "ОС (Excel)", "template": "{ос}", "description": "Excel последнего сбора обратной связи по сотруднику."},
 ]
 MENU_TEXT_TAGS = [
     *SCENARIO_STEP_TEMPLATE_TAGS,
 ]
 SCENARIO_STEP_TEMPLATE_TAGS.extend([
     tag for tag in SCENARIO_NOTIFICATION_TEMPLATE_TAGS
-    if tag["template"] in {"{ipr}", "{probation_plan}"}
+    if tag["template"] in {"{ipr}", "{probation_plan}", "{colleague_feedback}", "{ос}"}
 ])
 TELEGRAM_MESSAGE_CAPABILITIES = {
     "safe_html": True,
@@ -1142,6 +1145,10 @@ def render_telegram_message_html(db: Session, template: str, employee: Employee,
     ipr = _render_employee_document(db, employee, "ipr", "ИПР")
     probation_plan = _render_employee_document(db, employee, "probation_plan", "План испытательного срока", employee.adaptation_tasks_url)
     colleague_feedback = _render_employee_link(employee.adaptation_feedback_url, "Обратная связь коллег")
+    feedback_run = latest_feedback_run(db, employee.id)
+    if feedback_run:
+        has_answers = db.query(SurveyAnswer.id).filter_by(feedback_run_id=feedback_run.id).first() is not None
+        colleague_feedback = f"feedback_employee_{employee.id}_run_{feedback_run.id}.xlsx" if has_answers else ""
     time_text = step_time or "10:00"
     links = (
         db.query(EmployeeDocumentLink)
@@ -1183,6 +1190,7 @@ def render_telegram_message_html(db: Session, template: str, employee: Employee,
             "ipr": ipr,
             "probation_plan": probation_plan,
             "colleague_feedback": colleague_feedback,
+            "ос": colleague_feedback,
             "adaptation_tasks_url": probation_plan,
             "adaptation_feedback_url": colleague_feedback,
             "date": _escape_template_value(anchor_date.strftime("%d.%m.%Y")),
@@ -1671,6 +1679,15 @@ async def send_tagged_employee_documents(
     include_resume: bool = False,
 ) -> None:
     messenger = as_messenger(messenger_or_bot)
+    if any(token in template for token in ("{ос}", "{colleague_feedback}", "{adaptation_feedback_url}")):
+        run = latest_feedback_run(db, employee.id)
+        contents = feedback_workbook(db, [run]) if run else None
+        if contents is not None:
+            filename = f"feedback_employee_{employee.id}_run_{run.id}.xlsx"
+            with TemporaryDirectory(prefix="hrbot-feedback-") as temp:
+                path = Path(temp) / filename
+                path.write_bytes(contents)
+                await messenger.send_document_path(chat_id=chat_id, path=path, filename=filename)
     for employee_file in resolve_tagged_employee_documents(db, template, employee, include_resume=include_resume):
         file_path = Path(employee_file.stored_path)
         if not file_path.exists():
