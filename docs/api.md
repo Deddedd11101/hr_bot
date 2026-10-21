@@ -50,6 +50,12 @@ source_of_truth: true
 
 # JSON API
 
+## Производственный календарь
+
+- `GET /api/settings/production-calendars` — admin only (401 без входа, 403 для HR), список `versions` с годом, источником, UTC created_at, digest, статистикой дней и is_current.
+- `POST /api/settings/production-calendars/import` — admin only, multipart `file` (XLSX/UTF-8 CSV, до 1 МБ), `mode=preview|apply`. Preview возвращает year, days (date, is_workday, is_shortened, description), digest нормализованных дат, expected_version_id (0 до первой версии), changed_days и счётчики. Записей в БД не создаёт.
+- Apply заново разбирает тот же файл и требует `expected_digest`, `expected_version_id`. Несовпадение файла/активной версии и проигранный concurrent claim → 409, некорректный файл → 422. Вставка immutable версии и переключение годового указателя атомарны. Одинаковый текущий календарь не дублируется. История сохраняется, автоматического изменения расписаний нет.
+
 - Scenario workspace settings accept `purpose`: `general` (default), `hiring`, `adaptation`, `ipr`, independently of `scenario_kind`. Invalid values return 422. Changing scenario_kind is permitted only for an empty entity without launch/runtime history; otherwise 409 prevents silent conversion of configured workflows. Employee detail scenario options and launch history include purpose; `adaptation_scenarios` reports actual context progress states, not a scheduled plan.
 
 ## Результаты сценариев в карточке

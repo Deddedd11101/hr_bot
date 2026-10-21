@@ -17,6 +17,13 @@ source_of_truth: true
 
 # Модель данных
 
+| Таблица | Назначение | Поля | Ограничения |
+| --- | --- | --- | --- |
+| `production_calendar_years` | Единственный текущий календарь каждого года | `year` PK, `current_version_id` nullable | SQLite insert-on-conflict + conditional update защищает от параллельного переключения |
+| `production_calendar_versions` | Неизменяемые версии полного года | `id`, `year` index, `digest`, `days_json`, `source_name`, `created_at` UTC, `created_by` | 365/366 проверенных дат хранятся одним компактным JSON snapshot; нет персональных данных сотрудников; история не удаляется через API |
+
+Новые таблицы календаря создаются metadata.create_all без изменения employee/scenario таблиц. Исходный файл не сохраняется на сервере. JSON вместо отдельной строки на день выбран для immutable годовой конфигурации; SQL-поиск по дням текущему импорту не требуется. Планировщик пока не использует календарь.
+
 `scenario_templates.purpose`: независимое назначение (`general`, `hiring`, `adaptation`, `ipr`), NOT NULL с default `general`. SQLite compatibility patching additive; назначение не меняет `scenario_kind`, trigger, recipient или расписание. Только при первичном добавлении колонки восемь сверенных на stage ключей из `INITIAL_ADAPTATION_KEYS` получают adaptation. Повторный запуск не переопределяет выбор HR; runtime не классифицирует по названию.
 
 - План ИС, полученный ответом сценария: существующий `employee_document_links.slot_key=probation_plan`, `item_kind=file|link`; файл принадлежит контекстному сотруднику, а не руководителю-отправителю. Link-backed вариант также сохраняет `employees.adaptation_tasks_url`, file-backed очищает поле ссылки. Schema не меняется.
