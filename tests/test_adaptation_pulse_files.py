@@ -16,6 +16,7 @@ from app.messaging.service import handle_saved_document, save_incoming_file
 from app.models import Employee, EmployeeDocumentLink, EmployeeFile, EmployeeMessengerAccount, FlowStepTemplate, OnboardingEvent, ScenarioProgress, ScenarioTemplate, SurveyAnswer
 from app.scenario_engine import handle_text_response, render_telegram_message_html, resolve_tagged_employee_documents, start_scenario
 from app.time_utils import utc_now
+from app.models import ScenarioAnswerRun
 from app.web.scenario_routes import export_survey_results
 from tests.test_scenario_engine_smoke import FakeMessenger
 from tools.repair_adaptation_pulse_steps import FIRST_DAY, ORGANIZATION, PULSE, repair
@@ -42,7 +43,7 @@ class AdaptationPulseFilesTests(unittest.IsolatedAsyncioTestCase):
 
     def tearDown(self):
         with SessionLocal() as db:
-            for model in (SurveyAnswer, ScenarioProgress, FlowStepTemplate, ScenarioTemplate):
+            for model in (SurveyAnswer, ScenarioProgress, ScenarioAnswerRun, FlowStepTemplate, ScenarioTemplate):
                 column = model.flow_key if model is FlowStepTemplate else model.scenario_key
                 db.query(model).filter(column == self.key).delete(synchronize_session=False)
             for model in (EmployeeDocumentLink, EmployeeFile, EmployeeMessengerAccount, OnboardingEvent):

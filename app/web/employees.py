@@ -40,6 +40,7 @@ from ..models import (
     GradeAssessment,
     GradeAssessmentValue,
     ScenarioProgress,
+    ScenarioAnswerRun,
     ScenarioTemplate,
     SurveyAnswer,
 )
@@ -1390,6 +1391,12 @@ def _incomplete_scenario_progress_filter():
 
 
 def _delete_employee_active_scenario_runtime_state(db: Session, employee_id: int) -> None:
+    interrupted_runs = select(ScenarioProgress.answer_run_id).where(
+        _incomplete_scenario_progress_filter(),
+        or_(ScenarioProgress.employee_id == employee_id, ScenarioProgress.recipient_employee_id == employee_id),
+    )
+    db.query(ScenarioAnswerRun).filter(ScenarioAnswerRun.id.in_(interrupted_runs), ScenarioAnswerRun.status == "in_progress").update(
+        {ScenarioAnswerRun.status: "interrupted"}, synchronize_session=False)
     db.query(EmployeeFeedbackRecipient).filter(
         EmployeeFeedbackRecipient.respondent_employee_id == employee_id,
         EmployeeFeedbackRecipient.delivery_status.in_(["pending", "sent"]),
@@ -1448,7 +1455,10 @@ def _delete_employee_record(db: Session, employee: Employee) -> str:
         EmployeeFeedbackRecipient.respondent_employee_id == employee_id,
         EmployeeFeedbackRecipient.delivery_status.in_(["pending", "sent"]),
     ).update({EmployeeFeedbackRecipient.delivery_status: "unavailable"}, synchronize_session=False)
+    _delete_employee_active_scenario_runtime_state(db, employee_id)
     _delete_employee_related_scenario_state(db, employee_id)
+    db.query(SurveyAnswer).filter(SurveyAnswer.employee_id == employee_id, SurveyAnswer.answer_run_id.is_not(None)).delete(synchronize_session=False)
+    db.query(ScenarioAnswerRun).filter_by(employee_id=employee_id).delete(synchronize_session=False)
     db.query(SurveyAnswer).filter(
         SurveyAnswer.employee_id == employee_id,
         SurveyAnswer.feedback_run_id.is_not(None),

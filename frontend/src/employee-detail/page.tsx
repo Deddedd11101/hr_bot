@@ -15,6 +15,7 @@ import {
 import { PageDetailHeader } from "@/components/ui/page-header";
 import { CandidateStage } from "./candidate-stage";
 import { EmployeeFeedbackSurveys } from "./feedback-surveys";
+import { EmployeeScenarioResults } from "./scenario-results";
 import { type TelegramCustomEmoji, type TelegramTemplateTag } from "@/components/ui/telegram-message-tools";
 import {
     EmployeeDetailError,
@@ -910,6 +911,7 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
                     </TabsContent> : null}
                     <TabsContent value="scenarios" keepMounted className="admin-page-stack min-w-0">
                         <EmployeeOperationsSection {...operationsProps} view="scenarios" />
+                        <EmployeeScenarioResults employeeId={Number(form.id)} />
                         {!isCandidate ? <EmployeeFeedbackSurveys employeeId={Number(form.id)} legacyUrl={form.adaptation_feedback_url} /> : null}
                     </TabsContent>
                     <TabsContent value="messages" keepMounted className="admin-page-stack min-w-0"><EmployeeOperationsSection {...operationsProps} view="messages" /></TabsContent>

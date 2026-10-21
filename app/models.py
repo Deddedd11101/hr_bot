@@ -960,6 +960,7 @@ class ScenarioProgress(Base):
     feedback_run_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
     survey_launch_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
     feedback_question_text: Mapped[Optional[str]] = mapped_column(String(4096), nullable=True)
+    answer_run_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
 
 
 class SurveyAnswer(Base):
@@ -978,6 +979,21 @@ class SurveyAnswer(Base):
     survey_launch_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
     respondent_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     question_text: Mapped[Optional[str]] = mapped_column(String(4096), nullable=True)
+    answer_run_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
+
+
+class ScenarioAnswerRun(Base):
+    """Durable employee-owned result of one answer-collecting scenario launch."""
+
+    __tablename__ = "scenario_answer_runs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    employee_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    scenario_key: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    scenario_title: Mapped[str] = mapped_column(String(255), nullable=False)
+    started_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="in_progress")
 
 
 class EmployeeFeedbackRun(Base):

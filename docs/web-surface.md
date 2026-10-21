@@ -26,6 +26,8 @@ source_of_truth: true
 
 # Карта web-поверхности
 
+- Вкладка «Сценарии» карточки содержит «Результаты сценариев»: история запусков со сбором ответов, статус и XLSX конкретного запуска. Загрузка через authenticated `/api/employees/{employee_id}/scenario-results`, скачивание через `/api/employees/{employee_id}/scenario-results/{run_id}/export`; данные обновляются кнопкой «Обновить». Существующий блок ОС остаётся отдельным.
+
 - `GET /flows/{scenario_id}/export` — авторизованная Excel-выгрузка ответов обычного сценария с целью `survey_answer`. Сохраняет все прохождения; строки Excel записываются как текст. Существующий `GET /surveys/{scenario_id}/export` сохранён.
 
 ## Назначение
