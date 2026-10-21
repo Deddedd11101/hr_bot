@@ -82,6 +82,11 @@ def parse_calendar(contents: bytes, filename: str) -> dict:
                 raise ValueError("Слишком большой распакованный Excel")
             if any("externallinks/" in name.lower() or name.lower().endswith("vbaproject.bin") for name in archive.namelist()):
                 raise ValueError("Внешние связи и макросы не поддерживаются")
+            for entry in archive.infolist():
+                if entry.filename.lower().endswith((".xml", ".rels")):
+                    xml = archive.read(entry).replace(b"\x00", b"").upper()
+                    if b"<!DOCTYPE" in xml or b"<!ENTITY" in xml:
+                        raise ValueError("XML DTD и сущности не поддерживаются")
         workbook = load_workbook(io.BytesIO(contents), data_only=False, keep_links=False)
         try:
             if len(workbook.worksheets) != 1:

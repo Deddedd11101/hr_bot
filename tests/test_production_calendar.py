@@ -26,6 +26,14 @@ def csv_calendar(year=2092, override=None):
 
 
 class CalendarParserTests(unittest.TestCase):
+    def test_xml_entities_rejected_before_loading_workbook(self):
+        import zipfile
+        output = io.BytesIO()
+        with zipfile.ZipFile(output, "w") as archive:
+            archive.writestr("xl/workbook.xml", '<!DOCTYPE test [<!ENTITY x "data">]><test>&x;</test>'.encode("utf-16"))
+        with self.assertRaisesRegex(ValueError, "DTD"):
+            parse_calendar(output.getvalue(), "hostile.xlsx")
+
     def test_complete_leap_year_and_missing_duplicate_dates(self):
         data = csv_calendar()
         self.assertEqual(len(parse_calendar(data, "year.csv")["days"]), 366)
