@@ -141,6 +141,14 @@ export function ScenarioSettingsDialog(props: {
                   />
                 </label>
                 <label className="grid min-w-0 gap-2.5">
+                  <span className="text-sm font-semibold text-foreground/75">Тип</span>
+                  <SingleSelectPicker options={[{ value: "scenario", label: "Сценарий" }, { value: "survey", label: "Опрос" }]} value={scenarioSettingsForm.scenario_kind} placeholder="Тип" onChange={value => onFormChange(prev => prev ? { ...prev, scenario_kind: value as "scenario" | "survey" } : prev)} />
+                </label>
+                <label className="grid min-w-0 gap-2.5">
+                  <span className="text-sm font-semibold text-foreground/75">Назначение</span>
+                  <SingleSelectPicker options={[{ value: "general", label: "Без назначения" }, { value: "hiring", label: "Найм" }, { value: "adaptation", label: "Адаптация" }, { value: "ipr", label: "ИПР" }]} value={scenarioSettingsForm.purpose} placeholder="Назначение" onChange={value => onFormChange(prev => prev ? { ...prev, purpose: value } : prev)} />
+                </label>
+                <label className="grid min-w-0 gap-2.5">
                   <span className="text-sm font-semibold text-foreground/75">Описание</span>
                   <div className="relative">
                     <Textarea

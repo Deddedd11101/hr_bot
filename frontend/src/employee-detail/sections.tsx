@@ -986,9 +986,10 @@ export function EmployeeOperationsSection(props: any) {
         isCandidate,
     } = props;
     const view = props.view || "all";
+    const adaptationView = view === "adaptation";
     const canPromoteToAdaptation = isCandidate && !!String(form?.first_workday || "").trim();
     const scenarioItems = [{ value: EMPTY_SELECT_VALUE, label: "Выберите сценарий" }].concat(
-        payload.options.scenarios.map(function (item: any) {
+        payload.options.scenarios.filter((item: any) => isCandidate || view === "all" || ((item.purpose === "adaptation") === adaptationView)).map(function (item: any) {
             return { value: item.value, label: item.label };
         }),
     );
@@ -1009,7 +1010,7 @@ export function EmployeeOperationsSection(props: any) {
                 </Alert>
             ) : null}
 
-            {(view === "all" || view === "messages" || view === "scenarios" || (view === "overview" && isCandidate)) ? <PageRow columns={view === "all" ? (isCandidate ? 4 : 3) : view === "scenarios" ? 2 : 1}>
+            {(view === "all" || view === "messages" || view === "scenarios" || adaptationView || (view === "overview" && isCandidate)) ? <PageRow columns={view === "all" ? (isCandidate ? 4 : 3) : view === "scenarios" || adaptationView ? 2 : 1}>
             {isCandidate && (view === "all" || view === "overview") ? (
                 <PageSection title="Переход в адаптацию" contentClassName="gap-4">
                         <p className="text-sm text-muted-foreground">
@@ -1050,7 +1051,7 @@ export function EmployeeOperationsSection(props: any) {
                 insertEmojiRef={manualBotMessageEmojiInsertRef}
             /> : null}
 
-            {(view === "all" || view === "scenarios") ? <PageSection title="Сценарии" contentClassName="gap-4">
+            {(view === "all" || view === "scenarios" || adaptationView) ? <PageSection title={adaptationView ? "Сценарии адаптации" : "Сценарии"} contentClassName="gap-4">
                     <form onSubmit={handleLaunchSubmit}>
                         <FieldGroup>
                             <Field>
@@ -1135,12 +1136,12 @@ export function EmployeeOperationsSection(props: any) {
                     </form>
             </PageSection> : null}
 
-            {(view === "all" || view === "scenarios") ? <PageSection title="Запланированные сценарии" counter={launchItems.length}>
+            {(view === "all" || view === "scenarios" || adaptationView) ? <PageSection title="Запланированные сценарии" counter={launchItems.length}>
                     <ScenarioList items={launchItems} />
             </PageSection> : null}
             </PageRow> : null}
 
-            {view === "scenarios" ? <PageSection title="История ручных запусков" counter={manualLaunchItems.length}>
+            {view === "scenarios" || adaptationView ? <PageSection title="История ручных запусков" counter={manualLaunchItems.length}>
                 <ScenarioList items={manualLaunchItems} />
             </PageSection> : null}
 

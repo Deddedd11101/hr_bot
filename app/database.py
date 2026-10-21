@@ -704,6 +704,13 @@ def _ensure_sqlite_schema() -> None:
         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_survey_answers_feedback_run_id ON survey_answers (feedback_run_id)"))
         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_survey_answers_survey_launch_id ON survey_answers (survey_launch_id)"))
 
+        scenario_columns = {row[1] for row in conn.execute(text("PRAGMA table_info(scenario_templates)"))}
+        if "purpose" not in scenario_columns:
+            conn.execute(text("ALTER TABLE scenario_templates ADD COLUMN purpose VARCHAR(32) NOT NULL DEFAULT 'general'"))
+            from .scenario_purposes import INITIAL_ADAPTATION_KEYS
+            for scenario_key in INITIAL_ADAPTATION_KEYS:
+                conn.execute(text("UPDATE scenario_templates SET purpose='adaptation' WHERE scenario_key=:key AND purpose='general'"), {"key": scenario_key})
+
         for table_name in ("scenario_progress", "survey_answers"):
             columns = {row[1] for row in conn.execute(text(f"PRAGMA table_info({table_name})"))}
             if "answer_run_id" not in columns:

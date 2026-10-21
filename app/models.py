@@ -723,6 +723,7 @@ class ScenarioTemplate(Base):
     scenario_key: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    purpose: Mapped[str] = mapped_column(String(32), nullable=False, default="general")
     scenario_kind: Mapped[str] = mapped_column(
         String(32),
         nullable=False,

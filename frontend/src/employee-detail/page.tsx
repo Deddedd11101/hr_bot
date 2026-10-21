@@ -16,6 +16,7 @@ import { PageDetailHeader } from "@/components/ui/page-header";
 import { CandidateStage } from "./candidate-stage";
 import { EmployeeFeedbackSurveys } from "./feedback-surveys";
 import { EmployeeScenarioResults } from "./scenario-results";
+import { AdaptationProgress } from "./adaptation-progress";
 import { TELEGRAM_DOCUMENT_TEMPLATE_TAGS, type TelegramCustomEmoji, type TelegramTemplateTag } from "@/components/ui/telegram-message-tools";
 import {
     EmployeeDetailError,
@@ -818,9 +819,10 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
         ? { ...buildDocumentItem(payload.test_task_explanation, "Пояснение к тестовому", "Пояснение / Loom"), subtitle: "Пояснение / Loom" }
         : null;
 
-    const launchItems = payload.scheduled_launches.map(function (item: any) {
+    const launchItems: Array<any> = payload.scheduled_launches.map(function (item: any) {
         return {
             id: "scheduled-" + item.id,
+            purpose: item.purpose,
             title: item.scenario_title,
             subtitle: "Отправка: " + item.requested_at_label,
             link: item.scenario_url,
@@ -832,9 +834,10 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
             extraActionConfirmLabel: "Удалить",
         };
     });
-    const manualLaunchItems = payload.manual_launch_history.map(function (item: any) {
+    const manualLaunchItems: Array<any> = payload.manual_launch_history.map(function (item: any) {
         return {
             id: "manual-" + item.id,
+            purpose: item.purpose,
             title: item.scenario_title,
             subtitle: item.processed_at_label && item.processed_at_label !== "—"
                 ? "Запущен: " + item.processed_at_label
@@ -890,7 +893,7 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
                 </div>
                 {isCandidate ? <CandidateStage value={form.candidate_work_stage || ""} label={meta.candidate_work_stage_label || "Не указан"} /> : null}
                 <EmployeeFlashNotice message={flashState.message} error={flashState.error} />
-                <Tabs value={activeTab} onValueChange={value => { setActiveTab(value); if (value === "grade") setGradeOpened(true); }} className="min-w-0 flex-col">
+                <Tabs value={activeTab} onValueChange={value => { setActiveTab(value); setLaunchFlowKey(""); setScheduleForm(prev => ({ ...prev, flow_key: "" })); if (value === "grade") setGradeOpened(true); }} className="min-w-0 flex-col">
                     <div className="employee-card-tabs-scroll"><TabsList variant="line" aria-label="Разделы карточки">
                         <TabsTrigger value="overview">Обзор</TabsTrigger>
                         {isCandidate ? <TabsTrigger value="test">Тестовое</TabsTrigger> : null}
@@ -910,14 +913,14 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
                         <EmployeeOperationsSection {...operationsProps} view="test" />
                     </TabsContent> : null}
                     <TabsContent value="scenarios" keepMounted className="admin-page-stack min-w-0">
-                        <EmployeeOperationsSection {...operationsProps} view="scenarios" />
+                        <EmployeeOperationsSection {...operationsProps} launchItems={launchItems.filter(item => isCandidate || item.purpose !== "adaptation")} manualLaunchItems={manualLaunchItems.filter(item => isCandidate || item.purpose !== "adaptation")} view="scenarios" />
                         <EmployeeScenarioResults employeeId={Number(form.id)} />
                         {!isCandidate ? <EmployeeFeedbackSurveys employeeId={Number(form.id)} legacyUrl={form.adaptation_feedback_url} /> : null}
                     </TabsContent>
                     <TabsContent value="messages" keepMounted className="admin-page-stack min-w-0"><EmployeeOperationsSection {...operationsProps} view="messages" /></TabsContent>
                     <TabsContent value="files" keepMounted className="admin-page-stack min-w-0"><EmployeeOperationsSection {...operationsProps} view="files" /></TabsContent>
                     <TabsContent value="history" keepMounted className="admin-page-stack min-w-0"><EmployeeOperationsSection {...operationsProps} view="history" /></TabsContent>
-                    {!isCandidate ? <TabsContent value="adaptation" keepMounted className="admin-page-stack min-w-0"><EmployeeProfileSection {...profileProps} view="adaptation" /></TabsContent> : null}
+                    {!isCandidate ? <TabsContent value="adaptation" keepMounted className="admin-page-stack min-w-0"><AdaptationProgress stages={payload.adaptation_scenarios || []} /><EmployeeProfileSection {...profileProps} view="adaptation" /><EmployeeOperationsSection {...operationsProps} launchItems={launchItems.filter(item => item.purpose === "adaptation")} manualLaunchItems={manualLaunchItems.filter(item => item.purpose === "adaptation")} view="adaptation" /></TabsContent> : null}
                     {!isCandidate ? <TabsContent value="grade" keepMounted className="admin-page-surface min-w-0 p-4">{gradeOpened && <React.Suspense fallback={<p role="status">Загрузка грейда...</p>}><GradeTab employeeId={Number(form.id)} /></React.Suspense>}</TabsContent> : null}
                 </Tabs>
             </div>

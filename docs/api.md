@@ -50,6 +50,8 @@ source_of_truth: true
 
 # JSON API
 
+- Scenario workspace settings accept `purpose`: `general` (default), `hiring`, `adaptation`, `ipr`, independently of `scenario_kind`. Invalid values return 422. Changing scenario_kind is permitted only for an empty entity without launch/runtime history; otherwise 409 prevents silent conversion of configured workflows. Employee detail scenario options and launch history include purpose; `adaptation_scenarios` reports actual context progress states, not a scheduled plan.
+
 ## Результаты сценариев в карточке
 
 - `GET /api/employees/{employee_id}/scenario-results` — authenticated history of ordinary answer-collecting scenario launches: `runs[]` contains id, title snapshot, started_at (UTC), status, answer_count, download_url (null before the first answer).

@@ -816,6 +816,7 @@ def _build_scenario_workspace_payload(
                 "target_employee_id": getattr(selected_scenario, "target_employee_id", None),
                 "classic_url": f"{_workspace_collection_path(kind)}/{selected_scenario.id}",
                 "scenario_kind": kind,
+                "purpose": selected_scenario.purpose,
                 "answers_export_url": (
                     f"/flows/{selected_scenario.id}/export"
                     if any(step.target_field == "survey_answer" for step in editor_data["steps"])
@@ -1228,6 +1229,7 @@ def _copy_template_entity(db: Session, scenario: ScenarioTemplate) -> ScenarioTe
         title=f"{scenario.title} (копия)",
         sort_order=(last_scenario.sort_order + 10) if last_scenario else 10,
         scenario_kind=scenario.scenario_kind,
+        purpose=scenario.purpose,
         role_scope=scenario.role_scope,
         employee_scope=getattr(scenario, "employee_scope", "all"),
         target_employee_id=getattr(scenario, "target_employee_id", None),

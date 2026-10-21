@@ -20,6 +20,7 @@ SCENARIO_TEMPLATE_FIELDS = [
     "trigger_mode",
     "target_employee_id",
     "description",
+    "purpose",
 ]
 
 FLOW_STEP_FIELDS = [
@@ -106,9 +107,10 @@ def _normalize_scenario_keys(raw_values: list[str]) -> list[str]:
 
 
 def _load_scenario_row(connection: sqlite3.Connection, scenario_key: str) -> dict[str, Any]:
+    purpose_column = "purpose" if "purpose" in _table_columns(connection, "scenario_templates") else "'general' AS purpose"
     row = connection.execute(
-        """
-        SELECT scenario_key, title, sort_order, scenario_kind, role_scope, employee_scope, recipient_mode, trigger_mode, target_employee_id, description
+        f"""
+        SELECT scenario_key, title, sort_order, scenario_kind, role_scope, employee_scope, recipient_mode, trigger_mode, target_employee_id, description, {purpose_column}
         FROM scenario_templates
         WHERE scenario_key = ?
         """,
@@ -429,6 +431,7 @@ def _upsert_scenario_template(connection: sqlite3.Connection, template: dict[str
         **template,
         "employee_scope": template.get("employee_scope") or "all",
         "recipient_mode": template.get("recipient_mode") or "self",
+        "purpose": template.get("purpose") or "general",
     }
     existing = connection.execute(
         "SELECT id FROM scenario_templates WHERE scenario_key = ?",
@@ -449,7 +452,8 @@ def _upsert_scenario_template(connection: sqlite3.Connection, template: dict[str
                 recipient_mode = ?,
                 trigger_mode = ?,
                 target_employee_id = ?,
-                description = ?
+                description = ?,
+                purpose = ?
             WHERE scenario_key = ?
             """,
             (
@@ -462,6 +466,7 @@ def _upsert_scenario_template(connection: sqlite3.Connection, template: dict[str
                 template.get("trigger_mode"),
                 template.get("target_employee_id"),
                 template.get("description"),
+                template.get("purpose"),
                 template["scenario_key"],
             ),
         )
@@ -470,8 +475,8 @@ def _upsert_scenario_template(connection: sqlite3.Connection, template: dict[str
     connection.execute(
         """
         INSERT INTO scenario_templates (
-            scenario_key, title, sort_order, scenario_kind, role_scope, employee_scope, recipient_mode, trigger_mode, target_employee_id, description
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            scenario_key, title, sort_order, scenario_kind, role_scope, employee_scope, recipient_mode, trigger_mode, target_employee_id, description, purpose
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         values,
     )
@@ -514,6 +519,8 @@ def import_scenarios(db_path: Path, input_dir: Path, storage_root: Path) -> None
         _ensure_flow_step_attachment_document_column(connection)
         _ensure_flow_step_confirm_choice_column(connection)
         _ensure_flow_step_terminal_columns(connection)
+        if "purpose" not in _table_columns(connection, "scenario_templates"):
+            connection.execute("ALTER TABLE scenario_templates ADD COLUMN purpose VARCHAR(32) NOT NULL DEFAULT 'general'")
         for scenario_item in payload.get("scenarios", []):
             template = scenario_item["template"]
             scenario_key = template["scenario_key"]

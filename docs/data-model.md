@@ -17,6 +17,8 @@ source_of_truth: true
 
 # Модель данных
 
+`scenario_templates.purpose`: независимое назначение (`general`, `hiring`, `adaptation`, `ipr`), NOT NULL с default `general`. SQLite compatibility patching additive; назначение не меняет `scenario_kind`, trigger, recipient или расписание. Только при первичном добавлении колонки восемь сверенных на stage ключей из `INITIAL_ADAPTATION_KEYS` получают adaptation. Повторный запуск не переопределяет выбор HR; runtime не классифицирует по названию.
+
 - План ИС, полученный ответом сценария: существующий `employee_document_links.slot_key=probation_plan`, `item_kind=file|link`; файл принадлежит контекстному сотруднику, а не руководителю-отправителю. Link-backed вариант также сохраняет `employees.adaptation_tasks_url`, file-backed очищает поле ссылки. Schema не меняется.
 - Обычные сценарии с целью ответа `survey_answer` создают `scenario_answer_runs`: владелец context employee, снимок названия, время начала/завершения, status (`in_progress`, `completed`, `interrupted`). Nullable `answer_run_id` в `scenario_progress` и `survey_answers` с индексами отделяет повторные прохождения. Существующие ответы без ID не переносятся; для legacy progress сохраняется fallback по started_at. SQLite compatibility patching добавляет только nullable колонки/индексы, новая таблица создаётся через metadata. Стандартные survey launch IDs и feedback run IDs остаются без изменений.
 
