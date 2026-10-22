@@ -228,7 +228,7 @@ def _upcoming_events(db: Session, now, until) -> list[dict]:
         .join(Employee, Employee.id == FlowLaunchRequest.employee_id)
         .filter(
             FlowLaunchRequest.processed_at.is_(None),
-            FlowLaunchRequest.launch_type == "scheduled",
+            FlowLaunchRequest.launch_type.in_(["scheduled", "adaptation_plan"]),
             FlowLaunchRequest.requested_at >= now,
             FlowLaunchRequest.requested_at <= until,
         )
@@ -405,7 +405,7 @@ def _count_scheduled(db: Session, now, until) -> int:
     employee_count = (
         db.query(FlowLaunchRequest)
         .filter(
-            FlowLaunchRequest.launch_type == "scheduled",
+            FlowLaunchRequest.launch_type.in_(["scheduled", "adaptation_plan"]),
             FlowLaunchRequest.processed_at.is_(None),
             FlowLaunchRequest.requested_at >= now,
             FlowLaunchRequest.requested_at <= until,
