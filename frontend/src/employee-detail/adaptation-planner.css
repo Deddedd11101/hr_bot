@@ -1,0 +1,39 @@
+.adaptation-stage-list { list-style: none; margin: 0; padding: 0; }
+.adaptation-stage-row { display: grid; grid-template-columns: 28px minmax(150px, 1fr) 190px 145px 32px; gap: 12px; align-items: center; min-height: 66px; padding: 12px 0; border-bottom: 1px solid var(--border); }
+.adaptation-stage-row:last-child { border-bottom: 0; }
+.adaptation-stage-marker { display: grid; place-items: center; width: 25px; height: 25px; border: 1px solid var(--border); border-radius: 50%; color: var(--muted-foreground); font-size: 11px; font-variant-numeric: tabular-nums; }
+.adaptation-stage-marker.is-active { background: var(--primary); border-color: var(--primary); color: var(--primary-foreground); }
+.adaptation-stage-marker.is-completed { background: var(--muted); border-color: transparent; color: var(--primary); }
+.adaptation-stage-name { min-width: 0; font-size: 13px; font-weight: 500; overflow-wrap: anywhere; }
+.adaptation-stage-name p { margin-top: 4px; font-size: 12px; font-weight: 400; }
+.adaptation-stage-date { display: flex; align-items: center; gap: 6px; min-height: 32px; padding: 4px 6px; border-radius: 6px; color: var(--muted-foreground); text-align: left; font-size: 12px; cursor: pointer; }
+.adaptation-stage-date svg { flex-shrink: 0; }
+.adaptation-stage-date:hover:not(.is-readonly) { background: var(--muted); color: var(--foreground); }
+.adaptation-stage-date:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+.adaptation-stage-date:disabled { opacity: .5; cursor: default; }
+.adaptation-stage-date.is-readonly { cursor: default; }
+.adaptation-stage-status { justify-self: start; max-width: 100%; white-space: normal; font-size: 11px; }
+.adaptation-empty-action { width: 32px; }
+.adaptation-history-toggle { display: flex; align-items: center; gap: 8px; padding: 8px 0 14px; color: var(--muted-foreground); font-size: 13px; cursor: pointer; }
+.adaptation-completed-list { border-bottom: 1px solid var(--border); margin-bottom: 6px; }
+.adaptation-plan-footer { display: flex; align-items: center; gap: 8px; padding-top: 16px; margin-top: 8px; border-top: 1px solid var(--border); color: var(--muted-foreground); font-size: 12px; }
+.adaptation-plan-footer span:last-child { margin-left: auto; }
+.adaptation-planning-row { display: grid; grid-template-columns: 18px minmax(0, 1fr) 205px; gap: 12px; align-items: center; padding: 16px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+.adaptation-planning-row input[type=checkbox] { accent-color: var(--primary); }
+@container (max-width: 680px) {
+    .adaptation-overview { align-items: stretch; flex-direction: column; gap: 14px; }
+    .adaptation-overview > button { align-self: flex-start; }
+    .adaptation-stage-row { grid-template-columns: 24px minmax(0, 1fr) 32px; gap: 6px 10px; }
+    .adaptation-stage-marker { grid-column: 1; grid-row: 1 / 4; align-self: start; margin-top: 2px; }
+    .adaptation-stage-name { grid-column: 2; grid-row: 1; }
+    .adaptation-stage-date { grid-column: 2; grid-row: 2; padding-left: 0; }
+    .adaptation-stage-status { grid-column: 2; grid-row: 3; }
+    .adaptation-stage-row > [data-slot=dropdown-menu-trigger], .adaptation-empty-action { grid-column: 3; grid-row: 1 / 4; }
+}
+@media (max-width: 640px) {
+    .adaptation-planning-row { grid-template-columns: 18px minmax(0, 1fr); }
+    .adaptation-planning-row > input:not([type=checkbox]) { grid-column: 2; width: 100%; }
+}
+.adaptation-planner-section { container-type: inline-size; }
+.adaptation-overview { display: flex; align-items: center; gap: 24px; margin-bottom: 18px; }
+.adaptation-overview > div { flex: 1; min-width: 0; }
