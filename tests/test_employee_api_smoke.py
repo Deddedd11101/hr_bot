@@ -1383,7 +1383,7 @@ class EmployeeApiSmokeTests(unittest.TestCase):
         self.assertEqual(payload["employee"]["employee_stage"], "adaptation")
         self.assertEqual(payload["employee"]["candidate_work_stage"], "")
         self.assertEqual(payload["employee"]["adaptation_midpoint"], "2026-07-08")
-        self.assertEqual(payload["employee"]["adaptation_end"], "2026-08-05")
+        self.assertEqual(payload["employee"]["adaptation_end"], "2026-09-10")
 
         with SessionLocal() as db:
             employee = db.get(Employee, self.employee_id)

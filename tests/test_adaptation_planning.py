@@ -58,6 +58,44 @@ class AdaptationPlanTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaisesRegex(ValueError, "2093"):
             calendar.shift(date(2092, 12, 31), 5, "workday")
 
+    def test_default_end_calendar_months_and_read_only_preview(self):
+        from app.time_utils import default_adaptation_end
+        self.assertEqual(default_adaptation_end(date(2026, 1, 31)), date(2026, 4, 30))
+        self.assertEqual(default_adaptation_end(date(2026, 11, 30)), date(2027, 2, 28))
+        self.assertEqual(default_adaptation_end(date(2027, 11, 30)), date(2028, 2, 29))
+        self.employee.adaptation_end = None
+        self.db.commit()
+        preview = build_preview(self.db, self.employee)
+        self.assertEqual(preview["adaptation_end"], "2092-04-07")
+        self.assertEqual(preview["adaptation_end_source"], "calculated")
+        self.assertTrue(all(not row["error"] for row in preview["rows"]))
+        self.assertIsNone(self.employee.adaptation_end)
+        self.assertEqual(self.db.query(FlowLaunchRequest).count(), 0)
+        self.employee.adaptation_end = date(2092, 4, 1)
+        explicit = build_preview(self.db, self.employee)
+        self.assertEqual(explicit["adaptation_end"], "2092-04-01")
+        self.assertEqual(explicit["adaptation_end_source"], "saved")
+        self.assertNotEqual(preview["fingerprint"], explicit["fingerprint"])
+
+    def test_default_end_does_not_move_saved_schedule_and_requires_calendar(self):
+        self.employee.adaptation_end = None
+        self.db.commit()
+        preview = build_preview(self.db, self.employee)
+        row = next(row for row in preview["rows"] if row["key"] == "test2")
+        apply_plan(None, self.employee.id, {"fingerprint": preview["fingerprint"], "rules_confirmed": True, "rows": [{"key": "test2", "requested_at": row["proposed_at"]}]}, self.db)
+        self.employee.first_workday = date(2092, 2, 7)
+        self.db.commit()
+        refreshed = next(item for item in build_preview(self.db, self.employee)["rows"] if item["key"] == "test2")
+        self.assertEqual(refreshed["requested_at"], row["proposed_at"])
+        self.assertNotEqual(refreshed["proposed_at"], refreshed["requested_at"])
+        self.employee.first_workday = date(2092, 11, 1)
+        self.db.commit()
+        preview = build_preview(self.db, self.employee)
+        self.assertTrue(any("2093" in row["error"] for row in preview["rows"]))
+        self.employee.first_workday = None
+        self.db.commit()
+        self.assertEqual(build_preview(self.db, self.employee)["adaptation_end_source"], "missing")
+
     def test_apply_rejects_duplicates_stale_and_keeps_manual_date(self):
         preview = build_preview(self.db, self.employee)
         row = preview["rows"][0]

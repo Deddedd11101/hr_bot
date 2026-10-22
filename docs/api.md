@@ -18,7 +18,7 @@ source_of_truth: true
 
 - `GET /api/adaptation-plan/template`: authenticated, entries/revision/scenario_options, read-only defaults.
 - `POST /api/adaptation-plan/template`: entries/revision; CAS conflict 409, invalid dependency 422.
-- `GET /api/employees/{employee_id}/adaptation-plan`: authenticated employee-only preview, ordered rows, dates/statuses/conflicts/calendar_versions/fingerprint; candidates 404.
+- `GET /api/employees/{employee_id}/adaptation-plan`: authenticated employee-only preview, ordered rows, dates/statuses/conflicts/calendar_versions/fingerprint; candidates 404. Также adaptation_end (ISO date или пустая строка), adaptation_end_source=saved/calculated/missing: пустой конец рассчитывается от первого дня +3 календарных месяца без записи в карточку/очередь; заполненная дата приоритетна. При новом promote-to-adaptation пустой конец сохраняется по этому же правилу.
 - `POST /api/employees/{employee_id}/adaptation-plan`: fingerprint, rules_confirmed=true, rows [{key,requested_at local ISO minute}]; атомарное создание очереди, duplicate/stale 409, past/invalid 422.
 - `PATCH /api/employees/{employee_id}/adaptation-plan/{item_id}`: expected_at + requested_at или action=cancel; только не начавшийся этап, ownership 404, concurrent/started 409.
 
