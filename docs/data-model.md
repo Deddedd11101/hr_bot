@@ -19,10 +19,12 @@ source_of_truth: true
 
 | Таблица | Назначение | Поля | Ограничения |
 | --- | --- | --- | --- |
+| `adaptation_plan_templates` | Общий порядок и правила адаптации | singleton `id=1`, `revision`, `entries_json`, `updated_at` UTC | CAS revision; GET возвращает defaults без записи |
+| `employee_adaptation_plan_items` | Даты и история отдельных этапов сотрудника | `id`, `employee_id` index, `entry_key`, `flow_key`, `title`, `requested_at` local, `launch_request_id` index, `status`, `manual_date`, `calculation_json`, `started_at`, `completed_at`, `last_error` | UNIQUE employee_id/entry_key; повторные этапы одного flow имеют разные ключи; completed history сохраняется |
 | `production_calendar_years` | Единственный текущий календарь каждого года | `year` PK, `current_version_id` nullable | SQLite insert-on-conflict + conditional update защищает от параллельного переключения |
 | `production_calendar_versions` | Неизменяемые версии полного года | `id`, `year` index, `digest`, `days_json`, `source_name`, `created_at` UTC, `created_by` | 365/366 проверенных дат хранятся одним компактным JSON snapshot; нет персональных данных сотрудников; история не удаляется через API |
 
-Новые таблицы календаря создаются metadata.create_all без изменения employee/scenario таблиц. Исходный файл не сохраняется на сервере. JSON вместо отдельной строки на день выбран для immutable годовой конфигурации; SQL-поиск по дням текущему импорту не требуется. Планировщик пока не использует календарь.
+Новые таблицы календаря и адаптации создаются metadata.create_all. `scenario_progress.adaptation_plan_item_id` — nullable indexed additive SQLite column, связывает runtime с отдельным плановым этапом. Исходный файл календаря не сохраняется на сервере. JSON вместо отдельной строки на день выбран для immutable годовой конфигурации. Календарь используется при явном расчёте плана, не меняет уже сохранённые даты. Полный контракт: [[features/adaptation-planning]].
 
 `scenario_templates.purpose`: независимое назначение (`general`, `hiring`, `adaptation`, `ipr`), NOT NULL с default `general`. SQLite compatibility patching additive; назначение не меняет `scenario_kind`, trigger, recipient или расписание. Только при первичном добавлении колонки восемь сверенных на stage ключей из `INITIAL_ADAPTATION_KEYS` получают adaptation. Повторный запуск не переопределяет выбор HR; runtime не классифицирует по названию.
 

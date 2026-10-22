@@ -26,7 +26,7 @@ from .staff_email_verification import chat_id_allowed, is_verified
 from .models import DocumentLibraryItem, Employee, EmployeeDocumentLink, EmployeeFeedbackRecipient, EmployeeFeedbackRun, EmployeeFile, FlowLaunchRequest, FlowStepTemplate, HrSettings, MassScenarioAction, OnboardingEvent, ScenarioProgress, ScenarioTemplate, StepButtonNotification, StepSendNotification, SurveyAnswer
 from .positions import position_matches_scope
 from .time_utils import utc_now
-from .models import ScenarioAnswerRun
+from .models import ScenarioAnswerRun, EmployeeAdaptationPlanItem
 from .feedback_exports import feedback_workbook, latest_feedback_run
 
 
@@ -439,6 +439,11 @@ def _survey_launch_id(db: Session, employee_id: int, scenario_key: str) -> int |
 
 
 def _complete_feedback_recipient(db: Session, progress: ScenarioProgress) -> None:
+    if progress.adaptation_plan_item_id is not None:
+        item = db.get(EmployeeAdaptationPlanItem, progress.adaptation_plan_item_id)
+        if item and item.employee_id == progress.employee_id and item.flow_key == progress.scenario_key:
+            item.status = "completed"
+            item.completed_at = progress.completed_at or utc_now()
     if progress.answer_run_id is not None:
         run = db.get(ScenarioAnswerRun, progress.answer_run_id)
         if run:
@@ -509,6 +514,11 @@ def get_or_create_progress(db: Session, employee_id: int, scenario_key: str) -> 
 def reset_progress(db: Session, employee_id: int, scenario_key: str) -> ScenarioProgress:
     now = utc_now()
     progress = get_or_create_progress(db, employee_id, scenario_key)
+    if progress.adaptation_plan_item_id is not None:
+        item = db.get(EmployeeAdaptationPlanItem, progress.adaptation_plan_item_id)
+        if item and item.status in {"starting", "in_progress"}:
+            item.status = "interrupted"
+    progress.adaptation_plan_item_id = None
     if progress.answer_run_id is not None:
         run = db.get(ScenarioAnswerRun, progress.answer_run_id)
         if run and run.status == "in_progress":
@@ -2824,6 +2834,7 @@ async def start_scenario(
     *,
     feedback_run_id: int | None = None,
     survey_launch_id: int | None = None,
+    adaptation_plan_item_id: int | None = None,
 ) -> bool:
     messenger = as_messenger(messenger_or_bot)
     if employee.is_bot_blocked:
@@ -2831,6 +2842,10 @@ async def start_scenario(
     scenario = db.query(ScenarioTemplate).filter(ScenarioTemplate.scenario_key == scenario_key).first()
     if not scenario or not matches_role_scope(employee, scenario):
         return False
+    if adaptation_plan_item_id is not None:
+        item = db.get(EmployeeAdaptationPlanItem, adaptation_plan_item_id)
+        if not item or item.employee_id != employee.id or item.flow_key != scenario_key or item.status != "starting":
+            return False
     if feedback_run_id is not None and survey_launch_id is not None:
         return False
     if feedback_run_id is None and survey_launch_id is None:
@@ -2858,6 +2873,7 @@ async def start_scenario(
     progress = get_or_create_progress(db, employee.id, scenario_key)
     progress.feedback_run_id = feedback_run_id
     progress.survey_launch_id = survey_launch_id
+    progress.adaptation_plan_item_id = adaptation_plan_item_id
     progress.recipient_mode = _scenario_recipient_mode(scenario)
     db.commit()
     return await send_step(messenger, db, employee, scenario, first_step)

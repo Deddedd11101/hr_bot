@@ -8,6 +8,34 @@ from .database import Base
 from .time_utils import utc_now
 
 
+class AdaptationPlanTemplate(Base):
+    __tablename__ = "adaptation_plan_templates"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    revision: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    entries_json: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+
+
+class EmployeeAdaptationPlanItem(Base):
+    __tablename__ = "employee_adaptation_plan_items"
+    __table_args__ = (UniqueConstraint("employee_id", "entry_key"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    employee_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    entry_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    flow_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    requested_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    launch_request_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="planned")
+    manual_date: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    calculation_json: Mapped[str] = mapped_column(Text, nullable=False)
+    started_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    last_error: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)
+
+
 class ProductionCalendarYear(Base):
     __tablename__ = "production_calendar_years"
 
@@ -480,7 +508,7 @@ class FlowLaunchRequest(Base):
         String(32),
         nullable=False,
         default="manual",
-        doc="manual | scheduled | status_transition",
+        doc="manual | scheduled | adaptation_plan | status_transition",
     )
     skip_step_key: Mapped[Optional[str]] = mapped_column(
         String(128),
@@ -981,6 +1009,7 @@ class ScenarioProgress(Base):
     survey_launch_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
     feedback_question_text: Mapped[Optional[str]] = mapped_column(String(4096), nullable=True)
     answer_run_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
+    adaptation_plan_item_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
 
 
 class SurveyAnswer(Base):

@@ -716,6 +716,10 @@ def _ensure_sqlite_schema() -> None:
             if "answer_run_id" not in columns:
                 conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN answer_run_id INTEGER"))
             conn.execute(text(f"CREATE INDEX IF NOT EXISTS ix_{table_name}_answer_run_id ON {table_name} (answer_run_id)"))
+        progress_columns = {row[1] for row in conn.execute(text("PRAGMA table_info(scenario_progress)"))}
+        if "adaptation_plan_item_id" not in progress_columns:
+            conn.execute(text("ALTER TABLE scenario_progress ADD COLUMN adaptation_plan_item_id INTEGER"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_scenario_progress_adaptation_plan_item_id ON scenario_progress (adaptation_plan_item_id)"))
 
         feedback_run_columns = {row[1] for row in conn.execute(text("PRAGMA table_info(employee_feedback_runs)"))}
         if feedback_run_columns and "scenario_title" not in feedback_run_columns:

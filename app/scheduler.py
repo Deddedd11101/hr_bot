@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+from functools import wraps
 from datetime import date
 from datetime import datetime, time, timedelta
 from typing import Optional
@@ -10,6 +12,7 @@ from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
 from .config import settings
+from .adaptation_delivery import deliver_plan_request, owns_scenario
 from .database import SessionLocal
 from .flow_templates import normalize_candidate_work_stage
 from .mass_targeting import (
@@ -43,6 +46,16 @@ IMMEDIATE_TRIGGER_MODES = {
     "candidate_hr_stage",
 }
 
+_scheduler_delivery_lock = asyncio.Lock()
+
+
+def _serialize_scheduler_delivery(function):
+    @wraps(function)
+    async def wrapped(*args, **kwargs):
+        async with _scheduler_delivery_lock:
+            return await function(*args, **kwargs)
+    return wrapped
+
 
 def _get_tz():
     return tz_get(settings.TIMEZONE)
@@ -65,16 +78,17 @@ def _load_pending_flow_requests(db: Session) -> list[FlowLaunchRequest]:
             FlowLaunchRequest.processed_at.is_(None),
             or_(
                 and_(
-                    FlowLaunchRequest.launch_type == "scheduled",
+                    FlowLaunchRequest.launch_type.in_(["scheduled", "adaptation_plan"]),
                     FlowLaunchRequest.skip_step_key.is_(None),
                     FlowLaunchRequest.requested_at <= local_now,
                 ),
                 and_(
-                    or_(FlowLaunchRequest.launch_type != "scheduled", FlowLaunchRequest.skip_step_key.isnot(None)),
+                    or_(FlowLaunchRequest.launch_type.notin_(["scheduled", "adaptation_plan"]), FlowLaunchRequest.skip_step_key.isnot(None)),
                     FlowLaunchRequest.requested_at <= utc_now_value,
                 ),
             ),
         )
+        .order_by(FlowLaunchRequest.requested_at, FlowLaunchRequest.id)
         .all()
     )
 
@@ -176,8 +190,11 @@ def _compute_step_run_at(anchor_date, step: FlowStepTemplate, manual: bool) -> O
     return tz.localize(datetime.combine(event_date, time(hour=hour, minute=minute)))
 
 
-async def run_scheduled_step(bot, employee_id: int, scenario_key: str, step_key: str, scheduled_at: datetime) -> None:
+@_serialize_scheduler_delivery
+async def run_scheduled_step(bot, employee_id: int, scenario_key: str, step_key: str, scheduled_at: datetime, explicit: bool = False) -> None:
     with SessionLocal() as db:
+        if not explicit and owns_scenario(db, employee_id, scenario_key):
+            return
         employee = db.get(Employee, employee_id)
         scenario = db.query(ScenarioTemplate).filter(ScenarioTemplate.scenario_key == scenario_key).first()
         step = (
@@ -260,7 +277,7 @@ def schedule_employee_scenario(
                 run_scheduled_step,
                 "date",
                 run_date=run_at,
-                args=[bot, employee.id, scenario.scenario_key, step.step_key, run_at],
+                args=[bot, employee.id, scenario.scenario_key, step.step_key, run_at, True] if manual and owns_scenario(db, employee.id, scenario.scenario_key) else [bot, employee.id, scenario.scenario_key, step.step_key, run_at],
                 id=job_id,
                 replace_existing=manual,
             )
@@ -298,6 +315,7 @@ def schedule_employee_scenario(
         )
 
 
+@_serialize_scheduler_delivery
 async def schedule_all_employees(scheduler: AsyncIOScheduler, bot) -> None:
     with SessionLocal() as db:
         employees = _load_all_employees(db)
@@ -311,6 +329,8 @@ async def schedule_all_employees(scheduler: AsyncIOScheduler, bot) -> None:
                 continue
             sent_keys = _load_sent_event_keys(db, employee.id)
             for scenario in scheduled_scenarios:
+                if owns_scenario(db, employee.id, scenario.scenario_key):
+                    continue
                 schedule_employee_scenario(db, scheduler, bot, employee, scenario, sent_keys, manual=False)
             if scheduled_scenarios:
                 employee.is_flow_scheduled = True
@@ -370,6 +390,8 @@ async def schedule_all_employees(scheduler: AsyncIOScheduler, bot) -> None:
 
         pending_requests = _load_pending_flow_requests(db)
         for request in pending_requests:
+            if await deliver_plan_request(db, bot, request):
+                continue
             employee = db.get(Employee, request.employee_id)
             scenario = db.query(ScenarioTemplate).filter(ScenarioTemplate.scenario_key == request.flow_key).first()
             if not employee or not scenario:
