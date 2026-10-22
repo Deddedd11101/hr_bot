@@ -13,6 +13,16 @@ source_of_truth: true
 
 # Журнал изменений тестового стенда
 
+## 22.10.2026 — порядок и автопланирование адаптации
+
+- PR #109 объединён в stage; deployed SHA `d47c0037bad0e4cbdc9559187c878c4d8d20bbec`. Deploy Stage 39798675940: preflight и Deploy over SSH прошли, код подтверждён серверным выводом `d47c003`.
+- Полный unittest discover в CI и deploy preflight, compile/Ruff, frontend build/imports прошли. Локально: 10 новых planning/lifecycle tests, 209 scenario/identity/employee/scheduler smoke tests, TypeScript и повторная воспроизводимая Vite-сборка; tracked worktree clean. Docs check: `D:\HRBot\hr_bot_stage_pipeline\.venv\Scripts\python.exe tools\check_docs_contracts.py` — passed.
+- До checkout workflow создал SQLite backup с quick_check и JSON snapshot сценариев; после старта scenario configuration fingerprint unchanged. Additive: adaptation_plan_templates, employee_adaptation_plan_items и nullable indexed scenario_progress.adaptation_plan_item_id. Данные шагов/ролей сценариев не ремонтировались и не расширялись.
+- HTTP employees/workspace после ожидания старта: 303/303. Telegram egress и fresh worker-log gate Deploy Stage прошли. Read-only inspect job Stage Diagnostics 39799117036 — success: deployed SHA совпал, tracked worktree clean; web/worker/WireGuard/Caddy active, свежих Telegram/network errors нет.
+- В локальном браузере на тестовой карточке проверены создание 9 отдельных очередей, изменение даты, пересчёт без потери ручной даты, изменение порядка и сохранение шаблона. Скриншот `D:\HRBot\outputs\adaptation-planning\local-planned.png`. Локальный worker не запускался; сообщений в Telegram не отправлялось.
+- На stage индивидуальные планы сотрудников НЕ создавались, общий шаблон в БД не изменялся через UI. После обрыва интернета браузерная admin-сессия сброшена; визуальная проверка нового интерфейса на stage ожидает входа пользователя. Новая реальная доставка/прохождение в Telegram не проверена. Для расчёта дат следующего года нужен календарь соответствующего года, без fallback на обычные выходные.
+- Контракт и согласованные правила: [[features/adaptation-planning]]. Начальный порядок из файла пользователя, общие правила редактируются, сохранённые индивидуальные даты не пересчитываются сами. Пары employee/scenario с планом исключаются из старых автоматических root jobs; явные ручные запуски и internal follow-up сохранены.
+
 ## 22.10.2026 — импорт производственного календаря
 
 - Тип: app deploy + календарная конфигурация через админку. PR #106: `ee8e3895038847adc0a0b306d9d85d459d54906b`, Deploy Stage 39685858577 — success. PR #107: XML DTD/entity hardening, финальный deployed SHA `903edae9bce2daa02ed1564fbca75d9cd1623d5d`, Deploy Stage 39686229534 — success.
