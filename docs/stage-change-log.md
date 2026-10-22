@@ -13,6 +13,14 @@ source_of_truth: true
 
 # Журнал изменений тестового стенда
 
+## 22.10.2026 22:41 МСК — компактный интерфейс адаптации
+
+- App deploy PR #113: `2f99be996c29bbbfa63b7b06bd3c2d39a78d3664`; Deploy Stage 39842096935 success. Backend/API/schema не изменены; обновлены UI, generated assets и cache versions.
+- Локально TypeScript, production build и повторная clean-сборка, diff check и docs check passed. На отдельной SQLite в браузере проверены stale preview 409 без создания очередей, bulk planning после refresh, PATCH даты, отмена и повторное планирование; два Пульса сохраняют отдельные очереди. Проверены ширины 390 и 1280 px и доступность прежних вспомогательных форм/редактора шаблона.
+- Deploy preflight прошёл; создан проверенный SQLite backup и snapshot сценариев, scenario fingerprint unchanged. HTTP employees/workspace 303/303, Telegram egress gate passed.
+- Stage Diagnostics 39842469099 success: deployed SHA совпал, tracked worktree clean, web/worker/WireGuard/Caddy active. Read-only browser: карточка №80, компактная адаптация и предупреждения о дате окончания доступны. Скриншот `D:\HRBot\outputs\compact-adaptation-ui\stage-verified.png`.
+- Реальные планы и общий шаблон не менялись; новые Telegram-сценарии не запускались. Пользовательская приемка рабочей вкладки остаётся открытой. Откат к предыдущему интегрированному ref через Deploy Stage; миграций в пакете нет.
+
 ## 22.10.2026 — порядок и автопланирование адаптации
 
 - Дополнение PR #110 выложено: финальный deployed SHA `e7f3e961dcc4717be116f5a81508d12e8305c37e`, Deploy Stage 39801492947 — success. Dashboard теперь учитывает adaptation_plan в счётчике и ближайших событиях; новый regression passed (11 planning tests). Preflight и HTTP 303/303 прошли; backup и scenario fingerprint gate сохранены. Эта выкладка также доставила журнал предыдущего deploy. Реальные планы не создавались, browser/Telegram граница ниже не изменилась.
