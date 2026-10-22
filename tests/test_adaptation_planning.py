@@ -145,6 +145,15 @@ class AdaptationPlanTests(unittest.IsolatedAsyncioTestCase):
         with patch("app.scheduler._local_now_naive", return_value=datetime(2092, 1, 8, 10)), patch("app.scheduler.utc_now", return_value=datetime(2092, 1, 8, 7)):
             self.assertEqual([row.id for row in _load_pending_flow_requests(self.db)], [request.id])
 
+    def test_dashboard_counts_and_lists_adaptation_queue(self):
+        from app.web.dashboard import _count_scheduled, _upcoming_events
+        request = FlowLaunchRequest(employee_id=self.employee.id, flow_key=default_entries()[0]["scenario_key"], launch_type="adaptation_plan", requested_at=datetime(2092, 1, 8, 10))
+        self.db.add(request)
+        self.db.commit()
+        start, end = datetime(2092, 1, 8), datetime(2092, 1, 9)
+        self.assertEqual(_count_scheduled(self.db, start, end), 1)
+        self.assertEqual(len(_upcoming_events(self.db, start, end)), 1)
+
     def test_reset_cancels_future_entries_without_erasing_completed_history(self):
         from app.web.employees import _delete_employee_active_scenario_runtime_state
         preview = build_preview(self.db, self.employee)
