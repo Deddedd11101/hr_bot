@@ -15,6 +15,7 @@ source_of_truth: true
 
 ## 22.10.2026 — порядок и автопланирование адаптации
 
+- Дополнение PR #110 выложено: финальный deployed SHA `e7f3e961dcc4717be116f5a81508d12e8305c37e`, Deploy Stage 39801492947 — success. Dashboard теперь учитывает adaptation_plan в счётчике и ближайших событиях; новый regression passed (11 planning tests). Preflight и HTTP 303/303 прошли; backup и scenario fingerprint gate сохранены. Эта выкладка также доставила журнал предыдущего deploy. Реальные планы не создавались, browser/Telegram граница ниже не изменилась.
 - PR #109 объединён в stage; deployed SHA `d47c0037bad0e4cbdc9559187c878c4d8d20bbec`. Deploy Stage 39798675940: preflight и Deploy over SSH прошли, код подтверждён серверным выводом `d47c003`.
 - Полный unittest discover в CI и deploy preflight, compile/Ruff, frontend build/imports прошли. Локально: 10 новых planning/lifecycle tests, 209 scenario/identity/employee/scheduler smoke tests, TypeScript и повторная воспроизводимая Vite-сборка; tracked worktree clean. Docs check: `D:\HRBot\hr_bot_stage_pipeline\.venv\Scripts\python.exe tools\check_docs_contracts.py` — passed.
 - До checkout workflow создал SQLite backup с quick_check и JSON snapshot сценариев; после старта scenario configuration fingerprint unchanged. Additive: adaptation_plan_templates, employee_adaptation_plan_items и nullable indexed scenario_progress.adaptation_plan_item_id. Данные шагов/ролей сценариев не ремонтировались и не расширялись.
