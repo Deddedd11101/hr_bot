@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import date
 from datetime import datetime, time, timedelta
 from typing import Optional
@@ -34,6 +35,9 @@ from .scenario_engine import (
     start_scenario,
 )
 from .time_utils import utc_now
+
+
+_scheduler_execution_lock = asyncio.Lock()
 
 IMMEDIATE_TRIGGER_MODES = {
     "manual_only",
@@ -177,6 +181,11 @@ def _compute_step_run_at(anchor_date, step: FlowStepTemplate, manual: bool) -> O
 
 
 async def run_scheduled_step(bot, employee_id: int, scenario_key: str, step_key: str, scheduled_at: datetime) -> None:
+    async with _scheduler_execution_lock:
+        await _run_scheduled_step(bot, employee_id, scenario_key, step_key, scheduled_at)
+
+
+async def _run_scheduled_step(bot, employee_id: int, scenario_key: str, step_key: str, scheduled_at: datetime) -> None:
     with SessionLocal() as db:
         employee = db.get(Employee, employee_id)
         scenario = db.query(ScenarioTemplate).filter(ScenarioTemplate.scenario_key == scenario_key).first()
@@ -299,6 +308,11 @@ def schedule_employee_scenario(
 
 
 async def schedule_all_employees(scheduler: AsyncIOScheduler, bot) -> None:
+    async with _scheduler_execution_lock:
+        await _scan_employees_and_requests(scheduler, bot)
+
+
+async def _scan_employees_and_requests(scheduler: AsyncIOScheduler, bot) -> None:
     with SessionLocal() as db:
         employees = _load_all_employees(db)
         scenarios = _load_scenarios(db)
