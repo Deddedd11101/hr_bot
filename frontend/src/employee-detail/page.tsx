@@ -16,7 +16,7 @@ import { PageDetailHeader } from "@/components/ui/page-header";
 import { CandidateStage } from "./candidate-stage";
 import { EmployeeFeedbackSurveys } from "./feedback-surveys";
 import { EmployeeScenarioResults } from "./scenario-results";
-import { AdaptationProgress } from "./adaptation-progress";
+import { AdaptationPlanner } from "./adaptation-planner";
 import { TELEGRAM_DOCUMENT_TEMPLATE_TAGS, type TelegramCustomEmoji, type TelegramTemplateTag } from "@/components/ui/telegram-message-tools";
 import {
     EmployeeDetailError,
@@ -920,7 +920,7 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
                     <TabsContent value="messages" keepMounted className="admin-page-stack min-w-0"><EmployeeOperationsSection {...operationsProps} view="messages" /></TabsContent>
                     <TabsContent value="files" keepMounted className="admin-page-stack min-w-0"><EmployeeOperationsSection {...operationsProps} view="files" /></TabsContent>
                     <TabsContent value="history" keepMounted className="admin-page-stack min-w-0"><EmployeeOperationsSection {...operationsProps} view="history" /></TabsContent>
-                    {!isCandidate ? <TabsContent value="adaptation" keepMounted className="admin-page-stack min-w-0"><AdaptationProgress stages={payload.adaptation_scenarios || []} /><EmployeeProfileSection {...profileProps} view="adaptation" /><EmployeeOperationsSection {...operationsProps} launchItems={launchItems.filter(item => item.purpose === "adaptation")} manualLaunchItems={manualLaunchItems.filter(item => item.purpose === "adaptation")} view="adaptation" /></TabsContent> : null}
+                    {!isCandidate ? <TabsContent value="adaptation" keepMounted className="admin-page-stack min-w-0"><AdaptationPlanner employeeId={Number(form.id)} /><EmployeeProfileSection {...profileProps} view="adaptation" /><EmployeeOperationsSection {...operationsProps} launchItems={launchItems.filter(item => item.purpose === "adaptation")} manualLaunchItems={manualLaunchItems.filter(item => item.purpose === "adaptation")} view="adaptation" /></TabsContent> : null}
                     {!isCandidate ? <TabsContent value="grade" keepMounted className="admin-page-surface min-w-0 p-4">{gradeOpened && <React.Suspense fallback={<p role="status">Загрузка грейда...</p>}><GradeTab employeeId={Number(form.id)} /></React.Suspense>}</TabsContent> : null}
                 </Tabs>
             </div>

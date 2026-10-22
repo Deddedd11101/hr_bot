@@ -14,6 +14,16 @@ related:
 source_of_truth: true
 ---
 
+## План адаптации
+
+- `GET /api/adaptation-plan/template`: authenticated, entries/revision/scenario_options, read-only defaults.
+- `POST /api/adaptation-plan/template`: entries/revision; CAS conflict 409, invalid dependency 422.
+- `GET /api/employees/{employee_id}/adaptation-plan`: authenticated employee-only preview, ordered rows, dates/statuses/conflicts/calendar_versions/fingerprint; candidates 404.
+- `POST /api/employees/{employee_id}/adaptation-plan`: fingerprint, rules_confirmed=true, rows [{key,requested_at local ISO minute}]; атомарное создание очереди, duplicate/stale 409, past/invalid 422.
+- `PATCH /api/employees/{employee_id}/adaptation-plan/{item_id}`: expected_at + requested_at или action=cancel; только не начавшийся этап, ownership 404, concurrent/started 409.
+
+Полный контракт и согласованные правила дат: [[features/adaptation-planning]].
+
 ## Grade API
 
 Все endpoints требуют существующую authenticated admin-сессию (любая текущая роль).

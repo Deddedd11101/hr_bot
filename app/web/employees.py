@@ -386,6 +386,9 @@ def _enqueue_manager_assignment_trigger(
     scenario = _manager_assignment_trigger_scenario(db, subject_employee)
     if not scenario:
         return
+    from ..adaptation_delivery import owns_scenario
+    if owns_scenario(db, subject_employee.id, scenario.scenario_key):
+        return
 
     duplicate_request = (
         db.query(FlowLaunchRequest)
@@ -1393,6 +1396,23 @@ def _incomplete_scenario_progress_filter():
 
 
 def _delete_employee_active_scenario_runtime_state(db: Session, employee_id: int) -> None:
+    from ..models import EmployeeAdaptationPlanItem
+    active_item_ids = select(ScenarioProgress.adaptation_plan_item_id).where(
+        _incomplete_scenario_progress_filter(),
+        or_(ScenarioProgress.employee_id == employee_id, ScenarioProgress.recipient_employee_id == employee_id),
+    )
+    db.query(EmployeeAdaptationPlanItem).filter(EmployeeAdaptationPlanItem.id.in_(active_item_ids)).update(
+        {EmployeeAdaptationPlanItem.status: "interrupted"}, synchronize_session=False)
+    planned_items = db.query(EmployeeAdaptationPlanItem).filter(
+        EmployeeAdaptationPlanItem.employee_id == employee_id,
+        EmployeeAdaptationPlanItem.status.in_(["planned", "blocked"]),
+    ).all()
+    for item in planned_items:
+        request = db.get(FlowLaunchRequest, item.launch_request_id) if item.launch_request_id else None
+        if request and request.processed_at is None:
+            db.delete(request)
+        item.status = "cancelled"
+        item.launch_request_id = None
     interrupted_runs = select(ScenarioProgress.answer_run_id).where(
         _incomplete_scenario_progress_filter(),
         or_(ScenarioProgress.employee_id == employee_id, ScenarioProgress.recipient_employee_id == employee_id),
@@ -1413,6 +1433,8 @@ def _delete_employee_active_scenario_runtime_state(db: Session, employee_id: int
 
 
 def _delete_employee_related_scenario_state(db: Session, employee_id: int) -> None:
+    from ..models import EmployeeAdaptationPlanItem
+    db.query(EmployeeAdaptationPlanItem).filter_by(employee_id=employee_id).delete(synchronize_session=False)
     db.query(ScenarioProgress).filter(
         or_(
             ScenarioProgress.employee_id == employee_id,
