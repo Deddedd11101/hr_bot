@@ -3,6 +3,7 @@ import { ArrowDown, ArrowUp, Plus, RefreshCw, Settings2, Trash2 } from "lucide-r
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Progress } from "@/components/ui/progress";
 import { PageSection } from "@/components/ui/page-section";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
@@ -65,7 +66,7 @@ export function AdaptationPlanner({ employeeId }: { employeeId: number }) {
         {notice && <p role="status" className="mb-3 text-sm text-muted-foreground">{notice}</p>}
         {!plan ? <p role="status" className="text-sm text-muted-foreground">{error ? "План недоступен" : "Загрузка плана..."}</p> : <>
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-                <div className="min-w-48 flex-1"><div className="mb-2 flex justify-between text-sm"><span>{plan.group} · {plan.timezone}</span><span>{completed} / {plan.rows.length}</span></div><progress className="h-2 w-full accent-primary" value={completed} max={Math.max(1, plan.rows.length)} aria-label="Завершённые этапы адаптации" /></div>
+                <div className="min-w-48 flex-1"><div className="mb-2 flex justify-between text-sm"><span>{plan.group} · {plan.timezone}</span><span>{completed} / {plan.rows.length}</span></div><Progress value={completed} max={Math.max(1, plan.rows.length)} aria-label="Завершённые этапы адаптации" /></div>
                 <Button variant="outline" disabled={busy} onClick={() => void perform(async () => accept(await api<Plan>(url)))}><RefreshCw />Рассчитать даты</Button>
             </div>
             <div className="overflow-x-auto"><table className="w-full min-w-[670px] text-left text-sm"><thead className="border-b text-muted-foreground"><tr><th className="w-9 py-2"><span className="sr-only">Выбор</span></th><th className="py-2 font-medium">Этап</th><th className="px-3 py-2 font-medium">Дата и время, МСК</th><th className="py-2 font-medium">Статус</th><th><span className="sr-only">Действия</span></th></tr></thead>
