@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from .config import settings
 from .models import AdaptationPlanTemplate, Employee, EmployeeAdaptationPlanItem, FlowLaunchRequest, ProductionCalendarVersion, ProductionCalendarYear, ScenarioProgress, ScenarioTemplate
 from .positions import position_matches_scope
+from .time_utils import default_adaptation_end
 from .scenario_engine import matches_role_scope
 
 
@@ -111,6 +112,7 @@ def local_now() -> datetime:
 
 def build_preview(db: Session, employee: Employee) -> dict:
     entries, revision = template_data(db)
+    end_date = employee.adaptation_end or (default_adaptation_end(employee.first_workday) if employee.first_workday else None)
     calendar = CalendarDates(db)
     by_key = {entry["key"]: entry for entry in entries}
     is_pm = position_matches_scope(employee.desired_position, "project_manager,rukovoditel_proektov,rukovoditel_proekta")
@@ -119,7 +121,7 @@ def build_preview(db: Session, employee: Employee) -> dict:
     cache = {}
     def calculate(key, seen=()):
         if key in {"first", "end"}:
-            value = employee.first_workday if key == "first" else employee.adaptation_end
+            value = employee.first_workday if key == "first" else end_date
             if not value:
                 raise ValueError("Укажите первый рабочий день" if key == "first" else "Укажите дату окончания адаптации")
             return value
@@ -176,4 +178,5 @@ def build_preview(db: Session, employee: Employee) -> dict:
     fingerprint = hashlib.sha256(json.dumps({"revision": revision, "first": str(employee.first_workday), "end": str(employee.adaptation_end),
                      "position": employee.desired_position, "blocked": employee.is_bot_blocked, "rows": rows, "calendars": calendar.versions}, sort_keys=True).encode()).hexdigest()
     return {"revision": revision, "fingerprint": fingerprint, "rows": rows, "calendar_versions": calendar.versions,
+            "adaptation_end": end_date.isoformat() if end_date else "", "adaptation_end_source": "saved" if employee.adaptation_end else "calculated" if end_date else "missing",
             "group": "PM" if is_pm else "Не PM", "timezone": settings.TIMEZONE}

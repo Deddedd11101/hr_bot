@@ -54,7 +54,7 @@ from ..scenario_engine import (
     start_scenario,
     send_tagged_employee_documents,
 )
-from ..time_utils import utc_now
+from ..time_utils import default_adaptation_end, utc_now
 
 OFFER_DOCUMENT_TITLE = "Оффер"
 OFFER_DOCUMENT_SLOT = "offer"
@@ -1528,7 +1528,7 @@ def _promote_candidate_to_adaptation(db: Session, employee: Employee) -> Employe
     if employee.adaptation_midpoint is None:
         employee.adaptation_midpoint = add_workdays(employee.first_workday, settings.PROBATION_WORKDAYS // 2)
     if employee.adaptation_end is None:
-        employee.adaptation_end = add_workdays(employee.first_workday, settings.PROBATION_WORKDAYS)
+        employee.adaptation_end = default_adaptation_end(employee.first_workday)
     db.commit()
     db.refresh(employee)
     return employee
