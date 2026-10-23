@@ -7,6 +7,7 @@ import type { Assessment, EmployeeGrade, Profile } from "@/grades/types";
 import { GradeAssessment } from "./grade-assessment";
 import { GradeComparison } from "./grade-comparison";
 import { Input } from "@/components/ui/input";
+import { ConfirmAction } from "@/components/ui/confirm-action";
 
 const empty: Profile = { specialization_id: null, current_grade_id: null, target_grade_id: null, target_specialization_id: null };
 
@@ -50,7 +51,7 @@ export function GradeTab({ employeeId }: { employeeId: number }) {
     {!!data.decisions?.length && <section className="space-y-2 border-t pt-4"><h2 className="font-semibold">История назначений грейда</h2>{data.decisions.map(item => { const labels = JSON.parse(item.labels_json); return <div key={item.id} className="border-b py-3 text-sm"><p>{dateLabel(item.created_at)} · {labels.previous_grade || "Не назначен"} → {labels.grade || "Не назначен"} · {labels.specialization || "Без специализации"}</p>{item.comment && <p className="text-muted-foreground">{item.comment}</p>}</div>; })}</section>}
     <section className="space-y-3 border-t pt-4"><h2 className="text-base font-semibold">История оценок</h2>
       {!data.assessments.length && <p className="text-muted-foreground">Оценок пока нет</p>}
-      {data.assessments.map(a => <div key={a.id} className="flex flex-wrap items-center justify-between gap-3 border-b py-3"><div><p>{dateLabel(a.created_at)}</p><Badge variant="outline">{a.status === "final" ? "Завершена" : "Черновик"}</Badge></div><Button variant="outline" disabled={dirty || action.busy} onClick={() => void action.run(async () => setAssessment(await request<Assessment>(`/api/grade-assessments/${a.id}`)), "")}>Открыть оценку</Button></div>)}
+      {data.assessments.map(a => <div key={a.id} className="flex flex-wrap items-center justify-between gap-3 border-b py-3"><div><p>{dateLabel(a.created_at)}</p><Badge variant="outline">{a.status === "final" ? "Завершена" : a.status === "archived" ? "Архив" : "Черновик"}</Badge></div><div className="flex gap-2"><Button variant="outline" disabled={dirty || action.busy} onClick={() => void action.run(async () => setAssessment(await request<Assessment>(`/api/grade-assessments/${a.id}`)), "")}>Открыть оценку</Button>{a.status === "draft" && <ConfirmAction title="Убрать черновик в архив?" description="Оценки сохранятся в истории только для чтения. Можно будет начать новое ревью." actionLabel="В архив" onConfirm={() => void action.run(async () => { await request(`/api/grade-assessments/${a.id}/archive`, "POST"); await refresh(); }, "Черновик сохранён в архиве")}><Button variant="outline" disabled={dirty || action.busy}>В архив</Button></ConfirmAction>}</div></div>)}
     </section>
   </div>;
 }

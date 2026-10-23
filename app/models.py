@@ -168,7 +168,7 @@ class GradeAssessment(Base):
     __tablename__ = "grade_assessments"
     __table_args__ = (
         CheckConstraint("status IN ('draft', 'final')"),
-        Index("uq_grade_assessment_employee_draft", "employee_id", unique=True, sqlite_where=text("status = 'draft'")),
+        Index("uq_grade_assessment_employee_draft", "employee_id", unique=True, sqlite_where=text("status = 'draft' AND archived_at IS NULL")),
     )
     id: Mapped[int] = mapped_column(primary_key=True)
     employee_id: Mapped[int] = mapped_column(Integer, index=True)
@@ -182,6 +182,7 @@ class GradeAssessment(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
     finalized_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    archived_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
 
 class GradeAssessmentValue(Base):

@@ -70,10 +70,15 @@ def _ensure_sqlite_schema() -> None:
             ("grade_skills", "revision", "INTEGER NOT NULL DEFAULT 1"),
             ("grade_skills", "description", "TEXT"),
             ("grade_specializations", "skill_ids_json", "TEXT"),
+            ("grade_assessments", "archived_at", "DATETIME"),
         ):
             known = {row[1] for row in conn.execute(text(f"PRAGMA table_info({table})"))}
             if column not in known:
                 conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}"))
+        draft_index = conn.execute(text("SELECT sql FROM sqlite_master WHERE type='index' AND name='uq_grade_assessment_employee_draft'")).scalar()
+        if draft_index and "archived_at" not in draft_index.lower():
+            conn.execute(text("DROP INDEX uq_grade_assessment_employee_draft"))
+        conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS uq_grade_assessment_employee_draft ON grade_assessments(employee_id) WHERE status = 'draft' AND archived_at IS NULL"))
         table_info = conn.execute(text("PRAGMA table_info(employees)")).fetchall()
         columns = {row[1] for row in table_info}
         original_employee_columns = set(columns)

@@ -15,6 +15,12 @@ related:
 source_of_truth: true
 ---
 
+`grade_assessments.archived_at` nullable datetime отмечает архив незавершённого
+черновика без `finalized_at`. Физический `status=draft` сохраняет прежний CHECK;
+API возвращает `status=archived`. Partial unique index допускает только один
+draft с `archived_at IS NULL`. Startup добавляет колонку и обновляет старый
+индекс без rebuild таблицы; values и immutable snapshot сохраняются.
+
 # Модель данных
 
 | Таблица | Назначение | Поля | Ограничения |
