@@ -29,8 +29,11 @@ class GradeConflictError(ValueError):
 
 
 def _serialized(item):
-    return {key: value.isoformat() if isinstance(value, datetime) else value
+    result = {key: value.isoformat() if isinstance(value, datetime) else value
             for key, value in row(item).items() if key != "catalog_snapshot"}
+    if isinstance(item, GradeAssessment) and item.archived_at is not None:
+        result["status"] = "archived"
+    return result
 
 
 def _assessment(db, assessment_id):
@@ -52,7 +55,7 @@ def lock_assessment(db, assessment_id, *, allow_final=False):
     integer(assessment_id, 1, 2**63 - 1, "assessment_id")
     with db.no_autoflush:
         changed = db.execute(update(GradeAssessment).where(
-            GradeAssessment.id == assessment_id, GradeAssessment.status == "draft"
+            GradeAssessment.id == assessment_id, GradeAssessment.status == "draft", GradeAssessment.archived_at.is_(None)
         ).values(updated_at=GradeAssessment.updated_at).execution_options(synchronize_session=False)).rowcount
         item = _assessment(db, assessment_id)
     if not changed and not (allow_final and item.status == "final"):
@@ -143,7 +146,7 @@ def update_employee_grade(db, employee_id, payload, actor_id=None):
 def create_assessment(db, employee_id, assessor_id):
     _lock_employee(db, employee_id)
     draft = db.scalar(select(GradeAssessment).where(GradeAssessment.employee_id == employee_id,
-                                                   GradeAssessment.status == "draft")
+                                                   GradeAssessment.status == "draft", GradeAssessment.archived_at.is_(None))
                       .execution_options(populate_existing=True))
     if draft is not None:
         return draft
@@ -186,14 +189,15 @@ def _snapshot(assessment):
         payload = json.loads(assessment.catalog_snapshot or "")
     except (ValueError, TypeError) as exc:
         raise GradeConflictError("Final assessment snapshot is missing or invalid") from exc
-    if not isinstance(payload, dict) or payload.get("status") != "final" or payload.get("id") != assessment.id:
+    expected_status = "archived" if assessment.archived_at is not None else "final"
+    if not isinstance(payload, dict) or payload.get("status") != expected_status or payload.get("id") != assessment.id:
         raise GradeConflictError("Final assessment snapshot is invalid")
     return deepcopy(payload)
 
 
 def assessment_payload(db, assessment_id):
     assessment = _assessment(db, assessment_id)
-    if assessment.status == "final":
+    if assessment.status == "final" or assessment.archived_at is not None:
         return _snapshot(assessment)
     return _draft_payload(db, assessment)
 
@@ -285,6 +289,21 @@ def update_assessment(db, assessment_id, payload):
     assessment.updated_at = utc_now()
     db.flush()
     return assessment_payload(db, assessment.id)
+
+
+def archive_assessment(db, assessment_id):
+    existing = _assessment(db, assessment_id)
+    if existing.archived_at is not None:
+        return _snapshot(existing)
+    assessment = lock_assessment(db, assessment_id)
+    payload = _draft_payload(db, assessment)
+    now = utc_now()
+    payload.update(status="archived", archived_at=now.isoformat(), updated_at=now.isoformat(), snapshot_version=2)
+    assessment.archived_at = now
+    assessment.updated_at = now
+    assessment.catalog_snapshot = json.dumps(payload, ensure_ascii=False, allow_nan=False)
+    db.flush()
+    return payload
 
 
 def finalize_assessment(db, assessment_id):

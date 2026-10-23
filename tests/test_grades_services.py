@@ -56,6 +56,31 @@ class GradeServicesTests(unittest.TestCase):
         self.profile(**extra)
         return service.create_assessment(self.db, 1, 1)
 
+    def test_archive_draft_preserves_values_and_allows_new_review(self):
+        old = self.draft()
+        service.update_assessment(self.db, old.id, {"values": [{"skill_id": self.skill["id"], "level": 3}]})
+        archived = service.archive_assessment(self.db, old.id)
+        self.assertEqual(archived["status"], "archived")
+        self.assertIsNone(archived["finalized_at"])
+        self.assertEqual(archived["scores"][0]["currentLevel"], 3)
+        self.assertEqual(service.archive_assessment(self.db, old.id), archived)
+        new = service.create_assessment(self.db, 1, 1)
+        self.assertNotEqual(new.id, old.id)
+        self.assertFalse(service.assessment_payload(self.db, new.id)["scores"][0]["assessed"])
+        for mutation in (service.update_assessment,):
+            with self.assertRaises(service.GradeConflictError):
+                mutation(self.db, old.id, {"values": []})
+        with self.assertRaises(service.GradeConflictError):
+            service.finalize_assessment(self.db, old.id)
+        self.assertEqual(service.assessment_payload(self.db, old.id), archived)
+
+    def test_final_cannot_be_archived(self):
+        old = self.draft()
+        final = service.finalize_assessment(self.db, old.id)
+        with self.assertRaises(service.GradeConflictError):
+            service.archive_assessment(self.db, old.id)
+        self.assertEqual(service.assessment_payload(self.db, old.id), final)
+
     def matrix(self, **extra):
         entry = dict(skill_id=self.skill["id"], importance=3, levels={"junior": 1, "middle": 4})
         entry.update(extra)

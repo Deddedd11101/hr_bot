@@ -162,3 +162,8 @@ def update_assessment(assessment_id: int, payload: dict = Body(...), db: Session
 def finalize_assessment(assessment_id: int, db: Session = Depends(get_write_db)):
     grades.finalize_assessment(db, assessment_id)
     return grades.assessment_payload(db, assessment_id)
+
+
+@router.post("/api/grade-assessments/{assessment_id}/archive")
+def archive_assessment(assessment_id: int, db: Session = Depends(get_write_db)):
+    return grades.archive_assessment(db, assessment_id)

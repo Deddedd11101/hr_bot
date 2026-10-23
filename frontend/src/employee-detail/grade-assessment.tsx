@@ -14,7 +14,7 @@ export function GradeAssessment({ initial, onFinalized, onClose }: { initial: As
   const [values, setValues] = useState<Record<number, number | null>>({});
   const action = useAction();
   const dirty = Object.keys(values).length > 0;
-  const final = assessment.status === "final";
+  const final = assessment.status !== "draft";
   useUnsaved(dirty);
   const specName = assessment.catalog.specializations.find(s => s.id === assessment.specialization_id)?.name || "Архивная специализация";
   const categories = assessment.categories.filter(category => assessment.scores.some(score => score.categoryId === category.categoryId && score.assessed !== false));
@@ -28,7 +28,7 @@ export function GradeAssessment({ initial, onFinalized, onClose }: { initial: As
   return <section className="space-y-4" aria-label="Оценка навыков">
     <div className="flex flex-wrap items-center justify-between gap-3 border-b pb-4">
       <div><h2 className="text-base font-semibold">{assessment.import_source && !assessment.import_source.review_date ? "Импортированная оценка · дата не указана" : `Оценка от ${dateLabel(assessment.import_source?.review_date || assessment.created_at)}`}</h2><p className="text-muted-foreground">{specName} · {assessment.catalog.grades.find(g => g.id === assessment.current_grade_id)?.name || "Архивный грейд"}</p>{assessment.matrix_version && <p className="text-xs text-muted-foreground">Версия матрицы: {assessment.matrix_version.slice(0, 12)}</p>}</div>
-      <div className="flex flex-wrap items-center gap-2"><Badge variant={final ? "secondary" : "outline"}>{final ? "Завершена" : "Черновик"}</Badge>
+      <div className="flex flex-wrap items-center gap-2"><Badge variant={final ? "secondary" : "outline"}>{assessment.status === "archived" ? "Архив" : final ? "Завершена" : "Черновик"}</Badge>
         {dirty ? <ConfirmAction title="Закрыть без сохранения?" description="Несохранённые оценки будут потеряны." actionLabel="Закрыть" onConfirm={onClose}><Button variant="outline" disabled={action.busy}>К истории</Button></ConfirmAction> : <Button variant="outline" disabled={action.busy} onClick={onClose}>К истории</Button>}
       </div>
     </div>

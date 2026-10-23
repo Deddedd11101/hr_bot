@@ -15,7 +15,7 @@ export type EntityKind = "grades" | "specializations" | "categories" | "skills";
 export type Profile = { specialization_id: number | null; current_grade_id: number | null; target_grade_id: number | null; target_specialization_id: number | null };
 export type Score = { skillId: number; skillName: string; categoryId: number; categoryName: string; importance: number; currentLevel: number; targetLevel: number; assessed?: boolean };
 export type Assessment = Profile & {
-  id: number; employee_id: number; status: "draft" | "final"; created_at: string; finalized_at: string | null;
+  id: number; employee_id: number; status: "draft" | "final" | "archived"; created_at: string; finalized_at: string | null;
   catalog: Catalog;
   scores: Score[];
   categories: { categoryId: number; categoryName: string; current: number; target: number }[];
@@ -28,7 +28,7 @@ export type Assessment = Profile & {
 export type EmployeeGrade = {
   employee_id: number; profile: Profile | null; suggested_specialization_id: number | null;
   grades: Grade[]; specializations: Specialization[];
-  assessments: { id: number; status: "draft" | "final"; created_at: string; finalized_at: string | null }[];
+  assessments: { id: number; status: "draft" | "final" | "archived"; created_at: string; finalized_at: string | null }[];
   latest_final: Assessment | null;
   decisions: { id: number; labels_json: string; comment: string | null; created_at: string }[];
 };

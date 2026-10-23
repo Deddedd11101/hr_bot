@@ -14,6 +14,11 @@ related:
 source_of_truth: true
 ---
 
+Grade: `POST /api/grade-assessments/{assessment_id}/archive` требует admin auth,
+переводит только draft в immutable archived snapshot; повторный вызов идемпотентен.
+Final сохраняется без изменений; archived доступен через GET только для чтения.
+Новая оценка может быть создана после архивации, без копирования старых значений.
+
 ## План адаптации
 
 - `GET /api/adaptation-plan/template`: authenticated, entries/revision/scenario_options, read-only defaults.
