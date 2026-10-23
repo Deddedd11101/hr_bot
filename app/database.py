@@ -63,9 +63,17 @@ def _ensure_sqlite_schema() -> None:
             "employee_telegram_verification_messages",
             "grades", "grade_specializations", "grade_skill_categories", "grade_skills",
             "grade_skill_importances", "grade_skill_expectations", "employee_grade_profiles",
-            "grade_assessments", "grade_assessment_values",
+            "grade_assessments", "grade_assessment_values", "employee_grade_decisions",
         ):
             Base.metadata.tables[table_name].create(conn, checkfirst=True)
+        for table, column, ddl in (
+            ("grade_skills", "revision", "INTEGER NOT NULL DEFAULT 1"),
+            ("grade_skills", "description", "TEXT"),
+            ("grade_specializations", "skill_ids_json", "TEXT"),
+        ):
+            known = {row[1] for row in conn.execute(text(f"PRAGMA table_info({table})"))}
+            if column not in known:
+                conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}"))
         table_info = conn.execute(text("PRAGMA table_info(employees)")).fetchall()
         columns = {row[1] for row in table_info}
         original_employee_columns = set(columns)

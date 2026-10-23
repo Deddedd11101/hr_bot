@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import math
 import re
+import json
 
 from sqlalchemy import select
 
@@ -119,10 +120,14 @@ def save_catalog_item(db, kind, payload, item_id=None):
     if kind not in KINDS:
         raise ValueError("Unknown catalog kind")
     payload = record(payload)
+    change_kind = payload.get("change_kind", "semantic")
+    if change_kind not in {"editorial", "semantic"}:
+        raise ValueError("Choose editorial or semantic change")
+    payload = {key: value for key, value in payload.items() if key != "change_kind"}
     model = KINDS[kind]
     existing = _all(db, model)
     item = require(db, model, item_id) if item_id is not None else model()
-    allowed = {c.name for c in model.__table__.columns} - {"id"}
+    allowed = {c.name for c in model.__table__.columns} - {"id", "revision", "skill_ids_json"}
     if set(payload) - allowed:
         raise ValueError("Unknown catalog fields")
     data = {key: getattr(item, key) for key in allowed} if item_id is not None else {
@@ -157,6 +162,11 @@ def save_catalog_item(db, kind, payload, item_id=None):
     if kind == "skills":
         require(db, GradeSkillCategory, data.get("category_id"), active=True)
         data["complexity"] = _complexity(data.get("complexity", 1))
+        if data.get("description") is not None and (not isinstance(data["description"], str) or len(data["description"]) > 10000):
+            raise ValueError("Invalid skill description")
+        if item_id is not None and any(data.get(key) != getattr(item, key) for key in ("name", "category_id", "complexity", "description")):
+            if change_kind == "semantic" or data["category_id"] != item.category_id or data["complexity"] != item.complexity:
+                item.revision += 1
     if kind in ("categories", "skills") and any(
         x.id != item_id and x.name.strip().lower() == data["name"].lower()
         and (kind == "categories" or x.category_id == data["category_id"]) for x in existing
@@ -237,6 +247,8 @@ def _import_number(value, low, high, aliases, field):
 
 def _normalize_import(value, grade_slugs):
     value = record(value)
+    if set(value) - {"specialization", "categories"}:
+        raise ValueError("Unknown catalog fields or unsupported scale")
     result = {"specialization": {"name": name(record(value.get("specialization")).get("name"))}, "categories": []}
     names = set()
     for category in items(value.get("categories"), "categories", True):
@@ -249,12 +261,18 @@ def _normalize_import(value, grade_slugs):
         skill_names = set()
         for skill in items(category.get("skills"), "skills", True):
             skill = record(skill)
+            if set(skill) - {"id", "name", "complexity", "importance", "levels", "change_kind", "description"}:
+                raise ValueError("Unknown competency fields; unsupported scales must not be imported")
+            if skill.get("description") is not None and (not isinstance(skill["description"], str) or len(skill["description"]) > 10000):
+                raise ValueError("Invalid skill description")
             skill_name = name(skill.get("name"))
             if skill_name.lower() in skill_names:
                 raise ValueError("Duplicate skill name")
             skill_names.add(skill_name.lower())
             levels = record(skill.get("levels"))
             output["skills"].append({
+                "id": skill.get("id"), "change_kind": skill.get("change_kind", "semantic"),
+                **({"description": skill["description"]} if "description" in skill else {}),
                 "name": skill_name, "complexity": _complexity(skill.get("complexity", 1)),
                 "importance": _import_number(skill.get("importance"), 1, 3,
                                              {"ordinary": 1, "key": 2, "critical": 3}, "importance"),
@@ -298,14 +316,43 @@ def _import_catalog(db, payload):
         cat = cats.get(cat_input["name"].lower())
         counts["updateCategories" if cat and cat.active else "createCategories"] += 1
         for skill_input in cat_input["skills"]:
-            skill = skills.get((cat.id, skill_input["name"].lower())) if cat else None
+            skill = require(db, GradeSkill, skill_input["id"]) if skill_input["id"] is not None else skills.get((cat.id, skill_input["name"].lower())) if cat else None
             counts["skills"] += 1
             counts["updateSkills" if skill and skill.active else "createSkills"] += 1
     preview = {"specialization": {"name": spec_name, "slug": spec.slug if spec else _slug(spec_name, specs),
                                   "action": "update" if spec and spec.active else "create"},
                "counts": counts, "errors": []}
+    changes = []
+    incoming_ids = set()
+    level_map = {(item.skill_id, item.specialization_id, item.grade_id): item.level for item in _all(db, GradeSkillExpectation)}
+    importance_map = {(item.skill_id, item.specialization_id): item.importance for item in _all(db, GradeSkillImportance)}
+    for cat_input in catalog["categories"]:
+        cat = cats.get(cat_input["name"].lower())
+        for skill_input in cat_input["skills"]:
+            skill = require(db, GradeSkill, skill_input["id"]) if skill_input["id"] is not None else skills.get((cat.id, skill_input["name"].lower())) if cat else None
+            if skill_input["change_kind"] not in {"editorial", "semantic"}:
+                raise ValueError("Unknown change_kind")
+            if skill:
+                if skill.id in incoming_ids:
+                    raise ValueError("Duplicate skill id")
+                incoming_ids.add(skill.id)
+            existing_levels = {grade.slug: level_map.get((skill.id, spec.id, grade.id)) if skill and spec else None for grade in grades}
+            old_importance = importance_map.get((skill.id, spec.id)) if skill and spec else None
+            changed_levels = {key: {"previous": existing_levels[key], "current": value} for key, value in skill_input["levels"].items() if existing_levels[key] != value}
+            changes.append({"id": skill.id if skill else None, "name": skill_input["name"], "previous_name": skill.name if skill else None,
+                            "definition_changed": bool(skill and (skill.name != skill_input["name"] or skill.category_id != (cat.id if cat else None) or skill_input.get("description", skill.description) != skill.description)),
+                            "changed_levels": changed_levels, "importance_changed": old_importance != skill_input["importance"],
+                            "state": "added" if not skill else "changed" if skill.name != skill_input["name"] or skill.category_id != (cat.id if cat else None) or skill_input.get("description", skill.description) != skill.description or changed_levels or old_importance != skill_input["importance"] else "matched",
+                            "change_kind": skill_input["change_kind"]})
+    scope = set(json.loads(spec.skill_ids_json)) if spec and spec.skill_ids_json is not None else {item.id for item in skills.values() if item.active} if spec else set()
+    preview["changes"] = changes
+    preview["missing_ids"] = sorted(scope - incoming_ids)
+    from .history import matrix_version
+    preview["fingerprint"] = matrix_version({"workspace": workspace_payload(db), "catalog": catalog, "target": payload.get("targetSpecializationId"), "mode": payload["mode"]})
     if payload["dryRun"]:
         return preview
+    if payload.get("expectedFingerprint") != preview["fingerprint"]:
+        raise ValueError("Повторите предпросмотр: файл или каталог изменился")
     if spec is None:
         spec = GradeSpecialization(name=spec_name, slug=preview["specialization"]["slug"],
                                    sort_order=len([s for s in specs if s.active]) + 1)
@@ -324,16 +371,23 @@ def _import_catalog(db, payload):
         cat.name, cat.sort_order, cat.active = cat_input["name"], index, True
         db.flush()
         for skill_index, skill_input in enumerate(cat_input["skills"], 1):
-            skill = skills.get((cat.id, skill_input["name"].lower()))
+            skill = require(db, GradeSkill, skill_input["id"]) if skill_input["id"] is not None else skills.get((cat.id, skill_input["name"].lower()))
             if skill is None:
                 skill = GradeSkill(category_id=cat.id, complexity=skill_input["complexity"])
                 db.add(skill)
+            elif ((skill.name != skill_input["name"] or skill_input.get("description", skill.description) != skill.description) and skill_input["change_kind"] == "semantic") or skill.category_id != cat.id:
+                skill.revision += 1
             # Reference import preserves complexity for an existing skill.
             skill.name, skill.sort_order, skill.active = skill_input["name"], skill_index, True
+            skill.category_id = cat.id
+            if "description" in skill_input:
+                skill.description = skill_input["description"]
             db.flush()
             matrix_rows.append({"skill_id": skill.id, "importance": skill_input["importance"],
                                 "levels": skill_input["levels"]})
     ensure_defaults(db)
     save_matrix(db, {"specialization_id": spec.id, "rows": matrix_rows})
+    spec.skill_ids_json = json.dumps([entry["skill_id"] for entry in matrix_rows])
+    db.flush()
     preview["specialization"].update(id=spec.id, name=spec.name)
     return preview

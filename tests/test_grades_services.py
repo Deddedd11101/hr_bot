@@ -133,13 +133,12 @@ class GradeServicesTests(unittest.TestCase):
         self.assertEqual(len(service.workspace_payload(self.db)["grades"]), 4)
         self.assertEqual(grade.slug, "entry")
 
-    def test_finalize_rejects_archived_goal_without_closing_draft(self):
+    def test_finalize_does_not_depend_on_archived_legacy_goal(self):
         draft = self.draft(target_grade_id=2)
         service.archive_catalog_item(self.db, "grades", 2)
-        with self.assertRaises(ValueError):
-            service.finalize_assessment(self.db, draft.id)
-        self.assertEqual(draft.status, "draft")
-        self.assertIsNone(draft.catalog_snapshot)
+        final = service.finalize_assessment(self.db, draft.id)
+        self.assertEqual(final["status"], "final")
+        self.assertIsNone(final["target_grade_id"])
 
     def test_matrix_validates_all_rows_before_mutation(self):
         for bad in (True, 1.5, "2", -1, 5, None):
@@ -180,6 +179,7 @@ class GradeServicesTests(unittest.TestCase):
         service.archive_catalog_item(self.db, "specializations", self.spec["id"])
         service.archive_catalog_item(self.db, "categories", self.cat["id"])
         self.db.commit()
+        request["expectedFingerprint"] = service.import_catalog(self.db, {**request, "dryRun": True})["fingerprint"]
         preview = service.import_catalog(self.db, request)
         self.assertEqual(preview["counts"]["createSkills"], 1)
         self.assertEqual(preview["specialization"]["id"], self.spec["id"])
@@ -235,7 +235,7 @@ class GradeServicesTests(unittest.TestCase):
         service.finalize_assessment(self.db, assessment.id)
         next_assessment = service.create_assessment(self.db, 1, 1)
         self.assertNotEqual(next_assessment.id, assessment.id)
-        self.assertEqual(service.assessment_payload(self.db, next_assessment.id)["scores"][0]["currentLevel"], 3)
+        self.assertFalse(service.assessment_payload(self.db, next_assessment.id)["scores"][0]["assessed"])
         self.assertEqual(self.db.scalar(select(EmployeeGradeProfile)).current_grade_id, 1)
 
     def test_target_specialization_uses_its_matrix(self):
@@ -247,10 +247,10 @@ class GradeServicesTests(unittest.TestCase):
         assessment = self.draft(target_grade_id=2, target_specialization_id=other["id"])
         payload = service.update_assessment(self.db, assessment.id,
                                              {"values": [{"skill_id": self.skill["id"], "level": 1}]})
-        self.assertEqual(payload["catalog"]["specialization_id"], other["id"])
-        self.assertEqual(payload["scores"][0]["importance"], 1)
-        self.assertEqual(payload["scores"][0]["targetLevel"], 2)
-        self.assertEqual(payload["progress"], 0.5)
+        self.assertEqual(payload["catalog"]["specialization_id"], self.spec["id"])
+        self.assertEqual(payload["scores"][0]["importance"], 3)
+        self.assertEqual(payload["scores"][0]["targetLevel"], 0)
+        self.assertIsNone(payload["progress"])
         self.assertEqual(payload["categories"][0]["categoryName"], "Research")
 
     def test_full_final_snapshot_is_frozen_and_read_without_catalog_queries(self):
@@ -285,8 +285,8 @@ class GradeServicesTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             service.update_assessment(self.db, assessment.id, {"values": [{"skill_id": 999, "level": 1}]})
         service.archive_catalog_item(self.db, "skills", self.skill["id"])
-        with self.assertRaises(ValueError):
-            service.update_assessment(self.db, assessment.id, {"values": [{"skill_id": self.skill["id"], "level": 1}]})
+        payload = service.update_assessment(self.db, assessment.id, {"values": [{"skill_id": self.skill["id"], "level": 1}]})
+        self.assertEqual(payload["scores"][0]["currentLevel"], 1)
 
     def test_finalize_patch_race_and_stale_identity_map(self):
         assessment = self.draft()
@@ -336,17 +336,70 @@ class GradeServicesTests(unittest.TestCase):
         # a360e50 contains 26 skills; the task's 27 is an off-by-one.
         self.assertEqual(sum(len(c["skills"]) for c in catalog["categories"]), 26)
         request = {"dryRun": False, "mode": "create-specialization", "catalog": catalog}
+        request["expectedFingerprint"] = service.import_catalog(self.db, {**request, "dryRun": True})["fingerprint"]
         first = service.import_catalog(self.db, request)
+        request["expectedFingerprint"] = service.import_catalog(self.db, {**request, "dryRun": True})["fingerprint"]
         second = service.import_catalog(self.db, request)
         self.assertEqual(first["specialization"]["id"], second["specialization"]["id"])
         self.assertEqual(second["counts"]["createSkills"], 0)
         self.assertEqual(second["counts"]["updateSkills"], 26)
+
+    def test_review_freezes_draft_and_distinguishes_missing_from_zero(self):
+        assessment = self.draft()
+        original = service.assessment_payload(self.db, assessment.id)
+        self.assertFalse(original["scores"][0]["assessed"])
+        service.save_catalog_item(self.db, "skills", {"name": "Changed meaning"}, self.skill["id"])
+        self.assertEqual(service.assessment_payload(self.db, assessment.id)["scores"][0]["skillName"], "Interview")
+        zero = service.update_assessment(self.db, assessment.id, {"values": [{"skill_id": self.skill["id"], "level": 0}]})
+        self.assertTrue(zero["scores"][0]["assessed"])
+        cleared = service.update_assessment(self.db, assessment.id, {"values": [{"skill_id": self.skill["id"], "level": None}]})
+        self.assertFalse(cleared["scores"][0]["assessed"])
+
+    def test_compare_semantic_change_and_unchanged_grade(self):
+        from app.grades.history import compare_reviews
+        from app.models import EmployeeGradeDecision
+        first = self.draft()
+        service.update_assessment(self.db, first.id, {"values": [{"skill_id": self.skill["id"], "level": 2}]})
+        frozen = service.finalize_assessment(self.db, first.id)
+        second = service.create_assessment(self.db, 1, 1)
+        service.update_assessment(self.db, second.id, {"values": [{"skill_id": self.skill["id"], "level": 3}]})
+        newer = service.finalize_assessment(self.db, second.id)
+        self.assertEqual(compare_reviews(frozen, newer)["rows"][0]["delta"], 1)
+        self.assertEqual(self.db.scalar(select(EmployeeGradeProfile)).current_grade_id, 1)
+        service.update_employee_grade(self.db, 1, {"comment": "Grade unchanged after review"}, actor_id=1)
+        self.assertEqual(self.db.scalars(select(EmployeeGradeDecision)).all()[-1].grade_id, 1)
+        service.save_catalog_item(self.db, "skills", {"description": "New evaluation criteria"}, self.skill["id"])
+        third = service.create_assessment(self.db, 1, 1)
+        service.update_assessment(self.db, third.id, {"values": [{"skill_id": self.skill["id"], "level": 4}]})
+        changed = compare_reviews(newer, service.finalize_assessment(self.db, third.id))["rows"][0]
+        self.assertEqual(changed["state"], "changed")
+        self.assertIsNone(changed["delta"])
+        foreign = dict(newer, employee_id=999)
+        with self.assertRaises(ValueError):
+            compare_reviews(frozen, foreign)
+
+    def test_import_stale_guard_scope_and_stable_ids(self):
+        request = self.import_request(False)
+        request["expectedFingerprint"] = service.import_catalog(self.db, dict(request, dryRun=True))["fingerprint"]
+        service.save_catalog_item(self.db, "skills", {"name": "Different"}, self.skill["id"])
+        with self.assertRaises(ValueError):
+            service.import_catalog(self.db, request)
+        incoming = request["catalog"]["categories"][0]["skills"][0]
+        incoming.update(id=self.skill["id"], name="Renamed only", change_kind="editorial")
+        revision = self.db.get(GradeSkill, self.skill["id"]).revision
+        request["expectedFingerprint"] = service.import_catalog(self.db, dict(request, dryRun=True))["fingerprint"]
+        service.import_catalog(self.db, request)
+        self.assertEqual(self.db.get(GradeSkill, self.skill["id"]).revision, revision)
+        service.save_catalog_item(self.db, "skills", {"name": "Not part of the imported template", "category_id": self.cat["id"]})
+        draft = self.draft()
+        self.assertEqual([score["skillId"] for score in service.assessment_payload(self.db, draft.id)["scores"]], [self.skill["id"]])
 
     def test_payload_queries_are_bounded(self):
         assessment = self.draft()
         request = self.import_request(False)
         request["catalog"]["categories"][0]["skills"] = [dict(
             request["catalog"]["categories"][0]["skills"][0], name=f"Skill {index}") for index in range(40)]
+        request["expectedFingerprint"] = service.import_catalog(self.db, {**request, "dryRun": True})["fingerprint"]
         service.import_catalog(self.db, request)
         queries = []
 
@@ -358,7 +411,7 @@ class GradeServicesTests(unittest.TestCase):
             payload = service.assessment_payload(self.db, assessment.id)
         finally:
             event.remove(self.engine, "before_cursor_execute", observe)
-        self.assertEqual(len(payload["scores"]), 41)
+        self.assertEqual(len(payload["scores"]), 1)
         self.assertLessEqual(len(queries), 9)
 
 

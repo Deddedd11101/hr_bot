@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Callable
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Request
+from fastapi import APIRouter, Body, Depends, HTTPException, Request, UploadFile, File, Form
 from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import text
@@ -109,14 +109,25 @@ def import_catalog(payload: dict = Body(...), db: Session = Depends(get_write_db
     return grades.import_catalog(db, payload)
 
 
+@router.post("/api/grades/workbook-preview")
+async def workbook_preview(request: Request, file: UploadFile = File(...), sheet: str = Form("Системный аналитик"), blank_requirements_zero: bool = Form(False)):
+    require_api_auth(request)
+    from ..grades.workbook import parse_skills_workbook
+    content = await file.read(5_000_001)
+    try:
+        return parse_skills_workbook(content, sheet, blank_requirements_zero)
+    except Exception as exc:
+        raise HTTPException(422, "Не удалось прочитать матрицу. Проверьте лист, шкалу и пустые требования.") from exc
+
+
 @router.get("/api/employees/{employee_id}/grade")
 def employee_grade(employee_id: int, db: Session = Depends(get_db)):
     return read_payload(grades.employee_grade_payload, db, employee_id)
 
 
 @router.put("/api/employees/{employee_id}/grade")
-def update_employee_grade(employee_id: int, payload: dict = Body(...), db: Session = Depends(get_write_db)):
-    grades.update_employee_grade(db, employee_id, payload)
+def update_employee_grade(employee_id: int, request: Request, payload: dict = Body(...), db: Session = Depends(get_write_db)):
+    grades.update_employee_grade(db, employee_id, payload, actor_id=require_api_auth(request).id)
     return grades.employee_grade_payload(db, employee_id)
 
 
@@ -129,6 +140,16 @@ def create_assessment(employee_id: int, request: Request, db: Session = Depends(
 @router.get("/api/grade-assessments/{assessment_id}")
 def assessment(assessment_id: int, db: Session = Depends(get_db)):
     return read_payload(grades.assessment_payload, db, assessment_id)
+
+
+@router.get("/api/employees/{employee_id}/grade/compare")
+def compare(employee_id: int, previous_id: int, current_id: int, db: Session = Depends(get_db)):
+    from ..grades.history import compare_reviews
+    previous = read_payload(grades.assessment_payload, db, previous_id)
+    current = read_payload(grades.assessment_payload, db, current_id)
+    if previous["employee_id"] != employee_id or current["employee_id"] != employee_id:
+        raise HTTPException(404, "Оценка сотрудника не найдена")
+    return read_payload(compare_reviews, previous, current)
 
 
 @router.patch("/api/grade-assessments/{assessment_id}")

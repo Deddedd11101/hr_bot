@@ -19,6 +19,11 @@ export function Matrix({ workspace, onSaved }: { workspace: Workspace; onSaved: 
     }
   }, [workspace, spec, dirty]);
   const grades = workspace.grades.filter(g => g.active).sort((a, b) => a.rank - b.rank);
+  const scopedSkills = useMemo(() => {
+    const membership = workspace.specializations.find(s => s.id === Number(spec))?.skill_ids_json;
+    const ids: number[] | null = membership ? JSON.parse(membership) : null;
+    return workspace.skills.filter(s => s.active && (ids === null || ids.includes(s.id)));
+  }, [workspace, spec]);
   const rows = useMemo(() => Object.fromEntries(workspace.skills.map(skill => [skill.id, {
     skill_id: skill.id,
     importance: workspace.importances.find(i => i.skill_id === skill.id && i.specialization_id === Number(spec))?.importance ?? 1,
@@ -38,9 +43,9 @@ export function Matrix({ workspace, onSaved }: { workspace: Workspace; onSaved: 
     <Feedback error={action.error} message={dirty ? "Есть несохранённые изменения. Сохраните или сбросьте их перед сменой специализации." : action.message} />
     {!spec ? <p className="p-6 text-center text-muted-foreground">Сначала добавьте специализацию или импортируйте каталог</p> :
       <Table className="table-fixed min-w-[680px]"><TableHeader><TableRow><TableHead className="w-1/3">Навык</TableHead>{grades.map(g => <TableHead key={g.id} className="whitespace-normal">{g.name}</TableHead>)}<TableHead>Важность</TableHead></TableRow></TableHeader>
-        <TableBody>{workspace.categories.filter(c => c.active).sort((a, b) => a.sort_order - b.sort_order).map(category => <Fragment key={category.id}>
+        <TableBody>{workspace.categories.filter(c => c.active && scopedSkills.some(s => s.category_id === c.id)).sort((a, b) => a.sort_order - b.sort_order).map(category => <Fragment key={category.id}>
           <TableRow className="bg-muted/40"><TableCell colSpan={grades.length + 2} className="font-medium whitespace-normal">{category.name}</TableCell></TableRow>
-          {workspace.skills.filter(s => s.active && s.category_id === category.id).sort((a, b) => a.sort_order - b.sort_order).map(skill => {
+          {scopedSkills.filter(s => s.category_id === category.id).sort((a, b) => a.sort_order - b.sort_order).map(skill => {
             const row = edits[skill.id] || rows[skill.id];
             return <TableRow key={skill.id} className="border-0"><TableCell className="whitespace-normal break-words">{skill.name}</TableCell>
               {grades.map(g => <TableCell key={g.id}>{cell(row.levels[g.slug], `${skill.name}, ${g.name}`, [0, 1, 2, 3, 4], level => setEdits(e => ({ ...e, [skill.id]: { ...row, levels: { ...row.levels, [g.slug]: level } } })))}</TableCell>)}
@@ -48,6 +53,6 @@ export function Matrix({ workspace, onSaved }: { workspace: Workspace; onSaved: 
             </TableRow>;
           })}
         </Fragment>)}</TableBody></Table>}
-    {spec && !workspace.skills.some(s => s.active) && <p className="p-6 text-center text-muted-foreground">Навыков пока нет. Добавьте категории и навыки или импортируйте JSON.</p>}
+    {spec && !scopedSkills.length && <p className="p-6 text-center text-muted-foreground">Навыков пока нет. Импортируйте шаблон специализации.</p>}
   </section>;
 }

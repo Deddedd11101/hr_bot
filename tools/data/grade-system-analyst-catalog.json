@@ -1,0 +1,482 @@
+{
+  "specialization": {
+    "name": "Системный аналитик"
+  },
+  "categories": [
+    {
+      "name": "Корпоративные компетенции",
+      "skills": [
+        {
+          "name": "Командная работа",
+          "importance": 1,
+          "levels": {
+            "junior": 1,
+            "middle": 2,
+            "senior": 3,
+            "lead": 4
+          }
+        },
+        {
+          "name": "Развитие",
+          "importance": 1,
+          "levels": {
+            "junior": 1,
+            "middle": 2,
+            "senior": 3,
+            "lead": 4
+          }
+        },
+        {
+          "name": "Системность",
+          "importance": 1,
+          "levels": {
+            "junior": 1,
+            "middle": 2,
+            "senior": 3,
+            "lead": 4
+          }
+        },
+        {
+          "name": "Ответственность",
+          "importance": 1,
+          "levels": {
+            "junior": 1,
+            "middle": 2,
+            "senior": 3,
+            "lead": 4
+          }
+        },
+        {
+          "name": "Удовольствие от работы",
+          "importance": 1,
+          "levels": {
+            "junior": 1,
+            "middle": 2,
+            "senior": 3,
+            "lead": 4
+          }
+        }
+      ]
+    },
+    {
+      "name": "Soft skills",
+      "skills": [
+        {
+          "name": "Автономность",
+          "importance": 2,
+          "levels": {
+            "junior": 1,
+            "middle": 2,
+            "senior": 3,
+            "lead": 4
+          }
+        },
+        {
+          "name": "Инициатива",
+          "importance": 2,
+          "levels": {
+            "junior": 1,
+            "middle": 2,
+            "senior": 3,
+            "lead": 4
+          }
+        },
+        {
+          "name": "Клиентоориентированность",
+          "importance": 2,
+          "levels": {
+            "junior": 1,
+            "middle": 2,
+            "senior": 3,
+            "lead": 4
+          }
+        },
+        {
+          "name": "Командная работа",
+          "importance": 2,
+          "levels": {
+            "junior": 1,
+            "middle": 2,
+            "senior": 3,
+            "lead": 4
+          }
+        },
+        {
+          "name": "Критичность",
+          "importance": 2,
+          "levels": {
+            "junior": 1,
+            "middle": 2,
+            "senior": 3,
+            "lead": 4
+          }
+        },
+        {
+          "name": "Ответственность",
+          "importance": 2,
+          "levels": {
+            "junior": 1,
+            "middle": 2,
+            "senior": 3,
+            "lead": 4
+          }
+        },
+        {
+          "name": "Самообладание",
+          "importance": 2,
+          "levels": {
+            "junior": 1,
+            "middle": 2,
+            "senior": 3,
+            "lead": 4
+          }
+        },
+        {
+          "name": "Системность",
+          "importance": 2,
+          "levels": {
+            "junior": 1,
+            "middle": 2,
+            "senior": 3,
+            "lead": 4
+          }
+        }
+      ]
+    },
+    {
+      "name": "Hard skills (Системные)",
+      "skills": [
+        {
+          "name": "Моделирование данных",
+          "importance": 3,
+          "levels": {
+            "junior": 1,
+            "middle": 2,
+            "senior": 3,
+            "lead": 4
+          }
+        },
+        {
+          "name": "Разработка спецификаций",
+          "importance": 3,
+          "levels": {
+            "junior": 2,
+            "middle": 3,
+            "senior": 4,
+            "lead": 4
+          }
+        },
+        {
+          "name": "Разработка технической документации",
+          "importance": 3,
+          "levels": {
+            "junior": 2,
+            "middle": 3,
+            "senior": 4,
+            "lead": 4
+          }
+        },
+        {
+          "name": "Анализ архитектурных ограничений",
+          "importance": 3,
+          "levels": {
+            "junior": 1,
+            "middle": 2,
+            "senior": 3,
+            "lead": 4
+          }
+        },
+        {
+          "name": "Use Cases",
+          "importance": 3,
+          "levels": {
+            "junior": 2,
+            "middle": 3,
+            "senior": 4,
+            "lead": 4
+          }
+        },
+        {
+          "name": "Структурные UML - диаграммы",
+          "importance": 3,
+          "levels": {
+            "junior": 1,
+            "middle": 2,
+            "senior": 3,
+            "lead": 4
+          }
+        },
+        {
+          "name": "Поведенческие UML - диаграммы",
+          "importance": 3,
+          "levels": {
+            "junior": 1,
+            "middle": 2,
+            "senior": 3,
+            "lead": 4
+          }
+        },
+        {
+          "name": "ER - диаграммы",
+          "importance": 3,
+          "levels": {
+            "junior": 1,
+            "middle": 2,
+            "senior": 3,
+            "lead": 4
+          }
+        }
+      ]
+    },
+    {
+      "name": "Hard skills (Бизнес)",
+      "skills": [
+        {
+          "name": "Сбор и выявление требований",
+          "importance": 1,
+          "levels": {
+            "junior": 1,
+            "middle": 2,
+            "senior": 2,
+            "lead": 2
+          }
+        },
+        {
+          "name": "Моделирование бизнес-процессов",
+          "importance": 1,
+          "levels": {
+            "junior": 1,
+            "middle": 2,
+            "senior": 2,
+            "lead": 2
+          }
+        },
+        {
+          "name": "Анализ НПА и регламентов",
+          "importance": 1,
+          "levels": {
+            "junior": 1,
+            "middle": 2,
+            "senior": 2,
+            "lead": 2
+          }
+        },
+        {
+          "name": "Приоритезация и систематизация требований",
+          "importance": 1,
+          "levels": {
+            "junior": 1,
+            "middle": 1,
+            "senior": 2,
+            "lead": 2
+          }
+        },
+        {
+          "name": "Позиционирование продукта",
+          "importance": 1,
+          "levels": {
+            "junior": 1,
+            "middle": 1,
+            "senior": 1,
+            "lead": 2
+          }
+        },
+        {
+          "name": "Анализ рынка",
+          "importance": 1,
+          "levels": {
+            "junior": 1,
+            "middle": 1,
+            "senior": 1,
+            "lead": 2
+          }
+        },
+        {
+          "name": "Определение и сегментация ЦА",
+          "importance": 1,
+          "levels": {
+            "junior": 1,
+            "middle": 1,
+            "senior": 1,
+            "lead": 1
+          }
+        },
+        {
+          "name": "BPMN",
+          "importance": 1,
+          "levels": {
+            "junior": 1,
+            "middle": 2,
+            "senior": 2,
+            "lead": 2
+          }
+        },
+        {
+          "name": "BRD",
+          "importance": 1,
+          "levels": {
+            "junior": 1,
+            "middle": 2,
+            "senior": 2,
+            "lead": 2
+          }
+        },
+        {
+          "name": "SWOT/PEST",
+          "importance": 1,
+          "levels": {
+            "junior": 1,
+            "middle": 2,
+            "senior": 2,
+            "lead": 2
+          }
+        }
+      ]
+    },
+    {
+      "name": "Hard skills (UX)",
+      "skills": [
+        {
+          "name": "Качественные исследования",
+          "importance": 1,
+          "levels": {
+            "junior": 0,
+            "middle": 0,
+            "senior": 1,
+            "lead": 1
+          }
+        },
+        {
+          "name": "Проектирование",
+          "importance": 1,
+          "levels": {
+            "junior": 0,
+            "middle": 1,
+            "senior": 2,
+            "lead": 2
+          }
+        },
+        {
+          "name": "Информационная архитектура",
+          "importance": 1,
+          "levels": {
+            "junior": 1,
+            "middle": 2,
+            "senior": 2,
+            "lead": 2
+          }
+        },
+        {
+          "name": "Количественные исследования",
+          "importance": 1,
+          "levels": {
+            "junior": 0,
+            "middle": 0,
+            "senior": 1,
+            "lead": 1
+          }
+        },
+        {
+          "name": "Аналитика метрик",
+          "importance": 1,
+          "levels": {
+            "junior": 1,
+            "middle": 1,
+            "senior": 2,
+            "lead": 2
+          }
+        },
+        {
+          "name": "UX-аудит",
+          "importance": 1,
+          "levels": {
+            "junior": 0,
+            "middle": 0,
+            "senior": 0,
+            "lead": 1
+          }
+        },
+        {
+          "name": "Анализ конкурентов",
+          "importance": 1,
+          "levels": {
+            "junior": 0,
+            "middle": 0,
+            "senior": 1,
+            "lead": 1
+          }
+        },
+        {
+          "name": "Кабинетное исследование",
+          "importance": 1,
+          "levels": {
+            "junior": 1,
+            "middle": 2,
+            "senior": 2,
+            "lead": 2
+          }
+        },
+        {
+          "name": "CJM",
+          "importance": 1,
+          "levels": {
+            "junior": 0,
+            "middle": 1,
+            "senior": 1,
+            "lead": 1
+          }
+        },
+        {
+          "name": "User flow",
+          "importance": 1,
+          "levels": {
+            "junior": 0,
+            "middle": 1,
+            "senior": 2,
+            "lead": 2
+          }
+        },
+        {
+          "name": "Site map",
+          "importance": 1,
+          "levels": {
+            "junior": 1,
+            "middle": 2,
+            "senior": 2,
+            "lead": 2
+          }
+        },
+        {
+          "name": "Персоны",
+          "importance": 1,
+          "levels": {
+            "junior": 0,
+            "middle": 1,
+            "senior": 1,
+            "lead": 1
+          }
+        },
+        {
+          "name": "User story",
+          "importance": 1,
+          "levels": {
+            "junior": 0,
+            "middle": 1,
+            "senior": 2,
+            "lead": 2
+          }
+        },
+        {
+          "name": "Job story",
+          "importance": 1,
+          "levels": {
+            "junior": 0,
+            "middle": 1,
+            "senior": 2,
+            "lead": 2
+          }
+        }
+      ]
+    }
+  ]
+}
