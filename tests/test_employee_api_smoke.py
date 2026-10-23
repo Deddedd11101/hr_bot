@@ -92,22 +92,32 @@ class EmployeeApiSmokeTests(unittest.TestCase):
     def setUpClass(cls) -> None:
         init_db()
         cls.client = TestClient(app)
+        cls.calendar_fixture_id = None
         with SessionLocal() as db:
             if not db.get(ProductionCalendarYear, 2026):
                 day = datetime(2026, 1, 1).date()
                 days = []
                 while day.year == 2026:
-                    days.append({"date": day.isoformat(), "is_workday": day.weekday() < 5})
+                    days.append({"date": day.isoformat(), "is_workday": day.weekday() < 5, "is_shortened": False, "description": ""})
                     day += timedelta(days=1)
                 version = ProductionCalendarVersion(year=2026, digest="e" * 64, days_json=json.dumps(days), source_name="employee-test", created_at=datetime(2026, 1, 1), created_by="test")
                 db.add(version)
                 db.flush()
+                cls.calendar_fixture_id = version.id
                 db.add(ProductionCalendarYear(year=2026, current_version_id=version.id))
                 db.commit()
             account = authenticate_account(db, "admin", "admin123")
             if account is None:
                 raise AssertionError("Admin account is not available for API smoke tests.")
             cls.client.cookies.set(AUTH_COOKIE_NAME, create_admin_session_token(account.id))
+
+    @classmethod
+    def tearDownClass(cls):
+        if cls.calendar_fixture_id is not None:
+            with SessionLocal() as db:
+                db.query(ProductionCalendarYear).filter_by(year=2026, current_version_id=cls.calendar_fixture_id).delete()
+                db.query(ProductionCalendarVersion).filter_by(id=cls.calendar_fixture_id).delete()
+                db.commit()
 
     def setUp(self) -> None:
         self.unique_tag = uuid4().hex[:12]
