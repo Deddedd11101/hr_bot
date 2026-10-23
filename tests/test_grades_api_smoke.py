@@ -123,7 +123,7 @@ class GradesApiSmokeTests(unittest.TestCase):
             self.assertIsInstance(json.loads(db.get(GradeAssessment, draft["id"]).catalog_snapshot), dict)
         next_draft = self.draft()
         self.assertNotEqual(next_draft["id"], draft["id"])
-        self.assertEqual(next(score["currentLevel"] for score in next_draft["scores"] if score["skillId"] == skill["id"]), 2)
+        self.assertFalse(next(score["assessed"] for score in next_draft["scores"] if score["skillId"] == skill["id"]))
 
     def test_reject_foreign_skill_and_bad_levels(self):
         _, _, skill = self.fixture()
@@ -154,6 +154,7 @@ class GradesApiSmokeTests(unittest.TestCase):
         response = self.client.post("/api/grades/import", json=request)
         self.assertEqual(response.status_code, 200, response.text)
         self.assertEqual(self.workspace(), before)
+        request["expectedFingerprint"] = response.json()["fingerprint"]
         request["dryRun"] = False
         response = self.client.post("/api/grades/import", json=request)
         self.assertEqual(response.status_code, 200, response.text)

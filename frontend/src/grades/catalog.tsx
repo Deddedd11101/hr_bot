@@ -44,7 +44,7 @@ export function CatalogEditor({ kind, workspace, onSaved }: { kind: EntityKind; 
     if (kind === "grades" || kind === "specializations") body.slug = fields.slug.trim();
     if (kind === "grades") body.rank = Number(fields.rank);
     if (kind === "specializations") { body.description = fields.description; body.position_slug = fields.position_slug === "none" ? null : fields.position_slug; }
-    if (kind === "skills") body.category_id = Number(fields.category_id);
+    if (kind === "skills") { body.category_id = Number(fields.category_id); body.change_kind = fields.change_kind || "semantic"; body.description = fields.description || null; }
     onSaved(await request<Workspace>(`/api/grades/${kind}${editing ? `/${editing.id}` : ""}`, editing ? "PUT" : "POST", body));
     setDirty(false); setEditing(undefined);
   }
@@ -74,6 +74,8 @@ export function CatalogEditor({ kind, workspace, onSaved }: { kind: EntityKind; 
             {kind === "specializations" && <><Field><FieldLabel htmlFor="spec-description">Описание</FieldLabel><Input id="spec-description" value={fields.description || ""} onChange={e => change("description", e.target.value)} disabled={action.busy} /></Field>
               <Choice label="Должность" value={fields.position_slug || "none"} onChange={v => change("position_slug", v)} disabled={action.busy} options={[{ value: "none", label: "Не привязана" }, ...workspace.positions.map(p => ({ value: p.slug, label: p.active === false ? `${positionTitle(p)} (архив)` : positionTitle(p) }))]} /></>}
             {kind === "skills" && <Choice label="Категория" value={fields.category_id || ""} onChange={v => change("category_id", v)} disabled={action.busy} options={workspace.categories.filter(c => c.active).map(c => ({ value: String(c.id), label: c.name }))} />}
+            {kind === "skills" && <Field><FieldLabel htmlFor="grade-skill-description">Критерии оценки</FieldLabel><Input id="grade-skill-description" value={fields.description || ""} maxLength={10000} disabled={action.busy} onChange={event => change("description", event.target.value)} /></Field>}
+            {kind === "skills" && editing && <Choice label="Характер изменения" value={fields.change_kind || "semantic"} onChange={v => change("change_kind", v)} disabled={action.busy} options={[{value: "semantic", label: "Изменился смысл — новая версия"}, {value: "editorial", label: "Только редактура названия — сравнение сохраняется"}]} />}
             <Field><FieldLabel htmlFor={`${kind}-sort`}>Порядок</FieldLabel><Input id={`${kind}-sort`} type="number" step={1} required value={fields.sort_order || "0"} onChange={e => change("sort_order", e.target.value)} disabled={action.busy} /></Field>
           </FieldGroup>
           <Feedback error={action.error} />

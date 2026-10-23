@@ -98,6 +98,7 @@ class GradeSpecialization(Base):
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     position_slug: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    skill_ids_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
 
 class GradeSkillCategory(Base):
@@ -117,6 +118,8 @@ class GradeSkill(Base):
     complexity: Mapped[float] = mapped_column(Float, default=1)
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
+    revision: Mapped[int] = mapped_column(Integer, default=1)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
 
 class GradeSkillImportance(Base):
@@ -146,6 +149,19 @@ class EmployeeGradeProfile(Base):
     current_grade_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     target_grade_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     target_specialization_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+
+
+class EmployeeGradeDecision(Base):
+    __tablename__ = "employee_grade_decisions"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    employee_id: Mapped[int] = mapped_column(Integer, index=True)
+    actor_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    previous_grade_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    grade_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    specialization_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    comment: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    labels_json: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
 
 
 class GradeAssessment(Base):

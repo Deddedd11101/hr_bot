@@ -18,7 +18,7 @@ from app.grades.catalog import (
 )
 from app.models import (
     AdminAccount, Employee, EmployeeGradeProfile, Grade, GradeSpecialization,
-    GradeAssessment, GradeAssessmentValue,
+    GradeAssessment, GradeAssessmentValue, EmployeeGradeDecision,
 )
 from app.positions import normalize_position_slug
 from app.time_utils import utc_now
@@ -108,18 +108,31 @@ def employee_grade_payload(db, employee_id):
             (profile is None or profile.specialization_id is None) else None,
             "grades": grades, "specializations": specs,
             "assessments": [_serialized(a) for a in assessments],
+            "decisions": [_serialized(item) for item in db.scalars(select(EmployeeGradeDecision).where(EmployeeGradeDecision.employee_id == employee_id).order_by(EmployeeGradeDecision.created_at.desc(), EmployeeGradeDecision.id.desc()))],
             "latest_final": _snapshot(latest_final) if latest_final else None}
 
 
-def update_employee_grade(db, employee_id, payload):
+def update_employee_grade(db, employee_id, payload, actor_id=None):
     payload = record(payload)
-    if set(payload) - {"specialization_id", "current_grade_id", "target_grade_id", "target_specialization_id"}:
+    if set(payload) - {"specialization_id", "current_grade_id", "target_grade_id", "target_specialization_id", "comment"}:
         raise ValueError("Unknown profile fields")
     _lock_employee(db, employee_id)
     profile = _profile(db, employee_id)
     if profile is None:
         profile = EmployeeGradeProfile(employee_id=employee_id)
+    previous_grade = profile.current_grade_id
+    previous_spec = profile.specialization_id
     data = _goal_fields(db, profile, payload, profile=True)
+    comment = payload.get("comment", "")
+    if not isinstance(comment, str) or len(comment) > 4000:
+        raise ValueError("Comment must contain at most 4000 characters")
+    if previous_grade != data["current_grade_id"] or previous_spec != data["specialization_id"] or comment.strip():
+        labels = {"grade": db.get(Grade, data["current_grade_id"]).name if data["current_grade_id"] else None,
+                  "previous_grade": db.get(Grade, previous_grade).name if previous_grade else None,
+                  "specialization": db.get(GradeSpecialization, data["specialization_id"]).name if data["specialization_id"] else None}
+        db.add(EmployeeGradeDecision(employee_id=employee_id, actor_id=actor_id, previous_grade_id=previous_grade,
+               grade_id=data["current_grade_id"], specialization_id=data["specialization_id"], comment=comment.strip() or None,
+               labels_json=json.dumps(labels, ensure_ascii=False)))
     for field, value in data.items():
         setattr(profile, field, value)
     db.add(profile)
@@ -140,17 +153,29 @@ def create_assessment(db, employee_id, assessor_id):
     profile = _profile(db, employee_id)
     if profile is None or profile.specialization_id is None or profile.current_grade_id is None:
         raise ValueError("Select a specialization and current grade before assessment")
-    data = _goal_fields(db, profile, {}, profile=True)
-    previous = db.scalar(select(GradeAssessment).where(GradeAssessment.employee_id == employee_id)
-                         .order_by(GradeAssessment.created_at.desc(), GradeAssessment.id.desc()).limit(1))
+    require(db, GradeSpecialization, profile.specialization_id, active=True)
+    require(db, Grade, profile.current_grade_id, active=True)
+    data = {"specialization_id": profile.specialization_id, "current_grade_id": profile.current_grade_id,
+            "target_grade_id": None, "target_specialization_id": None}
     assessment = GradeAssessment(employee_id=employee_id, assessor_admin_account_id=assessor_id,
                                  status="draft", **data)
     db.add(assessment)
     db.flush()
-    if previous is not None:
-        values = db.scalars(select(GradeAssessmentValue).where(GradeAssessmentValue.assessment_id == previous.id))
-        for value in values:
-            db.add(GradeAssessmentValue(assessment_id=assessment.id, skill_id=value.skill_id, level=value.level))
+    catalog = workspace_payload(db)
+    spec = db.get(GradeSpecialization, profile.specialization_id)
+    allowed = set(json.loads(spec.skill_ids_json)) if spec.skill_ids_json is not None else None
+    for key in ("grades", "specializations", "categories", "skills"):
+        catalog[key] = [item for item in catalog[key] if item["active"]]
+    category_ids = {item["id"] for item in catalog["categories"]}
+    catalog["skills"] = [item for item in catalog["skills"] if item["category_id"] in category_ids and (allowed is None or item["id"] in allowed)]
+    skill_ids = {item["id"] for item in catalog["skills"]}
+    used_categories = {item["category_id"] for item in catalog["skills"]}
+    catalog["categories"] = [item for item in catalog["categories"] if item["id"] in used_categories]
+    catalog["specializations"] = [item for item in catalog["specializations"] if item["id"] == spec.id]
+    catalog["importances"] = [item for item in catalog["importances"] if item["specialization_id"] == spec.id and item["skill_id"] in skill_ids]
+    catalog["expectations"] = [item for item in catalog["expectations"] if item["specialization_id"] == spec.id and item["skill_id"] in skill_ids]
+    catalog["specialization_id"] = spec.id
+    assessment.catalog_snapshot = json.dumps({"draft_catalog": catalog, "review_mode": "historical"}, ensure_ascii=False)
     db.flush()
     return assessment
 
@@ -177,12 +202,14 @@ def _draft_payload(db, assessment):
     from app.grades.calculations import category_averages, next_grade_progress, gap_list
     from app.grades.goals import build_goal_options, normalize_goal
 
-    catalog = workspace_payload(db)
+    frozen = json.loads(assessment.catalog_snapshot or "{}")
+    historical = frozen.get("review_mode") == "historical"
+    catalog = deepcopy(frozen["draft_catalog"]) if historical else workspace_payload(db)
     for key in ("grades", "specializations", "categories", "skills"):
         catalog[key] = [item for item in catalog[key] if item["active"]]
     specs = {s["id"]: s for s in catalog["specializations"]}
     grades = {g["id"]: g for g in catalog["grades"]}
-    goal = normalize_goal({"targetGradeId": assessment.target_grade_id if assessment.target_grade_id in grades else None,
+    goal = normalize_goal({"targetGradeId": assessment.target_grade_id if not historical and assessment.target_grade_id in grades else None,
                            "targetSpecializationId": assessment.target_specialization_id
                            if assessment.target_specialization_id in specs else None}, assessment.specialization_id)
     spec_id = goal["targetSpecializationId"] or assessment.specialization_id
@@ -200,10 +227,18 @@ def _draft_payload(db, assessment):
     expectations = {(e["skill_id"], e["grade_id"]): e["level"] for e in catalog["expectations"]}
     scores = [{"skillId": s["id"], "skillName": s["name"], "categoryId": s["category_id"],
                "categoryName": categories[s["category_id"]]["name"], "importance": importances.get(s["id"], 1),
+               "assessed": s["id"] in values if historical else True,
                "currentLevel": values.get(s["id"], 0),
                "targetLevel": expectations.get((s["id"], goal["targetGradeId"]), 0)} for s in catalog["skills"]]
     result = _serialized(assessment)
-    result.update(catalog=catalog, scores=scores, categories=category_averages(scores),
+    category_values = {item["categoryId"]: item for item in category_averages([score for score in scores if score["assessed"]])}
+    category_rows = [{"categoryId": key, "categoryName": item["name"], "current": 0, "target": 0,
+                      **category_values.get(key, {}), "assessed_count": sum(score["assessed"] for score in scores if score["categoryId"] == key)}
+                     for key, item in categories.items() if any(score["categoryId"] == key for score in scores)]
+    from app.grades.history import matrix_version
+    result.update(catalog=catalog, scores=scores, categories=category_rows,
+                  review_mode="historical" if historical else "legacy", scale_version="levels-0-4-v1", matrix_version=matrix_version(catalog),
+                  import_source=frozen.get("import_source"),
                   progress=next_grade_progress(scores) if goal["targetGradeId"] else None,
                   gaps=gap_list(scores) if goal["targetGradeId"] else [],
                   goal_options=build_goal_options({"grades": catalog["grades"],
@@ -216,10 +251,14 @@ def update_assessment(db, assessment_id, payload):
     if set(payload) - {"values", "target_grade_id", "target_specialization_id"}:
         raise ValueError("Unknown assessment fields")
     assessment = lock_assessment(db, assessment_id)
+    frozen = json.loads(assessment.catalog_snapshot or "{}")
+    historical = frozen.get("review_mode") == "historical"
+    if historical and any(payload.get(key) is not None for key in ("target_grade_id", "target_specialization_id")):
+        raise ValueError("Review records actual skills, not a target grade")
     data = _goal_fields(db, assessment, payload)
-    require(db, GradeSpecialization, assessment.specialization_id, active=True)
-    require(db, Grade, assessment.current_grade_id, active=True)
-    catalog = workspace_payload(db)
+    require(db, GradeSpecialization, assessment.specialization_id, active=not historical)
+    require(db, Grade, assessment.current_grade_id, active=not historical)
+    catalog = frozen["draft_catalog"] if historical else workspace_payload(db)
     categories = {c["id"] for c in catalog["categories"] if c["active"]}
     skills = {s["id"] for s in catalog["skills"] if s["active"] and s["category_id"] in categories}
     validated = {}
@@ -228,13 +267,17 @@ def update_assessment(db, assessment_id, payload):
         skill_id = integer(entry.get("skill_id"), 1, 2**63 - 1, "skill_id")
         if skill_id not in skills or skill_id in validated:
             raise ValueError("Unknown, archived or duplicate skill")
-        validated[skill_id] = integer(entry.get("level"), 0, 4, "level")
+        validated[skill_id] = None if entry.get("level") is None and historical else integer(entry.get("level"), 0, 4, "level")
     existing = {v.skill_id: v for v in db.scalars(select(GradeAssessmentValue)
                  .where(GradeAssessmentValue.assessment_id == assessment.id))}
     for field, value in data.items():
         setattr(assessment, field, value)
     for skill_id, level in validated.items():
         value = existing.get(skill_id)
+        if level is None:
+            if value is not None:
+                db.delete(value)
+            continue
         if value is None:
             value = GradeAssessmentValue(assessment_id=assessment.id, skill_id=skill_id)
             db.add(value)
@@ -248,10 +291,11 @@ def finalize_assessment(db, assessment_id):
     assessment = lock_assessment(db, assessment_id, allow_final=True)
     if assessment.status == "final":
         return _snapshot(assessment)
-    _goal_fields(db, assessment, {}, profile=True)
+    if json.loads(assessment.catalog_snapshot or "{}").get("review_mode") != "historical":
+        _goal_fields(db, assessment, {}, profile=True)
     payload = _draft_payload(db, assessment)
     now = utc_now()
-    payload.update(status="final", finalized_at=now.isoformat(), updated_at=now.isoformat(), snapshot_version=1)
+    payload.update(status="final", finalized_at=now.isoformat(), updated_at=now.isoformat(), snapshot_version=2)
     assessment.status = "final"
     assessment.finalized_at = assessment.updated_at = now
     assessment.catalog_snapshot = json.dumps(payload, ensure_ascii=False, allow_nan=False)

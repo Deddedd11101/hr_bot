@@ -81,13 +81,14 @@ source_of_truth: true
 | Таблица | Содержание / ограничения |
 | --- | --- |
 | `grades` | slug и rank уникальны; name, sort_order, active |
-| `grade_specializations` | уникальный slug, description, active, nullable position_slug |
+| `grade_specializations` | уникальный slug, description, active, nullable position_slug; nullable skill_ids_json задаёт точный состав импортированной матрицы, NULL сохраняет legacy global scope |
 | `grade_skill_categories` | глобальные категории, уникальное name, active |
-| `grade_skills` | category_id + name уникальны, complexity, sort_order, active |
+| `grade_skills` | category_id + name уникальны, complexity, sort_order, active; revision default 1, nullable description критериев |
 | `grade_skill_importances` | unique(skill_id, specialization_id), importance 1..3 |
 | `grade_skill_expectations` | unique(skill_id, grade_id, specialization_id), level 0..4 |
 | `employee_grade_profiles` | unique employee_id; specialization/current_grade/target_grade/target_specialization |
-| `grade_assessments` | employee_id, assessor_admin_account_id, специализации/грейды, status draft/final, timestamps, catalog_snapshot TEXT; один draft на employee через SQLite partial unique index |
+| `employee_grade_decisions` | append-only решения: employee_id index, nullable actor_id, previous_grade_id/grade_id/specialization_id, comment, labels_json, created_at UTC; не создаются при финализации оценок |
+| `grade_assessments` | employee_id, assessor_admin_account_id, специализации/грейды, status draft/final, timestamps, catalog_snapshot TEXT; новые drafts хранят draft_catalog, final — immutable snapshot v2 с assessed/scale/matrix hash; один draft на employee через SQLite partial unique index |
 | `grade_assessment_values` | unique(assessment_id, skill_id), level 0..4 |
 
 Связи логические, без физического cascade, в существующем стиле HRBot. References

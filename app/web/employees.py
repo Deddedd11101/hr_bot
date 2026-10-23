@@ -31,6 +31,7 @@ from ..models import (
     EmployeeFeedbackRun,
     EmployeeFile,
     EmployeeGradeProfile,
+    EmployeeGradeDecision,
     EmployeeHrNote,
     EmployeeManualBotMessage,
     EmployeeMessengerAccount,
@@ -1469,6 +1470,7 @@ def _delete_employee_record(db: Session, employee: Employee) -> str:
     ).delete(synchronize_session=False)
     db.query(GradeAssessment).filter(GradeAssessment.employee_id == employee_id).delete(synchronize_session=False)
     db.query(EmployeeGradeProfile).filter(EmployeeGradeProfile.employee_id == employee_id).delete(synchronize_session=False)
+    db.query(EmployeeGradeDecision).filter(EmployeeGradeDecision.employee_id == employee_id).delete(synchronize_session=False)
     db.query(EmployeeMessengerAccount).filter(
         EmployeeMessengerAccount.employee_id == employee_id,
     ).delete(synchronize_session=False)

@@ -29,6 +29,14 @@ source_of_truth: true
 
 ## Grade API
 
+Новый процесс — фактические повторные ревью без личной цели повышения. POST assessment фиксирует draft_catalog и не копирует прежние баллы; новые scores содержат assessed, categories исключают неизвестные факты. level=null очищает оценку нового draft. Старые final JSON не переписываются. Полный контракт: [[features/grades]].
+
+- `GET /api/employees/{employee_id}/grade/compare?previous_id=&current_id=`: две final оценки одного сотрудника, rows со state/delta/previous/current; foreign employee 404, draft/невалидный snapshot 422. Нет общего среднего разных матриц.
+- `POST /api/grades/workbook-preview`: authenticated multipart file/sheet/blank_requirements_zero, XLSX Skills до 5 MB, отдельные catalog/assessment_candidates/warnings/source_digest; read-only, не импортирует опросы/оценки автоматически.
+- `POST /api/grades/import` apply требует expectedFingerprint из dryRun; preview содержит changes/missing_ids/fingerprint. Skill id стабилен; optional change_kind=semantic/editorial и description; неизвестные шкалы/поля запрещены. Успешный импорт фиксирует specialization.skill_ids_json.
+- `PUT /api/grades/skills/{item_id}`: optional change_kind и description; semantic изменение имени/критериев повышает revision. Категория/complexity всегда повышают revision. Сам revision не редактируется.
+- `PUT employee grade` дополнительно принимает comment до 4000 символов; смена профиля либо непустой комментарий создаёт employee_grade_decisions с actor ID и labels snapshot. GET employee grade дополнительно возвращает decisions. Финализация не меняет назначенный грейд.
+
 Все endpoints требуют существующую authenticated admin-сессию (любая текущая роль).
 Это не публичный API сотрудника. Неавторизованный запрос: 401, неизвестная сущность: 404,
 ошибка данных: 422, конфликт уникальности: 409. Запись атомарна, SQLite write-lock берётся
