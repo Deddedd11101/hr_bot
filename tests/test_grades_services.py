@@ -73,6 +73,8 @@ class GradeServicesTests(unittest.TestCase):
         self.assertEqual(result["review_comment"], "First review")
         self.assertEqual(service.save_review(self.db, 1, 1, payload), result)
         self.assertEqual(self.db.query(GradeAssessment).count(), 1)
+        with self.assertRaises(ValueError):
+            service.save_review(self.db, 1, 1, dict(payload, comment="Different request with same key"))
 
     def test_single_save_rejects_stale_template_and_foreign_draft(self):
         payload = self.review_request()

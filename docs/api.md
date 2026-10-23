@@ -20,6 +20,7 @@ Grade single-form review: authenticated `GET /api/employees/{employee_id}/grade/
 optional draft_id, specialization_id/current_grade_id/comment, matrix_version и values.
 В одной транзакции записывает решение, баллы и final snapshot; повтор request_id
 идемпотентен, неверная версия/пустая оценка — 422. Архив/чужой draft не изменяются.
+Повтор request_id с другим содержимым отклоняется 422, не игнорирует новые баллы.
 Admin-only `POST /api/employees/{employee_id}/grade/purge-other-reviews` принимает
 keep_id и exact expected_ids удаляемых записей. Создаёт verified SQLite backup,
 потом удаляет только assessments/values этого employee, кроме keep_id; ответ

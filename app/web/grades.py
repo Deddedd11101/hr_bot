@@ -200,15 +200,20 @@ def preview_review(db, employee_id, specialization_id, grade_id):
 
 def save_review(db, employee_id, actor_id, payload):
     from uuid import UUID
+    import hashlib
     payload = record(payload)
     if set(payload) - {"request_id", "draft_id", "specialization_id", "current_grade_id", "comment", "values", "matrix_version"}:
         raise ValueError("Unknown review fields")
     if not isinstance(payload.get("request_id"), str):
         raise ValueError("request_id must be a UUID")
     request_id = str(UUID(payload["request_id"]))
+    request_hash = hashlib.sha256(json.dumps({key: value for key, value in payload.items() if key != "request_id"}, sort_keys=True, ensure_ascii=False, allow_nan=False).encode()).hexdigest()
     _lock_employee(db, employee_id)
     for previous in db.scalars(select(GradeAssessment).where(GradeAssessment.employee_id == employee_id, GradeAssessment.status == "final")):
-        if json.loads(previous.catalog_snapshot or "{}").get("review_request_id") == request_id:
+        saved = json.loads(previous.catalog_snapshot or "{}")
+        if saved.get("review_request_id") == request_id:
+            if saved.get("review_request_hash") != request_hash:
+                raise ValueError("This review was already saved with different values. Start a new review")
             return assessment_payload(db, previous.id)
     draft_id = payload.get("draft_id")
     if draft_id is not None:
@@ -236,7 +241,7 @@ def save_review(db, employee_id, actor_id, payload):
     db.flush()
     update_assessment(db, assessment.id, {"values": payload["values"], "target_grade_id": None, "target_specialization_id": None})
     result = finalize_assessment(db, assessment.id)
-    result.update(review_comment=payload.get("comment", ""), review_request_id=request_id)
+    result.update(review_comment=payload.get("comment", ""), review_request_id=request_id, review_request_hash=request_hash)
     assessment.catalog_snapshot = json.dumps(result, ensure_ascii=False, allow_nan=False)
     db.flush()
     return result
