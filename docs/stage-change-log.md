@@ -13,6 +13,13 @@ source_of_truth: true
 
 # Журнал изменений тестового стенда
 
+## 23.10.2026 00:23 МСК — конец адаптации по умолчанию
+
+- App deploy PR #115: 8457f37b995ef1e3d3b9e9c3c014a0397fef6279, Deploy Stage 39856717998 success. Пустой конец считается как первый день +3 календарных месяца с ограничением числа последним днём месяца. Заполненные даты имеют приоритет; старые карточки/очереди не переписаны. Новые candidate promotions используют тот же default. Schema без изменений.
+- 213 локальных planning/scenario/identity/employee tests passed, compileall, Ruff F821, TypeScript, build и повторная clean-сборка, diff/docs check passed. Покрыты leap/month/year boundaries, saved override, read-only GET, сохранность очереди и отсутствие календаря.
+- Backup SQLite verified, scenario fingerprint unchanged, HTTP 303/303 и Telegram gate Deploy Stage passed. Stage Diagnostics 39857035866 success.
+- Browser read-only карточки №80: конец 16.01.2027 рассчитан автоматически; вместо требования ручной даты показана ошибка отсутствующего календаря 2027. Файл D:\HRBot\outputs\compact-adaptation-ui\default-end-stage.png. Реальные расписания/Telegram доставки не запускались. Требуется календарь 2027 для расчёта соответствующих этапов. Откат через Deploy Stage на предыдущий интегрированный ref.
+
 ## 22.10.2026 22:41 МСК — компактный интерфейс адаптации
 
 - App deploy PR #113: `2f99be996c29bbbfa63b7b06bd3c2d39a78d3664`; Deploy Stage 39842096935 success. Backend/API/schema не изменены; обновлены UI, generated assets и cache versions.
