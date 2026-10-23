@@ -31,4 +31,15 @@ def compare_reviews(previous, current):
                        "state": state, "previous": old["currentLevel"] if old and old.get("assessed", True) else None,
                        "current": new["currentLevel"] if new and new.get("assessed", True) else None,
                        "delta": new["currentLevel"] - old["currentLevel"] if state == "comparable" else None})
-    return {"previous_id": previous["id"], "current_id": current["id"], "rows": result}
+    categories = {}
+    for item in result:
+        if item["state"] != "comparable":
+            continue
+        old = before[item["skill_id"]]
+        weight = {1: 1, 2: 1.5, 3: 2}.get(old.get("importance"), 1)
+        group = categories.setdefault(old["categoryId"], {"categoryId": old["categoryId"], "categoryName": item["category"], "current": 0, "target": 0, "weight": 0})
+        group["current"] += item["current"] * weight
+        group["target"] += item["previous"] * weight
+        group["weight"] += weight
+    paired = [{**group, "current": group["current"] / group["weight"], "target": group["target"] / group["weight"]} for group in categories.values()]
+    return {"previous_id": previous["id"], "current_id": current["id"], "rows": result, "categories": paired}

@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from ..database import get_session
 from . import grades
-from .support import render_template, require_api_auth, require_auth
+from .support import render_template, require_api_auth, require_api_admin, require_auth
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
@@ -135,6 +135,22 @@ def update_employee_grade(employee_id: int, request: Request, payload: dict = Bo
 def create_assessment(employee_id: int, request: Request, db: Session = Depends(get_write_db)):
     assessment = grades.create_assessment(db, employee_id, require_api_auth(request).id)
     return grades.assessment_payload(db, assessment.id)
+
+
+@router.get("/api/employees/{employee_id}/grade/review-preview")
+def review_preview(employee_id: int, specialization_id: int, grade_id: int, db: Session = Depends(get_db)):
+    return read_payload(grades.preview_review, db, employee_id, specialization_id, grade_id)
+
+
+@router.post("/api/employees/{employee_id}/grade/reviews")
+def save_review(employee_id: int, request: Request, payload: dict = Body(...), db: Session = Depends(get_write_db)):
+    return grades.save_review(db, employee_id, require_api_auth(request).id, payload)
+
+
+@router.post("/api/employees/{employee_id}/grade/purge-other-reviews")
+def purge_other_reviews(employee_id: int, request: Request, payload: dict = Body(...), db: Session = Depends(get_write_db)):
+    require_api_admin(request)
+    return grades.purge_other_reviews(db, employee_id, payload)
 
 
 @router.get("/api/grade-assessments/{assessment_id}")

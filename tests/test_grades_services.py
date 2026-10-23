@@ -56,6 +56,67 @@ class GradeServicesTests(unittest.TestCase):
         self.profile(**extra)
         return service.create_assessment(self.db, 1, 1)
 
+    def review_request(self, **extra):
+        from uuid import uuid4
+        preview = service.preview_review(self.db, 1, self.spec["id"], 1)
+        return dict(request_id=str(uuid4()), specialization_id=self.spec["id"], current_grade_id=1,
+                    matrix_version=preview["matrix_version"], comment="First review",
+                    values=[{"skill_id": self.skill["id"], "level": 0}], **extra)
+
+    def test_single_save_is_final_and_idempotent_with_explicit_zero(self):
+        payload = self.review_request()
+        self.assertIsNone(service._profile(self.db, 1))
+        self.assertEqual(self.db.query(GradeAssessment).count(), 0)
+        result = service.save_review(self.db, 1, 1, payload)
+        self.assertEqual(result["status"], "final")
+        self.assertTrue(result["scores"][0]["assessed"])
+        self.assertEqual(result["review_comment"], "First review")
+        self.assertEqual(service.save_review(self.db, 1, 1, payload), result)
+        self.assertEqual(self.db.query(GradeAssessment).count(), 1)
+        with self.assertRaises(ValueError):
+            service.save_review(self.db, 1, 1, dict(payload, comment="Different request with same key"))
+
+    def test_single_save_rejects_stale_template_and_foreign_draft(self):
+        payload = self.review_request()
+        service.save_catalog_item(self.db, "skills", {"name": "Changed"}, self.skill["id"])
+        with self.assertRaises(ValueError):
+            service.save_review(self.db, 1, 1, payload)
+        self.assertIsNone(service._profile(self.db, 1))
+        old = self.draft()
+        payload = self.review_request(draft_id=old.id)
+        payload["current_grade_id"] = 3
+        final = service.save_review(self.db, 1, 1, payload)
+        self.assertEqual(final["id"], old.id)
+        self.assertEqual(final["current_grade_id"], 3)
+        self.assertEqual(service._profile(self.db, 1).current_grade_id, 3)
+
+    def test_purge_verifies_backup_and_keeps_selected_review(self):
+        import sqlite3
+        from contextlib import closing
+        old = self.draft()
+        service.finalize_assessment(self.db, old.id)
+        keep = service.create_assessment(self.db, 1, 1)
+        self.db.commit()
+        result = service.purge_other_reviews(self.db, 1, {"keep_id": keep.id, "expected_ids": [old.id]})
+        self.db.commit()
+        self.assertEqual(result["deleted_count"], 1)
+        with closing(sqlite3.connect(Path(self.temp.name) / "backups" / result["backup"])) as backup:
+            self.assertEqual(backup.execute("SELECT count(*) FROM grade_assessments").fetchone()[0], 2)
+        self.assertEqual(self.db.query(GradeAssessment).count(), 1)
+        self.assertEqual(service.assessment_payload(self.db, keep.id)["status"], "draft")
+
+    def test_purge_fails_closed_before_deletion(self):
+        old = self.draft()
+        service.finalize_assessment(self.db, old.id)
+        keep = service.create_assessment(self.db, 1, 1)
+        self.db.commit()
+        with self.assertRaises(ValueError):
+            service.purge_other_reviews(self.db, 1, {"keep_id": keep.id, "expected_ids": []})
+        with patch.object(service, "_backup_before_grade_purge", side_effect=ValueError("Backup failed")):
+            with self.assertRaises(ValueError):
+                service.purge_other_reviews(self.db, 1, {"keep_id": keep.id, "expected_ids": [old.id]})
+        self.assertEqual(self.db.query(GradeAssessment).count(), 2)
+
     def test_archive_draft_preserves_values_and_allows_new_review(self):
         old = self.draft()
         service.update_assessment(self.db, old.id, {"values": [{"skill_id": self.skill["id"], "level": 3}]})

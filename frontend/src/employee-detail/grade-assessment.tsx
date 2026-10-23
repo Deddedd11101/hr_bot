@@ -39,6 +39,7 @@ export function GradeAssessment({ initial, onFinalized, onClose }: { initial: As
       </ConfirmAction>
     </div>}
     <Feedback error={action.error} message={dirty ? "Есть несохранённые изменения. График показывает последнюю сохранённую оценку." : action.message} />
+    {assessment.review_comment && <p className="text-sm text-muted-foreground">{assessment.review_comment}</p>}
     <div className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
       <div className="min-w-0 space-y-5">{assessment.categories.map(category => <section key={category.categoryId}>
         <h3 className="border-b bg-muted/40 px-3 py-2 font-medium break-words">{category.categoryName}</h3>
