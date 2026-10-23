@@ -13,6 +13,14 @@ source_of_truth: true
 
 # Журнал изменений тестового стенда
 
+## 24.10.2026 — упрощённый Grade и очистка тестовой истории
+
+- PR #123 выложен: `bf0fa4d4feab9e6008c69f51fe74bfb17c48e1b8`, Deploy Stage `40027915457`, Stage Diagnostics `40028007262` success. Единая форма шаблон/грейд/комментарий/баллы, одна атомарная команда Save, обзор с последней паутинкой и историей; автоматическое сравнение под графиком, независимое архивирование draft, свёрнутые редкие действия. Schema не менялась.
+- Локально полный набор 444 tests, 37 Grade/API tests после корректировок, дополнительный idempotency regression, TypeScript/compileall/Ruff/build/repeated tracked clean build/docs/diff checks passed. CI success на `a3739ef`. Deploy preflight выполнил 201 smoke test; не считать это повтором полного локального набора. Backup `backups/hr_bot.before-deploy.20261023-213704.db` verified; scenario fingerprint unchanged; web/worker/WireGuard/Caddy active, HTTP 303, diagnostics 0 failing checks.
+- По явному подтверждению пользователя выполнена необратимая очистка карточки №70: оставлена оценка №5 (шаблон системного аналитика/Middle), удалены четыре прежние тестовые записи и связанные values. Перед DELETE сервер создал и проверил `backups/hr_bot.before-grade-purge.7ea1875501c44976ba15bec41a84527c.db`; exact expected_ids gate защищает от stale history. Профиль, кадровые решения и другие сотрудники не удалялись.
+- Stage browser подтвердил единственную запись/паутинку и отсутствие селектов сравнения при одной оценке. После очистки повторно открыта №5: 26 оценок/19 неоценённых, данные сохранены. №5 оставлена draft без финализации по подтверждённому условию «без изменений». Screenshot `D:\HRBot\outputs\grade-simple-stage-cleaned.png`. Новый single-save и автоматическое сравнение проверены на отдельной локальной БД; реальные новые final на stage не создавались, пользовательская приёмка открыта.
+- Откат к предыдущему Grade ref не требует schema rollback. Восстановление удалённой истории — отдельное адресное восстановление из backup, не замена всей live DB поверх более новых данных. Полный backup и личные значения в Git не добавлялись.
+
 ## 23.10.2026 23:58 МСК — архив черновиков Grade и первый перенос
 
 - PR #121 выложен: `3ec3cd2f8f13b4736d08c18b4aa98ca3ec678302`, Deploy Stage `40022750109`, Stage Diagnostics `40022882703` success. Nullable archived_at и обновление partial unique draft index без rebuild; archived snapshot read-only, final не архивируется, новый draft не копирует старые оценки.
