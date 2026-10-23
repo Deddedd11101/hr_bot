@@ -17,33 +17,33 @@ type Category = Assessment["categories"][number];
  * прогресс и пробелы за нижнюю границу окна.
  */
 const RADAR_MIN_CATEGORIES = 3;
-const LABEL_LIMIT = 10;
+const LABEL_LIMIT = 16;
 
 function shortLabel(name: unknown) {
-  const text = String(name);
+  const text = String(name).replace(/^Hard skills\s*\((.+)\)$/i, "$1").replace(/ компетенции$/i, "");
   return text.length > LABEL_LIMIT ? `${text.slice(0, LABEL_LIMIT - 1)}…` : text;
 }
 
-export function GradeProfileChart({ categories, withTarget }: { categories: Category[]; withTarget: boolean }) {
+export function GradeProfileChart({ categories, withTarget, secondaryLabel = "Цель" }: { categories: Category[]; withTarget: boolean; secondaryLabel?: string }) {
   if (!categories.length) return <p className="text-muted-foreground">Нет категорий для профиля навыков.</p>;
   return <figure className="space-y-3">
     {categories.length >= RADAR_MIN_CATEGORIES
-      ? <ChartContainer config={{ current: { label: "Текущий", color: "var(--primary)" }, target: { label: "Цель", color: "var(--info)" } }} className="mx-auto aspect-[4/3] w-full max-w-80" aria-label="Радар по категориям: текущие и целевые уровни">
+      ? <ChartContainer config={{ current: { label: "Текущий", color: "var(--primary)" }, target: { label: secondaryLabel, color: "var(--info)" } }} className="mx-auto aspect-[4/3] w-full max-w-96" aria-label={withTarget ? `Радар: текущая оценка и ${secondaryLabel}` : "Радар фактической оценки"}>
         <RadarChart data={categories} outerRadius="65%" margin={{ top: 4, right: 4, bottom: 4, left: 4 }}>
           <PolarGrid /><PolarAngleAxis dataKey="categoryName" tickFormatter={shortLabel} /><PolarRadiusAxis domain={[0, 4]} tickCount={5} axisLine={false} tick={false} />
-          {withTarget && <Radar name="Цель" dataKey="target" stroke="var(--color-target)" fill="var(--color-target)" fillOpacity={0.08} strokeDasharray="4 3" isAnimationActive={false} />}
+          {withTarget && <Radar name={secondaryLabel} dataKey="target" stroke="var(--color-target)" fill="var(--color-target)" fillOpacity={0.08} strokeDasharray="4 3" isAnimationActive={false} />}
           <Radar name="Текущий" dataKey="current" stroke="var(--color-current)" fill="var(--color-current)" fillOpacity={0.25} isAnimationActive={false} />
           <ChartTooltip content={<ChartTooltipContent />} />
         </RadarChart>
       </ChartContainer>
-      : <ul className="space-y-3" aria-label="Уровни по категориям: текущие и целевые">{categories.map(c => <li key={c.categoryId} className="space-y-1.5">
+      : <ul className="space-y-3" aria-label={withTarget ? `Уровни: текущая оценка и ${secondaryLabel}` : "Фактические уровни по категориям"}>{categories.map(c => <li key={c.categoryId} className="space-y-1.5">
         <p className="text-sm break-words">{c.categoryName}</p>
         <LevelBar label="Текущий" value={c.current} className="bg-primary" />
-        {withTarget && <LevelBar label="Цель" value={c.target} className="border border-dashed border-info bg-info/10" />}
+        {withTarget && <LevelBar label={secondaryLabel} value={c.target} className="border border-dashed border-info bg-info/10" />}
       </li>)}</ul>}
     <figcaption className="flex flex-wrap justify-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
       <span className="inline-flex items-center gap-1.5"><span aria-hidden="true" className="h-2.5 w-4 rounded-sm bg-primary" />Текущий (сплошная)</span>
-      {withTarget && <span className="inline-flex items-center gap-1.5"><span aria-hidden="true" className="h-2.5 w-4 rounded-sm border border-dashed border-info bg-info/10" />Цель (пунктир)</span>}
+      {withTarget && <span className="inline-flex items-center gap-1.5"><span aria-hidden="true" className="h-2.5 w-4 rounded-sm border border-dashed border-info bg-info/10" />{secondaryLabel} (пунктир)</span>}
     </figcaption>
   </figure>;
 }

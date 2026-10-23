@@ -24,6 +24,7 @@ export type Assessment = Profile & {
   goal_options: { value: string; label: string }[];
   review_mode?: string; matrix_version?: string;
   import_source?: {filename: string; sheet: string; review_date?: string | null} | null;
+  review_comment?: string;
 };
 export type EmployeeGrade = {
   employee_id: number; profile: Profile | null; suggested_specialization_id: number | null;

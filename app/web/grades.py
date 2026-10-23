@@ -10,7 +10,7 @@ import json
 from copy import deepcopy
 from datetime import datetime
 
-from sqlalchemy import select, update
+from sqlalchemy import select, update, delete
 
 from app.grades.catalog import (
     archive_catalog_item, ensure_defaults, import_catalog, save_catalog_item,
@@ -164,8 +164,15 @@ def create_assessment(db, employee_id, assessor_id):
                                  status="draft", **data)
     db.add(assessment)
     db.flush()
+    catalog = _review_catalog(db, profile.specialization_id)
+    assessment.catalog_snapshot = json.dumps({"draft_catalog": catalog, "review_mode": "historical"}, ensure_ascii=False)
+    db.flush()
+    return assessment
+
+
+def _review_catalog(db, specialization_id):
     catalog = workspace_payload(db)
-    spec = db.get(GradeSpecialization, profile.specialization_id)
+    spec = require(db, GradeSpecialization, specialization_id, active=True)
     allowed = set(json.loads(spec.skill_ids_json)) if spec.skill_ids_json is not None else None
     for key in ("grades", "specializations", "categories", "skills"):
         catalog[key] = [item for item in catalog[key] if item["active"]]
@@ -178,9 +185,102 @@ def create_assessment(db, employee_id, assessor_id):
     catalog["importances"] = [item for item in catalog["importances"] if item["specialization_id"] == spec.id and item["skill_id"] in skill_ids]
     catalog["expectations"] = [item for item in catalog["expectations"] if item["specialization_id"] == spec.id and item["skill_id"] in skill_ids]
     catalog["specialization_id"] = spec.id
-    assessment.catalog_snapshot = json.dumps({"draft_catalog": catalog, "review_mode": "historical"}, ensure_ascii=False)
+    return catalog
+
+
+def preview_review(db, employee_id, specialization_id, grade_id):
+    require(db, Employee, employee_id)
+    require(db, Grade, grade_id, active=True)
+    catalog = _review_catalog(db, specialization_id)
+    assessment = GradeAssessment(id=-1, employee_id=employee_id, specialization_id=specialization_id,
+                                 current_grade_id=grade_id, status="draft", created_at=utc_now(),
+                                 catalog_snapshot=json.dumps({"draft_catalog": catalog, "review_mode": "historical"}))
+    return _draft_payload(db, assessment)
+
+
+def save_review(db, employee_id, actor_id, payload):
+    from uuid import UUID
+    payload = record(payload)
+    if set(payload) - {"request_id", "draft_id", "specialization_id", "current_grade_id", "comment", "values", "matrix_version"}:
+        raise ValueError("Unknown review fields")
+    if not isinstance(payload.get("request_id"), str):
+        raise ValueError("request_id must be a UUID")
+    request_id = str(UUID(payload["request_id"]))
+    _lock_employee(db, employee_id)
+    for previous in db.scalars(select(GradeAssessment).where(GradeAssessment.employee_id == employee_id, GradeAssessment.status == "final")):
+        if json.loads(previous.catalog_snapshot or "{}").get("review_request_id") == request_id:
+            return assessment_payload(db, previous.id)
+    draft_id = payload.get("draft_id")
+    if draft_id is not None:
+        assessment = lock_assessment(db, draft_id)
+        if assessment.employee_id != employee_id:
+            raise LookupError("Assessment not found")
+        if assessment.specialization_id != payload.get("specialization_id"):
+            raise ValueError("Archive the draft before changing its template")
+        view = _draft_payload(db, assessment)
+    else:
+        active = db.scalar(select(GradeAssessment.id).where(GradeAssessment.employee_id == employee_id, GradeAssessment.status == "draft", GradeAssessment.archived_at.is_(None)))
+        if active:
+            raise ValueError("Continue or archive the existing draft")
+        view = preview_review(db, employee_id, payload.get("specialization_id"), payload.get("current_grade_id"))
+    if view["matrix_version"] != payload.get("matrix_version"):
+        raise ValueError("Template changed. Reload the review form")
+    if not any(item.get("level") is not None for item in items(payload.get("values", []), "values")):
+        raise ValueError("Assess at least one skill")
+    update_employee_grade(db, employee_id, {"specialization_id": payload.get("specialization_id"),
+        "current_grade_id": payload.get("current_grade_id"), "target_grade_id": None,
+        "target_specialization_id": None, "comment": payload.get("comment", "")}, actor_id=actor_id)
+    if draft_id is None:
+        assessment = create_assessment(db, employee_id, actor_id)
+    assessment.current_grade_id = payload["current_grade_id"]
     db.flush()
-    return assessment
+    update_assessment(db, assessment.id, {"values": payload["values"], "target_grade_id": None, "target_specialization_id": None})
+    result = finalize_assessment(db, assessment.id)
+    result.update(review_comment=payload.get("comment", ""), review_request_id=request_id)
+    assessment.catalog_snapshot = json.dumps(result, ensure_ascii=False, allow_nan=False)
+    db.flush()
+    return result
+
+
+def _backup_before_grade_purge(db):
+    import os
+    import sqlite3
+    from contextlib import closing
+    from pathlib import Path
+    from uuid import uuid4
+    if db.bind.dialect.name != "sqlite" or not db.bind.url.database or db.bind.url.database == ":memory:":
+        raise ValueError("Verified SQLite backup is required before deleting reviews")
+    source_path = Path(db.bind.url.database).resolve(strict=True)
+    directory = source_path.parent / "backups"
+    directory.mkdir(exist_ok=True)
+    target = directory / f"hr_bot.before-grade-purge.{uuid4().hex}.db"
+    fd = os.open(target, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+    os.close(fd)
+    with closing(sqlite3.connect(source_path.as_uri() + "?mode=ro", uri=True)) as source, closing(sqlite3.connect(target)) as backup:
+        source.backup(backup)
+        if backup.execute("PRAGMA quick_check").fetchone() != ("ok",):
+            raise ValueError("Backup integrity check failed; reviews were not deleted")
+    return target.name
+
+
+def purge_other_reviews(db, employee_id, payload):
+    payload = record(payload)
+    if set(payload) != {"keep_id", "expected_ids"}:
+        raise ValueError("keep_id and expected_ids are required")
+    _lock_employee(db, employee_id)
+    keep_id = integer(payload["keep_id"], 1, 2**63 - 1, "keep_id")
+    keep = _assessment(db, keep_id)
+    if keep.employee_id != employee_id or keep.archived_at is not None:
+        raise ValueError("Keep an active review belonging to this employee")
+    actual = sorted(db.scalars(select(GradeAssessment.id).where(GradeAssessment.employee_id == employee_id, GradeAssessment.id != keep_id)))
+    expected = [integer(item, 1, 2**63 - 1, "expected_ids") for item in items(payload["expected_ids"], "expected_ids")]
+    if sorted(expected) != actual or not actual:
+        raise ValueError("Review history changed. Reload before deleting")
+    backup = _backup_before_grade_purge(db)
+    db.execute(delete(GradeAssessmentValue).where(GradeAssessmentValue.assessment_id.in_(actual)))
+    db.execute(delete(GradeAssessment).where(GradeAssessment.employee_id == employee_id, GradeAssessment.id.in_(actual)))
+    db.flush()
+    return {"deleted_count": len(actual), "kept_id": keep_id, "backup": backup}
 
 
 def _snapshot(assessment):

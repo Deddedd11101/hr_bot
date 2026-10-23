@@ -1,57 +1,61 @@
 import { useEffect, useState } from "react";
+import { Archive } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Choice, Feedback, LoadingError, useAction, useUnsaved } from "@/grades/components";
+import { ConfirmAction } from "@/components/ui/confirm-action";
+import { Feedback, LoadingError, useAction } from "@/grades/components";
 import { dateLabel, errorMessage, request } from "@/grades/data";
-import type { Assessment, EmployeeGrade, Profile } from "@/grades/types";
+import type { Assessment, EmployeeGrade } from "@/grades/types";
 import { GradeAssessment } from "./grade-assessment";
 import { GradeComparison } from "./grade-comparison";
-import { Input } from "@/components/ui/input";
-import { ConfirmAction } from "@/components/ui/confirm-action";
+import { GradeReviewForm } from "./grade-review-form";
+import { Choice } from "@/grades/components";
 
-const empty: Profile = { specialization_id: null, current_grade_id: null, target_grade_id: null, target_specialization_id: null };
-
-export function GradeTab({ employeeId }: { employeeId: number }) {
+export function GradeTab({employeeId}: {employeeId: number}) {
   const [data, setData] = useState<EmployeeGrade | null>(null);
-  const [profile, setProfile] = useState<Profile>(empty);
-  const [dirty, setDirty] = useState(false);
-  const [comment, setComment] = useState("");
+  const [latest, setLatest] = useState<Assessment | null>(null);
+  const [view, setView] = useState<Assessment | null>(null);
+  const [form, setForm] = useState(false);
+  const [draft, setDraft] = useState<Assessment | null>(null);
   const [error, setError] = useState("");
   const [attempt, retry] = useState(0);
-  const [assessment, setAssessment] = useState<Assessment | null>(null);
   const action = useAction();
   const endpoint = `/api/employees/${employeeId}/grade`;
-  useUnsaved(dirty || !!comment.trim());
-  function apply(result: EmployeeGrade) { setData(result); setProfile(result.profile || empty); setDirty(false); }
-  useEffect(() => {
-    const controller = new AbortController(); setError("");
-    request<EmployeeGrade>(endpoint, "GET", undefined, controller.signal).then(apply).catch(e => { if (!controller.signal.aborted) setError(errorMessage(e)); });
-    return () => controller.abort();
-  }, [endpoint, attempt]);
-  async function refresh() { apply(await request<EmployeeGrade>(endpoint)); }
+  async function load(signal?: AbortSignal) {
+    const result = await request<EmployeeGrade>(endpoint, "GET", undefined, signal);
+    const active = result.assessments.filter(item => item.status !== "archived");
+    const newest = result.latest_final || (active[0] ? await request<Assessment>(`/api/grade-assessments/${active[0].id}`, "GET", undefined, signal) : null);
+    if (signal?.aborted) return;
+    setData(result); setLatest(newest);
+  }
+  useEffect(() => { const controller = new AbortController(); setError(""); void load(controller.signal).catch(e => { if (!controller.signal.aborted) setError(errorMessage(e)); }); return () => controller.abort(); }, [endpoint, attempt]);
   if (!data) return <LoadingError loading={!error} error={error} retry={() => retry(n => n + 1)} />;
-  if (assessment) return <GradeAssessment key={assessment.id} initial={assessment} onClose={() => setAssessment(null)} onFinalized={refresh} />;
-  const existingDraft = data.assessments.find(a => a.status === "draft");
-  function edit(next: Profile) { setProfile(next); setDirty(true); action.setMessage(""); }
+  if (view) return <GradeAssessment initial={view} onClose={() => setView(null)} onFinalized={() => load()} />;
+  if (form) return <GradeReviewForm employeeId={employeeId} data={data} draft={draft} onClose={() => setForm(false)} onSaved={async () => { await load(); setForm(false); }} />;
+  const active = data.assessments.filter(item => item.status !== "archived");
+  const archived = data.assessments.filter(item => item.status === "archived");
+  const existingDraft = active.find(item => item.status === "draft");
+  async function start() { setDraft(existingDraft ? await request<Assessment>(`/api/grade-assessments/${existingDraft.id}`) : null); setForm(true); }
   return <div className="space-y-6">
-    <section className="space-y-4">
-      <h2 className="text-base font-semibold">Профиль грейда</h2>
-      <div className="grid gap-3 md:grid-cols-2">
-        <Choice label="Специализация" value={String(profile.specialization_id || "none")} options={[{ value: "none", label: "Не выбрана" }, ...data.specializations.map(s => ({ value: String(s.id), label: s.name })), ...(profile.specialization_id && !data.specializations.some(s => s.id === profile.specialization_id) ? [{ value: String(profile.specialization_id), label: "Архивная специализация" }] : [])]} disabled={action.busy} onChange={v => edit({ ...profile, specialization_id: v === "none" ? null : Number(v), target_grade_id: null, target_specialization_id: null })} />
-        <Choice label="Текущий грейд" value={String(profile.current_grade_id || "none")} options={[{ value: "none", label: "Не выбран" }, ...data.grades.map(g => ({ value: String(g.id), label: g.name })), ...(profile.current_grade_id && !data.grades.some(g => g.id === profile.current_grade_id) ? [{ value: String(profile.current_grade_id), label: "Архивный грейд" }] : [])]} disabled={action.busy} onChange={v => edit({ ...profile, current_grade_id: v === "none" ? null : Number(v), target_grade_id: null, target_specialization_id: null })} />
-      </div>
-      {data.suggested_specialization_id && !profile.specialization_id && <Button variant="outline" disabled={action.busy} onClick={() => edit({ ...profile, specialization_id: data.suggested_specialization_id })}>Выбрать по должности: {data.specializations.find(s => s.id === data.suggested_specialization_id)?.name}</Button>}
-      <label className="block max-w-xl space-y-2 text-sm">Комментарий к решению по грейду<Input value={comment} maxLength={4000} onChange={event => setComment(event.target.value)} /></label>
-      <div className="flex flex-wrap gap-2"><Button disabled={(!dirty && !comment.trim()) || action.busy} onClick={() => void action.run(async () => { apply(await request<EmployeeGrade>(endpoint, "PUT", { specialization_id: profile.specialization_id, current_grade_id: profile.current_grade_id, target_grade_id: null, target_specialization_id: null, comment })); setComment(""); })}>Сохранить решение</Button>
-        <Button variant="outline" disabled={dirty || action.busy || (!existingDraft && (!profile.specialization_id || !profile.current_grade_id))} onClick={() => void action.run(async () => { const result = await request<Assessment>(`${endpoint}/assessments`, "POST"); await refresh(); setAssessment(result); }, "")}>{existingDraft ? "Продолжить оценку" : "Начать оценку"}</Button>
-      </div>
-      <Feedback error={action.error} message={dirty ? "Профиль изменён. Сохраните его перед началом оценки." : action.message} />
-    </section>
-    <GradeComparison key={data.assessments.filter(item => item.status === "final").map(item => item.id).join(",")} employeeId={employeeId} assessments={data.assessments} />
-    {!!data.decisions?.length && <section className="space-y-2 border-t pt-4"><h2 className="font-semibold">История назначений грейда</h2>{data.decisions.map(item => { const labels = JSON.parse(item.labels_json); return <div key={item.id} className="border-b py-3 text-sm"><p>{dateLabel(item.created_at)} · {labels.previous_grade || "Не назначен"} → {labels.grade || "Не назначен"} · {labels.specialization || "Без специализации"}</p>{item.comment && <p className="text-muted-foreground">{item.comment}</p>}</div>; })}</section>}
-    <section className="space-y-3 border-t pt-4"><h2 className="text-base font-semibold">История оценок</h2>
-      {!data.assessments.length && <p className="text-muted-foreground">Оценок пока нет</p>}
-      {data.assessments.map(a => <div key={a.id} className="flex flex-wrap items-center justify-between gap-3 border-b py-3"><div><p>{dateLabel(a.created_at)}</p><Badge variant="outline">{a.status === "final" ? "Завершена" : a.status === "archived" ? "Архив" : "Черновик"}</Badge></div><div className="flex gap-2"><Button variant="outline" disabled={dirty || action.busy} onClick={() => void action.run(async () => setAssessment(await request<Assessment>(`/api/grade-assessments/${a.id}`)), "")}>Открыть оценку</Button>{a.status === "draft" && <ConfirmAction title="Убрать черновик в архив?" description="Оценки сохранятся в истории только для чтения. Можно будет начать новое ревью." actionLabel="В архив" onConfirm={() => void action.run(async () => { await request(`/api/grade-assessments/${a.id}/archive`, "POST"); await refresh(); }, "Черновик сохранён в архиве")}><Button variant="outline" disabled={dirty || action.busy}>В архив</Button></ConfirmAction>}</div></div>)}
-    </section>
+    <header className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-semibold">Грейд и развитие</h2>{data.profile?.current_grade_id && <p className="text-sm text-muted-foreground">{data.specializations.find(item => item.id === data.profile?.specialization_id)?.name} · {data.grades.find(item => item.id === data.profile?.current_grade_id)?.name}</p>}</div>{active.length > 0 && <Button disabled={action.busy} onClick={() => void action.run(start, "")}>{existingDraft ? "Продолжить оценку" : "Новая оценка"}</Button>}</header>
+    <Feedback error={action.error || error} />
+    {!active.length ? <div className="space-y-4 py-12 text-center"><p className="text-muted-foreground">Ранее не оценивался</p><Button disabled={action.busy} onClick={() => void action.run(start, "")}>Начать оценку</Button></div> : <div className="grid min-w-0 gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(260px,360px)]">
+      <section className="min-w-0 space-y-4"><h3 className="text-sm font-medium">{latest?.status === "draft" ? "Текущая оценка · черновик" : "Последняя оценка"}</h3>
+        <GradeComparison key={active.map(item => item.id).join(",")} employeeId={employeeId} assessments={active} latest={latest} />
+      </section>
+      <section className="min-w-0 space-y-3"><h3 className="text-sm font-medium">История оценок</h3>{active.map(item => <div key={item.id} className="flex items-center justify-between gap-2 border-b py-3"><Button variant="ghost" className="h-auto min-w-0 flex-1 justify-start whitespace-normal text-left" disabled={action.busy} onClick={() => void action.run(async () => { if (item.status === "draft") await start(); else setView(await request<Assessment>(`/api/grade-assessments/${item.id}`)); }, "")}><span>{dateLabel(item.created_at)}<span className="block text-xs text-muted-foreground">{item.status === "draft" ? "Черновик" : "Сохранена"}</span></span></Button>{item.status === "draft" && <ArchiveReview id={item.id} refresh={() => load()} />}</div>)}</section>
+    </div>}
+    {!!archived.length && <details className="border-t pt-3"><summary className="cursor-pointer text-sm text-muted-foreground">Архив · {archived.length}</summary><div className="mt-3 space-y-2">{archived.map(item => <Button key={item.id} variant="ghost" onClick={() => void action.run(async () => setView(await request<Assessment>(`/api/grade-assessments/${item.id}`)), "")}>{dateLabel(item.created_at)}</Button>)}</div></details>}
+    {data.assessments.length > 1 && <PurgeReviews employeeId={employeeId} assessments={data.assessments} refresh={() => load()} />}
   </div>;
+}
+
+function PurgeReviews({employeeId, assessments, refresh}: {employeeId: number; assessments: EmployeeGrade["assessments"]; refresh: () => Promise<void>}) {
+  const [keep, setKeep] = useState(String(assessments.find(item => item.status !== "archived")?.id || ""));
+  const action = useAction();
+  return <details className="border-t pt-3"><summary className="cursor-pointer text-sm text-muted-foreground">Управление историей</summary><div className="mt-3 max-w-lg space-y-3"><Choice label="Оставить оценку" value={keep} onChange={setKeep} options={assessments.filter(item => item.status !== "archived").map(item => ({value: String(item.id), label: `${dateLabel(item.created_at)} · ${item.status === "draft" ? "Черновик" : "Сохранена"} · #${item.id}`}))} disabled={action.busy} /><ConfirmAction title="Удалить остальные оценки навсегда?" description="Сначала будет создана и проверена резервная копия БД. Все оценки этого сотрудника, кроме выбранной, будут удалены безвозвратно. Нужны права администратора." actionLabel="Удалить остальные" onConfirm={() => void action.run(async () => { const result = await request<{backup: string}>(`/api/employees/${employeeId}/grade/purge-other-reviews`, "POST", {keep_id: Number(keep), expected_ids: assessments.filter(item => item.id !== Number(keep)).map(item => item.id)}); await refresh(); action.setMessage(`История очищена. Резервная копия: ${result.backup}`); }, "История очищена, резервная копия проверена")}><Button variant="destructive" disabled={!keep || action.busy}>Удалить остальные оценки</Button></ConfirmAction><Feedback error={action.error} message={action.message} /></div></details>;
+}
+
+function ArchiveReview({id, refresh}: {id: number; refresh: () => Promise<void>}) {
+  const action = useAction();
+  return <div><ConfirmAction title="Убрать черновик в архив?" description="Оценки сохранятся только для чтения. Можно будет начать новое ревью." actionLabel="В архив" onConfirm={() => void action.run(async () => { await request(`/api/grade-assessments/${id}/archive`, "POST"); await refresh(); }, "")}><Button variant="ghost" size="icon" title="В архив" aria-label="В архив" disabled={action.busy}><Archive className="size-4" /></Button></ConfirmAction><Feedback error={action.error} /></div>;
 }

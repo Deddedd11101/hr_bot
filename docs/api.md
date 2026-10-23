@@ -14,6 +14,18 @@ related:
 source_of_truth: true
 ---
 
+Grade single-form review: authenticated `GET /api/employees/{employee_id}/grade/review-preview`
+принимает specialization_id/grade_id, возвращает matrix_version и навыки без записи.
+`POST /api/employees/{employee_id}/grade/reviews` принимает request_id UUID,
+optional draft_id, specialization_id/current_grade_id/comment, matrix_version и values.
+В одной транзакции записывает решение, баллы и final snapshot; повтор request_id
+идемпотентен, неверная версия/пустая оценка — 422. Архив/чужой draft не изменяются.
+Admin-only `POST /api/employees/{employee_id}/grade/purge-other-reviews` принимает
+keep_id и exact expected_ids удаляемых записей. Создаёт verified SQLite backup,
+потом удаляет только assessments/values этого employee, кроме keep_id; ответ
+deleted_count/kept_id/backup (имя без полного пути). 403 без admin, 422 при stale
+history/ошибке backup. Это необратимая очистка после отдельного UI-подтверждения.
+
 Grade: `POST /api/grade-assessments/{assessment_id}/archive` требует admin auth,
 переводит только draft в immutable archived snapshot; повторный вызов идемпотентен.
 Final сохраняется без изменений; archived доступен через GET только для чтения.

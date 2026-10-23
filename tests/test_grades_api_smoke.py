@@ -64,11 +64,40 @@ class GradesApiSmokeTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200, response.text)
         return response.json()
 
+    def test_review_save_rollback_idempotence_and_purge_admin_boundary(self):
+        from app.models import AdminAccount
+        spec, _, skill = self.fixture()
+        profile = self.client.get(f"/api/employees/{self.employee_id}/grade").json()["profile"]
+        endpoint = f"/api/employees/{self.employee_id}/grade"
+        preview = self.client.get(f"{endpoint}/review-preview", params={"specialization_id": spec["id"], "grade_id": profile["current_grade_id"]})
+        self.assertEqual(preview.status_code, 200, preview.text)
+        payload = {"request_id": str(uuid4()), "specialization_id": spec["id"], "current_grade_id": profile["current_grade_id"], "comment": "Single form", "matrix_version": preview.json()["matrix_version"], "values": [{"skill_id": 2**60, "level": 3}]}
+        self.assertEqual(self.client.post(f"{endpoint}/reviews", json=payload).status_code, 422)
+        self.assertEqual(self.client.get(endpoint).json()["assessments"], [])
+        payload["values"] = [{"skill_id": skill["id"], "level": 0}]
+        saved = self.client.post(f"{endpoint}/reviews", json=payload)
+        self.assertEqual(saved.status_code, 200, saved.text)
+        repeated = self.client.post(f"{endpoint}/reviews", json=payload)
+        self.assertEqual(repeated.json()["id"], saved.json()["id"])
+        self.assertEqual(len(self.client.get(endpoint).json()["assessments"]), 1)
+        with SessionLocal() as db:
+            now = utc_now()
+            hr = AdminAccount(login=f"grade-hr-{self.tag}", password_hash="unused", role="hr", created_at=now, updated_at=now)
+            db.add(hr); db.commit()
+            token = create_admin_session_token(hr.id)
+        hr_client = TestClient(app)
+        hr_client.cookies.set(AUTH_COOKIE_NAME, token)
+        denied = hr_client.post(f"{endpoint}/purge-other-reviews", json={"keep_id": saved.json()["id"], "expected_ids": []})
+        self.assertEqual(denied.status_code, 403)
+
     def test_auth_and_route_contract(self):
         anon = TestClient(app)
         self.assertEqual(anon.get("/api/grades/workspace").status_code, 401)
         self.assertEqual(anon.put(f"/api/employees/{self.employee_id}/grade", json={}).status_code, 401)
         self.assertEqual(anon.post("/api/grade-assessments/1/finalize", json={}).status_code, 401)
+        self.assertEqual(anon.get(f"/api/employees/{self.employee_id}/grade/review-preview?specialization_id=1&grade_id=1").status_code, 401)
+        self.assertEqual(anon.post(f"/api/employees/{self.employee_id}/grade/reviews", json={}).status_code, 401)
+        self.assertEqual(anon.post(f"/api/employees/{self.employee_id}/grade/purge-other-reviews", json={}).status_code, 401)
         self.assertEqual(anon.get("/app/grades", follow_redirects=False).status_code, 303)
         self.assertEqual(self.client.get("/grades", follow_redirects=False).headers["location"], "/app/grades")
         paths = app.openapi()["paths"]
