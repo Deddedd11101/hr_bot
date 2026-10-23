@@ -29,6 +29,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ConfirmAction } from "@/components/ui/confirm-action";
 import { DatePicker, DateTimePicker, TimeSelect } from "@/components/ui/date-picker";
+import { WorkdayDatePicker } from "./workday-date-picker";
 import { Input } from "@/components/ui/input";
 import {
     Select,
@@ -662,7 +663,7 @@ export function EmployeeProfileSection(props: any) {
                         </Field>
                         <Field>
                             <FieldLabel>{isCandidate ? "Плановая дата выхода" : "Первый день сотрудника"}</FieldLabel>
-                            <DatePicker
+                            <WorkdayDatePicker
                                 value={form.first_workday}
                                 onValueChange={function (value) {
                                     if (onFirstWorkdayChange) {
@@ -878,6 +879,7 @@ export function EmployeeProfileSection(props: any) {
                                     <FieldLabel>Середина адаптации</FieldLabel>
                                     <DatePicker
                                         value={form.adaptation_midpoint}
+                                        placeholder={form.adaptation_midpoint_calculated ? `Авто: ${form.adaptation_midpoint_calculated.split("-").reverse().join(".")}` : "Сначала укажите первый день"}
                                         onValueChange={function (value) {
                                             changeFieldValue(handleChange, "adaptation_midpoint", value);
                                         }}
@@ -887,6 +889,7 @@ export function EmployeeProfileSection(props: any) {
                                     <FieldLabel>Конец адаптации</FieldLabel>
                                     <DatePicker
                                         value={form.adaptation_end}
+                                        placeholder={form.adaptation_end_calculated ? `Авто: ${form.adaptation_end_calculated.split("-").reverse().join(".")}` : "Сначала укажите первый день"}
                                         onValueChange={function (value) {
                                             changeFieldValue(handleChange, "adaptation_end", value);
                                         }}

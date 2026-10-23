@@ -21,6 +21,9 @@ source_of_truth: true
 - `GET /api/employees/{employee_id}/adaptation-plan`: authenticated employee-only preview, ordered rows, dates/statuses/conflicts/calendar_versions/fingerprint; candidates 404. Также adaptation_end (ISO date или пустая строка), adaptation_end_source=saved/calculated/missing: пустой конец рассчитывается от первого дня +3 календарных месяца без записи в карточку/очередь; заполненная дата приоритетна. При новом promote-to-adaptation пустой конец сохраняется по этому же правилу.
 - `POST /api/employees/{employee_id}/adaptation-plan`: fingerprint, rules_confirmed=true, rows [{key,requested_at local ISO minute}]; атомарное создание очереди, duplicate/stale 409, past/invalid 422.
 - `PATCH /api/employees/{employee_id}/adaptation-plan/{item_id}`: expected_at + requested_at или action=cancel; только не начавшийся этап, ownership 404, concurrent/started 409.
+- `POST /api/employees/{employee_id}/adaptation-plan/replan`: fingerprint, rules_confirmed=true, rows всех planned/blocked этапов; атомарный перенос существующих pending requests без смены ids, без изменения completed/active/cancelled/failed; 409 stale/started/conflict, 422 invalid date/состав. Изменение первого дня не вызывает этот запрос автоматически.
+- `GET /api/adaptation-plan/working-days/{year}`: authenticated, year/working_days ISO dates активного календаря, 422 при отсутствии года. Используется календарём первого дня; create/update employee отклоняет новые нерабочие даты и отсутствующий календарь. Preview дополнительно возвращает adaptation_midpoint; employee payload содержит adaptation_midpoint_calculated/adaptation_end_calculated для read-only автоматических подсказок.
+- `POST adaptation-plan` с full_plan=true требует все ещё не созданные этапы; ошибки не допускают частичного создания. Все плановые даты POST/PATCH/replan должны быть рабочими по календарю.
 
 Полный контракт и согласованные правила дат: [[features/adaptation-planning]].
 

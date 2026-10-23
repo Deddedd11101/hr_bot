@@ -791,6 +791,10 @@ def _create_employee_record(
     list_kind: str,
 ) -> Employee:
     first_day = datetime.strptime(first_workday, "%Y-%m-%d").date() if first_workday else None
+    if first_day:
+        from ..adaptation_planning import CalendarDates
+        if not CalendarDates(db).working(first_day):
+            raise ValueError("Первый рабочий день должен быть рабочим по производственному календарю")
     normalized_candidate_stage = normalize_candidate_work_stage(candidate_work_stage)
     employee = Employee(
         full_name=full_name.strip() or None,
@@ -867,6 +871,10 @@ def _apply_employee_update(
     if ipr_url is not None:
         _set_employee_ipr_link(db, employee.id, ipr_url)
     first_day = _parse_optional_date(first_workday)
+    if first_day and first_day != employee.first_workday:
+        from ..adaptation_planning import CalendarDates
+        if not CalendarDates(db).working(first_day):
+            raise ValueError("Первый рабочий день должен быть рабочим по производственному календарю")
     parsed_birth_date = _parse_optional_date(birth_date)
     previous_stage = (employee.employee_stage or "").strip()
     previous_manager_employee_id = employee.manager_employee_id
@@ -1526,7 +1534,7 @@ def _promote_candidate_to_adaptation(db: Session, employee: Employee) -> Employe
     employee.current_menu_path = None
     employee.current_menu_message_id = None
     if employee.adaptation_midpoint is None:
-        employee.adaptation_midpoint = add_workdays(employee.first_workday, settings.PROBATION_WORKDAYS // 2)
+        employee.adaptation_midpoint = employee.first_workday + timedelta(days=45)
     if employee.adaptation_end is None:
         employee.adaptation_end = default_adaptation_end(employee.first_workday)
     db.commit()
@@ -1888,6 +1896,8 @@ def _build_employee_detail_payload(db: Session, employee: Employee) -> dict:
             "adaptation_feedback_url": employee.adaptation_feedback_url or "",
             "adaptation_midpoint": employee.adaptation_midpoint.isoformat() if employee.adaptation_midpoint else "",
             "adaptation_end": employee.adaptation_end.isoformat() if employee.adaptation_end else "",
+            "adaptation_midpoint_calculated": (employee.first_workday + timedelta(days=45)).isoformat() if employee.first_workday else "",
+            "adaptation_end_calculated": default_adaptation_end(employee.first_workday).isoformat() if employee.first_workday else "",
             "employee_stage": employee.employee_stage or "",
             "candidate_work_stage": employee.candidate_work_stage or "",
             "salary_expectation": employee.salary_expectation or "",

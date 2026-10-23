@@ -12,12 +12,11 @@ import "./adaptation-planner.css";
 
 type Entry = { key: string; scenario_key: string; group: string; anchor: string; offset: number; unit: string; time: string };
 type Row = { key: string; title: string; rule: Entry | null; rule_label?: string; proposed_at: string; requested_at: string; error: string; past: boolean; conflict_ids: number[]; previous_completed: boolean; item_id: number | null; status: string; manual_date: boolean; last_error: string | null };
-type Plan = { fingerprint: string; rows: Row[]; group: string; timezone: string; calendar_versions: Record<string, number>; adaptation_end: string; adaptation_end_source: "saved" | "calculated" | "missing" };
+type Plan = { fingerprint: string; rows: Row[]; group: string; timezone: string; calendar_versions: Record<string, number>; adaptation_midpoint: string; adaptation_end: string; adaptation_end_source: "saved" | "calculated" | "missing" };
 type Template = { entries: Entry[]; revision: number; scenario_options: { value: string; label: string }[] };
 const labels: Record<string, string> = { planned: "Запланирован", blocked: "Ожидает диалог", starting: "Запускается", in_progress: "В процессе", completed: "Завершён", interrupted: "Прерван", failed: "Ошибка запуска", cancelled: "Отменён", not_planned: "Не запланирован", previously_completed: "Есть прошлый запуск" };
 const editable = new Set(["planned", "blocked", "failed", "cancelled"]);
 const selectClass = "h-9 min-w-0 rounded-md border border-input bg-background px-2 text-sm";
-const eligible = (row: Row) => !row.item_id && !row.error && !row.conflict_ids.length;
 const validDate = (value: string) => /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value);
 function dateLabel(value: string) {
     if (!value) return "Назначить дату";
@@ -35,7 +34,7 @@ async function api<T>(url: string, method = "GET", body?: unknown): Promise<T> {
 export function AdaptationPlanner({ employeeId }: { employeeId: number }) {
     const [plan, setPlan] = React.useState<Plan | null>(null);
     const [template, setTemplate] = React.useState<Template | null>(null);
-    const [selected, setSelected] = React.useState<string[]>([]);
+    const [replanning, setReplanning] = React.useState(false);
     const [dates, setDates] = React.useState<Record<string, string>>({});
     const [error, setError] = React.useState("");
     const [notice, setNotice] = React.useState("");
@@ -51,13 +50,29 @@ export function AdaptationPlanner({ employeeId }: { employeeId: number }) {
     function accept(next: Plan) {
         setPlan(next);
         setDates(Object.fromEntries(next.rows.map(row => [row.key, row.requested_at || row.proposed_at])));
-        setSelected(next.rows.filter(row => !row.item_id && !row.error && !row.past && !row.conflict_ids.length && !row.previous_completed).map(row => row.key));
     }
     React.useEffect(() => {
         let active = true;
         api<Plan>(url).then(next => { if (active) accept(next); }).catch(cause => { if (active) setError(cause.message); });
         return () => { active = false; };
     }, [url]);
+
+    React.useEffect(() => {
+        if (busy || planning || open || editing || cancelling) return;
+        let active = true;
+        let pending = false;
+        async function refresh() {
+            if (document.hidden || pending) return;
+            pending = true;
+            try { const next = await api<Plan>(url); if (active) setPlan(next); }
+            catch { /* Keep the last good plan on a transient refresh failure. */ }
+            finally { pending = false; }
+        }
+        const timer = window.setInterval(() => void refresh(), 15000);
+        window.addEventListener("focus", refresh);
+        document.addEventListener("visibilitychange", refresh);
+        return () => { active = false; window.clearInterval(timer); window.removeEventListener("focus", refresh); document.removeEventListener("visibilitychange", refresh); };
+    }, [url, busy, planning, open, editing, cancelling]);
 
     async function perform(action: () => Promise<void>) {
         setBusy(true); setError(""); setNotice("");
@@ -75,15 +90,16 @@ export function AdaptationPlanner({ employeeId }: { employeeId: number }) {
     }
     const completedRows = plan?.rows.filter(row => row.status === "completed") || [];
     const currentRows = plan?.rows.filter(row => row.status !== "completed") || [];
-    const availableRows = plan?.rows.filter(row => !row.item_id) || [];
+    const availableRows = plan?.rows.filter(row => replanning ? row.item_id && ["planned", "blocked"].includes(row.status) : !row.item_id) || [];
+    const selected = availableRows.map(row => row.key);
     const hasPlan = plan?.rows.some(row => row.item_id);
-    const invalidSelection = selected.some(key => !validDate(dates[key] || ""));
+    const invalidSelection = availableRows.some(row => !!row.error || !!row.conflict_ids.length || !validDate(dates[row.key] || ""));
     function titleFor(row: Row) {
         const copies = plan?.rows.filter(other => other.title === row.title) || [];
         return copies.length > 1 ? `${row.title} · ${copies.findIndex(other => other.key === row.key) + 1}` : row.title;
     }
     function renderRow(row: Row) {
-        const canEdit = row.item_id ? editable.has(row.status) : eligible(row);
+        const canEdit = !!row.item_id && editable.has(row.status);
         const active = row.status === "in_progress" || row.status === "starting";
         const issue = row.error || row.last_error || (row.conflict_ids.length ? "Уже есть отдельный запланированный запуск" : "");
         return <li key={row.key} className="adaptation-stage-row">
@@ -99,19 +115,29 @@ export function AdaptationPlanner({ employeeId }: { employeeId: number }) {
             </DropdownMenuContent></DropdownMenu> : <span className="adaptation-empty-action" />}
         </li>;
     }
-    return <PageSection title="План адаптации" className="adaptation-planner-section" action={<DropdownMenu><DropdownMenuTrigger render={<Button variant="ghost" size="icon" disabled={busy} title="Настройки плана" aria-label="Настройки плана" />}><Settings2 /></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onClick={() => void perform(async () => { setTemplate(await api<Template>("/api/adaptation-plan/template")); setOpen(true); })}><Settings2 />Порядок и правила</DropdownMenuItem><DropdownMenuItem onClick={() => void perform(async () => accept(await api<Plan>(url)))}><RefreshCw />Обновить статусы</DropdownMenuItem></DropdownMenuContent></DropdownMenu>}>
+    function openPlanning(recalculate: boolean) {
+        void perform(async () => {
+            const next = await api<Plan>(url);
+            accept(next);
+            setReplanning(recalculate);
+            if (recalculate) setDates(Object.fromEntries(next.rows.map(row => [row.key, row.proposed_at])));
+            setPlanning(true);
+        });
+    }
+    return <PageSection title="План адаптации" className="adaptation-planner-section" action={<DropdownMenu><DropdownMenuTrigger render={<Button variant="ghost" size="icon" disabled={busy} title="Настройки плана" aria-label="Настройки плана" />}><Settings2 /></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onClick={() => void perform(async () => { setTemplate(await api<Template>("/api/adaptation-plan/template")); setOpen(true); })}><Settings2 />Порядок и правила</DropdownMenuItem>{hasPlan && <DropdownMenuItem disabled={!plan?.rows.some(row => ["planned", "blocked"].includes(row.status))} onClick={() => openPlanning(true)}><RefreshCw />Пересчитать оставшиеся этапы</DropdownMenuItem>}</DropdownMenuContent></DropdownMenu>}>
         {error && <p role="alert" className="mb-3 text-sm text-destructive">{error}</p>}
         {notice && <p role="status" className="mb-3 text-sm text-muted-foreground">{notice}</p>}
         {!plan ? <p role="status" className="text-sm text-muted-foreground">{error ? "План недоступен" : "Загрузка плана..."}</p> : <>
-            <div className="adaptation-overview"><div><p className="mb-3 text-sm text-muted-foreground">{hasPlan ? `${completedRows.length} из ${plan.rows.length} этапов нового плана завершено` : "Новый план ещё не создан"}</p><Progress value={completedRows.length} max={Math.max(1, plan.rows.length)} aria-label="Завершённые этапы нового плана" /></div><Button disabled={busy || !availableRows.length} onClick={() => void perform(async () => { accept(await api<Plan>(url)); setPlanning(true); })}><CalendarDays />Запланировать адаптацию</Button></div>
+            <div className="adaptation-overview">{hasPlan && <div><p className="mb-3 text-sm text-muted-foreground">{completedRows.length} из {plan.rows.length} этапов завершено</p><Progress value={completedRows.length} max={Math.max(1, plan.rows.length)} aria-label="Завершённые этапы нового плана" /></div>}{hasPlan && plan.rows.some(row => ["planned", "blocked"].includes(row.status)) && <Button variant="outline" disabled={busy} onClick={() => openPlanning(true)}><RefreshCw />Пересчитать оставшиеся</Button>}{plan.rows.some(row => !row.item_id) && <Button disabled={busy} onClick={() => openPlanning(false)}><CalendarDays />{hasPlan ? "Добавить новые этапы" : "Запланировать адаптацию"}</Button>}</div>
             {!!completedRows.length && <><button type="button" className="adaptation-history-toggle" aria-expanded={historyOpen} onClick={() => setHistoryOpen(!historyOpen)}>{historyOpen ? <ChevronDown size={15} /> : <ChevronRight size={15} />}Завершённые этапы <span>{completedRows.length}</span></button>{historyOpen && <ol className="adaptation-stage-list adaptation-completed-list">{completedRows.map(renderRow)}</ol>}</>}
-            <ol className="adaptation-stage-list">{currentRows.map(renderRow)}</ol>
+            {hasPlan && <ol className="adaptation-stage-list">{currentRows.map(renderRow)}</ol>}
+            {plan.adaptation_midpoint && <p className="mt-3 text-xs text-muted-foreground">Середина адаптации: {plan.adaptation_midpoint.split("-").reverse().join(".")}</p>}
             {plan.adaptation_end && <p className="mt-3 text-xs text-muted-foreground">Конец адаптации: {plan.adaptation_end.split("-").reverse().join(".")} · {plan.adaptation_end_source === "calculated" ? "первый день + 3 месяца" : "дата из карточки"}. Изменить можно в «Сопровождение и документы».</p>}
             <div className="adaptation-plan-footer"><Clock3 size={14} /><span>{plan.timezone === "Europe/Moscow" ? "Московское время" : plan.timezone}</span><span>{plan.group}</span></div>
         </>}
-        <Dialog open={planning} onOpenChange={value => { if (!busy) setPlanning(value); }}><DialogContent className="max-h-[88vh] overflow-y-auto sm:max-w-3xl"><DialogHeader><DialogTitle>Запланировать адаптацию</DialogTitle></DialogHeader><p className="text-sm text-muted-foreground">Выбранные этапы будут поставлены в расписание. Время: {plan?.timezone}.</p>{error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-            <div>{availableRows.map(row => <div key={row.key} className="adaptation-planning-row"><input type="checkbox" aria-label={`Запланировать ${row.title}`} checked={selected.includes(row.key)} disabled={busy || !eligible(row)} onChange={event => setSelected(prev => event.target.checked ? [...prev, row.key] : prev.filter(key => key !== row.key))} /><div><p className="font-medium">{row.title}</p><p className="text-xs text-muted-foreground">{row.rule_label}</p>{(row.error || row.conflict_ids.length > 0) && <p className="text-xs text-destructive">{row.error || "Уже есть отдельный запланированный запуск"}</p>}{row.previous_completed && <p className="text-xs text-muted-foreground">Есть прошлый запуск. Повторный запуск — только по вашему выбору.</p>}</div><Input type="datetime-local" aria-label={`Плановая дата: ${row.title}`} value={dates[row.key] || ""} disabled={busy || !eligible(row)} onChange={event => setDates(prev => ({ ...prev, [row.key]: event.target.value }))} /></div>)}</div>
-            <div className="flex flex-wrap items-center justify-between gap-2"><Button variant="ghost" disabled={busy} onClick={() => void perform(async () => accept(await api<Plan>(url)))}><RefreshCw />Обновить расчёт</Button><div className="flex gap-2"><Button variant="ghost" disabled={busy} onClick={() => setPlanning(false)}>Отмена</Button><Button disabled={busy || !selected.length || invalidSelection} onClick={() => void perform(async () => { accept(await api<Plan>(url, "POST", { fingerprint: plan?.fingerprint, rules_confirmed: true, rows: selected.map(key => ({ key, requested_at: dates[key] })) })); setPlanning(false); setNotice("Выбранные сценарии запланированы"); })}>Запланировать ({selected.length})</Button></div></div>
+        <Dialog open={planning} onOpenChange={value => { if (!busy) setPlanning(value); }}><DialogContent className="max-h-[88vh] overflow-y-auto sm:max-w-3xl"><DialogHeader><DialogTitle>{replanning ? "Перепланировать оставшиеся этапы" : "Запланировать адаптацию"}</DialogTitle></DialogHeader><p className="text-sm text-muted-foreground">{replanning ? "Завершённые, идущие и отменённые этапы не изменятся. Проверьте переносы, включая даты, изменённые вручную." : "Будут запланированы все этапы, включая повторные прохождения. Проверьте даты перед подтверждением."} Время: {plan?.timezone}.</p>{error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+            <div>{availableRows.map(row => <div key={row.key} className="adaptation-planning-row"><span><CalendarDays size={14} /></span><div><p className="font-medium">{titleFor(row)}</p><p className="text-xs text-muted-foreground">{row.rule_label}</p>{replanning && <p className="text-xs text-muted-foreground">Было: {dateLabel(row.requested_at)}{row.manual_date ? " · вручную" : ""}</p>}{(row.error || row.conflict_ids.length > 0) && <p className="text-xs text-destructive">{row.error || "Уже есть отдельный запланированный запуск"}</p>}{row.previous_completed && !replanning && <p className="text-xs text-muted-foreground">Будет повторное прохождение.</p>}</div><Input type="datetime-local" aria-label={`Плановая дата: ${titleFor(row)}`} value={dates[row.key] || ""} disabled={busy || !!row.error || !!row.conflict_ids.length} onChange={event => setDates(prev => ({ ...prev, [row.key]: event.target.value }))} /></div>)}</div>
+            <div className="flex flex-wrap items-center justify-between gap-2"><Button variant="ghost" disabled={busy} onClick={() => openPlanning(replanning)}><RefreshCw />Обновить расчёт</Button><div className="flex gap-2"><Button variant="ghost" disabled={busy} onClick={() => setPlanning(false)}>Отмена</Button><Button disabled={busy || !selected.length || invalidSelection} onClick={() => void perform(async () => { accept(await api<Plan>(replanning ? `${url}/replan` : url, "POST", { fingerprint: plan?.fingerprint, rules_confirmed: true, full_plan: true, rows: selected.map(key => ({ key, requested_at: dates[key] })) })); setPlanning(false); setNotice(replanning ? "Оставшиеся этапы перепланированы" : "Адаптация запланирована"); })}>{replanning ? "Подтвердить перенос" : "Запланировать все этапы"} ({selected.length})</Button></div></div>
         </DialogContent></Dialog>
         <Dialog open={!!editing} onOpenChange={value => { if (!busy && !value) setEditing(null); }}><DialogContent><DialogHeader><DialogTitle>{editing?.item_id ? "Дата запуска" : "Запланировать этап"}</DialogTitle></DialogHeader><p className="text-sm">{editing?.title}</p><p className="text-xs text-muted-foreground">{editing?.rule_label}</p>{error && <p role="alert" className="text-sm text-destructive">{error}</p>}<DateTimePicker value={editDate} onValueChange={setEditDate} disabled={busy} /><p className="text-xs text-muted-foreground">Время: {plan?.timezone}. Даты остальных этапов не изменятся.</p><div className="flex justify-end gap-2"><Button variant="ghost" disabled={busy} onClick={() => setEditing(null)}>Отмена</Button><Button disabled={busy || !validDate(editDate)} onClick={() => void perform(async () => { if (!editing) return; const next = editing.item_id ? await api<Plan>(`${url}/${editing.item_id}`, "PATCH", { expected_at: editing.requested_at, requested_at: editDate }) : await api<Plan>(url, "POST", { fingerprint: plan?.fingerprint, rules_confirmed: true, rows: [{ key: editing.key, requested_at: editDate }] }); accept(next); setEditing(null); setNotice("Дата сохранена, запуск запланирован"); })}>{editing?.item_id && !["failed", "cancelled"].includes(editing.status) ? "Сохранить" : "Запланировать"}</Button></div></DialogContent></Dialog>
         <Dialog open={!!cancelling} onOpenChange={value => { if (!busy && !value) setCancelling(null); }}><DialogContent><DialogHeader><DialogTitle>Отменить запланированный запуск?</DialogTitle></DialogHeader><p className="text-sm">{cancelling?.title}</p><p className="text-sm text-muted-foreground">История этапа сохранится. Его можно будет запланировать повторно.</p>{error && <p role="alert" className="text-sm text-destructive">{error}</p>}<div className="flex justify-end gap-2"><Button variant="ghost" disabled={busy} onClick={() => setCancelling(null)}>Оставить</Button><Button variant="destructive" disabled={busy} onClick={() => void perform(async () => { if (!cancelling) return; accept(await api<Plan>(`${url}/${cancelling.item_id}`, "PATCH", { expected_at: cancelling.requested_at, action: "cancel" })); setCancelling(null); setNotice("Запуск отменён"); })}>Отменить запуск</Button></div></DialogContent></Dialog>
