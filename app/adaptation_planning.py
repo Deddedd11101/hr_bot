@@ -113,6 +113,7 @@ def local_now() -> datetime:
 def build_preview(db: Session, employee: Employee) -> dict:
     entries, revision = template_data(db)
     end_date = employee.adaptation_end or (default_adaptation_end(employee.first_workday) if employee.first_workday else None)
+    midpoint = employee.adaptation_midpoint or (employee.first_workday + timedelta(days=45) if employee.first_workday else None)
     calendar = CalendarDates(db)
     by_key = {entry["key"]: entry for entry in entries}
     is_pm = position_matches_scope(employee.desired_position, "project_manager,rukovoditel_proektov,rukovoditel_proekta")
@@ -129,7 +130,10 @@ def build_preview(db: Session, employee: Employee) -> dict:
             raise ValueError("Некорректная зависимость этапов")
         if key not in cache:
             entry = by_key[key]
-            cache[key] = calendar.shift(calculate(entry["anchor"], (*seen, key)), entry["offset"], entry["unit"])
+            if key == "middle" and employee.adaptation_midpoint:
+                cache[key] = calendar.shift(employee.adaptation_midpoint, 0, "calendar")
+            else:
+                cache[key] = calendar.shift(calculate(entry["anchor"], (*seen, key)), entry["offset"], entry["unit"])
         return cache[key]
     rows = []
     occupied_times = set()
@@ -162,8 +166,9 @@ def build_preview(db: Session, employee: Employee) -> dict:
         anchor_scenario = scenarios.get(anchor_entry["scenario_key"]) if anchor_entry else None
         anchor_label = "первый рабочий день" if entry["anchor"] == "first" else "конец адаптации" if entry["anchor"] == "end" else anchor_scenario.title if anchor_scenario else entry["anchor"]
         unit_label = "раб. дн." if entry["unit"] == "workday" else "кал. дн."
+        rule_label = "Дата середины из карточки" if entry["key"] == "middle" and employee.adaptation_midpoint else f"{entry['offset']:+d} {unit_label} · {anchor_label}"
         rows.append({"key": entry["key"], "scenario_key": entry["scenario_key"], "title": scenario.title if scenario else entry["scenario_key"],
-                     "rule": entry, "rule_label": f"{entry['offset']:+d} {unit_label} · {anchor_label}", "proposed_at": planned.isoformat(timespec="minutes") if planned else "", "error": error,
+                     "rule": entry, "rule_label": rule_label, "proposed_at": planned.isoformat(timespec="minutes") if planned else "", "error": error,
                      "past": bool(planned and planned <= local_now()), "conflict_ids": conflicts, "previous_completed": previous_completed,
                      "item_id": item.id if item else None, "status": item_status or ("previously_completed" if previous_completed else "not_planned"),
                      "requested_at": item.requested_at.isoformat(timespec="minutes") if item else "", "manual_date": item.manual_date if item else False,
@@ -175,8 +180,9 @@ def build_preview(db: Session, employee: Employee) -> dict:
                          "past": False, "conflict_ids": [], "previous_completed": False, "item_id": item.id,
                          "status": item.status, "requested_at": item.requested_at.isoformat(timespec="minutes"),
                          "manual_date": item.manual_date, "last_error": item.last_error})
-    fingerprint = hashlib.sha256(json.dumps({"revision": revision, "first": str(employee.first_workday), "end": str(employee.adaptation_end),
+    fingerprint = hashlib.sha256(json.dumps({"revision": revision, "first": str(employee.first_workday), "midpoint": str(midpoint), "end": str(employee.adaptation_end),
                      "position": employee.desired_position, "blocked": employee.is_bot_blocked, "rows": rows, "calendars": calendar.versions}, sort_keys=True).encode()).hexdigest()
     return {"revision": revision, "fingerprint": fingerprint, "rows": rows, "calendar_versions": calendar.versions,
             "adaptation_end": end_date.isoformat() if end_date else "", "adaptation_end_source": "saved" if employee.adaptation_end else "calculated" if end_date else "missing",
+            "adaptation_midpoint": midpoint.isoformat() if midpoint else "",
             "group": "PM" if is_pm else "Не PM", "timezone": settings.TIMEZONE}

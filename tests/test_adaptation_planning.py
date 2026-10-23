@@ -11,7 +11,7 @@ from app.adaptation_planning import CalendarDates, build_preview, default_entrie
 from app.adaptation_delivery import deliver_plan_request
 from app.database import Base
 from app.models import AdaptationPlanTemplate, Employee, EmployeeAdaptationPlanItem, FlowLaunchRequest, ProductionCalendarVersion, ProductionCalendarYear, ScenarioProgress, ScenarioTemplate
-from app.web.adaptation_plan_routes import apply_plan, edit_item
+from app.web.adaptation_plan_routes import apply_plan, edit_item, replan, working_days
 
 
 class AdaptationPlanTests(unittest.IsolatedAsyncioTestCase):
@@ -202,3 +202,54 @@ class AdaptationPlanTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(item.status, "cancelled")
         self.assertEqual(self.db.query(FlowLaunchRequest).count(), 0)
         self.assertEqual(self.db.query(EmployeeAdaptationPlanItem).count(), 1)
+
+    def test_bulk_replan_preserves_queue_ids_and_excludes_history(self):
+        preview = build_preview(self.db, self.employee)
+        selected = [row for row in preview["rows"] if row["key"] in {"organization", "first_day", "week"}]
+        apply_plan(None, self.employee.id, {"fingerprint": preview["fingerprint"], "rules_confirmed": True, "rows": [{"key": row["key"], "requested_at": row["proposed_at"]} for row in selected]}, self.db)
+        items = {item.entry_key: item for item in self.db.query(EmployeeAdaptationPlanItem)}
+        items["organization"].status = "completed"
+        items["first_day"].status = "cancelled"
+        original = {key: (item.requested_at, item.launch_request_id) for key, item in items.items()}
+        self.employee.first_workday = date(2092, 2, 7)
+        self.db.commit()
+        preview = build_preview(self.db, self.employee)
+        row = next(row for row in preview["rows"] if row["key"] == "week")
+        payload = {"fingerprint": preview["fingerprint"], "rules_confirmed": True, "rows": [{"key": "week", "requested_at": row["proposed_at"]}]}
+        replan(None, self.employee.id, payload, self.db)
+        self.assertNotEqual(items["week"].requested_at, original["week"][0])
+        self.assertEqual(items["week"].launch_request_id, original["week"][1])
+        for key in ("organization", "first_day"):
+            self.assertEqual((items[key].requested_at, items[key].launch_request_id), original[key])
+        with self.assertRaises(HTTPException) as caught:
+            replan(None, self.employee.id, payload, self.db)
+        self.assertEqual(caught.exception.status_code, 409)
+        self.db.rollback()
+
+    def test_bulk_replan_invalid_date_is_atomic(self):
+        preview = build_preview(self.db, self.employee)
+        apply_plan(None, self.employee.id, {"fingerprint": preview["fingerprint"], "rules_confirmed": True, "rows": [{"key": "organization", "requested_at": "2092-01-08T10:00"}, {"key": "week", "requested_at": "2092-01-14T10:00"}]}, self.db)
+        original = [item.requested_at for item in self.db.query(EmployeeAdaptationPlanItem).order_by(EmployeeAdaptationPlanItem.id)]
+        preview = build_preview(self.db, self.employee)
+        with self.assertRaises(HTTPException):
+            replan(None, self.employee.id, {"fingerprint": preview["fingerprint"], "rules_confirmed": True, "rows": [{"key": "organization", "requested_at": "2092-01-09T10:00"}, {"key": "week", "requested_at": "2092-01-12T10:00"}]}, self.db)
+        self.assertEqual([item.requested_at for item in self.db.query(EmployeeAdaptationPlanItem).order_by(EmployeeAdaptationPlanItem.id)], original)
+
+    def test_full_plan_rejects_partial_and_working_days_fail_closed(self):
+        preview = build_preview(self.db, self.employee)
+        with self.assertRaises(HTTPException) as caught:
+            apply_plan(None, self.employee.id, {"fingerprint": preview["fingerprint"], "rules_confirmed": True, "full_plan": True, "rows": [{"key": "organization", "requested_at": "2092-01-08T10:00"}]}, self.db)
+        self.assertEqual(caught.exception.status_code, 422)
+        self.db.rollback()
+        with patch("app.web.adaptation_plan_routes.require_api_auth"):
+            days = working_days(None, 2092, self.db)["working_days"]
+            self.assertNotIn("2092-01-12", days)
+            with self.assertRaises(HTTPException):
+                working_days(None, 2093, self.db)
+
+    def test_manual_midpoint_is_anchor_for_middle_step(self):
+        self.employee.adaptation_midpoint = date(2092, 3, 3)
+        preview = build_preview(self.db, self.employee)
+        row = next(row for row in preview["rows"] if row["key"] == "middle")
+        self.assertEqual(row["proposed_at"][:10], "2092-03-03")
+        self.assertEqual(preview["adaptation_midpoint"], "2092-03-03")

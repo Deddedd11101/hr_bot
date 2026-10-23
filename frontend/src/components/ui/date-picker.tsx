@@ -52,6 +52,9 @@ type DatePickerProps = {
   placeholder?: string;
   disabled?: boolean;
   className?: string;
+  disabledDays?: (date: Date) => boolean;
+  month?: Date;
+  onMonthChange?: (date: Date) => void;
 };
 
 function DatePicker({
@@ -60,6 +63,9 @@ function DatePicker({
   placeholder = "Выбрать дату",
   disabled,
   className,
+  disabledDays,
+  month,
+  onMonthChange,
 }: DatePickerProps) {
   const selectedDate = parseDate(value);
 
@@ -86,6 +92,9 @@ function DatePicker({
         <Calendar
           mode="single"
           selected={selectedDate}
+          disabled={disabledDays}
+          month={month}
+          onMonthChange={onMonthChange}
           onSelect={(date) => {
             if (date) onValueChange(formatDateValue(date));
           }}

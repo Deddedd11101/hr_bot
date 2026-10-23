@@ -1,4 +1,5 @@
 import unittest
+import json
 import asyncio
 from io import BytesIO
 from datetime import UTC, datetime, timedelta
@@ -45,6 +46,8 @@ from app.models import (
     MassMessageAction,
     MassScenarioAction,
     Position,
+    ProductionCalendarVersion,
+    ProductionCalendarYear,
     ScenarioProgress,
     ScenarioTemplate,
     StepButtonNotification,
@@ -90,6 +93,17 @@ class EmployeeApiSmokeTests(unittest.TestCase):
         init_db()
         cls.client = TestClient(app)
         with SessionLocal() as db:
+            if not db.get(ProductionCalendarYear, 2026):
+                day = datetime(2026, 1, 1).date()
+                days = []
+                while day.year == 2026:
+                    days.append({"date": day.isoformat(), "is_workday": day.weekday() < 5})
+                    day += timedelta(days=1)
+                version = ProductionCalendarVersion(year=2026, digest="e" * 64, days_json=json.dumps(days), source_name="employee-test", created_at=datetime(2026, 1, 1), created_by="test")
+                db.add(version)
+                db.flush()
+                db.add(ProductionCalendarYear(year=2026, current_version_id=version.id))
+                db.commit()
             account = authenticate_account(db, "admin", "admin123")
             if account is None:
                 raise AssertionError("Admin account is not available for API smoke tests.")
@@ -132,6 +146,13 @@ class EmployeeApiSmokeTests(unittest.TestCase):
     @staticmethod
     def _initial_candidate_stage_key() -> str | None:
         return None
+
+    def test_first_workday_rejects_weekend_and_missing_calendar(self):
+        for value in ("2026-06-13", "2027-01-11"):
+            response = self.client.post(f"/api/employees/{self.employee_id}", json=self._staff_update_payload(first_workday=value))
+            self.assertEqual(response.status_code, 400, response.text)
+        response = self.client.post(f"/api/employees/{self.employee_id}", json=self._staff_update_payload(first_workday="2026-06-10"))
+        self.assertEqual(response.status_code, 200, response.text)
 
     def _staff_update_payload(self, **overrides) -> dict:
         payload = {
@@ -1382,7 +1403,7 @@ class EmployeeApiSmokeTests(unittest.TestCase):
         payload = response.json()
         self.assertEqual(payload["employee"]["employee_stage"], "adaptation")
         self.assertEqual(payload["employee"]["candidate_work_stage"], "")
-        self.assertEqual(payload["employee"]["adaptation_midpoint"], "2026-07-08")
+        self.assertEqual(payload["employee"]["adaptation_midpoint"], "2026-07-25")
         self.assertEqual(payload["employee"]["adaptation_end"], "2026-09-10")
 
         with SessionLocal() as db:
