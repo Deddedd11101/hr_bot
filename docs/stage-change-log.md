@@ -13,6 +13,13 @@ source_of_truth: true
 
 # Журнал изменений тестового стенда
 
+## 23.10.2026 12:00 МСК — жизненный цикл плана адаптации
+
+- App deploy PR #117: d928e982eb592f80a9f16268a943777b4a6dd3df, Deploy Stage 39928572499 success. Добавлены рабочие даты первого дня (UI/backend), автоматические подсказки середины/конца, полное создание без чекбоксов, массовый подтверждаемый перенос pending planned/blocked, автообновление статусов. Schema не меняется; активные/завершённые/отменённые этапы и заполненные исторические даты не переписываются.
+- Локально полный unittest discover: 431 tests passed, compileall/Ruff/TypeScript, build и повторный clean build, diff/docs checks passed. Первый CI упал на неполной общей тестовой фикстуре календаря; исправлены её поля и cleanup, повторный CI success. На отдельной SQLite/browser проверены создание 9 этапов, перенос 8 после смены первого дня с сохранением completed, автоматическое обновление счётчика без reload, disabled weekends. Worker не запускался.
+- Backup SQLite verified; scenario fingerprint unchanged; HTTP employees/workspace 303/303, Telegram egress/log gate passed. Stage Diagnostics 39928945423 success. Browser №80 read-only показывает существующий план и связанные даты; субботы/воскресенья в первом дне отключены. D:\HRBot\outputs\adaptation-lifecycle-stage.png.
+- Импорт календаря 2027 описан ниже. Реальные карточки/очереди этой работой не создавались и не переносились; уже существовавшие при проверке запуски №80 не тронуты. Новая Telegram доставка/прохождение и пользовательская приёмка не проверены. Откат — Deploy Stage на предыдущий интегрированный ref, schema migration отсутствует.
+
 ## 23.10.2026 — импорт календаря 2027
 
 - Data import через admin UI preview/apply без deploy: production-calendar-2027.csv, построен из пользовательского LAW_533406.attach_LAW_533406_1.DOCX. Все 12 месячных итогов сверены: 247 рабочих, 118 выходных, 4 сокращённых дня; рабочая суббота 20 февраля сохранена. Preview показал 365 новых дат, apply — «Календарь сохранён. Расписания не изменены», версия 2027 current.
