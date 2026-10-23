@@ -13,6 +13,14 @@ source_of_truth: true
 
 # Журнал изменений тестового стенда
 
+## 23.10.2026 23:42 МСК — история фактических оценок Grade
+
+- PR #119 выложен: `360a6bd81d9f8f65504f92ffd3cb69baa60255ff`, Deploy Stage `40020993408` success. Новые ревью без персональной прогнозной цели, frozen catalog, сравнение сопоставимых навыков, история кадровых решений и guarded XLSX/JSON template import.
+- CI и deploy preflight passed; локально 438 tests, TypeScript, build/repeated clean build, compileall, Ruff F821 и docs check passed. Интегратор проверил additive schema и регрессию повторного patch с неизменным legacy final snapshot; отдельного независимого DB approval нет.
+- Создан проверенный backup `backups/hr_bot.before-deploy.20261023-204128.db`; scenario configuration fingerprint unchanged. Stage Diagnostics `40021157509` success: deployed SHA совпал, tracked worktree clean, web/worker/WireGuard/Caddy active, HTTP employees/workspace/grades 303, Telegram API 302, свежих ошибок gate не нашёл.
+- Персональные оценки и шаблон системного аналитика на stage не импортировались. Локальный черновик Антона остаётся вне Git; дата исходного ревью неизвестна. Создание/завершение настоящего ревью и пользовательская приёмка остаются открыты. Откат к предыдущему интегрированному ref через Deploy Stage; additive таблица и колонки сохраняются, старые snapshots не переписываются.
+- Browser read-only после повторного входа: карточка №80, вкладка Grade успешно загружена; видны текущий грейд/комментарий/история, прогнозной цели нет. Screenshot `D:\HRBot\outputs\grade-history-stage.png`. Карточка и её оценки не менялись.
+
 ## 23.10.2026 12:00 МСК — жизненный цикл плана адаптации
 
 - App deploy PR #117: d928e982eb592f80a9f16268a943777b4a6dd3df, Deploy Stage 39928572499 success. Добавлены рабочие даты первого дня (UI/backend), автоматические подсказки середины/конца, полное создание без чекбоксов, массовый подтверждаемый перенос pending planned/blocked, автообновление статусов. Schema не меняется; активные/завершённые/отменённые этапы и заполненные исторические даты не переписываются.
