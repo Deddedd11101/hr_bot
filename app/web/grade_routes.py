@@ -125,6 +125,24 @@ def employee_grade(employee_id: int, db: Session = Depends(get_db)):
     return read_payload(grades.employee_grade_payload, db, employee_id)
 
 
+@router.post("/api/grades/initial-import-preview")
+async def initial_import_preview(request: Request, file: UploadFile = File(...), aliases: str = Form("{}"), zero_sheets: str = Form("[]"), db: Session = Depends(get_db)):
+    require_api_admin(request)
+    import json
+    from ..grades.initial_import import preview
+    content = await file.read(5_000_001)
+    return read_payload(lambda: preview(db, content, json.loads(aliases), json.loads(zero_sheets))[0])
+
+
+@router.post("/api/grades/initial-import")
+async def initial_import_apply(request: Request, file: UploadFile = File(...), fingerprint: str = Form(...), aliases: str = Form("{}"), zero_sheets: str = Form("[]"), db: Session = Depends(get_write_db)):
+    actor = require_api_admin(request)
+    import json
+    from ..grades.initial_import import apply
+    content = await file.read(5_000_001)
+    return apply(db, content, actor.id, fingerprint, json.loads(aliases), json.loads(zero_sheets))
+
+
 @router.put("/api/employees/{employee_id}/grade")
 def update_employee_grade(employee_id: int, request: Request, payload: dict = Body(...), db: Session = Depends(get_write_db)):
     grades.update_employee_grade(db, employee_id, payload, actor_id=require_api_auth(request).id)
@@ -138,7 +156,7 @@ def create_assessment(employee_id: int, request: Request, db: Session = Depends(
 
 
 @router.get("/api/employees/{employee_id}/grade/review-preview")
-def review_preview(employee_id: int, specialization_id: int, grade_id: int, db: Session = Depends(get_db)):
+def review_preview(employee_id: int, specialization_id: int, grade_id: int | None = None, db: Session = Depends(get_db)):
     return read_payload(grades.preview_review, db, employee_id, specialization_id, grade_id)
 
 

@@ -7,6 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Choice, Feedback, useAction, useUnsaved } from "./components";
 import { request } from "./data";
 import type { Workspace } from "./types";
+import { InitialGradeImport } from "./initial-import";
 
 type Preview = { specialization: { name: string; action: string }; counts: Record<string, number>; errors: string[]; fingerprint: string; changes: {id: number | null; name: string; previous_name: string | null; state: string; change_kind: string; definition_changed: boolean; changed_levels: Record<string, {previous: number | null; current: number}>; importance_changed: boolean}[]; missing_ids: number[] };
 const labels: Record<string, string> = { categories: "Категорий", skills: "Навыков", createCategories: "Новых категорий", createSkills: "Новых навыков", updateCategories: "Существующих категорий", updateSkills: "Существующих навыков" };
@@ -35,6 +36,7 @@ export function CatalogImport({ workspace, onSaved }: { workspace: Workspace; on
     return { dryRun, expectedFingerprint: preview?.fingerprint, mode: target === "new" ? "create-specialization" : "update-specialization", ...(target === "new" ? {} : { targetSpecializationId: Number(target) }), catalog };
   }
   return <section className="space-y-4">
+    <InitialGradeImport />
     <h2 className="text-base font-semibold">Импорт каталога</h2>
     <div className="max-w-lg"><Choice label="Специализация" value={target} onChange={v => { setTarget(v); invalidate(); }} disabled={action.busy} options={[{ value: "new", label: "Создать из файла / объединить по имени" }, ...workspace.specializations.filter(s => s.active).map(s => ({ value: String(s.id), label: s.name }))]} /></div>
     <Button variant="outline" disabled={target === "new" || action.busy} onClick={exportTemplate}>Скачать шаблон с ID компетенций</Button>
