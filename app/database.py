@@ -53,6 +53,9 @@ def _ensure_optional_assessment_grade(conn) -> None:
     columns = conn.execute(text('PRAGMA table_info(grade_assessments)')).fetchall()
     if not any(row[1] == 'current_grade_id' and row[3] for row in columns):
         return
+    # sqlite3 legacy transaction control does not BEGIN for DDL automatically.
+    if not conn.connection.driver_connection.in_transaction:
+        conn.exec_driver_sql('BEGIN IMMEDIATE')
     ddl = conn.execute(text("SELECT sql FROM sqlite_master WHERE type='table' AND name='grade_assessments'")).scalar_one()
     # Keep the original DDL, including unknown columns/constraints; relax only this column.
     ddl, changed = re.subn(r'(?i)(\bcurrent_grade_id\b\s+INTEGER\s+)NOT\s+NULL\b', r'\1', ddl)
