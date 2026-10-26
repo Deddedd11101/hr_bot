@@ -7,6 +7,21 @@ import app.database as database
 
 
 class GradeSchemaCompatibilityTests(unittest.TestCase):
+    def test_optional_grade_ddl_rolls_back_without_temporary_table(self):
+        engine = create_engine("sqlite://")
+        with engine.begin() as db:
+            db.execute(text("CREATE TABLE grade_assessments (id INTEGER PRIMARY KEY, current_grade_id INTEGER NOT NULL, catalog_snapshot TEXT)"))
+            db.execute(text("INSERT INTO grade_assessments VALUES (1,2,'unchanged')"))
+        with self.assertRaisesRegex(RuntimeError, "abort"):
+            with engine.begin() as db:
+                database._ensure_optional_assessment_grade(db)
+                raise RuntimeError("abort")
+        with engine.connect() as db:
+            self.assertTrue(next(row[3] for row in db.execute(text("PRAGMA table_info(grade_assessments)")) if row[1] == "current_grade_id"))
+            self.assertEqual(db.execute(text("SELECT catalog_snapshot FROM grade_assessments")).scalar(), "unchanged")
+            self.assertIsNone(db.execute(text("SELECT name FROM sqlite_master WHERE name='grade_assessments_optional_grade'")).scalar())
+        engine.dispose()
+
     def test_optional_grade_rebuild_preserves_snapshots_values_and_indexes(self):
         from sqlalchemy.schema import CreateTable
         engine = create_engine("sqlite://")
