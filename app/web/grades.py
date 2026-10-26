@@ -154,10 +154,11 @@ def create_assessment(db, employee_id, assessor_id):
     if not assessor.is_active:
         raise ValueError("Inactive assessor")
     profile = _profile(db, employee_id)
-    if profile is None or profile.specialization_id is None or profile.current_grade_id is None:
-        raise ValueError("Select a specialization and current grade before assessment")
+    if profile is None or profile.specialization_id is None:
+        raise ValueError("Select a specialization before assessment")
     require(db, GradeSpecialization, profile.specialization_id, active=True)
-    require(db, Grade, profile.current_grade_id, active=True)
+    if profile.current_grade_id is not None:
+        require(db, Grade, profile.current_grade_id, active=True)
     data = {"specialization_id": profile.specialization_id, "current_grade_id": profile.current_grade_id,
             "target_grade_id": None, "target_specialization_id": None}
     assessment = GradeAssessment(employee_id=employee_id, assessor_admin_account_id=assessor_id,
@@ -190,7 +191,8 @@ def _review_catalog(db, specialization_id):
 
 def preview_review(db, employee_id, specialization_id, grade_id):
     require(db, Employee, employee_id)
-    require(db, Grade, grade_id, active=True)
+    if grade_id is not None:
+        require(db, Grade, grade_id, active=True)
     catalog = _review_catalog(db, specialization_id)
     assessment = GradeAssessment(id=-1, employee_id=employee_id, specialization_id=specialization_id,
                                  current_grade_id=grade_id, status="draft", created_at=utc_now(),
@@ -237,7 +239,7 @@ def save_review(db, employee_id, actor_id, payload):
         "target_specialization_id": None, "comment": payload.get("comment", "")}, actor_id=actor_id)
     if draft_id is None:
         assessment = create_assessment(db, employee_id, actor_id)
-    assessment.current_grade_id = payload["current_grade_id"]
+    assessment.current_grade_id = payload.get("current_grade_id")
     db.flush()
     update_assessment(db, assessment.id, {"values": payload["values"], "target_grade_id": None, "target_specialization_id": None})
     result = finalize_assessment(db, assessment.id)
@@ -366,7 +368,8 @@ def update_assessment(db, assessment_id, payload):
         raise ValueError("Review records actual skills, not a target grade")
     data = _goal_fields(db, assessment, payload)
     require(db, GradeSpecialization, assessment.specialization_id, active=not historical)
-    require(db, Grade, assessment.current_grade_id, active=not historical)
+    if assessment.current_grade_id is not None:
+        require(db, Grade, assessment.current_grade_id, active=not historical)
     catalog = frozen["draft_catalog"] if historical else workspace_payload(db)
     categories = {c["id"] for c in catalog["categories"] if c["active"]}
     skills = {s["id"] for s in catalog["skills"] if s["active"] and s["category_id"] in categories}

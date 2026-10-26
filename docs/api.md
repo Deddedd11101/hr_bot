@@ -14,6 +14,12 @@ related:
 source_of_truth: true
 ---
 
+### Первичные Grade-оценки
+
+- `GET /api/employees/{employee_id}/grade/review-preview`: `specialization_id` обязателен, `grade_id` optional. Single-save `/api/employees/{employee_id}/grade/reviews` и draft creation допускают `current_grade_id=null`; специализация/хотя бы один фактический балл для final обязательны.
+- `POST /api/grades/initial-import-preview`: admin-only multipart `file`, `aliases` (JSON object, default `{}`), `zero_sheets` (JSON array, default `[]`). Read-only ответ: `rows`, `templates`, `warnings`, `source_digest`, `fingerprint`. Совпадение карточки не означает автоматическое согласование неоднозначного имени.
+- `POST /api/grades/initial-import`: те же multipart-поля и `fingerprint` из preview. Admin-only, единая write-транзакция, verified backup перед записью; stale/неоднозначный пакет отклоняется (`422`), auth `401/403`, storage conflict `409/503`. Ответ `imported`, `skipped`, `backup`. Существующие оценки не изменяются; повторный импорт пропускает карточки с историей.
+
 Grade single-form review: authenticated `GET /api/employees/{employee_id}/grade/review-preview`
 принимает specialization_id/grade_id, возвращает matrix_version и навыки без записи.
 `POST /api/employees/{employee_id}/grade/reviews` принимает request_id UUID,

@@ -173,7 +173,7 @@ class GradeAssessment(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     employee_id: Mapped[int] = mapped_column(Integer, index=True)
     specialization_id: Mapped[int] = mapped_column(Integer)
-    current_grade_id: Mapped[int] = mapped_column(Integer)
+    current_grade_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     target_grade_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     target_specialization_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     assessor_admin_account_id: Mapped[int] = mapped_column(Integer)

@@ -20,16 +20,26 @@ def parse_skills_workbook(content, sheet_name="Системный аналити
         if sheet_name not in workbook.sheetnames:
             raise ValueError("Worksheet not found")
         sheet = workbook[sheet_name]
-        rows = list(sheet.iter_rows(min_row=1, max_row=1000, max_col=100, values_only=True))
+        rows = []
+        for values in sheet.iter_rows(values_only=True):
+            if any(value is not None for value in values[100:]) or (len(rows) >= 1000 and any(value is not None for value in values)):
+                raise ValueError("Worksheet exceeds 1000 rows or 100 columns")
+            if len(rows) >= 1000:
+                continue
+            rows.append(tuple(values[:100]) + (None,) * max(0, 100 - len(values)))
+        if len(rows) < 2:
+            raise ValueError("No competencies found")
         headers = rows[0]
         if list(headers[:7]) != ["Категория", "Навык", "Junior", "Middle", "Senior", "Lead", "Важность"]:
             raise ValueError("Worksheet is not a competency matrix")
         categories = {}
-        candidates = [{"column": index + 1, "name": value.strip(), "grade": rows[1][index], "values": []}
+        has_grade_row = rows[1][0] is None and rows[1][1] is None
+        candidates = [{"column": index + 1, "name": value.strip(), "grade": rows[1][index] if has_grade_row else None, "values": []}
                       for index, value in enumerate(headers) if index >= 7 and isinstance(value, str) and value.strip() and not value.strip().lower().startswith("столбец")]
         warnings = []
         seen = set()
-        for row_number, values in enumerate(rows[2:], 3):
+        start = 2 if has_grade_row else 1
+        for row_number, values in enumerate(rows[start:], start + 1):
             category, skill = values[:2]
             if category is None and skill is None:
                 continue
@@ -57,7 +67,7 @@ def parse_skills_workbook(content, sheet_name="Системный аналити
                 raw = values[candidate["column"] - 1]
                 if isinstance(raw, str) and raw.startswith("="):
                     raise ValueError(f"Formula score requires reviewed values at row {row_number}")
-                if raw is None or str(raw).strip().lower() in {"н/д", "n/a", "нет данных"}:
+                if raw is None or str(raw).strip().lower() in {"н/д", "n/a", "нет данных", "—"}:
                     level = None
                 elif type(raw) in (int, float) and raw == int(raw) and 0 <= raw <= 4:
                     level = int(raw)

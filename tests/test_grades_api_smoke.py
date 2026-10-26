@@ -90,6 +90,27 @@ class GradesApiSmokeTests(unittest.TestCase):
         denied = hr_client.post(f"{endpoint}/purge-other-reviews", json={"keep_id": saved.json()["id"], "expected_ids": []})
         self.assertEqual(denied.status_code, 403)
 
+    def test_optional_grade_preview_and_admin_import_boundary(self):
+        from app.models import AdminAccount
+        spec, _, skill = self.fixture()
+        endpoint = f"/api/employees/{self.employee_id}/grade"
+        preview = self.client.get(f"{endpoint}/review-preview", params={"specialization_id": spec["id"]})
+        self.assertEqual(preview.status_code, 200, preview.text)
+        saved = self.client.post(f"{endpoint}/reviews", json={"request_id": str(uuid4()), "specialization_id": spec["id"], "current_grade_id": None,
+            "matrix_version": preview.json()["matrix_version"], "values": [{"skill_id": skill["id"], "level": 2}]})
+        self.assertEqual(saved.status_code, 200, saved.text)
+        self.assertIsNone(saved.json()["current_grade_id"])
+        with SessionLocal() as db:
+            now = utc_now()
+            hr = AdminAccount(login=f"import-hr-{self.tag}", password_hash="unused", role="hr", created_at=now, updated_at=now)
+            db.add(hr); db.commit()
+            token = create_admin_session_token(hr.id)
+        hr_client = TestClient(app)
+        hr_client.cookies.set(AUTH_COOKIE_NAME, token)
+        files = {"file": ("test.xlsx", b"not a workbook")}
+        self.assertEqual(hr_client.post("/api/grades/initial-import-preview", files=files).status_code, 403)
+        self.assertEqual(hr_client.post("/api/grades/initial-import", files=files, data={"fingerprint": "unused"}).status_code, 403)
+
     def test_auth_and_route_contract(self):
         anon = TestClient(app)
         self.assertEqual(anon.get("/api/grades/workspace").status_code, 401)

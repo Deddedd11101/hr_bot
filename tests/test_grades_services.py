@@ -76,6 +76,66 @@ class GradeServicesTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             service.save_review(self.db, 1, 1, dict(payload, comment="Different request with same key"))
 
+    def test_review_without_grade_can_be_saved_and_compared(self):
+        preview = service.preview_review(self.db, 1, self.spec["id"], None)
+        payload = self.review_request()
+        payload["current_grade_id"] = None
+        payload["matrix_version"] = preview["matrix_version"]
+        result = service.save_review(self.db, 1, 1, payload)
+        self.assertIsNone(result["current_grade_id"])
+        self.assertIsNone(service._profile(self.db, 1).current_grade_id)
+        self.assertEqual(result["status"], "final")
+        self.assertEqual(service.save_review(self.db, 1, 1, payload), result)
+
+    def initial_workbook(self, name="Test employee"):
+        from io import BytesIO
+        from openpyxl import Workbook
+        book = Workbook()
+        sheet = book.active
+        sheet.title = "Services"
+        sheet.append(["Категория", "Навык", "Junior", "Middle", "Senior", "Lead", "Важность", name])
+        sheet.append([None] * 8)
+        sheet.append(["Research", "Interview", "Нет", "Понимание", "Умение", "Лидерство", "Обычный", 0])
+        stream = BytesIO()
+        book.save(stream)
+        return stream.getvalue()
+
+    def test_initial_import_preview_apply_backup_and_replay(self):
+        from app.grades.initial_import import preview, apply
+        source = self.initial_workbook()
+        plan, _ = preview(self.db, source)
+        self.assertEqual(plan["rows"][0]["state"], "ready")
+        self.assertEqual(self.db.query(GradeAssessment).count(), 0)
+        self.assertIsNone(service._profile(self.db, 1))
+        result = apply(self.db, source, 1, plan["fingerprint"])
+        self.assertEqual(len(result["imported"]), 1)
+        self.assertTrue(result["backup"])
+        self.db.commit()
+        review = service.assessment_payload(self.db, result["imported"][0]["assessment_id"])
+        self.assertEqual(review["status"], "final")
+        self.assertIsNone(review["current_grade_id"])
+        self.assertIsNone(review["import_source"]["original_review_date"])
+        self.assertTrue(review["scores"][0]["assessed"])
+        self.assertEqual(review["scores"][0]["currentLevel"], 0)
+        retry, _ = preview(self.db, source)
+        self.assertEqual(retry["rows"][0]["state"], "existing_review")
+        self.assertEqual(apply(self.db, source, 1, retry["fingerprint"])["imported"], [])
+
+    def test_initial_import_requires_matches_and_fresh_preview(self):
+        from app.grades.initial_import import preview, apply
+        source = self.initial_workbook("Unmatched employee")
+        plan, _ = preview(self.db, source)
+        with self.assertRaises(ValueError):
+            apply(self.db, source, 1, plan["fingerprint"])
+        aliases = {"Unmatched employee": "Test employee"}
+        plan, _ = preview(self.db, source, aliases)
+        self.assertEqual(plan["rows"][0]["state"], "ready")
+        self.db.get(Employee, 1).full_name = "Changed employee"
+        self.db.flush()
+        with self.assertRaises(ValueError):
+            apply(self.db, source, 1, plan["fingerprint"], aliases)
+        self.assertEqual(self.db.query(GradeAssessment).count(), 0)
+
     def test_single_save_rejects_stale_template_and_foreign_draft(self):
         payload = self.review_request()
         service.save_catalog_item(self.db, "skills", {"name": "Changed"}, self.skill["id"])
@@ -311,8 +371,7 @@ class GradeServicesTests(unittest.TestCase):
         self.assertIsNone(profile["target_grade_id"])
         self.assertIsNone(profile["target_specialization_id"])
         service.update_employee_grade(self.db, 1, {"current_grade_id": None})
-        with self.assertRaises(ValueError):
-            service.create_assessment(self.db, 1, 1)
+        self.assertIsNone(service.create_assessment(self.db, 1, 1).current_grade_id)
 
     def test_assessment_reference_values_idempotency_and_no_promotion(self):
         assessment = self.draft(target_grade_id=2)

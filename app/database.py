@@ -47,6 +47,31 @@ def get_session() -> Session:
         db.close()
 
 
+def _ensure_optional_assessment_grade(conn) -> None:
+    import re
+
+    columns = conn.execute(text('PRAGMA table_info(grade_assessments)')).fetchall()
+    if not any(row[1] == 'current_grade_id' and row[3] for row in columns):
+        return
+    ddl = conn.execute(text("SELECT sql FROM sqlite_master WHERE type='table' AND name='grade_assessments'")).scalar_one()
+    # Keep the original DDL, including unknown columns/constraints; relax only this column.
+    ddl, changed = re.subn(r'(?i)(\bcurrent_grade_id\b\s+INTEGER\s+)NOT\s+NULL\b', r'\1', ddl)
+    if changed != 1:
+        raise RuntimeError('Unrecognized grade assessment schema; migration requires review')
+    ddl, renamed = re.subn(r'(?i)(CREATE\s+TABLE\s+)(?:"grade_assessments"|grade_assessments)(?=\s*\()',
+                          r'\1grade_assessments_optional_grade', ddl, count=1)
+    if renamed != 1:
+        raise RuntimeError('Unrecognized grade assessment table declaration')
+    objects = conn.execute(text("SELECT sql FROM sqlite_master WHERE tbl_name='grade_assessments' AND type IN ('index','trigger') AND sql IS NOT NULL")).scalars().all()
+    conn.execute(text(ddl))
+    names = ','.join('"' + row[1].replace('"', '""') + '"' for row in columns)
+    conn.execute(text(f'INSERT INTO grade_assessments_optional_grade ({names}) SELECT {names} FROM grade_assessments'))
+    conn.execute(text('DROP TABLE grade_assessments'))
+    conn.execute(text('ALTER TABLE grade_assessments_optional_grade RENAME TO grade_assessments'))
+    for statement in objects:
+        conn.execute(text(statement))
+
+
 def _ensure_sqlite_schema() -> None:
     """
     Минимальная совместимость схемы для существующего SQLite без Alembic.
@@ -75,6 +100,7 @@ def _ensure_sqlite_schema() -> None:
             known = {row[1] for row in conn.execute(text(f"PRAGMA table_info({table})"))}
             if column not in known:
                 conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}"))
+        _ensure_optional_assessment_grade(conn)
         draft_index = conn.execute(text("SELECT sql FROM sqlite_master WHERE type='index' AND name='uq_grade_assessment_employee_draft'")).scalar()
         if draft_index and "archived_at" not in draft_index.lower():
             conn.execute(text("DROP INDEX uq_grade_assessment_employee_draft"))

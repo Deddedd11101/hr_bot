@@ -15,6 +15,8 @@ related:
 source_of_truth: true
 ---
 
+`grade_assessments.current_grade_id` nullable: фактическое ревью допустимо без кадрового грейда. SQLite compatibility guard снимает прежний NOT NULL через транзакционный rebuild только этой таблицы, сохраняя все значения, JSON snapshots, индексы и триггеры; неизвестный формат DDL отклоняется. `grade_assessment_values` не меняется. Перед выкладкой нужен штатный verified deploy backup. Старый runtime не является безопасным rollback для оценок с null грейдом. Первичный импорт использует существующие таблицы, provenance хранит в final JSON `import_source`; даты исходного ревью не выдумываются.
+
 `grade_assessments.archived_at` nullable datetime отмечает архив незавершённого
 черновика без `finalized_at`. Физический `status=draft` сохраняет прежний CHECK;
 API возвращает `status=archived`. Partial unique index допускает только один
