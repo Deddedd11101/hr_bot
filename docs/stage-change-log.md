@@ -13,6 +13,14 @@ source_of_truth: true
 
 # Журнал изменений тестового стенда
 
+## 27.10.2026 — исправление сохранённых Grade-оценок
+
+- PR #129 выложен на `5ba0c58a0f5049c58948f295bda197990745d853`: Deploy Stage `40480944419` success, Stage Diagnostics `40481140790` success (0 failing checks). Tracked worktree clean; web/worker/WireGuard/Caddy active; HTTP employees/workspace 303, scenario fingerprint unchanged. Verified backup: `backups/hr_bot.before-deploy.20261027-092845.db`.
+- Добавлены отдельная команда correction, additive `grade_assessment_revisions` с предыдущим snapshot/actor/reason/time, CAS edit_token и UUID idempotency. UI позволяет исправить баллы/дооценить пропуски по frozen matrix, показывает последнее изменение и read-only предыдущие версии. Исходные даты/грейд/ИПР не переписываются. Generic PATCH final остаётся закрытым.
+- Код проверен: feature SHA `04f9315`, CI `40480134566` success; 456 tests на свежей локальной БД, 37 focused service/schema tests после уточнений, TypeScript/build/Ruff/compileall/docs/diff passed. Локальный UI-cycle: 1→2 оценённых навыка, автоматический updated_at, старая версия с прежним одним баллом. Первая попытка full discovery на повторно использованной ci.db упала на фиксированном duplicate scenario_key; на свежей DB весь набор прошёл. Независимый DB review отдельно не получен; интегратор проверил additive startup, сохранение snapshot, stale/replay и purge cleanup тестами.
+- Stage browser №34: сохранённая оценка открывается, видны 24/24 балла и исходная дата изменения; режим исправления содержит причину, баллы и disabled Save при пустых правках. Выполнен выход без сохранения, журнал показывает 0 исправлений. Реальные оценки/даты не менялись. Screenshot `D:\HRBot\outputs\grade-corrections-stage.png`.
+- Приёмка реального сохранения пользователем открыта: на stage не создавалась тестовая коррекция реального сотрудника. Подписи радара и автоматизация ИПР 6/12 месяцев не входят в эту выкладку. Старый runtime сможет читать актуальный snapshot, но не журнал; новую audit-таблицу при rollback не удалять, backup поверх более новых данных не восстанавливать.
+
 ## 26.10.2026 — первичные Grade-оценки сотрудников
 
 - PR #125 и #126 выложены вместе: `9c0dba0f346ea95baa4c6cc0b0d9a7496da1b29a`, Deploy Stage `40339221258` success, Diagnostics `40339600375` success (0 failing checks). Предыдущий запуск `40338658765` отменён до deploy job для дополнительного guard явной SQLite DDL-транзакции. Web/worker/WireGuard/Caddy active, tracked worktree clean, HTTP 303/303; конфигурация сценариев не менялась.
