@@ -13,6 +13,8 @@ from sqlalchemy.orm import Session
 
 from .config import settings
 from .adaptation_delivery import deliver_plan_request, owns_scenario
+from .grades.development import owns_scenario as grade_owns_scenario
+from .grades.development import record_launch_conflict as grade_launch_conflict
 from .database import SessionLocal
 from .flow_templates import normalize_candidate_work_stage
 from .mass_targeting import (
@@ -193,6 +195,8 @@ def _compute_step_run_at(anchor_date, step: FlowStepTemplate, manual: bool) -> O
 @_serialize_scheduler_delivery
 async def run_scheduled_step(bot, employee_id: int, scenario_key: str, step_key: str, scheduled_at: datetime, explicit: bool = False) -> None:
     with SessionLocal() as db:
+        if grade_owns_scenario(db, employee_id, scenario_key):
+            return
         if not explicit and owns_scenario(db, employee_id, scenario_key):
             return
         employee = db.get(Employee, employee_id)
@@ -244,6 +248,8 @@ def schedule_employee_scenario(
     skip_step_key: Optional[str] = None,
     now: Optional[datetime] = None,
 ) -> None:
+    if grade_owns_scenario(db, employee.id, scenario.scenario_key):
+        return
     if employee.is_bot_blocked:
         return
     if not matches_role_scope(employee, scenario):
@@ -317,6 +323,8 @@ def schedule_employee_scenario(
 
 @_serialize_scheduler_delivery
 async def schedule_all_employees(scheduler: AsyncIOScheduler, bot) -> None:
+    from .grades.development import process_due
+    await process_due(bot)
     with SessionLocal() as db:
         employees = _load_all_employees(db)
         scenarios = _load_scenarios(db)
@@ -329,6 +337,8 @@ async def schedule_all_employees(scheduler: AsyncIOScheduler, bot) -> None:
                 continue
             sent_keys = _load_sent_event_keys(db, employee.id)
             for scenario in scheduled_scenarios:
+                if grade_owns_scenario(db, employee.id, scenario.scenario_key):
+                    continue
                 if owns_scenario(db, employee.id, scenario.scenario_key):
                     continue
                 schedule_employee_scenario(db, scheduler, bot, employee, scenario, sent_keys, manual=False)
@@ -353,6 +363,13 @@ async def schedule_all_employees(scheduler: AsyncIOScheduler, bot) -> None:
                 deserialize_target_selection(action.target_employee_ids, kind="employee"),
             )
             started_count = 0
+            grade_conflicts = [employee for employee in recipients if grade_owns_scenario(db, employee.id, scenario.scenario_key)]
+            if grade_conflicts:
+                for employee in grade_conflicts:
+                    grade_launch_conflict(db, employee.id, scenario.scenario_key)
+                # Keep the whole mass action pending; never silently drop recipients.
+                db.commit()
+                continue
             for employee in recipients:
                 if not matches_role_scope(employee, scenario):
                     continue
@@ -390,6 +407,9 @@ async def schedule_all_employees(scheduler: AsyncIOScheduler, bot) -> None:
 
         pending_requests = _load_pending_flow_requests(db)
         for request in pending_requests:
+            if request.skip_step_key is None and grade_owns_scenario(db, request.employee_id, request.flow_key):
+                grade_launch_conflict(db, request.employee_id, request.flow_key)
+                continue
             if await deliver_plan_request(db, bot, request):
                 continue
             employee = db.get(Employee, request.employee_id)

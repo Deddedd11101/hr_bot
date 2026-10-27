@@ -79,6 +79,18 @@ def grade_workspace(db: Session = Depends(get_db)):
     return grades.workspace_payload(db)
 
 
+@router.get("/api/employees/{employee_id}/grade/development")
+def grade_development(employee_id: int, db: Session = Depends(get_db)):
+    from ..grades.development import payload
+    return read_payload(payload, db, employee_id)
+
+
+@router.put("/api/employees/{employee_id}/grade/development")
+def configure_grade_development(employee_id: int, payload: dict = Body(...), db: Session = Depends(get_write_db)):
+    from ..grades.development import configure
+    return configure(db, employee_id, payload)
+
+
 def register_catalog_routes(kind: str):
     def create(payload: dict = Body(...), db: Session = Depends(get_write_db)):
         grades.save_catalog_item(db, kind, payload)

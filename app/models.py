@@ -141,6 +141,44 @@ class GradeSkillExpectation(Base):
     level: Mapped[int] = mapped_column(Integer, default=0)
 
 
+class GradeDevelopmentCycle(Base):
+    __tablename__ = "grade_development_cycles"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    employee_id: Mapped[int] = mapped_column(Integer, unique=True)
+    assessment_id: Mapped[int] = mapped_column(Integer)
+    revision: Mapped[int] = mapped_column(Integer, default=1)
+    anchor_date: Mapped[date] = mapped_column(Date)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    ipr6_scenario_key: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    ipr12_scenario_key: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    review12_scenario_key: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+
+
+class GradeDevelopmentMilestone(Base):
+    __tablename__ = "grade_development_milestones"
+    __table_args__ = (UniqueConstraint("employee_id", "assessment_id", "kind"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    employee_id: Mapped[int] = mapped_column(Integer, index=True)
+    assessment_id: Mapped[int] = mapped_column(Integer)
+    kind: Mapped[str] = mapped_column(String(16))
+    scenario_key: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    due_at: Mapped[datetime] = mapped_column(DateTime, index=True)
+    status: Mapped[str] = mapped_column(String(16), default="planned")
+    last_error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    claimed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+
+class GradeDevelopmentDelivery(Base):
+    __tablename__ = "grade_development_deliveries"
+    __table_args__ = (UniqueConstraint("milestone_id", "role", "chat_id"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    milestone_id: Mapped[int] = mapped_column(Integer, index=True)
+    role: Mapped[str] = mapped_column(String(16))
+    chat_id: Mapped[str] = mapped_column(String(64))
+    status: Mapped[str] = mapped_column(String(16), default="pending")
+    last_error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+
 class EmployeeGradeProfile(Base):
     __tablename__ = "employee_grade_profiles"
     id: Mapped[int] = mapped_column(primary_key=True)

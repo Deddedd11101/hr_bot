@@ -283,6 +283,12 @@ def purge_other_reviews(db, employee_id, payload):
     expected = [integer(item, 1, 2**63 - 1, "expected_ids") for item in items(payload["expected_ids"], "expected_ids")]
     if sorted(expected) != actual or not actual:
         raise ValueError("Review history changed. Reload before deleting")
+    from ..models import GradeDevelopmentCycle, GradeDevelopmentMilestone
+    if (db.scalar(select(GradeDevelopmentCycle.id).where(GradeDevelopmentCycle.employee_id == employee_id,
+            GradeDevelopmentCycle.assessment_id.in_(actual))) or
+            db.scalar(select(GradeDevelopmentMilestone.id).where(GradeDevelopmentMilestone.employee_id == employee_id,
+            GradeDevelopmentMilestone.assessment_id.in_(actual)))):
+        raise GradeConflictError("Нельзя удалить оценку, связанную с историей цикла развития")
     backup = _backup_before_grade_purge(db)
     db.execute(delete(GradeAssessmentRevision).where(GradeAssessmentRevision.assessment_id.in_(actual)))
     db.execute(delete(GradeAssessmentValue).where(GradeAssessmentValue.assessment_id.in_(actual)))
@@ -428,4 +434,6 @@ def finalize_assessment(db, assessment_id):
     assessment.finalized_at = assessment.updated_at = now
     assessment.catalog_snapshot = json.dumps(payload, ensure_ascii=False, allow_nan=False)
     db.flush()
+    from ..grades.development import renew_after_finalization
+    renew_after_finalization(db, assessment)
     return deepcopy(payload)
