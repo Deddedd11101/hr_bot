@@ -41,7 +41,7 @@ export function GradeTab({employeeId}: {employeeId: number}) {
     <Feedback error={action.error || error} message={notice} />
     {!active.length ? <div className="space-y-4 py-12 text-center"><p className="text-muted-foreground">Ранее не оценивался</p><Button disabled={action.busy} onClick={() => void action.run(start, "")}>Начать оценку</Button></div> : <div className="grid min-w-0 gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(260px,360px)]">
       <section className="min-w-0 space-y-4"><h3 className="text-sm font-medium">{latest?.status === "draft" ? "Текущая оценка · черновик" : "Последняя оценка"}</h3>
-        <GradeComparison key={active.map(item => item.id).join(",")} employeeId={employeeId} assessments={active} latest={latest} />
+        <GradeComparison key={active.map(item => `${item.id}:${item.updated_at}`).join(",")} employeeId={employeeId} assessments={active} latest={latest} />
       </section>
       <section className="min-w-0 space-y-3"><h3 className="text-sm font-medium">История оценок</h3>{active.map(item => <div key={item.id} className="flex items-center justify-between gap-2 border-b py-3"><Button variant="ghost" className="h-auto min-w-0 flex-1 justify-start whitespace-normal text-left" disabled={action.busy} onClick={() => void action.run(async () => { if (item.status === "draft") await start(); else setView(await request<Assessment>(`/api/grade-assessments/${item.id}`)); }, "")}><span>{dateLabel(item.created_at)}<span className="block text-xs text-muted-foreground">{item.status === "draft" ? "Черновик" : "Сохранена"}</span></span></Button>{item.status === "draft" && <ArchiveReview id={item.id} refresh={() => load()} />}</div>)}</section>
     </div>}

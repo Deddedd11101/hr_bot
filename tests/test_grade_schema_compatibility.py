@@ -45,6 +45,7 @@ class GradeSchemaCompatibilityTests(unittest.TestCase):
         engine = create_engine("sqlite://")
         Base.metadata.create_all(engine)
         with engine.begin() as db:
+            db.execute(text("DROP TABLE grade_assessment_revisions"))
             db.execute(text("DROP INDEX uq_grade_assessment_employee_draft"))
             db.execute(text("ALTER TABLE grade_assessments DROP COLUMN archived_at"))
             db.execute(text("CREATE UNIQUE INDEX uq_grade_assessment_employee_draft ON grade_assessments(employee_id) WHERE status = 'draft'"))
@@ -56,6 +57,7 @@ class GradeSchemaCompatibilityTests(unittest.TestCase):
             database._ensure_sqlite_schema()
             database._ensure_sqlite_schema()
         with engine.connect() as db:
+            self.assertIsNotNone(db.execute(text("SELECT name FROM sqlite_master WHERE name='grade_assessment_revisions'")).scalar())
             self.assertEqual(db.execute(text("SELECT revision,description FROM grade_skills WHERE id=1")).one(), (1, None))
             self.assertEqual(db.execute(text("SELECT catalog_snapshot FROM grade_assessments WHERE id=1")).scalar(), '{"legacy":"must remain byte-for-byte"}')
             self.assertIn("skill_ids_json", {row[1] for row in db.execute(text("PRAGMA table_info(grade_specializations)"))})

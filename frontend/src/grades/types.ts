@@ -25,11 +25,12 @@ export type Assessment = Profile & {
   review_mode?: string; matrix_version?: string;
   import_source?: {filename: string; sheet: string; review_date?: string | null} | null;
   review_comment?: string;
+  updated_at?: string; edit_token?: string; correction_count?: number;
 };
 export type EmployeeGrade = {
   employee_id: number; profile: Profile | null; suggested_specialization_id: number | null;
   grades: Grade[]; specializations: Specialization[];
-  assessments: { id: number; status: "draft" | "final" | "archived"; created_at: string; finalized_at: string | null }[];
+  assessments: { id: number; status: "draft" | "final" | "archived"; created_at: string; finalized_at: string | null; updated_at?: string }[];
   latest_final: Assessment | null;
   decisions: { id: number; labels_json: string; comment: string | null; created_at: string }[];
 };

@@ -91,7 +91,7 @@ def _ensure_sqlite_schema() -> None:
             "employee_telegram_verification_messages",
             "grades", "grade_specializations", "grade_skill_categories", "grade_skills",
             "grade_skill_importances", "grade_skill_expectations", "employee_grade_profiles",
-            "grade_assessments", "grade_assessment_values", "employee_grade_decisions",
+            "grade_assessments", "grade_assessment_values", "employee_grade_decisions", "grade_assessment_revisions",
         ):
             Base.metadata.tables[table_name].create(conn, checkfirst=True)
         for table, column, ddl in (

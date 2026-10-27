@@ -119,6 +119,8 @@ class GradesApiSmokeTests(unittest.TestCase):
         self.assertEqual(anon.get(f"/api/employees/{self.employee_id}/grade/review-preview?specialization_id=1&grade_id=1").status_code, 401)
         self.assertEqual(anon.post(f"/api/employees/{self.employee_id}/grade/reviews", json={}).status_code, 401)
         self.assertEqual(anon.post(f"/api/employees/{self.employee_id}/grade/purge-other-reviews", json={}).status_code, 401)
+        self.assertEqual(anon.get("/api/grade-assessments/1/corrections").status_code, 401)
+        self.assertEqual(anon.post("/api/grade-assessments/1/corrections", json={}).status_code, 401)
         self.assertEqual(anon.get("/app/grades", follow_redirects=False).status_code, 303)
         self.assertEqual(self.client.get("/grades", follow_redirects=False).headers["location"], "/app/grades")
         paths = app.openapi()["paths"]
@@ -130,6 +132,23 @@ class GradesApiSmokeTests(unittest.TestCase):
                      "/api/employees/{employee_id}/grade/assessments", "/api/grade-assessments/{assessment_id}",
                      "/api/grade-assessments/{assessment_id}/finalize"):
             self.assertIn(path, paths)
+
+    def test_correction_updates_scores_once_and_keeps_history(self):
+        _, _, skill = self.fixture()
+        draft = self.draft()
+        url = f"/api/grade-assessments/{draft['id']}"
+        self.client.patch(url, json={"values": [{"skill_id": skill['id'], "level": 2}]})
+        final = self.client.post(url + '/finalize', json={}).json()
+        payload = dict(request_id=str(uuid4()), expected_token=final['edit_token'], reason='Reviewed score', values=[dict(skill_id=skill['id'], level=4)])
+        result = self.client.post(url + '/corrections', json=payload)
+        self.assertEqual(result.status_code, 200, result.text)
+        self.assertEqual(result.json()['correction_count'], 1)
+        self.assertEqual(self.client.post(url + '/corrections', json=payload).json(), result.json())
+        self.assertEqual(self.client.post(url + '/corrections', json=dict(payload, request_id=str(uuid4()))).status_code, 409)
+        history = self.client.get(url + '/corrections').json()
+        self.assertEqual(len(history), 1)
+        self.assertEqual(history[0]['reason'], 'Reviewed score')
+        self.assertEqual(next(s['currentLevel'] for s in history[0]['previous']['scores'] if s['skillId'] == skill['id']), 2)
 
     def test_empty_profile_get_does_not_create_profile(self):
         response = self.client.get(f"/api/employees/{self.employee_id}/grade")
