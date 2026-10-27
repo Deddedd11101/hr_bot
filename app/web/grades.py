@@ -18,7 +18,7 @@ from app.grades.catalog import (
 )
 from app.models import (
     AdminAccount, Employee, EmployeeGradeProfile, Grade, GradeSpecialization,
-    GradeAssessment, GradeAssessmentValue, EmployeeGradeDecision,
+    GradeAssessment, GradeAssessmentValue, EmployeeGradeDecision, GradeAssessmentRevision,
 )
 from app.positions import normalize_position_slug
 from app.time_utils import utc_now
@@ -284,6 +284,7 @@ def purge_other_reviews(db, employee_id, payload):
     if sorted(expected) != actual or not actual:
         raise ValueError("Review history changed. Reload before deleting")
     backup = _backup_before_grade_purge(db)
+    db.execute(delete(GradeAssessmentRevision).where(GradeAssessmentRevision.assessment_id.in_(actual)))
     db.execute(delete(GradeAssessmentValue).where(GradeAssessmentValue.assessment_id.in_(actual)))
     db.execute(delete(GradeAssessment).where(GradeAssessment.employee_id == employee_id, GradeAssessment.id.in_(actual)))
     db.flush()
@@ -309,11 +310,11 @@ def assessment_payload(db, assessment_id):
     return _draft_payload(db, assessment)
 
 
-def _draft_payload(db, assessment):
+def _draft_payload(db, assessment, *, frozen_override=None):
     from app.grades.calculations import category_averages, next_grade_progress, gap_list
     from app.grades.goals import build_goal_options, normalize_goal
 
-    frozen = json.loads(assessment.catalog_snapshot or "{}")
+    frozen = frozen_override if frozen_override is not None else json.loads(assessment.catalog_snapshot or "{}")
     historical = frozen.get("review_mode") == "historical"
     catalog = deepcopy(frozen["draft_catalog"]) if historical else workspace_payload(db)
     for key in ("grades", "specializations", "categories", "skills"):

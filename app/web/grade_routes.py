@@ -38,6 +38,9 @@ def get_write_db(request: Request):
         except LookupError as exc:
             db.rollback()
             raise HTTPException(404, str(exc)) from exc
+        except grades.GradeConflictError as exc:
+            db.rollback()
+            raise HTTPException(409, str(exc)) from exc
         except ValueError as exc:
             db.rollback()
             raise HTTPException(422, str(exc)) from exc
@@ -173,7 +176,20 @@ def purge_other_reviews(employee_id: int, request: Request, payload: dict = Body
 
 @router.get("/api/grade-assessments/{assessment_id}")
 def assessment(assessment_id: int, db: Session = Depends(get_db)):
-    return read_payload(grades.assessment_payload, db, assessment_id)
+    from ..grades.corrections import view
+    return read_payload(view, db, assessment_id)
+
+
+@router.get("/api/grade-assessments/{assessment_id}/corrections")
+def correction_history(assessment_id: int, db: Session = Depends(get_db)):
+    from ..grades.corrections import history
+    return read_payload(history, db, assessment_id)
+
+
+@router.post("/api/grade-assessments/{assessment_id}/corrections")
+def correct_assessment(assessment_id: int, request: Request, payload: dict = Body(...), db: Session = Depends(get_write_db)):
+    from ..grades.corrections import correct
+    return correct(db, assessment_id, require_api_auth(request).id, payload)
 
 
 @router.get("/api/employees/{employee_id}/grade/compare")
@@ -194,8 +210,9 @@ def update_assessment(assessment_id: int, payload: dict = Body(...), db: Session
 
 @router.post("/api/grade-assessments/{assessment_id}/finalize")
 def finalize_assessment(assessment_id: int, db: Session = Depends(get_write_db)):
+    from ..grades.corrections import view
     grades.finalize_assessment(db, assessment_id)
-    return grades.assessment_payload(db, assessment_id)
+    return view(db, assessment_id)
 
 
 @router.post("/api/grade-assessments/{assessment_id}/archive")

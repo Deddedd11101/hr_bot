@@ -29,6 +29,12 @@ draft с `archived_at IS NULL`. Startup добавляет колонку и о�
 
 | Таблица | Назначение | Поля | Ограничения |
 | --- | --- | --- | --- |
+| `grade_assessment_revisions` | Неизменяемые предыдущие версии Grade-ревью | `id`, indexed `assessment_id`, `actor_id`, `request_id`, `request_hash`, `previous_snapshot`, `reason`, `created_at` UTC | UNIQUE assessment_id/request_id; добавляется metadata/startup compatibility без rebuild; audit и актуальная оценка пишутся атомарно |
+
+Корректировка final сохраняет original JSON в revisions и обновляет существующие `grade_assessment_values`, `grade_assessments.catalog_snapshot` и `updated_at`. `created_at`/`finalized_at` не перезаписываются, профиль/кадровый грейд/ИПР не меняются. Старые оценки не требуют backfill: история начинается с первой явной правки. При explicit admin purge удаляются дочерние revisions вместе с оценкой после backup. Откат на старый runtime сохраняет новую таблицу и отображает актуальный snapshot, но не даёт доступа к журналу правок; не откатывать данные поверх новых записей.
+
+| Таблица | Назначение | Поля | Ограничения |
+| --- | --- | --- | --- |
 | `adaptation_plan_templates` | Общий порядок и правила адаптации | singleton `id=1`, `revision`, `entries_json`, `updated_at` UTC | CAS revision; GET возвращает defaults без записи |
 | `employee_adaptation_plan_items` | Даты и история отдельных этапов сотрудника | `id`, `employee_id` index, `entry_key`, `flow_key`, `title`, `requested_at` local, `launch_request_id` index, `status`, `manual_date`, `calculation_json`, `started_at`, `completed_at`, `last_error` | UNIQUE employee_id/entry_key; повторные этапы одного flow имеют разные ключи; completed history сохраняется |
 | `production_calendar_years` | Единственный текущий календарь каждого года | `year` PK, `current_version_id` nullable | SQLite insert-on-conflict + conditional update защищает от параллельного переключения |

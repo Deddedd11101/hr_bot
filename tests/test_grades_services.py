@@ -87,6 +87,51 @@ class GradeServicesTests(unittest.TestCase):
         self.assertEqual(result["status"], "final")
         self.assertEqual(service.save_review(self.db, 1, 1, payload), result)
 
+    def test_final_correction_preserves_original_and_rejects_stale_or_replay_changes(self):
+        from uuid import uuid4
+        from app.grades.corrections import correct, history, view
+        from app.models import GradeAssessmentRevision
+        final = service.save_review(self.db, 1, 1, self.review_request())
+        final = view(self.db, final["id"])
+        original = self.db.get(GradeAssessment, final["id"]).catalog_snapshot
+        payload = dict(request_id=str(uuid4()), expected_token=final["edit_token"], reason="Fix score",
+                       values=[dict(skill_id=self.skill["id"], level=3)])
+        changed = correct(self.db, final["id"], 1, payload)
+        self.assertEqual(changed["scores"][0]["currentLevel"], 3)
+        self.assertEqual(changed["correction_count"], 1)
+        self.assertEqual(changed["created_at"], final["created_at"])
+        self.assertEqual(changed["finalized_at"], final["finalized_at"])
+        self.assertEqual(changed["matrix_version"], final["matrix_version"])
+        self.assertNotEqual(changed["edit_token"], final["edit_token"])
+        self.assertEqual(self.db.query(GradeAssessmentRevision).one().previous_snapshot, original)
+        self.assertEqual(history(self.db, final["id"])[0]["previous"]["scores"][0]["currentLevel"], 0)
+        self.assertEqual(correct(self.db, final["id"], 1, payload), changed)
+        self.assertEqual(self.db.query(GradeAssessmentRevision).count(), 1)
+        with self.assertRaises(service.GradeConflictError):
+            correct(self.db, final["id"], 1, dict(payload, reason="Different replay"))
+        with self.assertRaises(service.GradeConflictError):
+            correct(self.db, final["id"], 1, dict(payload, request_id=str(uuid4())))
+        with self.assertRaises(service.GradeConflictError):
+            service.update_assessment(self.db, final["id"], {"values": []})
+
+    def test_correction_can_fill_missing_frozen_skill_and_clear_without_zero(self):
+        from uuid import uuid4
+        from app.grades.corrections import correct, view
+        second = service.save_catalog_item(self.db, "skills", {"name": "Second skill", "category_id": self.cat["id"]})
+        final = service.save_review(self.db, 1, 1, self.review_request())
+        final = view(self.db, final["id"])
+        extra = service.save_catalog_item(self.db, "skills", {"name": "Later skill", "category_id": self.cat["id"]})
+        payload = dict(request_id=str(uuid4()), expected_token=final["edit_token"], reason="Fill missing",
+                       values=[dict(skill_id=second["id"], level=4), dict(skill_id=self.skill["id"], level=None)])
+        changed = correct(self.db, final["id"], 1, payload)
+        scores = {s["skillId"]: s for s in changed["scores"]}
+        self.assertTrue(scores[second["id"]]["assessed"])
+        self.assertFalse(scores[self.skill["id"]]["assessed"])
+        self.assertNotIn(extra["id"], scores)
+        self.assertEqual(changed["categories"][0]["current"], 4)
+        with self.assertRaises(ValueError):
+            correct(self.db, final["id"], 1, dict(payload, request_id=str(uuid4()), expected_token=changed["edit_token"], values=[dict(skill_id=extra["id"], level=2)]))
+
     def initial_workbook(self, name="Test employee"):
         from io import BytesIO
         from openpyxl import Workbook

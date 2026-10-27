@@ -14,6 +14,12 @@ related:
 source_of_truth: true
 ---
 
+### Исправления Grade
+
+- `GET /api/grade-assessments/{assessment_id}` дополнительно возвращает `edit_token` для активной final-оценки, `updated_at` и при наличии `correction_count`; token вычисляется по актуальному snapshot и не сохраняется внутрь него.
+- `GET /api/grade-assessments/{assessment_id}/corrections`: авторизованный доступ как к Grade, список правок (новые первыми): `id`, `actor_id`, `reason`, `created_at`, `previous` (предыдущий frozen snapshot).
+- `POST /api/grade-assessments/{assessment_id}/corrections`: авторизованный активный HR/admin, JSON `{request_id, expected_token, reason, values:[{skill_id,level}]}`. `level=null` снимает оценку, 0 — фактический ноль; минимум один навык должен остаться оценённым. Менять можно только final historical-ревью по его frozen skills. Успех возвращает актуальную оценку/edit_token; `401` auth, `409` stale/недоступное состояние/reused request, `422` поля/баллы/пустая причина/изменений нет. Write lock, запись аудита и обновление значений/snapshot в одной транзакции. Существующий PATCH final по-прежнему отклоняется.
+
 ### Первичные Grade-оценки
 
 - `GET /api/employees/{employee_id}/grade/review-preview`: `specialization_id` обязателен, `grade_id` optional. Single-save `/api/employees/{employee_id}/grade/reviews` и draft creation допускают `current_grade_id=null`; специализация/хотя бы один фактический балл для final обязательны.

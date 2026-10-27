@@ -35,6 +35,8 @@ source_of_truth: true
 
 # Состояние проекта
 
+- В feature `codex/grade-review-corrections` реализованы явные корректировки final historical-ревью: frozen previous snapshots/actor/reason в новой additive таблице, CAS token, идемпотентный request, автоматический updated_at и UI просмотра старых версий. Локально 456 tests на свежей БД, 37 focused service/schema tests после уточнений, TypeScript/build/Ruff/compileall/docs passed; browser подтвердил 1→2 оценённых навыка и старую read-only версию. Исходные даты, кадровый грейд и ИПР не меняются. Stage-данные не трогались; CI/review/выкладка и приёмка открыты.
+
 - Grade PR #125/#126 выложены (`9c0dba0`, Deploy `40339221258`, Diagnostics `40339600375` success). Кадровый грейд необязателен. Через admin UI с verified backup импортированы 6 шаблонов и 15 первых final-оценок; №70/оценка №5 пропущена без изменений (сейчас отображается final, 26/45). CI 453 tests passed. Реальная запись/защита от дублей подтверждены UI; пользовательская приёмка и отдельная следующая UI-итерация открыты; [[features/grades]], [[stage-change-log]].
 
 - Grade UX PR #123 выложен (`bf0fa4d`, Deploy `40027915457`, Diagnostics `40028007262` success): единая форма/Save, последний radar/история, автоматическое сравнение и guarded admin purge. После отдельного подтверждения четыре тестовые оценки №70 удалены с verified backup; №5 сохранена draft, 26/45 фактов и 19 N/A повторно проверены. Stage browser smoke пройден; новый final single-save и сравнение проверены локально, пользовательская приёмка открыта. Дальнейший импорт других сотрудников не выполнялся.

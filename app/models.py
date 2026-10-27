@@ -185,6 +185,19 @@ class GradeAssessment(Base):
     archived_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
 
+class GradeAssessmentRevision(Base):
+    __tablename__ = "grade_assessment_revisions"
+    __table_args__ = (UniqueConstraint("assessment_id", "request_id"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    assessment_id: Mapped[int] = mapped_column(Integer, index=True)
+    actor_id: Mapped[int] = mapped_column(Integer)
+    request_id: Mapped[str] = mapped_column(String(36))
+    request_hash: Mapped[str] = mapped_column(String(64))
+    previous_snapshot: Mapped[str] = mapped_column(Text)
+    reason: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+
+
 class GradeAssessmentValue(Base):
     __tablename__ = "grade_assessment_values"
     __table_args__ = (UniqueConstraint("assessment_id", "skill_id"), CheckConstraint("level BETWEEN 0 AND 4"))
