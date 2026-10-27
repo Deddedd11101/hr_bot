@@ -59,6 +59,16 @@ Final сохраняется без изменений; archived доступе�
 
 ## Grade API
 
+- `GET /api/employees/{employee_id}/grade/development`: authenticated read-only
+  configuration, latest assessment identity, scenario choices, milestones/history
+  and separate reminder delivery states. No implicit enrollment.
+- `PUT /api/employees/{employee_id}/grade/development`: authenticated atomic save;
+  `assessment_id`, `expected_revision`, `anchor_date`, `enabled`,
+  `ipr6_scenario_key`, `ipr12_scenario_key`, `review12_scenario_key`, optional
+  `due_dates` map keyed by ipr6/ipr12/review12 (naive Moscow ISO timestamps).
+  Returns same payload. Stale revision 409, unknown employee 404, invalid or
+  past-due activation 422. Full behavior: [[features/grades]].
+
 Новый процесс — фактические повторные ревью без личной цели повышения. POST assessment фиксирует draft_catalog и не копирует прежние баллы; новые scores содержат assessed, categories исключают неизвестные факты. level=null очищает оценку нового draft. Старые final JSON не переписываются. Полный контракт: [[features/grades]].
 
 - `GET /api/employees/{employee_id}/grade/compare?previous_id=&current_id=`: две final оценки одного сотрудника, rows со state/delta/previous/current; foreign employee 404, draft/невалидный snapshot 422. Нет общего среднего разных матриц.

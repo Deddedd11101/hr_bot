@@ -9,6 +9,7 @@ import { GradeAssessment } from "./grade-assessment";
 import { GradeComparison } from "./grade-comparison";
 import { GradeReviewForm } from "./grade-review-form";
 import { Choice } from "@/grades/components";
+import { GradeDevelopment } from "./grade-development";
 
 export function GradeTab({employeeId}: {employeeId: number}) {
   const [data, setData] = useState<EmployeeGrade | null>(null);
@@ -45,6 +46,7 @@ export function GradeTab({employeeId}: {employeeId: number}) {
       </section>
       <section className="min-w-0 space-y-3"><h3 className="text-sm font-medium">История оценок</h3>{active.map(item => <div key={item.id} className="flex items-center justify-between gap-2 border-b py-3"><Button variant="ghost" className="h-auto min-w-0 flex-1 justify-start whitespace-normal text-left" disabled={action.busy} onClick={() => void action.run(async () => { if (item.status === "draft") await start(); else setView(await request<Assessment>(`/api/grade-assessments/${item.id}`)); }, "")}><span>{dateLabel(item.created_at)}<span className="block text-xs text-muted-foreground">{item.status === "draft" ? "Черновик" : "Сохранена"}</span></span></Button>{item.status === "draft" && <ArchiveReview id={item.id} refresh={() => load()} />}</div>)}</section>
     </div>}
+    <GradeDevelopment key={`${employeeId}:${active.map(item => item.id).join(",")}`} employeeId={employeeId} />
     {!!archived.length && <details className="border-t pt-3"><summary className="cursor-pointer text-sm text-muted-foreground">Архив · {archived.length}</summary><div className="mt-3 space-y-2">{archived.map(item => <Button key={item.id} variant="ghost" onClick={() => void action.run(async () => setView(await request<Assessment>(`/api/grade-assessments/${item.id}`)), "")}>{dateLabel(item.created_at)}</Button>)}</div></details>}
     {data.assessments.length > 1 && <PurgeReviews employeeId={employeeId} assessments={data.assessments} refresh={async backup => { await load(); setNotice(`История очищена. Резервная копия: ${backup}`); }} />}
   </div>;
