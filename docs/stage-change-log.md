@@ -13,6 +13,31 @@ source_of_truth: true
 
 # Журнал изменений тестового стенда
 
+## 27.10.2026 — цикл ИПР и годового ревью
+
+- PR #132 выложен на `99e263c373d420503588c3f0f9c35f10ebe5d650`: Deploy Stage
+  `40523693000` success, verified backup
+  `backups/hr_bot.before-deploy.20261027-144402.db`, scenario fingerprint unchanged.
+  Включает также readability PR #131: полный список категорий и нейтральный заголовок.
+- Stage Diagnostics `40524118886`, job `122258864083` success: 0 failing checks,
+  deployed SHA подтверждён, tracked worktree clean, web/worker/WireGuard/Caddy active,
+  HTTPS employees/workspace/grades 303, свежих Telegram traceback/timeout нет.
+- Код проверен: feature `c1ea932`, CI `40523466225` success, 486 tests; 30 focused
+  cycle tests, compileall/Ruff/TypeScript/build/docs/diff passed. Targeted независимый
+  DB/runtime review закрыт после исправления ownership, purge, актуальных адресатов
+  напоминаний и фильтрации конфликтующих массовых запусков по реальной аудитории.
+- Добавлены explicit cycle configuration, 6/12 календарных месяцев, напоминания
+  HR/руководителю, отдельные состояния сценариев и доставок, pause/date overrides,
+  защита повторов и обновление уже настроенного цикла после нового ревью.
+  Оценки/профили/реальные расписания не изменялись; старые оценки не подключаются
+  автоматически, неизвестная дата импорта не используется как дата оценивания.
+- Локально проверены configure/save/pause и мобильная ширина без горизонтального
+  переполнения на отдельной fixture DB, без worker/Telegram I/O. На stage №80
+  проверены overview, полный список названий графика, настройка цикла и предупреждение
+  об исходной дате; выход через «Отмена» без записи. Screenshot:
+  `D:\HRBot\outputs\grade-development-stage.png`. Реальная доставка напоминаний,
+  автозапуск по наступившему сроку и прохождение сотрудником ещё не проверены.
+
 ## 27.10.2026 — исправление сохранённых Grade-оценок
 
 - PR #129 выложен на `5ba0c58a0f5049c58948f295bda197990745d853`: Deploy Stage `40480944419` success, Stage Diagnostics `40481140790` success (0 failing checks). Tracked worktree clean; web/worker/WireGuard/Caddy active; HTTP employees/workspace 303, scenario fingerprint unchanged. Verified backup: `backups/hr_bot.before-deploy.20261027-092845.db`.

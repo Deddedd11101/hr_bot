@@ -33,12 +33,13 @@ related:
 source_of_truth: true
 ---
 
-Grade cycle package подготовлен: explicit включение напоминаний и сценариев
+Grade cycle package выложен PR #132 на `99e263c` (Deploy `40523693000` success): explicit включение напоминаний и сценариев
 ИПР 6/12 месяцев, годовая новая оценка, ближайшая дата/остаток дней в карточке.
-Существующим сотрудникам циклы автоматически не назначаются. До результатов
-CI/выкладки не считать функциональность доступной на stage. Targeted DB/runtime
-review закрыт, 30 focused tests passed; локальный UI configure/save/pause и
-мобильное переполнение проверены на отдельной fixture DB, без Telegram отправок.
+Существующим сотрудникам циклы автоматически не назначаются. CI 486 tests и
+targeted DB/runtime review passed; локальный UI configure/save/pause и мобильное
+переполнение проверены на fixture DB. Stage №80 read-only настройка/неизвестная
+дата проверены без записи. Реальные Telegram delivery/годовой цикл не проверены;
+подробности в [[stage-change-log]].
 
 # Состояние проекта
 
