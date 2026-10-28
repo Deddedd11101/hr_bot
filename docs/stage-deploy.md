@@ -58,6 +58,13 @@ source_of_truth: true
 сохраняются. Для merge должны быть зелёными оба job, старый required check
 `checks` не переименован. Branch protection на GitHub этот YAML сам не меняет.
 
+Vite использует `preserveEntrySignatures: strict`: page entrypoints с монтированием
+React не служат shared-модулями для lazy chunks. Build guard запрещает imports/
+dynamicImports других page entrypoints. Иначе версионированный script `?v=...`
+и импорт того же файла без query выполняют bootstrap дважды и сбрасывают вкладку.
+При изменении entrypoints обновлять их template cache version и весь generated
+output. Grade и graph остаются lazy, бизнес-данные это правило не меняет.
+
 ### Workflow Deploy Stage
 
 После выкладки пакета адаптации/Пульса `Repair Candidate Answer Steps` допускает отдельный `package=adaptation_pulse`. Для него `ref` обязан быть полным текущим deployed SHA; сначала `mode=dry_run`, затем `mode=apply` с `expected_plan_sha256` из проверенного dry-run. Workflow сверяет SHA приложения, отсутствие tracked drift и неизменность плана, использует guarded tool с backup/quick_check и проверяет пустой план после ремонта. Перезапуск сервисов не выполняется; шаги перечитываются runtime из БД. Старые callback с дублирующим ключом могут повторно показать второй шаг.
