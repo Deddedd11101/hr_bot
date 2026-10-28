@@ -33,6 +33,11 @@ related:
 source_of_truth: true
 ---
 
+Matrix login background PR #145 выложен на `631811e` (29.10): CI,
+Deploy `40780168490` и Diagnostics `40780452037` success. Публичная /login
+200 с новыми login.js?v=39/app.css?v=110; auth backend/данные не менялись.
+Light/dark local visual — по отчёту исполнителя; stage visual/POST ещё не проверены.
+
 Emoji-set import #142 интегрирован (feature `0bbce02`, merge `9ae441d`): admin
 API/settings UI, idempotency/inactive preservation, rich editor fallback.
 CI `40744565757` success: 510 tests и frontend guards; local stub browser import
