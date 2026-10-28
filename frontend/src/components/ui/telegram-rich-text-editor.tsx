@@ -59,13 +59,17 @@ const TelegramEmoji = Node.create({
         default: "",
         parseHTML: (element: HTMLElement) => element.getAttribute("emoji-id") || "",
       },
+      fallback: {
+        default: "✨",
+        parseHTML: (element: HTMLElement) => element.textContent?.trim() || "✨",
+      },
     };
   },
   parseHTML() {
     return [{ tag: "tg-emoji[emoji-id]" }];
   },
   renderHTML({ HTMLAttributes }) {
-    return ["tg-emoji", { "emoji-id": HTMLAttributes.emojiId }];
+    return ["tg-emoji", { "emoji-id": HTMLAttributes.emojiId }, HTMLAttributes.fallback || "✨"];
   },
 });
 
@@ -92,7 +96,8 @@ function serializeInline(node: TelegramEditorNode): string {
   if (node.type === "hardBreak") return "\n";
   if (node.type === "telegramEmoji") {
     const emojiId = String(node.attrs?.emojiId || "");
-    return /^\d+$/.test(emojiId) ? `<tg-emoji emoji-id="${emojiId}"></tg-emoji>` : "";
+    const fallback = String(node.attrs?.fallback || "✨");
+    return /^\d+$/.test(emojiId) ? `<tg-emoji emoji-id="${emojiId}">${escapeText(fallback)}</tg-emoji>` : "";
   }
   if (node.type !== "text") {
     return (node.content || []).map(serializeInline).join("");
@@ -310,7 +315,7 @@ export type TelegramRichTextEditorProps = {
   className?: string;
   editorClassName?: string;
   insertRef?: React.MutableRefObject<((text: string) => void) | null>;
-  insertEmojiRef?: React.MutableRefObject<((emojiId: string) => void) | null>;
+  insertEmojiRef?: React.MutableRefObject<((emojiId: string, fallback: string) => void) | null>;
 };
 
 export function TelegramRichTextEditor({
@@ -389,12 +394,12 @@ export function TelegramRichTextEditor({
 
   React.useEffect(() => {
     if (!insertEmojiRef) return;
-    insertEmojiRef.current = (emojiId: string) => {
+    insertEmojiRef.current = (emojiId: string, fallback: string) => {
       if (!editor || disabled || !/^\d+$/.test(emojiId)) return;
       editor
         .chain()
         .focus()
-        .insertContent({ type: "telegramEmoji", attrs: { emojiId } })
+        .insertContent({ type: "telegramEmoji", attrs: { emojiId, fallback: fallback || "✨" } })
         .run();
     };
     return () => {

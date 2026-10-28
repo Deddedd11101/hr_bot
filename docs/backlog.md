@@ -42,7 +42,9 @@ source_of_truth: true
 - Doing: скролл последней должности (#88) перенесён минимальным padding только
   для role select карточки; source пересобран на актуальном stage/entry fix.
   Shared Select и сохранение должности не меняются; stage приёмка отдельно.
-- Todo: перенести source/tests импорта emoji-наборов #85 с безопасным fallback.
+- Doing: source/tests импорта emoji-наборов #85 перенесены на текущий stage:
+  admin-only API, idempotency, inactive preservation, rich editor fallback.
+  Старые bundles не копируются; проверка и выкладка отдельным PR.
 - Todo: read-only audit справочника должностей перед #8; фиксированные 22 defaults
   и массовую замену ссылок автоматически не применять.
 - Todo: обновить lifecycle-план #11 под текущий OTP/identity; retention и очистка
