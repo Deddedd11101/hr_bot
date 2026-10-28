@@ -8,6 +8,14 @@ from .database import Base
 from .time_utils import utc_now
 
 
+class ScenarioBootstrapState(Base):
+    __tablename__ = "scenario_bootstrap_state"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    initialized_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utc_now)
+    mode: Mapped[str] = mapped_column(String(16), nullable=False)
+
+
 class AdaptationPlanTemplate(Base):
     __tablename__ = "adaptation_plan_templates"
 

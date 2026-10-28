@@ -211,6 +211,8 @@ async def run_scheduled_step(bot, employee_id: int, scenario_key: str, step_key:
         )
         if not employee or not scenario or not step:
             return
+        if not explicit and scenario.trigger_mode in IMMEDIATE_TRIGGER_MODES:
+            return
         if employee.is_bot_blocked:
             return
         if not matches_role_scope(employee, scenario):
@@ -283,7 +285,7 @@ def schedule_employee_scenario(
                 run_scheduled_step,
                 "date",
                 run_date=run_at,
-                args=[bot, employee.id, scenario.scenario_key, step.step_key, run_at, True] if manual and owns_scenario(db, employee.id, scenario.scenario_key) else [bot, employee.id, scenario.scenario_key, step.step_key, run_at],
+                args=[bot, employee.id, scenario.scenario_key, step.step_key, run_at, True] if manual else [bot, employee.id, scenario.scenario_key, step.step_key, run_at],
                 id=job_id,
                 replace_existing=manual,
             )

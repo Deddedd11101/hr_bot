@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from typing import Optional
 
+from sqlalchemy import text
+
 from .database import SessionLocal
-from .models import FlowStepTemplate, ScenarioTemplate
+from .models import FlowStepTemplate, ScenarioTemplate, ScenarioBootstrapState
 
 
 ROLE_SCOPE_ALL = "all"
@@ -324,9 +326,17 @@ SCENARIO_DEFINITIONS = [
 
 def seed_flow_templates() -> None:
     with SessionLocal() as db:
+        # Startup must never undo edits/deletions. Serialize web/worker bootstrap.
+        if db.get_bind().dialect.name == "sqlite":
+            db.execute(text("BEGIN IMMEDIATE"))
+        if db.get(ScenarioBootstrapState, 1) is not None:
+            return
+        if db.query(ScenarioTemplate.id).first() or db.query(FlowStepTemplate.id).first():
+            db.add(ScenarioBootstrapState(id=1, mode="existing"))
+            db.commit()
+            return
         existing_scenarios = {row.scenario_key: row for row in db.query(ScenarioTemplate).all()}
         existing_steps = {row.step_key: row for row in db.query(FlowStepTemplate).all()}
-        changed = False
 
         for scenario in SCENARIO_DEFINITIONS:
             scenario_key = str(scenario["scenario_key"])
@@ -343,10 +353,8 @@ def seed_flow_templates() -> None:
                 )
                 db.add(scenario_row)
                 existing_scenarios[scenario_key] = scenario_row
-                changed = True
             elif employee_scope != EMPLOYEE_SCOPE_ALL and (getattr(scenario_row, "employee_scope", None) or EMPLOYEE_SCOPE_ALL) == EMPLOYEE_SCOPE_ALL:
                 scenario_row.employee_scope = employee_scope
-                changed = True
 
             for step in scenario["steps"]:
                 step_key = str(step["step_key"])
@@ -368,10 +376,9 @@ def seed_flow_templates() -> None:
                     )
                     db.add(step_row)
                     existing_steps[step_key] = step_row
-                    changed = True
 
-        if changed:
-            db.commit()
+        db.add(ScenarioBootstrapState(id=1, mode="fresh"))
+        db.commit()
 
 
 def get_step_text(step_key: str, fallback: str) -> str:

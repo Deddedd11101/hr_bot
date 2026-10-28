@@ -25,6 +25,13 @@ source_of_truth: true
 
 # Бэклог HR Bot
 
+- Incident 28.10: startup seed восстанавливал удалённые заводские first_day,
+  first_week/mid_probation/end_probation и их шаги. Live first_day ID66,
+  steps517–526, сообщения у №78/80 совпали с заводским текстом/ключами.
+  Исправляется однократным bootstrap-marker и revalidation auto jobs. По согласию
+  пользователя восстановленные defaults временно переводятся в manual_only
+  после сохранения настроек; пользовательские сценарии/история не удаляются.
+
 - Employee-card maintenance PR #134 выложен (`f2985d6`): pagination/delete
   заметок/ручных сообщений, typed activity, полный файловый список и cycle clarity.
   CI 497 tests / Deploy / Diagnostics passed, stage №70 read-only smoke выполнен.
