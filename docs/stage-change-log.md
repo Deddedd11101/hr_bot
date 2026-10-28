@@ -13,6 +13,25 @@ source_of_truth: true
 
 # Журнал изменений тестового стенда
 
+## 29.10.2026 — Matrix background формы входа
+
+- PR #145, feature `4f2bef98e376dea020af3a7201803c1e3af8b378`, выложен
+  merged stage `631811e78d0383bdeb373c0c2b18637645abf235`.
+  CI `40779770497` checks/frontend passed; Deploy `40780168490` success,
+  Diagnostics `40780452037` success, 0 failing checks. Сервисы active,
+  HTTP employees/workspace/grades 303, свежих Telegram/network errors нет.
+- Code review: декоративный canvas, light/dark CSS, reduced-motion/hidden-page
+  handling и cleanup observers/listeners; MIT notice сохранён. Форма POST,
+  поля, auth/session backend не менялись. Merge сохранил предыдущий пакет
+  стабилизации и operational docs, backend/docs diff до добавления этой записи пуст.
+- Выполнено около 01:29 МСК 29.10 (22:29 UTC 28.10). SQLite backup проверен,
+  scenario snapshot создан; имена backup частично маскируются Actions.
+  Scenario configuration fingerprint unchanged; live данные вручную не менялись.
+- Публичный GET /login без admin cookies: 200, react-login-root,
+  login.js?v=39 и app.css?v=110 подтверждены после deploy. Локальные light/dark
+  visual checks — по отчёту исполнителя; post-deploy canvas visual и отправка
+  формы не проверялись. Существующая сессия пользователя не сбрасывалась.
+
 ## 29.10.2026 — пакет стабилизации и emoji import
 
 - По разрешению пользователя выложен накопительный stage
