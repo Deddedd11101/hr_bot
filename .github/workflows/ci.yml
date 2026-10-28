@@ -29,6 +29,9 @@ jobs:
       - name: Check undefined names
         run: ruff check --select F821 app tests
 
+      - name: Check documentation contracts
+        run: python tools/check_docs_contracts.py
+
       - name: Run smoke tests
         env:
           TELEGRAM_BOT_TOKEN: ci-dummy-token
@@ -45,3 +48,37 @@ jobs:
           python -c "from app.config import settings; assert settings.TIMEZONE"
           python -c "from app.main import app; assert app is not None"
           python -c "from app.bot_runner import main; assert main is not None"
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Check TypeScript
+        working-directory: frontend
+        run: npm run typecheck
+
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build
+
+      - name: Check committed frontend assets
+        run: |
+          drift="$(git status --porcelain --untracked-files=all -- app/static/workspace_v2)"
+          if [ -n "$drift" ]; then
+            printf '%s\n' "$drift"
+            echo "Frontend assets differ from source. Rebuild and commit the complete output."
+            exit 1
+          fi
