@@ -33,6 +33,10 @@ related:
 source_of_truth: true
 ---
 
+Emoji-set import: подготовлен актуальный перенос #85 без старых bundles.
+Admin API и settings UI, повторный импорт без включения inactive, fallback
+в rich editor. Schema не меняется; готовность CI/deploy/Telegram отдельно.
+
 Стабилизация 28.10: аудит 10 открытых HRBot PR отделил superseded ветки от
 неперенесённых функций. #138 интегрирован: frontend/docs/assets CI guards.
 #139/#140 интегрированы с зелёными checks/frontend: lazy entry remount и скролл

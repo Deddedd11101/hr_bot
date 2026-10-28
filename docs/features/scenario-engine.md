@@ -71,6 +71,13 @@ Scenario engine превращает scenario templates плюс employee state 
 
 Порядок кнопок можно задать в `button_rows` как массив строк с ID кнопок конкретного набора. Старые наборы без layout продолжают использовать `sort_order`; runtime добавляет неуказанные актуальные кнопки в конец legacy-порядка.
 
+Каталог custom emoji допускает admin import по HTTPS-ссылке набора через
+getStickerSet. Повторный импорт не создаёт дубликаты и не включает отключённые
+записи. Rich editor сохраняет обычный emoji-fallback внутри tg-emoji, включая
+round-trip ранее пустого элемента. Каталог и fallback не гарантируют право
+конкретного бота отправлять custom emoji; фактическая Telegram-приёмка отдельно.
+Mobile-specific раскладка клавиатуры этим изменением не добавляется.
+
 Ручные сообщения из карточки используют тот же renderer и employee-context tags; исходный шаблон сохраняется в audit history, а в Telegram отправляется отрендеренный безопасный HTML.
 
 ## Audience targeting

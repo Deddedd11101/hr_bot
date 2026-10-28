@@ -175,6 +175,10 @@ source_of_truth: true
 
 ## Настройки и админские аккаунты
 
+В admin-only каталоге custom emoji на `/app/settings` есть импорт набора по
+HTTPS Telegram addemoji URL: loading/error/result counts и повторный импорт
+без дубликатов. Отключённые emoji не включаются повторно; ручной CRUD сохранён.
+
 | Method | Path | Surface | Примечания |
 | --- | --- | --- | --- |
 | `GET` | `/settings` | Redirect route | Legacy operator entrypoint; теперь ведет на `/app/settings` |

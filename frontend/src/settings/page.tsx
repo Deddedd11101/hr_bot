@@ -194,7 +194,7 @@ function movePosition(positions: Position[], draggedId: number, targetId: number
   }));
 }
 
-async function requestJson(path: string, options: RequestInit = {}) {
+async function requestJson<T = Workspace>(path: string, options: RequestInit = {}): Promise<T> {
   const response = await fetch(path, {
     credentials: "same-origin",
     headers: {
@@ -208,7 +208,7 @@ async function requestJson(path: string, options: RequestInit = {}) {
     const payload = await response.json().catch(() => ({}));
     throw new Error(payload.detail || "Запрос не выполнен");
   }
-  return response.json() as Promise<Workspace>;
+  return response.json() as Promise<T>;
 }
 
 function normalizeWorkspace(workspace: Workspace): Workspace {
@@ -397,6 +397,8 @@ export function SettingsPage({ apiUrl }: SettingsPageProps) {
   const [dragOverPositionId, setDragOverPositionId] = React.useState<number | null>(null);
   const [positionsReordering, setPositionsReordering] = React.useState(false);
   const [newEmoji, setNewEmoji] = React.useState({ title: "", emoji_id: "", fallback: "✨" });
+  const [emojiSetUrl, setEmojiSetUrl] = React.useState("");
+  const [emojiImporting, setEmojiImporting] = React.useState(false);
   const [emojiDrafts, setEmojiDrafts] = React.useState<Record<number, { title: string; emoji_id: string; fallback: string }>>({});
   const [hrLink, setHrLink] = React.useState<{ url: string; expiresAt: string } | null>(null);
   const [hrLinkBusy, setHrLinkBusy] = React.useState(false);
@@ -418,6 +420,25 @@ export function SettingsPage({ apiUrl }: SettingsPageProps) {
       setMessage(successMessage);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Операция не выполнена");
+    }
+  };
+
+  const importEmojiSet = async () => {
+    setError("");
+    setMessage("");
+    setEmojiImporting(true);
+    try {
+      const result = await requestJson<{ workspace: Workspace; set_title: string; added_count: number; skipped_count: number }>(
+        "/api/settings/custom-emojis/import-set",
+        { method: "POST", body: JSON.stringify({ url: emojiSetUrl.trim() }) },
+      );
+      setWorkspace(normalizeWorkspace(result.workspace));
+      setEmojiSetUrl("");
+      setMessage(`Набор «${result.set_title}»: добавлено ${result.added_count}, уже были в каталоге ${result.skipped_count}.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Не удалось импортировать набор эмодзи");
+    } finally {
+      setEmojiImporting(false);
     }
   };
 
@@ -916,6 +937,15 @@ export function SettingsPage({ apiUrl }: SettingsPageProps) {
 
       {isAdmin ? (
         <SettingsCard title="Каталог custom emoji" description="Сохранённые Telegram-иконки доступны в редакторах сообщений.">
+          <div className="flex flex-wrap items-end gap-3">
+            <Field className="min-w-0 flex-1">
+              <FieldLabel htmlFor="emoji-set-url">Ссылка на набор эмодзи</FieldLabel>
+              <Input id="emoji-set-url" value={emojiSetUrl} disabled={emojiImporting} onChange={(event) => setEmojiSetUrl(event.target.value)} placeholder="https://t.me/addemoji/fraudex" type="url" />
+            </Field>
+            <Button type="button" variant="secondary" disabled={!emojiSetUrl.trim() || emojiImporting} onClick={importEmojiSet}>
+              {emojiImporting ? "Импортируем..." : "Импортировать набор"}
+            </Button>
+          </div>
           <div className="grid gap-3 rounded-lg border border-border bg-muted/35 p-3 md:grid-cols-[1fr_1fr_120px_auto] md:items-end">
             <Field>
               <FieldLabel>Название</FieldLabel>

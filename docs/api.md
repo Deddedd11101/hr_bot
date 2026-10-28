@@ -319,7 +319,7 @@ Final сохраняется без изменений; archived доступе�
     `telegram_user_id`.
 - `menu_text_tags`: `{employee_full_name}`, `{first_name}`, `{position}`, `{first_workday}`. The renderer also accepts the compatibility alias `{full_name}`, but it is not advertised as a separate menu-tag option.
 - `telegram_message_capabilities`: safe HTML and custom emoji capability matrix. Message text supports numeric `tg-emoji`; Telegram Bot API also supports `icon_custom_emoji_id` for inline/reply keyboard buttons, but this app has not yet wired catalog IDs to individual buttons, so keyboard labels currently use ordinary emoji fallback.
-- `custom_emojis[]`: authenticated catalog rows with `title`, numeric `emoji_id`, `fallback`, `is_active`; manage through `/api/settings/custom-emojis*`. The catalog is explicit metadata, not Telegram clipboard import.
+- `custom_emojis[]`: authenticated catalog rows with `title`, numeric `emoji_id`, `fallback`, `is_active`; manage through `/api/settings/custom-emojis*`. Admin can import a set by its HTTPS Telegram addemoji URL; clipboard copying is not an import mechanism.
 - `menu_sets`
   - `buttons[]`: у каждой кнопки есть `is_active` (default `true`); выключенные и кнопки с `action_type=inactive` не показываются и не обрабатываются ботом.
   - `action_type=open_url` хранит `url` (только абсолютный `http://` или `https://`, до 2048 символов). При смене действия `url` очищается. Во вложенном наборе это inline URL-кнопка; кнопка главного reply-меню присылает короткое сообщение с URL-кнопкой, поскольку reply-клавиатура Telegram не открывает обычные ссылки напрямую.
@@ -497,6 +497,7 @@ Auth: только `Authorization: Bearer <PULSE_SYNC_TOKEN>` (сравнени�
 | `PATCH` | `/api/settings/positions/{position_id}` | Частично обновить должность. | Path: `position_id`; JSON subset fields | `{ positions[] }` | Обновляет position row | `401`, `404`, `409` |
 | `DELETE` | `/api/settings/positions/{position_id}` | Деактивировать должность. | Path: `position_id` | `{ positions[] }` | Ставит `is_active=false`, физически не удаляет row | `401`, `404` |
 | `GET` | `/api/settings/custom-emojis` | Получить каталог custom emoji. | Нет | `{ custom_emojis[] }` | Только чтение | `401` |
+| `POST` | `/api/settings/custom-emojis/import-set` | Импортировать custom emoji набор, только admin. | JSON `url`: HTTPS t.me/telegram.me/addemoji/name, без credentials/port/query/fragment | `{ workspace, set_title, added_count, skipped_count }` | getStickerSet через настроенного бота; новые emoji_id сохраняются атомарно, существующие (включая inactive) не меняются | `401`, `403`, `400`, `409` concurrent import, `502` Telegram API, `503` token отсутствует |
 | `POST` | `/api/settings/custom-emojis` | Добавить custom emoji по numeric Telegram `emoji_id`. | JSON: `title`, `emoji_id`, optional `fallback`, `is_active` | Settings workspace payload | Сохраняет metadata; fallback используется в keyboard labels | `401`, `400`, `409` |
 | `POST/PATCH` | `/api/settings/custom-emojis/{emoji_id}` | Изменить metadata или активность. | JSON: fields above | Settings workspace payload | Не меняет отправку старых сообщений | `401`, `400`, `404`, `409` |
 | `DELETE` | `/api/settings/custom-emojis/{emoji_id}` | Деактивировать custom emoji. | Path: `emoji_id` | Settings workspace payload | Soft-deactivate, без удаления истории | `401`, `404` |
