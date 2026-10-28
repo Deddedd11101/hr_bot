@@ -33,16 +33,20 @@ related:
 source_of_truth: true
 ---
 
-Emoji-set import: подготовлен актуальный перенос #85 без старых bundles.
-Admin API и settings UI, повторный импорт без включения inactive, fallback
-в rich editor. Schema не меняется; готовность CI/deploy/Telegram отдельно.
+Emoji-set import #142 интегрирован (feature `0bbce02`, merge `9ae441d`): admin
+API/settings UI, idempotency/inactive preservation, rich editor fallback.
+CI `40744565757` success: 510 tests и frontend guards; local stub browser import
+и вставка fallback passed. Schema не меняется, deploy/реальный Telegram pending.
 
 Стабилизация 28.10: аудит 10 открытых HRBot PR отделил superseded ветки от
 неперенесённых функций. #138 интегрирован: frontend/docs/assets CI guards.
 #139/#140 интегрированы с зелёными checks/frontend: lazy entry remount и скролл
 должностей, проверены на изолированной локальной БД. На сервер они ещё не выложены;
-deployed application остаётся `4a84001` инцидентного фикса. Закрыты устаревшие
-#128/#112/#64 и заменённый #88, ветки сохранены. Актуальная очередь в [[backlog]].
+Последний подтверждённый deployed application — `4a84001` инцидентного фикса.
+#141 закрепил serialization tests и исправил historical OTP record (no-op,
+не ротация). Закрыты 8 из 10 старых PR, ветки сохранены; открыты #8 и draft #11.
+Read-only stage catalog: 25 должностей, 2 inactive, точных title-дублей не найдено.
+Остальные риски (upload limits, npm audit, lifecycle) и очередь в [[backlog]].
 
 Причина Grade first-open подтверждена: lazy chunk импортировал page entrypoint
 без query, повторно выполняя bootstrap при исходном script с cache version.
