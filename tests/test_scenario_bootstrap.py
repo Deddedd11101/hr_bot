@@ -52,6 +52,16 @@ class ScenarioBootstrapTests(unittest.TestCase):
             self.assertEqual(db.query(FlowStepTemplate).count(), 0)
             self.assertEqual(db.get(ScenarioBootstrapState, 1).mode, "existing")
 
+    def test_existing_business_data_with_empty_catalog_is_not_reseeded(self):
+        with self.sessions() as db:
+            db.add(Employee(id=1, created_at=datetime(2026, 10, 28)))
+            db.commit()
+        flow_templates.seed_flow_templates()
+        with self.sessions() as db:
+            self.assertEqual(db.query(ScenarioTemplate).count(), 0)
+            self.assertEqual(db.query(FlowStepTemplate).count(), 0)
+            self.assertEqual(db.get(ScenarioBootstrapState, 1).mode, "existing")
+
     def test_removed_step_and_empty_catalog_remain_deleted(self):
         flow_templates.seed_flow_templates()
         with self.sessions() as db:

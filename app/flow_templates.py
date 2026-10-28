@@ -5,7 +5,7 @@ from typing import Optional
 from sqlalchemy import text
 
 from .database import SessionLocal
-from .models import FlowStepTemplate, ScenarioTemplate, ScenarioBootstrapState
+from .models import Employee, FlowLaunchRequest, FlowStepTemplate, OnboardingEvent, Position, ScenarioProgress, ScenarioTemplate, ScenarioBootstrapState
 
 
 ROLE_SCOPE_ALL = "all"
@@ -331,7 +331,10 @@ def seed_flow_templates() -> None:
             db.execute(text("BEGIN IMMEDIATE"))
         if db.get(ScenarioBootstrapState, 1) is not None:
             return
-        if db.query(ScenarioTemplate.id).first() or db.query(FlowStepTemplate.id).first():
+        if any(db.query(model.id).first() for model in (
+            ScenarioTemplate, FlowStepTemplate, Employee, OnboardingEvent,
+            FlowLaunchRequest, ScenarioProgress, Position,
+        )):
             db.add(ScenarioBootstrapState(id=1, mode="existing"))
             db.commit()
             return
