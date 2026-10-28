@@ -5,7 +5,7 @@ const defaultValues = {
   speed: 1, interval: 90, fontSize: 12, density: 1, lineHeight: 16,
   decay: 0.94, opacity: 0.5, radius: 122, glowDecay: 0.64, glowBrightness: 1,
   color: 'currentColor', glowColor: 'currentColor', background: 'transparent',
-  characters: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789', mask: true, pointer: true,
+  characters: 'ZZEEPPHHYYRR<>=&#$?', mask: true, pointer: true,
 }
 export const defaults = Object.freeze(defaultValues)
 

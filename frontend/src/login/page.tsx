@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Matrix } from "./matrix";
 
 const matrixOptions = {
-  characters: "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
+  characters: "ZZEEPPHHYYRR<>=&#$?",
   color: "var(--login-rain-color)",
   glowColor: "var(--login-rain-glow)",
   opacity: 0.75,
