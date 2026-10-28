@@ -37,8 +37,9 @@ source_of_truth: true
   employee-detail.js без query и перемонтирует карточку, открытую с ?v=68.
   Подготовлены strict entry signatures и build guard запрета entry imports;
   graph имел ту же структуру зависимости. Проверка/выкладка отдельно.
-- Todo: скролл последней должности (#88) на текущем shared Select,
-  без переноса старых bundles.
+- Doing: скролл последней должности (#88) перенесён минимальным padding только
+  для role select карточки; source пересобран на актуальном stage/entry fix.
+  Shared Select и сохранение должности не меняются; stage приёмка отдельно.
 - Todo: перенести source/tests импорта emoji-наборов #85 с безопасным fallback.
 - Todo: read-only audit справочника должностей перед #8; фиксированные 22 defaults
   и массовую замену ссылок автоматически не применять.
