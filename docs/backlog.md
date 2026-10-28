@@ -31,26 +31,35 @@ source_of_truth: true
 постановки уже выложенного кода. Код / deploy / пользовательская приёмка
 учитываются отдельно.
 
-- Done (интегрировано, без deploy): PR #138 — frontend typecheck/build,
+- Done: PR #138 — frontend typecheck/build,
   generated assets/docs contracts в CI; checks и frontend jobs passed,
   backend suite сохранён. Runtime не меняется.
-- Doing: Grade first-open reset воспроизведён на stage: lazy chunk импортирует
+- Done (выложено, read-only UI checked): Grade first-open reset воспроизведён на stage: lazy chunk импортирует
   employee-detail.js без query и перемонтирует карточку, открытую с ?v=68.
   PR #139 интегрирован: strict entry signatures и build guard entry imports;
   graph исправлен тем же способом. CI passed, local browser first-click passed;
-  выкладка и stage-приёмка ещё не выполнялись.
-- Doing: скролл последней должности (#88) перенесён минимальным padding только
+  выложено `8651f16`, stage №70 первый клик прошёл без reset; graph16 — 8 nodes.
+- Done (выложено, read-only UI checked): скролл последней должности (#88) перенесён минимальным padding только
   для role select карточки; source пересобран на актуальном stage/entry fix.
   #140 интегрирован, CI/local browser passed. Shared Select и сохранение должности
-  не меняются; deploy/stage приёмка отдельно.
-- Doing (код интегрирован, deploy pending): #142 заменил #85 на текущем stage:
+  не меняются; выложено `8651f16`, последний option целиком виден, Save не выполнялся.
+- Doing (выложено, реальный Telegram pending): #142 заменил #85 на текущем stage:
   admin-only API, idempotency, inactive preservation, rich editor fallback.
   CI 510 tests, frontend/docs/assets passed. Local stub browser import/editor
-  passed, реальный getStickerSet/send на stage не проверен.
+  passed; выложено `8651f16`, settings control виден, реальный getStickerSet/send
+  на stage не проверен. Deploy/Diagnostics success, [[stage-change-log]].
 - Todo: минимальный replacement #8 вместо fixed canonical seed. Read-only
   settings API 28.10: 25 должностей, 2 inactive, точных дубликатов title после
   trim/case/whitespace normalization нет. Ссылки/каталог не менялись; 22 defaults
   и массовую замену автоматически не применять.
+  Обязательная сквозная сверка: catalog position/slug → desired_position карточки
+  → role_scope/position targeting и trigger/audience фильтры сценариев и опросов.
+  Например, «рук проектов» и «Руководитель проектов» не должны незаметно стать
+  разными аудиториями. Проверить aliases/legacy values, inactive/renamed позиции,
+  сохранение API/UI, copy/portability и фактический выбор адресатов. Не объединять
+  строки по нестрогому сходству без preview и подтверждённого mapping; история
+  запусков и назначений сохраняется. Одинаковые видимые labels без согласованного
+  matching-контракта не считаются исправлением.
 - Todo: обновить lifecycle-план #11 под текущий OTP/identity; retention и очистка
   персональных данных остаются отдельным согласованием.
 - Todo: единый upload limit/проверка содержимого и измерения scheduler/SQL/bundle
