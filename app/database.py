@@ -276,6 +276,12 @@ def _ensure_sqlite_schema() -> None:
             )
         )
 
+        for table in ("employee_hr_notes", "employee_manual_bot_messages"):
+            columns = {row[1] for row in conn.execute(text(f"PRAGMA table_info({table})"))}
+            for column, sql_type in (("deleted_at", "DATETIME"), ("deleted_by_account_id", "INTEGER")):
+                if column not in columns:
+                    conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {sql_type}"))
+
         employee_columns = {row[1] for row in conn.execute(text("PRAGMA table_info(employees)")).fetchall()}
         if "desired_position" in employee_columns:
             conn.execute(

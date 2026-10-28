@@ -25,6 +25,16 @@ source_of_truth: true
 
 # Бэклог HR Bot
 
+- Employee-card maintenance в работе: pagination/delete HR-заметок и ручных
+  сообщений без Telegram удаления; таблица activity; полный файловый список
+  и clarity цикла развития. Не менять реальные записи при smoke. Проверки,
+  выкладку и пользовательскую приёмку фиксировать отдельно.
+- File storage follow-up: web uploads пока не имеют единого application-level
+  byte limit/content validation/AV; не обещать поддержку и безопасность любого
+  формата. Telegram inbound ограничен 20 MiB, document/photo/video/video_note,
+  отдельные audio/voice handlers отсутствуют. Специализированная загрузка ИПР
+  и точный sender/scenario provenance файлов требуют отдельного контракта.
+
 - Цикл развития Grade PR #132 выложен (`99e263c`, Deploy `40523693000` success):
   explicit настройка, напоминания HR/руководителю, автозапуски 6/12 месяцев,
   ближайшая дата, pause/date overrides и история. CI 486 tests / targeted review

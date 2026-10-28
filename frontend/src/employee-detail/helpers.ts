@@ -32,6 +32,8 @@ export function updatePayloadState(setState: any, setForm: any, payload: any) {
 
 export function buildEmployeeUpdatePayload(form: any) {
     const payload = Object.assign({}, form);
+    payload.expected_notes_revision = form.notes_revision;
+    delete payload.notes_revision;
     delete payload.chat_id;
     return payload;
 }

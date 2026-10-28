@@ -9,6 +9,7 @@ from fastapi import HTTPException
 from sqlalchemy import or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
+from ..employee_activity import lock_note_projection, notes_revision, utc_datetime
 
 from ..config import settings
 from ..file_storage import build_employee_file_path
@@ -557,12 +558,13 @@ def _sender_account_label(account: Optional[AdminAccount]) -> str:
     return f"Account #{account.id}"
 
 
-def _serialize_manual_bot_message_history(db: Session, employee_id: int) -> list[dict]:
+def _serialize_manual_bot_message_history(db: Session, employee_id: int, *, offset: int = 0, limit: int | None = None) -> list[dict]:
     history_rows = (
         db.query(EmployeeManualBotMessage, AdminAccount)
         .outerjoin(AdminAccount, AdminAccount.id == EmployeeManualBotMessage.sender_account_id)
-        .filter(EmployeeManualBotMessage.employee_id == employee_id)
+        .filter(EmployeeManualBotMessage.employee_id == employee_id, EmployeeManualBotMessage.deleted_at.is_(None))
         .order_by(EmployeeManualBotMessage.created_at.desc(), EmployeeManualBotMessage.id.desc())
+        .offset(offset).limit(limit)
         .all()
     )
     return [
@@ -573,19 +575,20 @@ def _serialize_manual_bot_message_history(db: Session, employee_id: int) -> list
             "message_text": row.message_text or "",
             "status": row.status or "",
             "error_text": row.error_text or "",
-            "sent_at": row.sent_at.isoformat() if row.sent_at else "",
-            "created_at": row.created_at.isoformat() if row.created_at else "",
+            "sent_at": utc_datetime(row.sent_at).isoformat() if row.sent_at else "",
+            "created_at": utc_datetime(row.created_at).isoformat() if row.created_at else "",
         }
         for row, account in history_rows
     ]
 
 
-def _serialize_hr_notes_history(db: Session, employee_id: int) -> list[dict]:
+def _serialize_hr_notes_history(db: Session, employee_id: int, *, offset: int = 0, limit: int | None = None) -> list[dict]:
     history_rows = (
         db.query(EmployeeHrNote, AdminAccount)
         .outerjoin(AdminAccount, AdminAccount.id == EmployeeHrNote.author_account_id)
-        .filter(EmployeeHrNote.employee_id == employee_id)
+        .filter(EmployeeHrNote.employee_id == employee_id, EmployeeHrNote.deleted_at.is_(None))
         .order_by(EmployeeHrNote.created_at.desc(), EmployeeHrNote.id.desc())
+        .offset(offset).limit(limit)
         .all()
     )
     return [
@@ -594,7 +597,7 @@ def _serialize_hr_notes_history(db: Session, employee_id: int) -> list[dict]:
             "author_account_id": row.author_account_id,
             "author_label": _sender_account_label(account),
             "note_text": row.note_text or "",
-            "created_at": row.created_at.isoformat() if row.created_at else "",
+            "created_at": utc_datetime(row.created_at).isoformat() if row.created_at else "",
         }
         for row, account in history_rows
     ]
@@ -865,10 +868,20 @@ def _apply_employee_update(
     notes: str,
     assigned_by_account_id: int | None = None,
     ipr_url: str | None = None,
+    expected_notes_revision: str | None = None,
+    hr_note_draft: str = "",
 ) -> Employee:
+    lock_note_projection(db, employee.id)
+    db.refresh(employee)
     is_candidate = _employee_list_kind(employee) == "candidates"
     previous_candidate_work_stage = (employee.candidate_work_stage or "").strip() or None
     previous_notes = employee.notes
+    explicit_note = hr_note_draft.strip()
+    if len(explicit_note) > 2048:
+        raise ValueError("HR-заметка не должна превышать 2048 символов")
+    current_revision = notes_revision(db, employee.id)
+    has_deleted_notes = db.query(EmployeeHrNote.id).filter(
+        EmployeeHrNote.employee_id == employee.id, EmployeeHrNote.deleted_at.is_not(None)).first() is not None
     if ipr_url is not None:
         _set_employee_ipr_link(db, employee.id, ipr_url)
     first_day = _parse_optional_date(first_workday)
@@ -951,11 +964,14 @@ def _apply_employee_update(
             assigned_by_account_id=assigned_by_account_id,
         )
 
-    employee.notes = notes.strip() or None
+    next_notes = notes.strip() or None
+    if (expected_notes_revision is not None or has_deleted_notes) and expected_notes_revision != current_revision:
+        next_notes = previous_notes
+    employee.notes = explicit_note or next_notes
     _sync_hr_note_history(
         db,
         employee=employee,
-        previous_notes=previous_notes,
+        previous_notes=None if explicit_note else previous_notes,
         next_notes=employee.notes,
         author_account_id=assigned_by_account_id,
     )
@@ -980,6 +996,9 @@ def _serialize_employee_file(file_row: EmployeeFile, employee_id: int, can_send_
         "direction": file_row.direction,
         "category": file_row.category or "",
         "original_filename": file_row.original_filename or "",
+        "created_at": utc_datetime(file_row.created_at).isoformat() if file_row.created_at else None,
+        "mime_type": file_row.mime_type,
+        "file_size": file_row.file_size,
         "created_at_label": file_row.created_at.strftime("%d.%m.%Y %H:%M") if file_row.created_at else "—",
         "download_url": f"/employees/{employee_id}/files/{file_row.id}/download",
         "send_url": f"/employees/{employee_id}/files/{file_row.id}/send",
@@ -1908,6 +1927,7 @@ def _build_employee_detail_payload(db: Session, employee: Employee) -> dict:
             "is_bot_blocked": bool(employee.is_bot_blocked),
             "test_task_due_at": employee.test_task_due_at.strftime("%Y-%m-%dT%H:%M") if employee.test_task_due_at else "",
             "notes": employee.notes or "",
+            "notes_revision": notes_revision(db, employee.id),
             "is_flow_scheduled": bool(employee.is_flow_scheduled),
         },
         "options": {

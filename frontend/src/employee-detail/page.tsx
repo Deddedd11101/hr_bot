@@ -17,6 +17,7 @@ import { CandidateStage } from "./candidate-stage";
 import { EmployeeFeedbackSurveys } from "./feedback-surveys";
 import { EmployeeScenarioResults } from "./scenario-results";
 import { AdaptationPlanner } from "./adaptation-planner";
+import { EmployeeFileWorkspace, EmployeeFeedbackFiles } from "./file-workspace";
 import { TELEGRAM_DOCUMENT_TEMPLATE_TAGS, type TelegramCustomEmoji, type TelegramTemplateTag } from "@/components/ui/telegram-message-tools";
 import {
     EmployeeDetailError,
@@ -848,7 +849,7 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
     });
 
     const operationsProps = {
-        opsState, offerUrl, setOfferUrl, offerFile, setOfferFile, offerDocumentItem,
+        activeTab, opsState, offerUrl, setOfferUrl, offerFile, setOfferFile, offerDocumentItem,
         resumeFile, setResumeFile, resumeDocumentItem, payload, form, scheduleForm,
         setScheduleForm, launchFlowKey, setLaunchFlowKey, fileForm, setFileForm,
         handleOfferSubmit, handleOfferFileSubmit, handleOfferDelete, handleResumeFileSubmit,
@@ -865,6 +866,7 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
         form, isCandidate, meta, options: payload.options, workHoursParts, handleChange,
         handleWorkHoursChange, handleSubmit, saveState, hrNoteDraft, hrNotesHistory,
         onHrNoteDraftChange: handleHrNoteDraftChange, onFirstWorkdayChange: handleFirstWorkdayChange,
+        onHrNoteDeleted: (text: string) => setForm((previous: any) => previous && String(previous.notes || "").trim() === text.trim() ? {...previous, notes: ""} : previous),
     };
 
     return (
@@ -918,7 +920,7 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
                         {!isCandidate ? <EmployeeFeedbackSurveys employeeId={Number(form.id)} legacyUrl={form.adaptation_feedback_url} /> : null}
                     </TabsContent>
                     <TabsContent value="messages" keepMounted className="admin-page-stack min-w-0"><EmployeeOperationsSection {...operationsProps} view="messages" /></TabsContent>
-                    <TabsContent value="files" keepMounted className="admin-page-stack min-w-0"><EmployeeOperationsSection {...operationsProps} view="files" /></TabsContent>
+                    <TabsContent value="files" keepMounted className="admin-page-stack min-w-0"><EmployeeFileWorkspace payload={payload} /><EmployeeScenarioResults employeeId={Number(form.id)} />{!isCandidate && <EmployeeFeedbackFiles employeeId={Number(form.id)} active={activeTab === "files"} />}<details className="min-w-0"><summary className="cursor-pointer py-3 text-sm font-medium text-muted-foreground">Загрузка и замена документов</summary><EmployeeOperationsSection {...operationsProps} view="files" /></details></TabsContent>
                     <TabsContent value="history" keepMounted className="admin-page-stack min-w-0"><EmployeeOperationsSection {...operationsProps} view="history" /></TabsContent>
                     {!isCandidate ? <TabsContent value="adaptation" keepMounted className="admin-page-stack min-w-0"><AdaptationPlanner employeeId={Number(form.id)} /><details className="min-w-0"><summary className="cursor-pointer py-3 text-sm font-medium text-muted-foreground">Сопровождение и документы</summary><EmployeeProfileSection {...profileProps} view="adaptation" /></details><details className="min-w-0"><summary className="cursor-pointer py-3 text-sm font-medium text-muted-foreground">Разовый запуск и история</summary><EmployeeOperationsSection {...operationsProps} launchItems={launchItems.filter(item => item.purpose === "adaptation")} manualLaunchItems={manualLaunchItems.filter(item => item.purpose === "adaptation")} view="adaptation" /></details></TabsContent> : null}
                     {!isCandidate ? <TabsContent value="grade" keepMounted className="admin-page-surface min-w-0 p-4">{gradeOpened && <React.Suspense fallback={<p role="status">Загрузка грейда...</p>}><GradeTab employeeId={Number(form.id)} /></React.Suspense>}</TabsContent> : null}

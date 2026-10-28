@@ -2,7 +2,7 @@ from datetime import datetime
 from io import BytesIO
 from pathlib import Path
 
-from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Request, UploadFile, status
+from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Query, Request, UploadFile, status
 from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.exc import IntegrityError
@@ -11,10 +11,11 @@ from sqlalchemy.orm import Session
 from ..config import settings
 from ..database import get_session
 from ..employee_card import render_employee_card_png
+from ..employee_activity import KINDS, employee_activity, lock_note_projection, page_payload
 from ..file_storage import build_employee_file_path
 from ..file_storage import build_employee_profile_photo_path
 from ..messaging.identity import EmployeeIdentityConflictError, get_primary_chat_id
-from ..models import Employee, EmployeeDocumentLink, EmployeeFile, FlowLaunchRequest
+from ..models import Employee, EmployeeDocumentLink, EmployeeFile, EmployeeHrNote, EmployeeManualBotMessage, FlowLaunchRequest
 from ..time_utils import utc_now
 from .employees import (
     CANDIDATE_WORK_STAGE_VALUES,
@@ -43,6 +44,8 @@ from .employees import (
     _send_manual_bot_message,
     _serialize_document_link,
     _serialize_employee_view,
+    _serialize_hr_notes_history,
+    _serialize_manual_bot_message_history,
 )
 from .support import render_template, require_api_auth, require_auth
 
@@ -580,6 +583,75 @@ def create_employee_api(
     }
 
 
+def _maintenance_employee(db: Session, employee_id: int) -> Employee:
+    employee = db.get(Employee, employee_id)
+    if not employee:
+        raise HTTPException(status_code=404, detail="Сотрудник не найден")
+    return employee
+
+
+@router.get("/api/employees/{employee_id}/hr-notes")
+def employee_hr_notes_api(request: Request, employee_id: int, page: int = Query(1, ge=1),
+                          page_size: int = Query(10, ge=1, le=100), db: Session = Depends(get_db)):
+    require_api_auth(request)
+    _maintenance_employee(db, employee_id)
+    total = db.query(EmployeeHrNote).filter_by(employee_id=employee_id, deleted_at=None).count()
+    items = _serialize_hr_notes_history(db, employee_id, offset=(page - 1) * page_size, limit=page_size)
+    return page_payload(items, total, page, page_size)
+
+
+@router.get("/api/employees/{employee_id}/bot-messages")
+def employee_bot_messages_api(request: Request, employee_id: int, page: int = Query(1, ge=1),
+                              page_size: int = Query(20, ge=1, le=100), db: Session = Depends(get_db)):
+    require_api_auth(request)
+    _maintenance_employee(db, employee_id)
+    total = db.query(EmployeeManualBotMessage).filter_by(employee_id=employee_id, deleted_at=None).count()
+    items = _serialize_manual_bot_message_history(db, employee_id, offset=(page - 1) * page_size, limit=page_size)
+    return page_payload(items, total, page, page_size)
+
+
+def _delete_maintenance_record(request: Request, db: Session, employee_id: int, record_id: int, model):
+    account = require_api_auth(request)
+    if model is EmployeeHrNote:
+        lock_note_projection(db, employee_id)
+    employee = _maintenance_employee(db, employee_id)
+    # Conditional UPDATE makes retries preserve the first deletion actor/time.
+    query = db.query(model).filter_by(id=record_id, employee_id=employee_id)
+    record = query.first()
+    if record is None:
+        raise HTTPException(status_code=404, detail="Запись не найдена")
+    values = {"deleted_at": utc_now(), "deleted_by_account_id": account.id}
+    if model is EmployeeHrNote:
+        values["note_text"] = ""
+        if record.deleted_at is None and (employee.notes or "").strip() == record.note_text.strip():
+            employee.notes = None
+    else:
+        values.update(message_text="", error_text=None)
+    query.filter(model.deleted_at.is_(None)).update(values, synchronize_session=False)
+    db.commit()
+    return {"success": True}
+
+
+@router.delete("/api/employees/{employee_id}/hr-notes/{note_id}")
+def delete_employee_hr_note_api(request: Request, employee_id: int, note_id: int, db: Session = Depends(get_db)):
+    return _delete_maintenance_record(request, db, employee_id, note_id, EmployeeHrNote)
+
+
+@router.delete("/api/employees/{employee_id}/bot-messages/{message_id}")
+def delete_employee_bot_message_api(request: Request, employee_id: int, message_id: int, db: Session = Depends(get_db)):
+    return _delete_maintenance_record(request, db, employee_id, message_id, EmployeeManualBotMessage)
+
+
+@router.get("/api/employees/{employee_id}/activity")
+def employee_activity_api(request: Request, employee_id: int, page: int = Query(1, ge=1),
+                          page_size: int = Query(20, ge=1, le=100), kind: str = "all", db: Session = Depends(get_db)):
+    require_api_auth(request)
+    _maintenance_employee(db, employee_id)
+    if kind not in {item["value"] for item in KINDS}:
+        raise HTTPException(status_code=422, detail="Неизвестный тип события")
+    return employee_activity(db, employee_id, page, page_size, kind)
+
+
 @router.get("/api/employees/{employee_id}")
 def employee_detail_api(
     request: Request,
@@ -634,7 +706,9 @@ def update_employee_api(
             employee_data_consent=bool(payload.get("employee_data_consent")),
             is_bot_blocked=bool(payload.get("is_bot_blocked")),
             test_task_due_at=str(payload.get("test_task_due_at") or ""),
-            notes=str(payload.get("notes") or ""),
+            notes=str(payload.get("notes") or "") if "notes" in payload else (employee.notes or ""),
+            expected_notes_revision=payload.get("expected_notes_revision"),
+            hr_note_draft=str(payload.get("hr_note_draft") or ""),
             assigned_by_account_id=getattr(current_user, "id", None),
         )
     except EmployeeIdentityConflictError as exc:
