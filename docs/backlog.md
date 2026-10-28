@@ -39,8 +39,9 @@ source_of_truth: true
   PR #139 интегрирован: strict entry signatures и build guard entry imports;
   graph исправлен тем же способом. CI passed, local browser first-click passed;
   выкладка и stage-приёмка ещё не выполнялись.
-- Todo: скролл последней должности (#88) на текущем shared Select,
-  без переноса старых bundles.
+- Doing: скролл последней должности (#88) перенесён минимальным padding только
+  для role select карточки; source пересобран на актуальном stage/entry fix.
+  Shared Select и сохранение должности не меняются; stage приёмка отдельно.
 - Todo: перенести source/tests импорта emoji-наборов #85 с безопасным fallback.
 - Todo: read-only audit справочника должностей перед #8; фиксированные 22 defaults
   и массовую замену ссылок автоматически не применять.
