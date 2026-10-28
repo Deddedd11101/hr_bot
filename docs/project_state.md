@@ -38,6 +38,11 @@ source_of_truth: true
 не меняет runtime и не требует deploy. Актуальная очередь в [[backlog]];
 старые generated assets и альтернативную OTP-модель целиком не интегрировать.
 
+Причина Grade first-open подтверждена: lazy chunk импортировал page entrypoint
+без query, повторно выполняя bootstrap при исходном script с cache version.
+Подготовлено разделение entry/shared chunks и build invariant; graph исправляется
+тем же способом. Это frontend-only изменение, реальные оценки не меняются.
+
 Incident удалённых defaults: подтверждён повторный startup seed при отсутствии
 сценария/шага; first_day восстановлен на stage ID66, first_week67, mid_probation68,
 end_probation69, mid_feedback70. PR #136 выложен на `4a84001`: bootstrap-once

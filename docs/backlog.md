@@ -33,8 +33,12 @@ source_of_truth: true
 
 - Doing: PR CI — frontend typecheck/build, проверка generated assets и docs
   contracts; backend suite не сокращается. Runtime/deploy в этот срез не входят.
-- Todo: воспроизвести и исправить Grade first-open reset и скролл последней
-  должности (#88) на текущем shared Select, без переноса старых bundles.
+- Doing: Grade first-open reset воспроизведён на stage: lazy chunk импортирует
+  employee-detail.js без query и перемонтирует карточку, открытую с ?v=68.
+  Подготовлены strict entry signatures и build guard запрета entry imports;
+  graph имел ту же структуру зависимости. Проверка/выкладка отдельно.
+- Todo: скролл последней должности (#88) на текущем shared Select,
+  без переноса старых bundles.
 - Todo: перенести source/tests импорта emoji-наборов #85 с безопасным fallback.
 - Todo: read-only audit справочника должностей перед #8; фиксированные 22 defaults
   и массовую замену ссылок автоматически не применять.
