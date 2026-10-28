@@ -43,6 +43,7 @@ import { TelegramRichTextEditor } from "@/components/ui/telegram-rich-text-edito
 import { TelegramMessageTools, type TelegramCustomEmoji, type TelegramTemplateTag } from "@/components/ui/telegram-message-tools";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
+import { EmployeeRecords, EmployeeActivity } from "./record-lists";
 
 type DetailItem = {
     id: string | number;
@@ -529,49 +530,9 @@ export function ManualBotMessageSection(props: {
     );
 }
 
-export function ManualBotMessageHistorySection(props: { items: ManualBotMessageHistoryItem[] }) {
-    const items = Array.isArray(props.items) ? props.items : [];
-
-    return (
-        <PageSection title="История ручных сообщений" counter={items.length}>
-                {items.length ? (
-                    <PageSectionRows>
-                        {items.map(function (item) {
-                            const status = String(item.status || "").trim();
-                            const isFailed = status === "failed";
-                            const timestamp = item.sent_at || item.created_at || "";
-                            const senderLabel = item.sender_label || (
-                                item.sender_account_id ? "Account #" + item.sender_account_id : "Отправитель не указан"
-                            );
-                            return (
-                                <div className="employee-manual-message-row" key={item.id}>
-                                    <div className="employee-manual-message-header">
-                                        <div className="employee-manual-message-meta">
-                                            <span>{formatHistoryDate(timestamp)}</span>
-                                            <span>{senderLabel}</span>
-                                        </div>
-                                        <Badge variant={isFailed ? "destructive" : "secondary"}>
-                                            {isFailed ? "failed" : status || "sent"}
-                                        </Badge>
-                                    </div>
-                                    <p className="employee-manual-message-text">
-                                        {item.message_text || "Без текста сообщения"}
-                                    </p>
-                                    {isFailed && item.error_text ? (
-                                        <p className="employee-manual-message-error">{item.error_text}</p>
-                                    ) : null}
-                                </div>
-                            );
-                        })}
-                    </PageSectionRows>
-                ) : (
-                    <PageSectionEmpty icon={<Send />} title="Ручных сообщений нет" />
-                )}
-        </PageSection>
-    );
-}
-
 function HrNotesSection(props: {
+    employeeId: number;
+    onDeleted?: (text: string) => void;
     value: string;
     items: HrNoteHistoryItem[];
     onChange: (event: React.ChangeEvent<HTMLTextAreaElement>) => void;
@@ -579,7 +540,7 @@ function HrNotesSection(props: {
     const items = Array.isArray(props.items) ? props.items : [];
 
     return (
-        <PageSection title="HR-заметки" counter={items.length} contentClassName="gap-4">
+        <EmployeeRecords employeeId={props.employeeId} kind="hr-notes" refreshKey={items.map(item => item.id).join(",")} onDeleted={props.onDeleted}>
                     <Field>
                         <FieldLabel>Новая заметка</FieldLabel>
                         <Textarea
@@ -590,31 +551,7 @@ function HrNotesSection(props: {
                             placeholder="Добавьте внутреннюю заметку"
                         />
                     </Field>
-                    {items.length ? (
-                        <PageSectionRows>
-                            {items.map(function (item) {
-                                const authorLabel = item.author_label || (
-                                    item.author_account_id ? "Account #" + item.author_account_id : "Автор не указан"
-                                );
-                                return (
-                                    <div className="employee-manual-message-row" key={item.id}>
-                                        <div className="employee-manual-message-header">
-                                            <div className="employee-manual-message-meta">
-                                                <span>{formatHistoryDate(item.created_at)}</span>
-                                                <span>{authorLabel}</span>
-                                            </div>
-                                        </div>
-                                        <p className="employee-manual-message-text">
-                                            {item.note_text || "Без текста заметки"}
-                                        </p>
-                                    </div>
-                                );
-                            })}
-                        </PageSectionRows>
-                    ) : (
-                        <PageSectionEmpty icon={<FileText />} title="Заметок нет" />
-                    )}
-        </PageSection>
+        </EmployeeRecords>
     );
 }
 
@@ -910,6 +847,8 @@ export function EmployeeProfileSection(props: any) {
 
             {view === "overview" ? <>
             <HrNotesSection
+                employeeId={Number(form.id)}
+                onDeleted={props.onHrNoteDeleted}
                 value={hrNoteDraft}
                 items={hrNotesHistory}
                 onChange={onHrNoteDraftChange}
@@ -1299,12 +1238,13 @@ export function EmployeeOperationsSection(props: any) {
             </> : null}
             </PageRow> : null}
 
-            {(view === "all" || view === "history" || view === "messages") ? <PageRow columns={view === "all" ? 3 : 1}>
+            {view === "history" ? <EmployeeActivity employeeId={Number(form.id)} active={props.activeTab === "history"} /> : null}
+            {(view === "all" || view === "messages") ? <PageRow columns={view === "all" ? 3 : 1}>
             {(view === "all" || view === "history") ? (
             <AssignmentHistorySection items={assignmentHistory} />
             ) : null}
 
-            {(view === "all" || view === "messages") ? <ManualBotMessageHistorySection items={manualBotMessageHistory} /> : null}
+            {(view === "all" || view === "messages") ? <EmployeeRecords employeeId={Number(form.id)} kind="bot-messages" refreshKey={(manualBotMessageHistory || []).map((item: ManualBotMessageHistoryItem) => item.id).join(",")} /> : null}
 
             {(view === "all" || view === "history") ? <PageSection title="История ручных запусков" counter={manualLaunchItems.length}>
                     <ScenarioList items={manualLaunchItems} />

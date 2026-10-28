@@ -472,10 +472,12 @@ class EmployeeManualBotMessage(Base):
     error_text: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)
     sent_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    deleted_by_account_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 
 
 class EmployeeHrNote(Base):
-    """Append-only история HR-заметок по карточке сотрудника."""
+    """HR-заметки с сохраняемым фактом удаления и очисткой текста."""
 
     __tablename__ = "employee_hr_notes"
 
@@ -484,6 +486,8 @@ class EmployeeHrNote(Base):
     author_account_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
     note_text: Mapped[str] = mapped_column(String(2048), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    deleted_by_account_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 
 
 class Position(Base):

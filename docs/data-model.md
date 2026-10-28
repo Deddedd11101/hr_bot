@@ -228,10 +228,24 @@ status, last_error, claimed_at UTC), `grade_development_deliveries`
 
 ### `employee_hr_notes`
 
-- Таблица хранит append-only историю непустых изменений HR-заметок из карточки.
+- Таблица хранит историю непустых изменений HR-заметок из карточки. Удаление
+  оставляет tombstone: nullable deleted_at/deleted_by_account_id, очищенный note_text.
 - `employees.notes` остается текущим editable значением для совместимости с существующим UI/API.
 - Повторное сохранение того же текста не создает дубль history row.
 - `author_account_id` best-effort и nullable: JSON/API path передает текущий admin account, старые или системные paths могут оставить пустым.
+
+`employee_manual_bot_messages` также имеет nullable deleted_at/deleted_by_account_id;
+удаление очищает message_text/error_text, сохраняя status/created_at/sent_at.
+Обе normal-list сериализации исключают tombstones, общий activity показывает
+redacted исходное событие и отдельный факт удаления с actor/time. SQLite startup
+добавляет поля без rebuild/backfill; старые строки остаются видимыми. Backup
+перед выкладкой обязателен; старые резервные копии могут содержать исходный текст.
+Откат на старый runtime не восстановит удалённый текст, но может показать пустые
+старые строки вместо исключения tombstones.
+
+Revision legacy notes вычисляется из ID/deleted_at истории, не хранит текст или
+его digest и не зависит от session secret. Сохранение/удаление projection
+сериализуются SQLite write-lock; stale профиль не возвращает удалённую заметку.
 
 ### `employee_messenger_accounts`
 

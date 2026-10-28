@@ -14,6 +14,36 @@ related:
 source_of_truth: true
 ---
 
+## Списки и история карточки
+
+Все endpoints ниже требуют текущую authenticated admin-сессию и существующую
+карточку. Чужой record ID в URL другой карточки возвращает 404.
+
+- `GET /api/employees/{employee_id}/hr-notes`: `page>=1`, `page_size=1..100`
+  (default 10), `{items,total,page,page_size,pages}`. Новые заметки сверху,
+  deleted rows исключены, timestamps UTC с offset. Пустой список: pages=0.
+- `GET /api/employees/{employee_id}/bot-messages`: тот же контракт, default
+  page_size=20. Это история ручных отправок, не полная переписка Telegram.
+- `DELETE /api/employees/{employee_id}/hr-notes/{note_id}`: `{success:true}`;
+  текст очищается, deleted_at/deleted_by_account_id остаются. Повтор идемпотентен.
+- `DELETE /api/employees/{employee_id}/bot-messages/{message_id}`: тот же ответ;
+  очищаются message_text/error_text, статус и даты отправки сохраняются.
+  Telegram API удаления не вызывается.
+- `GET /api/employees/{employee_id}/activity`: page/page_size (default20),
+  `kind` из возвращаемого `kinds`; paginated items
+  `{id,occurred_at,kind,label,detail,actor}`. Поля actor/detail nullable.
+  История складывается из сохранённых фактов, не доказывает доставку по одному
+  processed_at; отсутствующие старые события не реконструируются.
+
+`files[]` employee detail дополнен `created_at` UTC, `file_size`, `mime_type`;
+старые поля сохранены. Семантические слоты и ownership документов не изменены.
+
+Detail `employee.notes_revision` — opaque revision по metadata истории, без текста
+и session secret. При сохранении профиля клиент передаёт expected_notes_revision.
+Stale revision игнорирует только legacy notes, не остальные поля; после удаления
+отсутствие revision также не позволяет воскресить старую projection. Явный
+непустой hr_note_draft остаётся новым действием и создаёт новую заметку.
+
 ### Исправления Grade
 
 - `GET /api/grade-assessments/{assessment_id}` дополнительно возвращает `edit_token` для активной final-оценки, `updated_at` и при наличии `correction_count`; token вычисляется по актуальному snapshot и не сохраняется внутрь него.
