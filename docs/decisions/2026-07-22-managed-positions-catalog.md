@@ -31,11 +31,8 @@ source_of_truth: true
 2. Оставить `employees.desired_position` строковым полем на этом этапе.
 3. Считать `scenario.role_scope`, `bot_menu_set.role_scope` и `mass_*_action.target_role_scope` значением `positions.slug`.
 4. Матчинг employee к scope делать через общий normalizer `title/slug -> canonical scope key`.
-5. При startup seed-ить default catalog:
-   - `designer` / `Дизайнер`
-   - `project_manager` / `Project manager`
-   - `analyst` / `Аналитик`
-6. Legacy строковые `desired_position` автоматически подхватывать в catalog, а не терять и не переписывать destructive migration.
+5. При startup seed-ить только согласованный канонический catalog из `app/positions.py::CANONICAL_POSITION_TITLES`.
+6. Legacy строковые `desired_position` не терять и не переписывать при startup: их drift сначала показывается read-only audit, а замены выполняются только отдельным mapping tool после backup.
 
 # Почему не сделали foreign key сразу
 
@@ -60,7 +57,7 @@ source_of_truth: true
 
 - `employees.desired_position` пока не нормализован до FK;
 - integrity между employee row и catalog остается application-level, а не schema-level;
-- если появятся дубликаты похожих должностей, cleanup придется делать product/admin слоем.
+- если появятся дубликаты похожих должностей, cleanup требует product/admin mapping, read-only отчета и backup-backed apply; startup не должен угадывать смысл должности.
 
 # Следующий логичный шаг
 
