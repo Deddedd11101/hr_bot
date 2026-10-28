@@ -33,6 +33,12 @@ related:
 source_of_truth: true
 ---
 
+Incident удалённых defaults: подтверждён повторный startup seed при отсутствии
+сценария/шага; first_day восстановлен на stage ID66, first_week67, mid_probation68,
+end_probation69, mid_feedback70. Готовится bootstrap-once guard; пользователь
+разрешил обратимое отключение автозапуска только восстановленных заводских
+шаблонов, без удаления истории и без изменения пользовательской адаптации.
+
 Employee-card maintenance PR #134 выложен на `f2985d6`: постраничные HR-заметки/ручные сообщения,
 удаление из админки с redacted tombstones без Telegram deletion, typed activity,
 полный файловый список со слотами и XLSX, пояснения/preview цикла развития.

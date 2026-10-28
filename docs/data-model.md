@@ -27,6 +27,14 @@ draft с `archived_at IS NULL`. Startup добавляет колонку и о�
 
 # Модель данных
 
+`scenario_bootstrap_state`: singleton id=1, initialized_at UTC, mode=fresh/existing.
+Создаётся additive metadata/startup compatibility без rebuild. Первый bootstrap
+пустого каталога без бизнес-данных атомарно создаёт заводские сценарии и marker; существующий
+каталог только принимает marker без добавления/исправления шаблонов. Удаление
+сценариев/шагов (включая всего каталога) marker не удаляет. Web/worker используют
+SQLite BEGIN IMMEDIATE для сериализации. Marker не является выключателем runtime
+и не отменяет ранее отправленные сообщения/запланированные явные запросы.
+
 Grade development добавляет три таблицы без изменения существующих оценок:
 `grade_development_cycles` (UNIQUE employee_id, assessment_id, revision,
 anchor_date, enabled, три scenario key), `grade_development_milestones`
