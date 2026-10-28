@@ -41,26 +41,28 @@ source_of_truth: true
   выкладка и stage-приёмка ещё не выполнялись.
 - Doing: скролл последней должности (#88) перенесён минимальным padding только
   для role select карточки; source пересобран на актуальном stage/entry fix.
-  Shared Select и сохранение должности не меняются; stage приёмка отдельно.
-- Doing: source/tests импорта emoji-наборов #85 перенесены на текущий stage:
+  #140 интегрирован, CI/local browser passed. Shared Select и сохранение должности
+  не меняются; deploy/stage приёмка отдельно.
+- Doing (код интегрирован, deploy pending): #142 заменил #85 на текущем stage:
   admin-only API, idempotency, inactive preservation, rich editor fallback.
-  Старые bundles не копируются; проверка и выкладка отдельным PR.
-- Todo: read-only audit справочника должностей перед #8; фиксированные 22 defaults
-  и массовую замену ссылок автоматически не применять.
+  CI 510 tests, frontend/docs/assets passed. Local stub browser import/editor
+  passed, реальный getStickerSet/send на stage не проверен.
+- Todo: минимальный replacement #8 вместо fixed canonical seed. Read-only
+  settings API 28.10: 25 должностей, 2 inactive, точных дубликатов title после
+  trim/case/whitespace normalization нет. Ссылки/каталог не менялись; 22 defaults
+  и массовую замену автоматически не применять.
 - Todo: обновить lifecycle-план #11 под текущий OTP/identity; retention и очистка
   персональных данных остаются отдельным согласованием.
 - Todo: единый upload limit/проверка содержимого и измерения scheduler/SQL/bundle
   перед оптимизацией; не снимать delivery lock ради скорости без измерений.
-- PR cleanup: #128 заменён #129/#131/#132, mock #112 заменён production #113;
-  #64 — альтернативный старый OTP, выбран #67. Для #98 проверить актуальный
-  concurrency regression: общий delivery lock уже есть. У #44 runtime-коммиты
-  вошли в stage, остались docs; сверить с новым файловым workspace. #89 содержит
-  нужную коррекцию historical OTP-журнала, не новую ротацию секретов.
+- Todo: отдельный dependency patch по npm audit: 2 high (Vite и source-map-js).
+  Версии автоматически не обновлялись; отделить build/dev exposure от live API.
 
-Закрыты без удаления веток: #128/#112/#64 как superseded, #88 заменён #140
-(интегрирован, CI passed, local last-option selection passed, deploy pending).
-Текущий scheduler общий lock подтверждён исходниками; добавлены regressions
-сериализации и освобождения после исключения перед закрытием #98.
+PR cleanup завершён для 8 старых PR без удаления веток: #128/#112/#64
+superseded; #88 заменён #140; #85 заменён #142; #98 покрыт текущим lock и двумя
+regressions #141; #89 перенесён #141; runtime #44 уже в ancestry, его docs
+уточнения присутствуют в актуальных контрактах. Открыты из исходного списка #8
+и draft #11 с комментариями о границах дальнейшей работы.
 
 - Incident 28.10: startup seed восстанавливал удалённые заводские first_day,
   first_week/mid_probation/end_probation и их шаги. Live first_day ID66,
