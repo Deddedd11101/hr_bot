@@ -34,9 +34,11 @@ source_of_truth: true
 ---
 
 Стабилизация 28.10: аудит 10 открытых HRBot PR отделил superseded ветки от
-неперенесённых функций. Первый срез добавляет frontend/docs/assets guards в CI,
-не меняет runtime и не требует deploy. Актуальная очередь в [[backlog]];
-старые generated assets и альтернативную OTP-модель целиком не интегрировать.
+неперенесённых функций. #138 интегрирован: frontend/docs/assets CI guards.
+#139/#140 интегрированы с зелёными checks/frontend: lazy entry remount и скролл
+должностей, проверены на изолированной локальной БД. На сервер они ещё не выложены;
+deployed application остаётся `4a84001` инцидентного фикса. Закрыты устаревшие
+#128/#112/#64 и заменённый #88, ветки сохранены. Актуальная очередь в [[backlog]].
 
 Причина Grade first-open подтверждена: lazy chunk импортировал page entrypoint
 без query, повторно выполняя bootstrap при исходном script с cache version.
