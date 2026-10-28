@@ -25,6 +25,29 @@ source_of_truth: true
 
 # Бэклог HR Bot
 
+## Стабилизация после аудита PR (28.10.2026)
+
+Это актуальная очередь; старые поэтапные записи ниже не означают повторной
+постановки уже выложенного кода. Код / deploy / пользовательская приёмка
+учитываются отдельно.
+
+- Doing: PR CI — frontend typecheck/build, проверка generated assets и docs
+  contracts; backend suite не сокращается. Runtime/deploy в этот срез не входят.
+- Todo: воспроизвести и исправить Grade first-open reset и скролл последней
+  должности (#88) на текущем shared Select, без переноса старых bundles.
+- Todo: перенести source/tests импорта emoji-наборов #85 с безопасным fallback.
+- Todo: read-only audit справочника должностей перед #8; фиксированные 22 defaults
+  и массовую замену ссылок автоматически не применять.
+- Todo: обновить lifecycle-план #11 под текущий OTP/identity; retention и очистка
+  персональных данных остаются отдельным согласованием.
+- Todo: единый upload limit/проверка содержимого и измерения scheduler/SQL/bundle
+  перед оптимизацией; не снимать delivery lock ради скорости без измерений.
+- PR cleanup: #128 заменён #129/#131/#132, mock #112 заменён production #113;
+  #64 — альтернативный старый OTP, выбран #67. Для #98 проверить актуальный
+  concurrency regression: общий delivery lock уже есть. У #44 runtime-коммиты
+  вошли в stage, остались docs; сверить с новым файловым workspace. #89 содержит
+  нужную коррекцию historical OTP-журнала, не новую ротацию секретов.
+
 - Incident 28.10: startup seed восстанавливал удалённые заводские first_day,
   first_week/mid_probation/end_probation и их шаги. Live first_day ID66,
   steps517–526, сообщения у №78/80 совпали с заводским текстом/ключами.

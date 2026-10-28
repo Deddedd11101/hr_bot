@@ -42,6 +42,7 @@ source_of_truth: true
 - устанавливает `requirements.txt`;
 - компилирует `app/`;
 - запускает `ruff check --select F821 app tests`;
+- проверяет документационные контракты `python tools/check_docs_contracts.py`;
 - запускает весь набор тестов `python -m unittest discover -s tests -t . -v`
   (с 2026-09-20; раньше только три smoke-модуля, из-за чего P0-поведение бота,
   планировщик и Grade оставались вне CI);
@@ -49,6 +50,13 @@ source_of_truth: true
   - `app.config`;
   - `app.main`;
   - `app.bot_runner`.
+
+Отдельный параллельный job `frontend` использует Node.js 22 и npm lockfile:
+`npm ci`, `npm run typecheck`, `npm run build`. После сборки проверяется весь
+`app/static/workspace_v2`, включая untracked chunks: source и committed assets
+должны совпадать. Это PR/main CI, не deploy; backend job `checks` и полный suite
+сохраняются. Для merge должны быть зелёными оба job, старый required check
+`checks` не переименован. Branch protection на GitHub этот YAML сам не меняет.
 
 ### Workflow Deploy Stage
 

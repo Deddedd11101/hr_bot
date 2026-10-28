@@ -33,6 +33,11 @@ related:
 source_of_truth: true
 ---
 
+Стабилизация 28.10: аудит 10 открытых HRBot PR отделил superseded ветки от
+неперенесённых функций. Первый срез добавляет frontend/docs/assets guards в CI,
+не меняет runtime и не требует deploy. Актуальная очередь в [[backlog]];
+старые generated assets и альтернативную OTP-модель целиком не интегрировать.
+
 Incident удалённых defaults: подтверждён повторный startup seed при отсутствии
 сценария/шага; first_day восстановлен на stage ID66, first_week67, mid_probation68,
 end_probation69, mid_feedback70. PR #136 выложен на `4a84001`: bootstrap-once
