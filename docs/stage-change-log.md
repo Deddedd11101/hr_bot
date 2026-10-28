@@ -13,6 +13,36 @@ source_of_truth: true
 
 # Журнал изменений тестового стенда
 
+## 28.10.2026 — списки и история карточки
+
+- PR #134, feature `6a18981`, выложен на `f2985d62efaa973ed9f8eee9ca889d384f94784a`.
+  CI `40678799826` success (497 tests), Deploy Stage `40679022610` success,
+  Diagnostics `40679347806` success, 0 failing checks. Tracked worktree clean,
+  web/worker/WireGuard/Caddy active, HTTPS employees/workspace/grades 303.
+  Backup проверен: `backups/hr_bot.before-deploy.20261028-112032.db`;
+  scenario configuration fingerprint unchanged.
+- Notes/messages: страницы 10/20, authenticated employee-bound удаления,
+  redacted tombstones с actor/time без Telegram I/O. Metadata-only notes_revision
+  защищает от stale projection и не зависит от session secret. История показывает
+  сохранённые факты таблицей/фильтром, не приписывает доставку processed request.
+- Файлы: полный список inbound/outbound/слотов и ссылок с категориями/поиском,
+  результаты сценариев и XLSX ОС; старые формы загрузки сохранены. Storage/runtime
+  форматы и ограничения не расширялись. Grade cycle: preview календарных месяцев,
+  явные причины disabled Save, ручные даты при первой настройке и смысл переключателя.
+- Локально: full discovery, 11 focused maintenance, regression/typecheck/build/
+  Ruff/compileall/docs/diff passed. Browser fixture: вторые страницы notes/messages,
+  подтверждение удаления с отменой, таблица истории, inbound план и ИПР-ссылка,
+  цикл preview и mobile root overflow check пройдены. Реальных отправок не было.
+- Stage №70 read-only: 14 заметок / две страницы, delete controls, сообщения,
+  файлы, activity и цикл preview проверены; настройка закрыта через «Отмена».
+  Реальные заметки/сообщения/файлы/расписания не менялись. Screenshots:
+  `D:\HRBot\outputs\employee-files-stage-20261028.png`,
+  `D:\HRBot\outputs\employee-history-stage-20261028.png`.
+  Пользовательская приёмка удаления на реальных записях остаётся открытой.
+- Наблюдение: первое lazy-открытие Grade сбросило вкладку на Обзор; повторное
+  открытие работает. Аналогичное наблюдение было до этого пакета локально;
+  причина не установлена, отдельная диагностика остаётся в backlog.
+
 ## 27.10.2026 — цикл ИПР и годового ревью
 
 - PR #132 выложен на `99e263c373d420503588c3f0f9c35f10ebe5d650`: Deploy Stage

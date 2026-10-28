@@ -25,10 +25,13 @@ source_of_truth: true
 
 # Бэклог HR Bot
 
-- Employee-card maintenance в работе: pagination/delete HR-заметок и ручных
-  сообщений без Telegram удаления; таблица activity; полный файловый список
-  и clarity цикла развития. Не менять реальные записи при smoke. Проверки,
-  выкладку и пользовательскую приёмку фиксировать отдельно.
+- Employee-card maintenance PR #134 выложен (`f2985d6`): pagination/delete
+  заметок/ручных сообщений, typed activity, полный файловый список и cycle clarity.
+  CI 497 tests / Deploy / Diagnostics passed, stage №70 read-only smoke выполнен.
+  Пользовательская приёмка реального удаления открыта.
+- Диагностировать first-open Grade reset: при первом lazy-открытии вкладки на
+  №70 произошёл возврат в Обзор, повторный вход работает. Аналогичное наблюдение
+  было в локальном UI до maintenance; причина ещё не установлена.
 - File storage follow-up: web uploads пока не имеют единого application-level
   byte limit/content validation/AV; не обещать поддержку и безопасность любого
   формата. Telegram inbound ограничен 20 MiB, document/photo/video/video_note,
