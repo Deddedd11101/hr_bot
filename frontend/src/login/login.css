@@ -1,0 +1,9 @@
+.login-matrix {
+  --login-rain-color: #166534;
+  --login-rain-glow: #16a34a;
+}
+
+.dark .login-matrix {
+  --login-rain-color: #4ade80;
+  --login-rain-glow: #86efac;
+}

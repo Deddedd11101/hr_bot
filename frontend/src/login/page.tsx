@@ -5,6 +5,16 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { Matrix } from "./matrix";
+
+const matrixOptions = {
+  characters: "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
+  color: "var(--login-rain-color)",
+  glowColor: "var(--login-rain-glow)",
+  opacity: 0.75,
+  speed: 0.7,
+  pointer: true,
+};
 
 export type LoginPageProps = {
   errorMessage?: string;
@@ -12,8 +22,11 @@ export type LoginPageProps = {
 
 export function LoginPage({ errorMessage = "" }: LoginPageProps) {
   return (
-    <main className="grid min-h-screen place-items-center bg-background px-4 py-8 text-foreground">
-      <Card className="w-full max-w-[420px] border border-border/80 bg-card shadow-none ring-0">
+    <main className="relative isolate grid min-h-screen place-items-center overflow-hidden bg-background px-4 py-8 text-foreground">
+      <div className="login-matrix pointer-events-none absolute inset-0" aria-hidden="true">
+        <Matrix options={matrixOptions} />
+      </div>
+      <Card className="relative z-10 w-full max-w-[420px] border border-border/80 bg-card shadow-lg ring-0">
         <CardHeader className="border-b border-border/70 pb-4">
           <CardTitle className="text-2xl font-semibold tracking-tight">Вход</CardTitle>
         </CardHeader>
