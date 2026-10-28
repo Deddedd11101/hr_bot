@@ -33,11 +33,13 @@ related:
 source_of_truth: true
 ---
 
-Employee-card maintenance подготовлен: постраничные HR-заметки/ручные сообщения,
+Employee-card maintenance PR #134 выложен на `f2985d6`: постраничные HR-заметки/ручные сообщения,
 удаление из админки с redacted tombstones без Telegram deletion, typed activity,
 полный файловый список со слотами и XLSX, пояснения/preview цикла развития.
-Существующие документы, оценки и расписания не изменяются. Выкладка и приёмка
-будут зафиксированы в [[stage-change-log]] после проверок.
+CI 497 tests / Deploy / Diagnostics passed; stage №70 read-only smoke выполнен,
+реальные документы, заметки, сообщения, оценки и расписания не менялись.
+Приёмка реального удаления открыта; наблюдение first-open Grade reset выделено
+отдельно. Подробности в [[stage-change-log]].
 
 Grade cycle package выложен PR #132 на `99e263c` (Deploy `40523693000` success): explicit включение напоминаний и сценариев
 ИПР 6/12 месяцев, годовая новая оценка, ближайшая дата/остаток дней в карточке.
