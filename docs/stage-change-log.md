@@ -13,6 +13,37 @@ source_of_truth: true
 
 # Журнал изменений тестового стенда
 
+## 29.10.2026 — пакет стабилизации и emoji import
+
+- По разрешению пользователя выложен накопительный stage
+  `8651f1687a83580cc3c3c0fa63992f55ff5818c9`, PR #138–143.
+  CI `40745110398` success (checks/frontend); emoji CI `40744565757`
+  success, 510 tests. Deploy Stage `40777724406` success;
+  Diagnostics `40777991680` success, 0 failing checks.
+- Выполнено около 01:10 МСК 29.10 (server log 22:10 UTC 28.10).
+  SQLite backup проверен, scenario JSON snapshot создан; точное имя backup
+  частично маскируется GitHub Actions. Scenario configuration fingerprint
+  unchanged. Tracked server tree clean; web/worker/WireGuard/Caddy active,
+  HTTPS employees/workspace/grades 303; свежих Telegram/network errors нет,
+  bot identity и одинаковые web/worker token env подтверждены без вывода token.
+- Strict entry signatures и build invariant устраняют повторный bootstrap
+  страницы при загрузке Grade/graph. Сохранён lazy loading. Перенесён padding
+  последнего пункта должности без изменения shared Select/сохранения карточки.
+  Импорт emoji доступен admin по HTTPS addemoji URL; повторный импорт сохраняет
+  inactive, редактор передаёт непустой fallback. Schema/секреты не менялись.
+- Browser read-only smoke: №70 первый клик Grade оставляет selected=true,
+  ошибок console нет; scenario16 первый клик «Схема» оставляет view=graph,
+  показаны 8 nodes / 7 edges; последний option должности целиком внутри popup,
+  закрыт Escape без выбора/Save. На settings видна кнопка импорта набора.
+  Screenshots: `D:\HRBot\outputs\grade-first-open-stage-20261029.png`,
+  `D:\HRBot\outputs\scenario-first-graph-stage-20261029.png`.
+- Реальные оценки, должности, меню, расписания и Telegram-привязки оператором
+  не менялись; сценарии/сообщения и импорт emoji на stage не запускались.
+  Реальный getStickerSet и Telegram send permission/доставка — открытая приёмка.
+- В backlog и PR #8 добавлена сквозная сверка catalog/card/scenario targeting
+  и trigger/audience matching, aliases/legacy/rename/inactive и portability.
+  В этой выкладке нормализация справочника и массовые замены не выполнялись.
+
 ## 28.10.2026 — остановка восстановленных заводских сценариев
 
 - Причина: startup seed дополнял каталог отсутствующими defaults при каждом

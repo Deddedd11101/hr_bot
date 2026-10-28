@@ -36,13 +36,16 @@ source_of_truth: true
 Emoji-set import #142 интегрирован (feature `0bbce02`, merge `9ae441d`): admin
 API/settings UI, idempotency/inactive preservation, rich editor fallback.
 CI `40744565757` success: 510 tests и frontend guards; local stub browser import
-и вставка fallback passed. Schema не меняется, deploy/реальный Telegram pending.
+и вставка fallback passed. Выложено `8651f16`, settings control проверен;
+schema не меняется, реальный getStickerSet/send остаётся открытой приёмкой.
 
 Стабилизация 28.10: аудит 10 открытых HRBot PR отделил superseded ветки от
 неперенесённых функций. #138 интегрирован: frontend/docs/assets CI guards.
 #139/#140 интегрированы с зелёными checks/frontend: lazy entry remount и скролл
-должностей, проверены на изолированной локальной БД. На сервер они ещё не выложены;
-Последний подтверждённый deployed application — `4a84001` инцидентного фикса.
+должностей, проверены на изолированной локальной БД. Выложены 29.10 на
+`8651f1687a83580cc3c3c0fa63992f55ff5818c9`, Deploy `40777724406` и Diagnostics
+`40777991680` success. Stage read-only: первый Grade click, graph16 и последний
+option должности checked, реальные записи/расписания не менялись.
 #141 закрепил serialization tests и исправил historical OTP record (no-op,
 не ротация). Закрыты 8 из 10 старых PR, ветки сохранены; открыты #8 и draft #11.
 Read-only stage catalog: 25 должностей, 2 inactive, точных title-дублей не найдено.
