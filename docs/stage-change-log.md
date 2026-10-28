@@ -13,6 +13,39 @@ source_of_truth: true
 
 # Журнал изменений тестового стенда
 
+## 28.10.2026 — остановка восстановленных заводских сценариев
+
+- Причина: startup seed дополнял каталог отсутствующими defaults при каждом
+  init_db; удалённые сценарии/шаги возвращались и generic scheduler запускал их
+  по first_workday. Это не пользовательский план адаптации ID27.
+- PR #136, feature `662c5c1`, deployed `4a84001aeeeede218f6eb4b76a69a232c1569f91`.
+  CI `40683766095` success, 504 tests; Deploy `40683987231` success;
+  Diagnostics `40684279727` success, 0 failing checks. Web/worker/WireGuard/Caddy
+  active, tracked tree clean, HTTPS employees/workspace/grades 303, свежих
+  Telegram/network exceptions нет. Worker перезапущен до 15:00 МСК.
+- Bootstrap теперь однократный: существующий каталог или business rows получают
+  marker без дописывания defaults; пустой новый экземпляр инициализируется атомарно.
+  Удалённые позже сценарии/шаги не восстанавливаются. Auto job перечитывает trigger;
+  explicit ручные запуски сохранены. Независимый targeted review без блокеров.
+- По разрешению пользователя изменён только trigger ID66 first_day, ID67 first_week,
+  ID68 mid_probation, ID69 end_probation на manual_only. ID70 mid_feedback уже был
+  manual_only и не менялся. Browser API comparison подтвердил неизменность всех
+  root steps/graph и прочих настроек этих пяти сценариев. Истории не удалялись,
+  пользовательские сценарии/индивидуальные планы не менялись.
+- До изменения trigger сохранён private config snapshot
+  `D:\HRBot\outputs\legacy-scenarios-before-disable-20261028.json`.
+  Возврат возможен точечным восстановлением trigger из него, без отката всей БД;
+  не включать нежелательные defaults без отдельного решения пользователя.
+  Перед deploy создан/проверен DB backup
+  `backups/hr_bot.before-deploy.20261028-115915.db` и scenario JSON snapshot;
+  они уже содержат manual_only. Fingerprint сценариев при deploy unchanged.
+- Локально 16 focused bootstrap/scheduler tests, full discovery, compileall,
+  Ruff F821, docs/diff passed; CI повторил весь suite на последнем SHA.
+  После 15:00 МСК read-only activity №78/80: последний заводской event accesses_14,
+  structure_doc_15 отсутствует. Реальных тестовых отправок не было; подтверждение
+  отсутствия лишних сообщений самими получателями пока не получено.
+  UI proof: `D:\HRBot\outputs\legacy-first-day-disabled-stage-20261028.png`.
+
 ## 28.10.2026 — списки и история карточки
 
 - PR #134, feature `6a18981`, выложен на `f2985d62efaa973ed9f8eee9ca889d384f94784a`.

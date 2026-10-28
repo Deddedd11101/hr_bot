@@ -35,9 +35,13 @@ source_of_truth: true
 
 Incident удалённых defaults: подтверждён повторный startup seed при отсутствии
 сценария/шага; first_day восстановлен на stage ID66, first_week67, mid_probation68,
-end_probation69, mid_feedback70. Готовится bootstrap-once guard; пользователь
-разрешил обратимое отключение автозапуска только восстановленных заводских
-шаблонов, без удаления истории и без изменения пользовательской адаптации.
+end_probation69, mid_feedback70. PR #136 выложен на `4a84001`: bootstrap-once
+guard и revalidation auto jobs; CI 504 tests / Deploy / Diagnostics passed.
+По разрешению пользователя ID66–69 переведены в manual_only; ID70 уже был
+manual_only. Исходные настройки сохранены локально, шаги/графы не изменены,
+история и пользовательская адаптация не удалялись. После 15:00 МСК в истории
+№78/80 нет следующего заводского structure_doc_15; проверка Telegram получателями
+остаётся открытой. Подробности и backup в [[stage-change-log]].
 
 Employee-card maintenance PR #134 выложен на `f2985d6`: постраничные HR-заметки/ручные сообщения,
 удаление из админки с redacted tombstones без Telegram deletion, typed activity,
