@@ -33,19 +33,22 @@ related:
 source_of_truth: true
 ---
 
-Web upload hardening: подготовлен WEB_UPLOAD_MAX_BYTES (50 МиБ), bounded read,
+Web upload hardening: PR #149 выложен на 2a8152f, WEB_UPLOAD_MAX_BYTES (50 МиБ), bounded read,
 413 до сохранения/замены и attachment/nosniff downloads. Schema/старые файлы не
-меняются, Telegram лимит прежний. CI/deploy отдельно; content/AV/upstream limits
+меняются, Telegram лимит прежний. CI/Deploy passed; content/AV/upstream limits
 не входят в этот срез.
 
-Position matching: готовится backend-срез общего catalog resolver для runtime,
+Position matching: PR #148 выложен на 79682cb, общий catalog resolver для runtime,
 menu/adaptation и SQL audiences, duplicate-title guard и startup preservation.
-Schema/данные не мигрируются. Нужен read-only stage preview до интеграции;
-автоматических сокращений/массовых mapping нет; [[features/position-directory]].
+Schema/данные не мигрируются. Read-only preview: 25 позиций, 2 inactive,
+38 сотрудников, 35 сценариев/опросов; изменений текущего role matching нет.
+Каталог после restart идентичен. По подтверждению пользователя фильтры ИПР
+51/65 расширены на три эквивалентных PM slug; остальные настройки и шаги
+не менялись, ручных запусков нет; [[features/position-directory]].
 
-Dependency hardening: подготовлен patch-only lockfile update Vite 7.3.7 /
+Dependency hardening: PR #147 выложен на 130ec1d, patch-only lockfile update Vite 7.3.7 /
 source-map-js 1.2.2. npm audit 0 vulnerabilities, typecheck/build passed,
-generated assets unchanged. Runtime/БД не меняются; CI/deploy pending.
+generated assets unchanged. CI/Deploy/Diagnostics passed; [[stage-change-log]].
 
 Matrix login background PR #145 выложен на `631811e` (29.10): CI,
 Deploy `40780168490` и Diagnostics `40780452037` success. Публичная /login

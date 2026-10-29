@@ -52,7 +52,7 @@ PR #145 Matrix login background: выложено `631811e`, Deploy/Diagnostics 
   CI 510 tests, frontend/docs/assets passed. Local stub browser import/editor
   passed; выложено `8651f16`, settings control виден, реальный getStickerSet/send
   на stage не проверен. Deploy/Diagnostics success, [[stage-change-log]].
-- Todo: минимальный replacement #8 вместо fixed canonical seed. Read-only
+- Doing: минимальный replacement #8 вместо fixed canonical seed. Read-only
   settings API 28.10: 25 должностей, 2 inactive, точных дубликатов title после
   trim/case/whitespace normalization нет. Ссылки/каталог не менялись; 22 defaults
   и массовую замену автоматически не применять.
@@ -64,23 +64,28 @@ PR #145 Matrix login background: выложено `631811e`, Deploy/Diagnostics 
   строки по нестрогому сходству без preview и подтверждённого mapping; история
   запусков и назначений сохраняется. Одинаковые видимые labels без согласованного
   matching-контракта не считаются исправлением.
-  Подготовлен первый backend-срез общего catalog matching, duplicate title guard,
+  PR #148 выложен на 79682cb: общий catalog matching, duplicate title guard,
   startup preservation и mode=ro audit tool; [[features/position-directory]].
-  Перед интеграцией требуется preview текущих аудиторий, поэтому permission на
-  deploy не означает применение неподтверждённого mapping. Rename aliases и
+  Preview текущих role-аудиторий не выявил изменений. По подтверждению пользователя
+  фильтры ИПР 51/65 учитывают project_manager, rukovoditel_proektov и
+  rukovoditel_proekta; шаги/остальные настройки сохранены. Rename aliases и
   любые массовые исправления остаются отдельным проверяемым решением.
 - Todo: обновить lifecycle-план #11 под текущий OTP/identity; retention и очистка
   персональных данных остаются отдельным согласованием.
 - Todo: единый upload limit/проверка содержимого и измерения scheduler/SQL/bundle
   перед оптимизацией; не снимать delivery lock ради скорости без измерений.
-  Подготовлен web byte-limit с bounded read, 413 до записи/замены и attachment+
+  PR #149 выложен на 2a8152f: web byte-limit с bounded read, 413 до записи/замены и attachment+
   nosniff downloads. Default 50 МиБ, env-configurable; Telegram не меняется.
   Format/content validation, antivirus и upstream multipart/body limits остаются
   отдельными задачами, не считаются закрытыми одним ограничением размера.
-- Doing: точечный dependency patch: Vite 7.3.6 → 7.3.7 и source-map-js
+- Done: PR #147, точечный dependency patch: Vite 7.3.6 → 7.3.7 и source-map-js
   1.2.1 → 1.2.2 в lockfile; npm audit показывает 0 vulnerabilities.
-  Typecheck/build passed, committed assets unchanged. CI/deploy отдельно;
+  Typecheck/build passed, committed assets unchanged. CI/deploy/diagnostics passed;
   это build/dev dependencies, не доказательство общего security audit live API.
+- Todo: отдельно сверить trigger итогового ИПР (65): описание «через 12 месяцев»,
+  но текущая настройка «В середине испытательного срока». В рамках исправления
+  role_scope trigger не менялся; проверить связь с явным development-cycle запуском
+  перед изменением, не запускать реальным сотрудникам ради диагностики.
 
 PR cleanup завершён для 8 старых PR без удаления веток: #128/#112/#64
 superseded; #88 заменён #140; #85 заменён #142; #98 покрыт текущим lock и двумя
