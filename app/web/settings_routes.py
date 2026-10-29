@@ -575,6 +575,22 @@ def update_position_api(
     duplicate = db.query(Position).filter(Position.slug == next_slug, Position.id != position_id).first()
     if duplicate is not None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Должность с таким slug уже существует")
+    if next_slug != position.slug:
+        raise HTTPException(status_code=409, detail="Ключ должности нельзя менять: он используется в сценариях и меню")
+    if next_title != position.title:
+        old_key = position_title_key(position.title)
+        if any(row.id != position_id and position_title_key(row.title) == old_key for row in db.query(Position)):
+            raise HTTPException(status_code=409, detail="Старое название неоднозначно: сначала согласуйте сопоставление должностей")
+        old_values = [value for (value,) in db.query(Employee.desired_position).distinct()
+                      if value and position_title_key(value) == old_key]
+        if position_title_key(next_title) != old_key and any(
+            value and position_title_key(value) == position_title_key(next_title)
+            for (value,) in db.query(Employee.desired_position).distinct()
+        ):
+            raise HTTPException(status_code=409, detail="Новое название уже используется в карточках: требуется явное сопоставление")
+        if old_values:
+            db.query(Employee).filter(Employee.desired_position.in_(old_values)).update(
+                {Employee.desired_position: next_title}, synchronize_session="fetch")
     position.title = next_title
     position.slug = next_slug
     if "is_active" in payload:
