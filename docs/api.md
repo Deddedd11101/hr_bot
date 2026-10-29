@@ -509,6 +509,9 @@ Auth: только `Authorization: Bearer <PULSE_SYNC_TOKEN>` (сравнени�
 Position create/update возвращает 409 и для повторного названия после casefold
 и нормализации пробелов (включая inactive). Card/runtime/SQL matching разрешают
 значение через каталог; custom slug не обязан быть транслитерацией title.
+Update сохраняет slug неизменным (попытка смены — 409). Rename атомарно обновляет
+точные старые title-варианты в текущих карточках; история/сценарии не переписываются.
+Неоднозначное старое имя и занятое карточками новое имя требуют mapping (409).
 Новые aliases/ID-поля и массовая нормализация этим контрактом не добавляются;
 [[features/position-directory]].
 | `GET` | `/api/settings/custom-emojis` | Получить каталог custom emoji. | Нет | `{ custom_emojis[] }` | Только чтение | `401` |

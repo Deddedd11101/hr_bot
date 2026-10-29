@@ -115,6 +115,50 @@ class PositionMatchingTests(unittest.TestCase):
             self.assertNotIn("Must not be exported", str(report))
             self.assertEqual(before, hashlib.sha256(path.read_bytes()).hexdigest())
 
+    def test_api_rename_preserves_card_runtime_menu_and_sql_audience(self):
+        from app.web.settings_routes import update_position_api
+        first = self.employee(self.position.title)
+        second = self.employee("  РУКОВОДИТЕЛЬ   ПРОЕКТОВ ")
+        other = self.employee("Дизайнер")
+        scenario = ScenarioTemplate(scenario_key="rename", title="Fixture", role_scope=self.position.slug)
+        menu = BotMenuSet(title="Fixture", role_scope=self.position.slug)
+        with patch("app.web.settings_routes.require_api_auth"), patch("app.web.settings_routes._settings_workspace_payload", return_value={}):
+            update_position_api(None, self.position.id, {"title": "Project delivery lead"}, self.db)
+        self.db.expire_all()
+        self.assertEqual(self.position.slug, "project_manager")
+        for row in (first, second):
+            self.assertEqual(row.desired_position, "Project delivery lead")
+            self.assertTrue(matches_role_scope(row, scenario))
+            self.assertTrue(menu_set_matches_employee(row, menu))
+        self.assertEqual(other.desired_position, "Дизайнер")
+        targets = mass_target_employee_query(self.db, target_all=True, target_employee_stages=[],
+            target_candidate_stages=[], target_role_scope="project_manager")
+        self.assertEqual({row.id for row in targets}, {first.id, second.id})
+
+    def test_api_rejects_slug_change_and_unregistered_target_title_without_writes(self):
+        from fastapi import HTTPException
+        from app.web.settings_routes import update_position_api
+        employee = self.employee(self.position.title)
+        self.employee("Unregistered title")
+        with patch("app.web.settings_routes.require_api_auth"):
+            for payload in ({"slug": "new_key", "title": "New title"}, {"title": "Unregistered title"}):
+                with self.subTest(payload=payload), self.assertRaises(HTTPException) as caught:
+                    update_position_api(None, self.position.id, payload, self.db)
+                self.assertEqual(caught.exception.status_code, 409)
+                self.assertEqual(self.position.title, "Руководитель проектов")
+                self.assertEqual(employee.desired_position, "Руководитель проектов")
+
+    def test_failed_rename_transaction_rolls_back_cards_and_catalog_together(self):
+        from app.web.settings_routes import update_position_api
+        employee = self.employee(self.position.title)
+        with patch("app.web.settings_routes.require_api_auth"), patch.object(self.db, "commit", side_effect=RuntimeError("commit failed")):
+            with self.assertRaises(RuntimeError):
+                update_position_api(None, self.position.id, {"title": "New title"}, self.db)
+        self.db.rollback()
+        self.db.expire_all()
+        self.assertEqual(self.position.title, "Руководитель проектов")
+        self.assertEqual(employee.desired_position, "Руководитель проектов")
+
     def test_startup_preserves_custom_title_inactive_and_deleted_defaults(self):
         self.position.is_active = False
         self.db.commit()
