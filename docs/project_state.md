@@ -33,6 +33,10 @@ related:
 source_of_truth: true
 ---
 
+Подготовлена остановка adaptation polling на неактивных вкладках карточки;
+keepMounted и draft state сохранены, серверный scheduler не меняется.
+При возврате — немедленный refresh; CI/deploy отдельно.
+
 Web upload hardening: PR #149 выложен на 2a8152f, WEB_UPLOAD_MAX_BYTES (50 МиБ), bounded read,
 413 до сохранения/замены и attachment/nosniff downloads. Schema/старые файлы не
 меняются, Telegram лимит прежний. CI/Deploy passed; content/AV/upstream limits
