@@ -13,6 +13,37 @@ source_of_truth: true
 
 # Журнал изменений тестового стенда
 
+## 29.10.2026 — должности, dependency patches и web upload limits
+
+- PR #147: Vite 7.3.7/source-map-js 1.2.2, npm audit 0 vulnerabilities,
+  typecheck/build passed, generated assets unchanged. CI 40856732241 passed,
+  deployed `130ec1d2d1f1a710d2bc8d830b9dfe2fc33a787f`, Deploy 40857256481,
+  Diagnostics 40857599892 success. Backup `backups/hr_bot.before-deploy.20261029-102516.db`.
+- PR #148: catalog-aware matching для runtime/menu/adaptation/SQL audiences,
+  duplicate title guard и startup preservation; 519 CI tests, frontend passed.
+  Deployed `79682cbd42e98bfeb8c0d881bbd50b075fbd2a51`, Deploy 40858692393,
+  Diagnostics 40859021558 success. Backup `backups/hr_bot.before-deploy.20261029-103606.db`.
+  Read-only preview 25 позиций/2 inactive, 38 сотрудников, 35 сценариев/опросов:
+  текущие role-аудитории не изменились; каталог после restart идентичен.
+- По явному подтверждению пользователя эквивалентности трёх PM должностей
+  через admin UI изменён только role_scope сценариев 51/65 на
+  `project_manager,rukovoditel_proektov,rukovoditel_proekta`. До изменения
+  сохранены локальные JSON snapshots; API сравнение подтвердило неизменность
+  шагов и прочих настроек. Старые позиции/история не удалены; оператором
+  сценарии не запускались. Screenshot `D:\HRBot\outputs\ipr-position-scope-20261029.png`.
+- PR #149: WEB_UPLOAD_MAX_BYTES default 50 МиБ, bounded read/413 до сохранения
+  или замены, attachment/nosniff downloads. 208 local smoke tests и 8 focused
+  tests passed; CI 40859541451 checks/frontend passed. Deployed
+  `2a8152f109175475825f86e17292bf536b3d6048`, Deploy 40859984611 success,
+  Diagnostics 40860226567 success, 0 failing checks: services active, tracked
+  tree clean, Telegram route/identity passed, свежих network errors нет;
+  HTTP employees/workspace/grades 303. Backup `backups/hr_bot.before-deploy.20261029-104615.db`.
+  Telegram byte limit и существующие файлы не менялись. Content/AV/upstream
+  multipart/body protection не входят в этот пакет; реальные файлы не загружались.
+- Все три deploy создали scenario snapshots и подтвердили unchanged fingerprint
+  относительно собственного pre-deploy snapshot. Schema migration нет.
+  Пользовательская Telegram-приёмка отделена от CI/серверных smoke checks.
+
 ## 29.10.2026 — Matrix background формы входа
 
 - PR #145, feature `4f2bef98e376dea020af3a7201803c1e3af8b378`, выложен
