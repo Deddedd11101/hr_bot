@@ -20,7 +20,7 @@ Web file upload handlers карточек (generic/profile/resume/offer), биб
 Известный oversized `UploadFile.size` отклоняется до чтения; иначе читается не
 более limit+1 байт. Неверный неположительный лимит возвращает 503.
 Downloads employee/library/step files имеют attachment filename и nosniff.
-Web uploads отклоняют имена длиннее 255 символов, пути с `/`/`\`, `.`/`..`
+Web uploads отклоняют имена длиннее 255 байт UTF-8, пути с `/`/`\`, `.`/`..`
 и управляющие символы (400). Это не ограничивает расширения документов/видео.
 Profile-photo дополнительно проверяется Pillow до записи/замены: содержимое
 должно декодироваться, соответствовать расширению JPEG/PNG/WebP/GIF/BMP/TIFF

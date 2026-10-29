@@ -19,7 +19,7 @@ from app.web.upload_limits import read_web_upload, validate_profile_photo
 
 class UploadReadTests(unittest.IsolatedAsyncioTestCase):
     async def test_unsafe_filenames_rejected_but_document_and_video_formats_remain_allowed(self):
-        for name in ("../file.pdf", "C:\\folder\\file.pdf", "bad\nname.pdf", "bad\x00name.pdf", "..", "x" * 256):
+        for name in ("../file.pdf", "C:\\folder\\file.pdf", "bad\nname.pdf", "bad\x00name.pdf", "..", "x" * 256, "я" * 128):
             with self.subTest(name=name), self.assertRaises(HTTPException) as caught:
                 await read_web_upload(UploadFile(BytesIO(b"data"), filename=name))
             self.assertEqual(caught.exception.status_code, 400)

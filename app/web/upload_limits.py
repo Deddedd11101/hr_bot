@@ -20,7 +20,7 @@ async def read_web_upload(upload: UploadFile) -> bytes:
     if len(content) > limit:
         raise HTTPException(status_code=413, detail=detail)
     filename = upload.filename or ""
-    if filename in {".", ".."} or len(filename) > 255 or any(ord(char) < 32 or ord(char) == 127 for char in filename) or any(char in filename for char in "/\\"):
+    if filename in {".", ".."} or len(filename.encode("utf-8")) > 255 or any(ord(char) < 32 or ord(char) == 127 for char in filename) or any(char in filename for char in "/\\"):
         raise HTTPException(status_code=400, detail="Недопустимое имя файла: используйте имя без пути и управляющих символов.")
     return content
 
