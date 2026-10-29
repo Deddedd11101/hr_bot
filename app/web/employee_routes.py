@@ -1,10 +1,11 @@
+import asyncio
 from datetime import datetime
 from io import BytesIO
 from pathlib import Path
 
 from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Query, Request, UploadFile, status
 from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
-from .upload_limits import read_web_upload
+from .upload_limits import read_web_upload, validate_profile_photo
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -222,6 +223,7 @@ async def upload_employee_profile_photo(
         return _employee_edit_redirect(employee_id, "Выберите файл фотографии.", "error")
     destination = build_employee_profile_photo_path(employee_id, filename)
     content = await read_web_upload(upload)
+    await asyncio.to_thread(validate_profile_photo, content, filename)
     destination.write_bytes(content)
     _delete_employee_profile_photo(employee)
     employee.profile_photo_path = str(destination)
