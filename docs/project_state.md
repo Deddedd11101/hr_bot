@@ -33,9 +33,9 @@ related:
 source_of_truth: true
 ---
 
-Подготовлена остановка adaptation polling на неактивных вкладках карточки;
+PR #151 выложен на 7072b2c: остановка adaptation polling на неактивных вкладках карточки;
 keepMounted и draft state сохранены, серверный scheduler не меняется.
-При возврате — немедленный refresh; CI/deploy отдельно.
+При возврате — немедленный refresh; CI/deploy passed, browser smoke открыт.
 
 Web upload hardening: PR #149 выложен на 2a8152f, WEB_UPLOAD_MAX_BYTES (50 МиБ), bounded read,
 413 до сохранения/замены и attachment/nosniff downloads. Schema/старые файлы не
