@@ -13,6 +13,22 @@ source_of_truth: true
 
 # Журнал изменений тестового стенда
 
+## 29.10.2026 — polling только на вкладке адаптации
+
+- PR #151, feature `0b67755`, deployed `7072b2ce1cc0844ee6b78392fe1e8e351319e64b`.
+  CI 40892009023 checks/frontend success (527 backend tests); local npm ci
+  audit 0, typecheck/build, 3 effect tests и docs check passed.
+- Deploy Stage 40892314270 success около 17:32 МСК; SQLite backup verified,
+  scenario snapshot создан (точное имя частично маскируется Actions), scenario
+  fingerprint unchanged. Diagnostics 40892571479 success: 0 failing checks,
+  tracked tree clean, web/worker/WireGuard/Caddy active, HTTP
+  employees/workspace/grades 303, свежих Telegram/network errors нет.
+- На невыбранных вкладках карточки больше нет 15-second adaptation polling
+  и его focus listeners. Возврат обновляет план сразу; первая загрузка,
+  keepMounted drafts, диалоги и серверный scheduler сохранены. Employee asset v72.
+- Браузерная проверка live карточки не выполнена: управление IAB недоступно.
+  Реальные расписания, оценки и сообщения оператором не менялись.
+
 ## 29.10.2026 — должности, dependency patches и web upload limits
 
 - PR #147: Vite 7.3.7/source-map-js 1.2.2, npm audit 0 vulnerabilities,
