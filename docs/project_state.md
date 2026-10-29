@@ -38,6 +38,10 @@ menu/adaptation и SQL audiences, duplicate-title guard и startup preservation.
 Schema/данные не мигрируются. Нужен read-only stage preview до интеграции;
 автоматических сокращений/массовых mapping нет; [[features/position-directory]].
 
+Dependency hardening: подготовлен patch-only lockfile update Vite 7.3.7 /
+source-map-js 1.2.2. npm audit 0 vulnerabilities, typecheck/build passed,
+generated assets unchanged. Runtime/БД не меняются; CI/deploy pending.
+
 Matrix login background PR #145 выложен на `631811e` (29.10): CI,
 Deploy `40780168490` и Diagnostics `40780452037` success. Публичная /login
 200 с новыми login.js?v=39/app.css?v=110; auth backend/данные не менялись.

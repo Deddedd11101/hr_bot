@@ -73,8 +73,10 @@ PR #145 Matrix login background: выложено `631811e`, Deploy/Diagnostics 
   персональных данных остаются отдельным согласованием.
 - Todo: единый upload limit/проверка содержимого и измерения scheduler/SQL/bundle
   перед оптимизацией; не снимать delivery lock ради скорости без измерений.
-- Todo: отдельный dependency patch по npm audit: 2 high (Vite и source-map-js).
-  Версии автоматически не обновлялись; отделить build/dev exposure от live API.
+- Doing: точечный dependency patch: Vite 7.3.6 → 7.3.7 и source-map-js
+  1.2.1 → 1.2.2 в lockfile; npm audit показывает 0 vulnerabilities.
+  Typecheck/build passed, committed assets unchanged. CI/deploy отдельно;
+  это build/dev dependencies, не доказательство общего security audit live API.
 
 PR cleanup завершён для 8 старых PR без удаления веток: #128/#112/#64
 superseded; #88 заменён #140; #85 заменён #142; #98 покрыт текущим lock и двумя
