@@ -88,10 +88,11 @@ PR #145 Matrix login background: выложено `631811e`, Deploy/Diagnostics 
   1.2.1 → 1.2.2 в lockfile; npm audit показывает 0 vulnerabilities.
   Typecheck/build passed, committed assets unchanged. CI/deploy/diagnostics passed;
   это build/dev dependencies, не доказательство общего security audit live API.
-- Todo: отдельно сверить trigger итогового ИПР (65): описание «через 12 месяцев»,
-  но текущая настройка «В середине испытательного срока». В рамках исправления
-  role_scope trigger не менялся; проверить связь с явным development-cycle запуском
-  перед изменением, не запускать реальным сотрудникам ради диагностики.
+- Done (stage config, 30.10): ИПР 51/65 переведены из mid_probation в manual_only
+  по подтверждению пользователя. Цикл грейда использует собственные даты 6/12
+  месяцев; общий adaptation trigger больше не запускает эти шаблоны независимо.
+  API сравнение: только trigger_mode/его label, шаги/аудитории сохранены.
+  Реальных запусков для проверки не было; [[stage-change-log]].
 
 PR cleanup завершён для 8 старых PR без удаления веток: #128/#112/#64
 superseded; #88 заменён #140; #85 заменён #142; #98 покрыт текущим lock и двумя
