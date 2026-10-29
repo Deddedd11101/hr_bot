@@ -8,15 +8,43 @@ from unittest.mock import AsyncMock, patch
 
 from fastapi import HTTPException, UploadFile
 from fastapi.testclient import TestClient
+from PIL import Image
 
 from app.auth import authenticate_account, create_admin_session_token
 from app.database import SessionLocal, init_db
 from app.main import AUTH_COOKIE_NAME, app
 from app.models import Employee, EmployeeDocumentLink, EmployeeFile
-from app.web.upload_limits import read_web_upload
+from app.web.upload_limits import read_web_upload, validate_profile_photo
 
 
 class UploadReadTests(unittest.IsolatedAsyncioTestCase):
+    async def test_unsafe_filenames_rejected_but_document_and_video_formats_remain_allowed(self):
+        for name in ("../file.pdf", "C:\\folder\\file.pdf", "bad\nname.pdf", "bad\x00name.pdf", "..", "x" * 256, "я" * 128):
+            with self.subTest(name=name), self.assertRaises(HTTPException) as caught:
+                await read_web_upload(UploadFile(BytesIO(b"data"), filename=name))
+            self.assertEqual(caught.exception.status_code, 400)
+        for name in ("План ИПР.xlsx", "video.mp4", "archive.zip", "file.unknown"):
+            self.assertEqual(await read_web_upload(UploadFile(BytesIO(b"data"), filename=name)), b"data")
+
+    async def test_profile_photo_content_and_extension_must_agree(self):
+        stream = BytesIO()
+        Image.new("RGB", (2, 2)).save(stream, format="PNG")
+        validate_profile_photo(stream.getvalue(), "photo.png")
+        for content, name in ((b"<html>not an image</html>", "photo.png"), (stream.getvalue(), "photo.jpg"), (stream.getvalue()[:20], "photo.png")):
+            with self.subTest(name=name), self.assertRaises(HTTPException) as caught:
+                validate_profile_photo(content, name)
+            self.assertEqual(caught.exception.status_code, 400)
+
+    async def test_profile_photo_pixel_limit_before_decode(self):
+        from unittest.mock import MagicMock
+        image = MagicMock(format="PNG", width=10000, height=10000)
+        image.__enter__.return_value = image
+        with patch("app.web.upload_limits.Image.open", return_value=image), self.assertRaises(HTTPException) as caught:
+            validate_profile_photo(b"fixture", "photo.png")
+        self.assertEqual(caught.exception.status_code, 400)
+        image.verify.assert_not_called()
+        image.load.assert_not_called()
+
     async def test_exact_limit_and_unknown_size(self):
         with patch("app.web.upload_limits.settings.WEB_UPLOAD_MAX_BYTES", 8):
             self.assertEqual(await read_web_upload(UploadFile(BytesIO(b"12345678"), filename="data.bin")), b"12345678")
@@ -118,3 +146,18 @@ class UploadEndpointTests(unittest.TestCase):
         self.assertEqual(downloaded.status_code, 200)
         self.assertEqual(downloaded.headers["x-content-type-options"], "nosniff")
         self.assertTrue(downloaded.headers["content-disposition"].startswith("attachment;"))
+
+    def test_invalid_profile_photo_preserves_existing_photo(self):
+        url = f"/employees/{self.employee_id}/profile-photo"
+        stream = BytesIO()
+        Image.new("RGB", (2, 2)).save(stream, format="PNG")
+        self.assertEqual(self.client.post(url, files={"upload": ("photo.png", stream.getvalue(), "image/png")}).status_code, 200)
+        with SessionLocal() as db:
+            old_path = db.get(Employee, self.employee_id).profile_photo_path
+        before = set(Path(self.storage.name).rglob("*"))
+        response = self.client.post(url, files={"upload": ("fake.png", b"<script>not an image</script>", "image/png")})
+        self.assertEqual(response.status_code, 400)
+        with SessionLocal() as db:
+            self.assertEqual(db.get(Employee, self.employee_id).profile_photo_path, old_path)
+        self.assertEqual(Path(old_path).read_bytes(), stream.getvalue())
+        self.assertEqual(before, set(Path(self.storage.name).rglob("*")))
