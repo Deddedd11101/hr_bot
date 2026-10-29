@@ -33,6 +33,11 @@ related:
 source_of_truth: true
 ---
 
+Position matching: готовится backend-срез общего catalog resolver для runtime,
+menu/adaptation и SQL audiences, duplicate-title guard и startup preservation.
+Schema/данные не мигрируются. Нужен read-only stage preview до интеграции;
+автоматических сокращений/массовых mapping нет; [[features/position-directory]].
+
 Dependency hardening: подготовлен patch-only lockfile update Vite 7.3.7 /
 source-map-js 1.2.2. npm audit 0 vulnerabilities, typecheck/build passed,
 generated assets unchanged. Runtime/БД не меняются; CI/deploy pending.

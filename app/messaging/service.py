@@ -6,7 +6,7 @@ import asyncio
 from html import escape
 from typing import Literal, NamedTuple, Optional
 
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, object_session
 
 from ..flow_templates import CANDIDATE_WORK_STAGE_LABELS, EMPLOYEE_SCOPE_CANDIDATES, EMPLOYEE_SCOPE_EMPLOYEES
 from ..hr_linking import consume_hr_link_token, normalize_telegram_username
@@ -252,7 +252,8 @@ def menu_set_matches_employee(employee: Employee, menu_set: BotMenuSet) -> bool:
 
     normalized_role_scope = (menu_set.role_scope or "all").strip()
     if normalized_role_scope and normalized_role_scope != "all":
-        if not position_matches_scope(employee.desired_position, normalized_role_scope):
+        db = object_session(employee) if isinstance(employee, Employee) else None
+        if not position_matches_scope(employee.desired_position, normalized_role_scope, db=db):
             return False
 
     return True

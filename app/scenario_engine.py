@@ -15,7 +15,7 @@ from typing import Any, Literal, NamedTuple, Optional
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, Message, ReplyKeyboardMarkup
 from pytz import timezone as tz_get
 from sqlalchemy import or_
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, object_session
 
 from .config import settings
 from .employee_card import render_employee_card_png
@@ -1033,7 +1033,8 @@ def matches_role_scope(employee: Employee, scenario: ScenarioTemplate) -> bool:
     if getattr(scenario, "target_employee_id", None) and scenario.target_employee_id != employee.id:
         return False
 
-    return position_matches_scope(employee.desired_position, scenario.role_scope)
+    db = object_session(employee) if isinstance(employee, Employee) else None
+    return position_matches_scope(employee.desired_position, scenario.role_scope, db=db)
 
 
 class TelegramSafeHTMLParser(HTMLParser):
