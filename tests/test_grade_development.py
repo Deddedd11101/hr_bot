@@ -92,6 +92,30 @@ class GradeDevelopmentTests(unittest.TestCase):
         self.assertEqual(dates["ipr6"], datetime(2027, 4, 30, 10))
         self.assertEqual(dates["review12"] - dates["ipr12"], timedelta(minutes=10))
 
+    def test_manual_ipr_templates_are_not_scheduled_from_adaptation_without_cycle(self):
+        from app import scheduler
+        employee = self.db.get(Employee, 1)
+        employee.first_workday = NOW.date()
+        employee.adaptation_midpoint = NOW.date()
+        self.db.commit()
+        jobs = MagicMock()
+        with patch.object(scheduler, "SessionLocal", self.sessions), patch.object(dev, "process_due", new_callable=AsyncMock):
+            asyncio.run(scheduler.schedule_all_employees(jobs, object()))
+        jobs.add_job.assert_not_called()
+        self.started.assert_not_awaited()
+
+    def test_manual_ipr_templates_still_launch_at_six_and_twelve_month_cycle_dates(self):
+        self.enroll()
+        with patch.object(dev, "local_now", return_value=datetime(2027, 4, 26, 10)):
+            asyncio.run(dev.process_due(object()))
+        self.started.assert_not_awaited()
+        self.scan()
+        self.assertEqual([call.args[3] for call in self.started.await_args_list], ["ipr6"])
+        with patch.object(dev, "local_now", return_value=datetime(2027, 10, 28, 10)):
+            asyncio.run(dev.process_due(object()))
+            asyncio.run(dev.process_due(object()))
+        self.assertEqual([call.args[3] for call in self.started.await_args_list], list(dev.KINDS))
+
     def test_get_null_import_source_no_enrollment_and_default_anchor(self):
         result = dev.payload(self.db, 1)
         self.assertEqual(result["assessment_id"], 1)
