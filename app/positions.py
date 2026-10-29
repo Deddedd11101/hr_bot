@@ -102,6 +102,40 @@ def canonical_position_title(value: str) -> str:
     return (value or "").strip()
 
 
+def position_title_key(value: str) -> str:
+    return " ".join((value or "").split()).casefold()
+
+
+def _catalog(db: Session) -> list[tuple[int, str, str]]:
+    cached = db.info.get("position_matching_catalog")
+    changed = any(isinstance(row, Position) for row in (*db.new, *db.dirty, *db.deleted))
+    if cached is None or cached[0] is not db.get_transaction() or changed:
+        rows = [(row.id, row.title, row.slug) for row in db.query(Position).all()]
+        cached = (db.get_transaction(), rows)
+        db.info["position_matching_catalog"] = cached
+    return cached[1]
+
+
+def _catalog_scope(db: Session, value: str, *, scope: bool = False) -> str | None:
+    rows = _catalog(db)
+    key = position_title_key(value)
+    slug = normalize_position_slug(value)
+    if scope:
+        direct = [row for row in rows if row[2] == slug]
+        if direct:
+            return direct[0][2] if len(direct) == 1 else None
+    titles = [row for row in rows if position_title_key(row[1]) == key]
+    if titles:
+        return titles[0][2] if len(titles) == 1 else None
+    direct = [row for row in rows if row[2] == slug]
+    if direct:
+        return direct[0][2] if len(direct) == 1 else None
+    normalized = [row for row in rows if normalize_position_slug(row[1]) == slug]
+    if normalized:
+        return normalized[0][2] if len(normalized) == 1 else None
+    return slug
+
+
 def build_role_scope_labels(db: Session, *, include_inactive: bool = False) -> dict[str, str]:
     labels = {ROLE_SCOPE_ALL: "Для всех ролей"}
     query = db.query(Position)
@@ -164,13 +198,14 @@ def position_titles_for_scope(db: Session, role_scope: str) -> list[str]:
     normalized_scopes = parse_role_scopes(role_scope)
     if not normalized_scopes:
         return []
-    positions = db.query(Position).filter(Position.slug.in_(normalized_scopes)).all()
-    titles = [position.title for position in positions if (position.title or "").strip()]
+    titles = [title for _id, title, _slug in _catalog(db)]
     for normalized_scope in normalized_scopes:
         legacy_title = canonical_position_title(normalized_scope)
         if legacy_title and legacy_title not in titles:
             titles.append(legacy_title)
-    return titles
+    # SQL targeting must include the same legacy/case variants accepted by runtime.
+    titles.extend(value for (value,) in db.query(Employee.desired_position).distinct() if value)
+    return list(dict.fromkeys(title for title in titles if position_matches_scope(title, role_scope, db=db)))
 
 
 def resolve_scope_slug(value: str) -> str:
@@ -178,12 +213,16 @@ def resolve_scope_slug(value: str) -> str:
     return normalized or ROLE_SCOPE_ALL
 
 
-def position_matches_scope(employee_position: Optional[str], role_scope: Optional[str]) -> bool:
+def position_matches_scope(employee_position: Optional[str], role_scope: Optional[str], *, db: Session | None = None) -> bool:
     normalized_scopes = parse_role_scopes(role_scope or "")
     if not normalized_scopes:
         return True
-    normalized_employee_scope = normalize_position_slug(employee_position or "")
-    return bool(normalized_employee_scope) and normalized_employee_scope in set(normalized_scopes)
+    if db is None:
+        normalized_employee_scope = normalize_position_slug(employee_position or "")
+        return bool(normalized_employee_scope) and normalized_employee_scope in set(normalized_scopes)
+    employee_key = _catalog_scope(db, employee_position or "")
+    scope_keys = {_catalog_scope(db, scope, scope=True) for scope in normalized_scopes}
+    return bool(employee_key) and employee_key in scope_keys
 
 
 def ensure_position_exists(
@@ -222,6 +261,7 @@ def ensure_position_exists(
         )
         db.add(position)
         db.flush()
+        db.info.pop("position_matching_catalog", None)
         return position
 
     changed = False
@@ -236,6 +276,7 @@ def ensure_position_exists(
         changed = True
     if changed:
         db.flush()
+        db.info.pop("position_matching_catalog", None)
     return position
 
 
@@ -248,6 +289,13 @@ def resolve_employee_position_value(db: Session, value: str) -> Optional[str]:
         position = db.get(Position, int(normalized_value))
         if position is not None:
             return position.title
+
+    key = _catalog_scope(db, normalized_value)
+    if key is None:
+        return normalized_value
+    catalog_rows = [row for row in _catalog(db) if row[2] == key]
+    if len(catalog_rows) == 1:
+        return catalog_rows[0][1]
 
     normalized_slug = normalize_position_slug(normalized_value)
     if normalized_slug:
@@ -269,6 +317,9 @@ def resolve_employee_position_value(db: Session, value: str) -> Optional[str]:
 
 def seed_positions_catalog() -> None:
     with SessionLocal() as db:
+        # A managed catalog is not a startup repair target.
+        if db.query(Position.id).first() or db.query(Employee.id).first():
+            return
         changed = False
         for item in DEFAULT_POSITIONS:
             before_count = db.query(Position).count()
@@ -279,18 +330,6 @@ def seed_positions_catalog() -> None:
                 sort_order=item["sort_order"],
             )
             if db.query(Position).count() != before_count:
-                changed = True
-
-        distinct_titles = [
-            (row[0] or "").strip()
-            for row in db.query(Employee.desired_position).distinct().all()
-            if (row[0] or "").strip()
-        ]
-        for index, title in enumerate(distinct_titles, start=1):
-            slug = normalize_position_slug(title)
-            existing = db.query(Position).filter(Position.slug == slug).first() if slug else None
-            if existing is None:
-                ensure_position_exists(db, title=title, slug=slug or None, sort_order=1000 + index)
                 changed = True
 
         if changed:

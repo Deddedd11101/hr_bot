@@ -16,7 +16,7 @@ from ..messaging import create_telegram_messenger
 from ..messaging.identity import get_primary_chat_id
 from ..messaging.service import ROOT_MENU_PROMPT_TEXT, menu_set_matches_employee, resolve_root_menu_set, send_menu, show_main_menu
 from ..models import AdminAccount, BotMenuButton, BotMenuSet, Employee, Position, TelegramCustomEmoji
-from ..positions import ensure_position_exists, normalize_position_slug
+from ..positions import ensure_position_exists, normalize_position_slug, position_title_key
 from ..config import settings
 from ..hr_linking import hash_hr_link_token, is_numeric_telegram_id, normalize_telegram_username
 from ..time_utils import utc_now
@@ -535,6 +535,8 @@ def create_position_api(
     title = str(payload.get("title") or "").strip()
     if not title:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Укажите название должности")
+    if any(position_title_key(row.title) == position_title_key(title) for row in db.query(Position)):
+        raise HTTPException(status_code=409, detail="Должность с таким названием уже существует")
     slug = normalize_position_slug(str(payload.get("slug") or "").strip() or title)
     if not slug:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Не удалось определить slug должности")
@@ -565,6 +567,8 @@ def update_position_api(
     if position is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Должность не найдена")
     next_title = str(payload.get("title") or position.title).strip() or position.title
+    if any(row.id != position_id and position_title_key(row.title) == position_title_key(next_title) for row in db.query(Position)):
+        raise HTTPException(status_code=409, detail="Должность с таким названием уже существует")
     next_slug = normalize_position_slug(str(payload.get("slug") or "").strip() or position.slug or next_title)
     if not next_slug:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Не удалось определить slug должности")

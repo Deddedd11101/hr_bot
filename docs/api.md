@@ -496,6 +496,12 @@ Auth: только `Authorization: Bearer <PULSE_SYNC_TOKEN>` (сравнени�
 | `POST` | `/api/settings/positions/{position_id}` | Обновить должность. | Path: `position_id`; JSON: `title`, `is_active`, `sort_order` | `{ positions[] }` | Обновляет position row | `401`, `404`, `409` |
 | `PATCH` | `/api/settings/positions/{position_id}` | Частично обновить должность. | Path: `position_id`; JSON subset fields | `{ positions[] }` | Обновляет position row | `401`, `404`, `409` |
 | `DELETE` | `/api/settings/positions/{position_id}` | Деактивировать должность. | Path: `position_id` | `{ positions[] }` | Ставит `is_active=false`, физически не удаляет row | `401`, `404` |
+
+Position create/update возвращает 409 и для повторного названия после casefold
+и нормализации пробелов (включая inactive). Card/runtime/SQL matching разрешают
+значение через каталог; custom slug не обязан быть транслитерацией title.
+Новые aliases/ID-поля и массовая нормализация этим контрактом не добавляются;
+[[features/position-directory]].
 | `GET` | `/api/settings/custom-emojis` | Получить каталог custom emoji. | Нет | `{ custom_emojis[] }` | Только чтение | `401` |
 | `POST` | `/api/settings/custom-emojis/import-set` | Импортировать custom emoji набор, только admin. | JSON `url`: HTTPS t.me/telegram.me/addemoji/name, без credentials/port/query/fragment | `{ workspace, set_title, added_count, skipped_count }` | getStickerSet через настроенного бота; новые emoji_id сохраняются атомарно, существующие (включая inactive) не меняются | `401`, `403`, `400`, `409` concurrent import, `502` Telegram API, `503` token отсутствует |
 | `POST` | `/api/settings/custom-emojis` | Добавить custom emoji по numeric Telegram `emoji_id`. | JSON: `title`, `emoji_id`, optional `fallback`, `is_active` | Settings workspace payload | Сохраняет metadata; fallback используется в keyboard labels | `401`, `400`, `409` |

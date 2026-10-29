@@ -64,6 +64,11 @@ PR #145 Matrix login background: выложено `631811e`, Deploy/Diagnostics 
   строки по нестрогому сходству без preview и подтверждённого mapping; история
   запусков и назначений сохраняется. Одинаковые видимые labels без согласованного
   matching-контракта не считаются исправлением.
+  Подготовлен первый backend-срез общего catalog matching, duplicate title guard,
+  startup preservation и mode=ro audit tool; [[features/position-directory]].
+  Перед интеграцией требуется preview текущих аудиторий, поэтому permission на
+  deploy не означает применение неподтверждённого mapping. Rename aliases и
+  любые массовые исправления остаются отдельным проверяемым решением.
 - Todo: обновить lifecycle-план #11 под текущий OTP/identity; retention и очистка
   персональных данных остаются отдельным согласованием.
 - Todo: единый upload limit/проверка содержимого и измерения scheduler/SQL/bundle

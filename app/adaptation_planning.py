@@ -116,7 +116,7 @@ def build_preview(db: Session, employee: Employee) -> dict:
     midpoint = employee.adaptation_midpoint or (employee.first_workday + timedelta(days=45) if employee.first_workday else None)
     calendar = CalendarDates(db)
     by_key = {entry["key"]: entry for entry in entries}
-    is_pm = position_matches_scope(employee.desired_position, "project_manager,rukovoditel_proektov,rukovoditel_proekta")
+    is_pm = position_matches_scope(employee.desired_position, "project_manager,rukovoditel_proektov,rukovoditel_proekta", db=db)
     scenarios = {row.scenario_key: row for row in db.query(ScenarioTemplate)}
     items = {row.entry_key: row for row in db.query(EmployeeAdaptationPlanItem).filter_by(employee_id=employee.id)}
     cache = {}
