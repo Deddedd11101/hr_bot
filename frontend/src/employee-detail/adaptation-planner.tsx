@@ -31,7 +31,7 @@ async function api<T>(url: string, method = "GET", body?: unknown): Promise<T> {
     return data as T;
 }
 
-export function AdaptationPlanner({ employeeId }: { employeeId: number }) {
+export function AdaptationPlanner({ employeeId, visible = true }: { employeeId: number; visible?: boolean }) {
     const [plan, setPlan] = React.useState<Plan | null>(null);
     const [template, setTemplate] = React.useState<Template | null>(null);
     const [replanning, setReplanning] = React.useState(false);
@@ -58,7 +58,7 @@ export function AdaptationPlanner({ employeeId }: { employeeId: number }) {
     }, [url]);
 
     React.useEffect(() => {
-        if (busy || planning || open || editing || cancelling) return;
+        if (!visible || busy || planning || open || editing || cancelling) return;
         let active = true;
         let pending = false;
         async function refresh() {
@@ -68,11 +68,12 @@ export function AdaptationPlanner({ employeeId }: { employeeId: number }) {
             catch { /* Keep the last good plan on a transient refresh failure. */ }
             finally { pending = false; }
         }
+        void refresh();
         const timer = window.setInterval(() => void refresh(), 15000);
         window.addEventListener("focus", refresh);
         document.addEventListener("visibilitychange", refresh);
         return () => { active = false; window.clearInterval(timer); window.removeEventListener("focus", refresh); document.removeEventListener("visibilitychange", refresh); };
-    }, [url, busy, planning, open, editing, cancelling]);
+    }, [url, visible, busy, planning, open, editing, cancelling]);
 
     async function perform(action: () => Promise<void>) {
         setBusy(true); setError(""); setNotice("");
