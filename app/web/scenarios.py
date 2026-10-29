@@ -8,6 +8,7 @@ from uuid import uuid4
 from fastapi import HTTPException, UploadFile
 from sqlalchemy import text
 from sqlalchemy.orm import Session
+from .upload_limits import read_web_upload
 
 from ..file_storage import build_step_attachment_path
 from ..flow_templates import (
@@ -1200,7 +1201,7 @@ async def _save_step_attachment(step: FlowStepTemplate, upload: UploadFile) -> N
     if not filename:
         return
     destination = build_step_attachment_path(step.flow_key, step.step_key, filename)
-    content = await upload.read()
+    content = await read_web_upload(upload)
     destination.write_bytes(content)
     _delete_step_attachment_file(step)
     step.attachment_path = str(destination)

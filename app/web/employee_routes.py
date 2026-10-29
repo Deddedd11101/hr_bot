@@ -4,6 +4,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Query, Request, UploadFile, status
 from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
+from .upload_limits import read_web_upload
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -220,7 +221,7 @@ async def upload_employee_profile_photo(
     if not filename:
         return _employee_edit_redirect(employee_id, "Выберите файл фотографии.", "error")
     destination = build_employee_profile_photo_path(employee_id, filename)
-    content = await upload.read()
+    content = await read_web_upload(upload)
     destination.write_bytes(content)
     _delete_employee_profile_photo(employee)
     employee.profile_photo_path = str(destination)
@@ -412,7 +413,7 @@ async def upload_employee_file(
 
     filename = upload.filename or "file.bin"
     destination = build_employee_file_path(employee_id, filename)
-    content = await upload.read()
+    content = await read_web_upload(upload)
     destination.write_bytes(content)
 
     db_file = EmployeeFile(
@@ -455,8 +456,9 @@ def download_employee_file(
         return _employee_edit_redirect(employee_id, "Файл не найден в хранилище.", "error")
     return FileResponse(
         path=str(path),
-        filename=db_file.original_filename,
+        filename=db_file.original_filename or path.name,
         media_type=db_file.mime_type or "application/octet-stream",
+        headers={"X-Content-Type-Options": "nosniff"},
     )
 
 
@@ -783,7 +785,7 @@ async def upload_offer_document_file_api(
     if not employee:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Сотрудник не найден")
     filename = (upload.filename or "").strip() or "offer.bin"
-    content = await upload.read()
+    content = await read_web_upload(upload)
     if not content:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Выберите файл оффера.")
     link_row = _save_offer_document_file(
@@ -811,7 +813,7 @@ async def upload_resume_document_file_api(
     if not employee:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Сотрудник не найден")
     filename = (upload.filename or "").strip() or "resume.bin"
-    content = await upload.read()
+    content = await read_web_upload(upload)
     if not content:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Выберите файл резюме.")
     link_row = _save_resume_document_file(
@@ -975,7 +977,7 @@ async def upload_employee_file_api(
 
     filename = upload.filename or "file.bin"
     destination = build_employee_file_path(employee_id, filename)
-    content = await upload.read()
+    content = await read_web_upload(upload)
     destination.write_bytes(content)
 
     db_file = EmployeeFile(

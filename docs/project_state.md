@@ -33,6 +33,11 @@ related:
 source_of_truth: true
 ---
 
+Web upload hardening: подготовлен WEB_UPLOAD_MAX_BYTES (50 МиБ), bounded read,
+413 до сохранения/замены и attachment/nosniff downloads. Schema/старые файлы не
+меняются, Telegram лимит прежний. CI/deploy отдельно; content/AV/upstream limits
+не входят в этот срез.
+
 Position matching: готовится backend-срез общего catalog resolver для runtime,
 menu/adaptation и SQL audiences, duplicate-title guard и startup preservation.
 Schema/данные не мигрируются. Нужен read-only stage preview до интеграции;

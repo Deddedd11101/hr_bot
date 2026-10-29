@@ -4,6 +4,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.responses import FileResponse, RedirectResponse
+from .upload_limits import read_web_upload
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
@@ -135,7 +136,7 @@ async def create_document_file_api(
     if not filename:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Выберите файл")
     destination = build_document_library_file_path(filename)
-    content = await upload.read()
+    content = await read_web_upload(upload)
     destination.write_bytes(content)
     last_item = db.query(DocumentLibraryItem).order_by(DocumentLibraryItem.sort_order.desc(), DocumentLibraryItem.id.desc()).first()
     next_order = (last_item.sort_order + 10) if last_item else 10
@@ -219,4 +220,4 @@ def download_document_item(
     path = Path(item.stored_path or "")
     if not path.exists():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Файл не найден в хранилище")
-    return FileResponse(path, filename=item.original_filename or path.name)
+    return FileResponse(path, filename=item.original_filename or path.name, headers={"X-Content-Type-Options": "nosniff"})

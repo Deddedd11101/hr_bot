@@ -73,6 +73,10 @@ PR #145 Matrix login background: выложено `631811e`, Deploy/Diagnostics 
   персональных данных остаются отдельным согласованием.
 - Todo: единый upload limit/проверка содержимого и измерения scheduler/SQL/bundle
   перед оптимизацией; не снимать delivery lock ради скорости без измерений.
+  Подготовлен web byte-limit с bounded read, 413 до записи/замены и attachment+
+  nosniff downloads. Default 50 МиБ, env-configurable; Telegram не меняется.
+  Format/content validation, antivirus и upstream multipart/body limits остаются
+  отдельными задачами, не считаются закрытыми одним ограничением размера.
 - Doing: точечный dependency patch: Vite 7.3.6 → 7.3.7 и source-map-js
   1.2.1 → 1.2.2 в lockfile; npm audit показывает 0 vulnerabilities.
   Typecheck/build passed, committed assets unchanged. CI/deploy отдельно;
