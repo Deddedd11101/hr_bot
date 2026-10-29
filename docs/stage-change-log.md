@@ -13,6 +13,30 @@ source_of_truth: true
 
 # Журнал изменений тестового стенда
 
+## 30.10.2026 — безопасный rename и проверка новых web uploads
+
+- PR #154 feature `9850e20`, PR #155 head `717563b`; deployed
+  `af9c596d749516e9bae999b7609bb4c22a12f3c9` накопительного stage.
+  CI 40965912590 и 40966325761 checks/frontend passed; итоговый suite 536 tests.
+  Локально: 12 position tests, 12 upload tests, 201 core smoke tests,
+  compileall/Ruff F821/docs/diff passed. Для уточнения UTF-8 filename limit
+  дополнительно повторены 8 UploadReadTests.
+- Deploy Stage 40966564858 success около 01:33 МСК 30.10 (22:33 UTC 29.10).
+  SQLite backup verified и scenario snapshot созданы; точное имя частично
+  маскируется Actions. Scenario fingerprint unchanged. Diagnostics 40966825335
+  success, 0 failing checks: tracked tree clean, web/worker/WireGuard/Caddy active,
+  HTTP employees/workspace/grades 303, свежих Telegram/network errors нет.
+- Rename сохраняет slug и атомарно обновляет точные old-title варианты текущих
+  карточек; неоднозначные/занятые имена и смена slug отклоняются с 409. История
+  не переписывается, schema migration/автоматического изменения каталога нет.
+- Web filename guards и Pillow decode/format/25 MP check применяются к новым
+  uploads/profile photos до записи/замены. Документы/видео не ограничены новым
+  allowlist. Это не antivirus; upstream multipart/body limits и сканирование
+  произвольных документов остаются отдельной работой.
+- Реальные должности/фото/файлы оператором не менялись. Проверки rename, rollback,
+  SQL/runtime/menu targeting и сохранения старого фото выполнены на fixtures;
+  live пользовательская приёмка новых операций остаётся открытой.
+
 ## 30.10.2026 — ИПР только через явный запуск или цикл грейда
 
 - Пользователь подтвердил перевод сценариев 51 «Рассмотрение результатов ИПР»
