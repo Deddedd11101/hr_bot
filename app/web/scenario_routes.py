@@ -981,7 +981,8 @@ def download_step_attachment(
     path = Path(attachment_path)
     if not path.exists():
         return RedirectResponse(url="/flows", status_code=status.HTTP_303_SEE_OTHER)
-    return FileResponse(path, filename=getattr(step, "attachment_filename", None) or path.name)
+    return FileResponse(path, filename=getattr(step, "attachment_filename", None) or path.name,
+                        headers={"X-Content-Type-Options": "nosniff"})
 
 
 @router.post("/flows/steps/{step_id}/attachment/delete")

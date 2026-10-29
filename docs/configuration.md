@@ -56,6 +56,7 @@ source_of_truth: true
 | `TASKS_URL`              | `https://example.com/tasks`      | Ссылка на task materials                          | На реальном стенде надо заменить                      |
 | `FEEDBACK_URL`           | `https://example.com/feedback`   | Ссылка на feedback forms                          | На реальном стенде надо заменить                      |
 | `FILE_STORAGE_DIR`       | `./storage/employee_files`       | Базовая директория файлов сотрудников             | На stage должна указывать на durable writable storage |
+| `WEB_UPLOAD_MAX_BYTES` | `52428800` (50 МиБ) | Максимальный файл web-загрузки: карточки, фото, resume/offer, библиотека, attachment шага | Положительное число байт; 413 до сохранения/замены файла. Не меняет Telegram cloud download limit, календарь (1 МиБ) и Grade imports (5 МБ) |
 | `ADMIN_SESSION_SECRET`   | `change-me-admin-session-secret` | Секрет сессий админки                             | Обязательно заменить вне локального демо              |
 | `ADMIN_SESSION_MAX_AGE_SECONDS` | `43200`                   | TTL signed session cookie                         | Для stage менять только осознанно                     |
 | `ADMIN_SESSION_COOKIE_SECURE` | `false`                     | Ставить cookie только через HTTPS                 | На HTTPS stage должно быть `true`                     |

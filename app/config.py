@@ -50,6 +50,7 @@ class Settings:
 
     # Локальное хранение файлов кандидатов/сотрудников
     FILE_STORAGE_DIR: str = os.getenv("FILE_STORAGE_DIR", "./storage/employee_files")
+    WEB_UPLOAD_MAX_BYTES: int = int(os.getenv("WEB_UPLOAD_MAX_BYTES", str(50 * 1024 * 1024)))
 
     # Сессии админки
     ADMIN_SESSION_SECRET: str = os.getenv("ADMIN_SESSION_SECRET", "change-me-admin-session-secret")

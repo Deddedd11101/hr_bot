@@ -14,6 +14,15 @@ related:
 source_of_truth: true
 ---
 
+Web file upload handlers карточек (generic/profile/resume/offer), библиотеки
+и step attachments используют `WEB_UPLOAD_MAX_BYTES` (50 МиБ по умолчанию).
+Превышение возвращает 413 с `detail` и не сохраняет новый файл/не заменяет старый.
+Известный oversized `UploadFile.size` отклоняется до чтения; иначе читается не
+более limit+1 байт. Неверный неположительный лимит возвращает 503.
+Downloads employee/library/step files имеют attachment filename и nosniff.
+Это не antivirus/content validation; парсинг multipart и reverse-proxy/body limits
+являются отдельной границей. Calendar/Grade и Telegram сохраняют свои лимиты.
+
 ## Списки и история карточки
 
 Все endpoints ниже требуют текущую authenticated admin-сессию и существующую
