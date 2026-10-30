@@ -106,6 +106,16 @@ def position_title_key(value: str) -> str:
     return " ".join((value or "").split()).casefold()
 
 
+def canonical_project_lead_answer(db: Session, value: str) -> str:
+    aliases = {"project_manager", "project manager", "руководитель проекта", "руководитель проектов",
+               "rukovoditel_proekta", "rukovoditel_proektov"}
+    if position_title_key(value) in aliases:
+        position = db.query(Position).filter_by(slug="rukovoditel_proektov", is_active=True).first()
+        if position is not None:
+            return position.title
+    return value
+
+
 def _catalog(db: Session) -> list[tuple[int, str, str]]:
     cached = db.info.get("position_matching_catalog")
     changed = any(isinstance(row, Position) for row in (*db.new, *db.dirty, *db.deleted))
@@ -188,9 +198,6 @@ def position_options(db: Session, *, include_inactive: bool = False) -> list[Pos
 
 def employee_position_values(db: Session, *, current_value: str = "") -> list[str]:
     values = [position.title for position in position_options(db)]
-    normalized_current = canonical_position_title(current_value)
-    if normalized_current and normalized_current not in values:
-        values.append(normalized_current)
     return values
 
 
@@ -285,34 +292,16 @@ def resolve_employee_position_value(db: Session, value: str) -> Optional[str]:
     if not normalized_value:
         return None
 
+    rows = position_options(db)
     if normalized_value.isdigit():
-        position = db.get(Position, int(normalized_value))
-        if position is not None:
-            return position.title
-
-    key = _catalog_scope(db, normalized_value)
-    if key is None:
-        return normalized_value
-    catalog_rows = [row for row in _catalog(db) if row[2] == key]
-    if len(catalog_rows) == 1:
-        return catalog_rows[0][1]
-
-    normalized_slug = normalize_position_slug(normalized_value)
-    if normalized_slug:
-        position = db.query(Position).filter(Position.slug == normalized_slug).first()
-        if position is not None:
-            return position.title
-
-    position = (
-        db.query(Position)
-        .filter(func.lower(Position.title) == normalized_value.lower())
-        .first()
-    )
-    if position is not None:
-        return position.title
-
-    ensure_position_exists(db, title=normalized_value, slug=normalized_slug or None)
-    return canonical_position_title(normalized_value)
+        matches = [row for row in rows if row.id == int(normalized_value)]
+    else:
+        matches = [row for row in rows if position_title_key(row.title) == position_title_key(normalized_value)]
+        if not matches:
+            matches = [row for row in rows if row.slug == normalized_value]
+    if len(matches) != 1:
+        raise ValueError("Выберите активную должность из справочника")
+    return matches[0].title
 
 
 def seed_positions_catalog() -> None:

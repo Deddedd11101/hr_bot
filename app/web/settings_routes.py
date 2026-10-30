@@ -1,11 +1,13 @@
 from datetime import datetime, timedelta
+from html import escape
+import json
 import re
 import secrets
 from urllib.parse import urlsplit
 
 from aiogram.exceptions import TelegramAPIError, TelegramBadRequest
 from fastapi import APIRouter, Body, Depends, Form, HTTPException, Request, status
-from fastapi.responses import RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
@@ -36,6 +38,39 @@ from .support import render_template, require_admin, require_api_admin, require_
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
+
+
+@router.get("/app/settings/positions/consolidate-project-leads", response_class=HTMLResponse)
+def preview_project_lead_positions(request: Request, db: Session = Depends(get_session)):
+    from ..position_consolidation import preview
+    require_api_admin(request)
+    try:
+        plan = preview(db)
+    except ValueError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+    disabled = "disabled" if plan["audience_deltas"] or not plan["changes"] else ""
+    return HTMLResponse('<!doctype html><html lang="ru"><meta charset="utf-8">'
+        '<title>Объединение должностей руководителя проектов</title><main>'
+        '<h1>Объединение должностей руководителя проектов</h1>'
+        '<p>Предпросмотр без записи. Применение создаст проверенную резервную копию. История не меняется.</p>'
+        f'<pre>{escape(json.dumps(plan, ensure_ascii=False, indent=2))}</pre>'
+        f'<form method="post"><input type="hidden" name="fingerprint" value="{plan["fingerprint"]}">'
+        f'<button type="submit" {disabled}>Применить подтверждённый план</button></form></main></html>')
+
+
+@router.post("/app/settings/positions/consolidate-project-leads")
+def apply_project_lead_positions(request: Request, fingerprint: str = Form(...), db: Session = Depends(get_session)):
+    from ..position_consolidation import apply
+    require_api_admin(request)
+    if urlsplit(request.headers.get("origin", "")).netloc != request.headers.get("host"):
+        raise HTTPException(status_code=403, detail="Требуется запрос с этого сайта")
+    try:
+        result = apply(db, fingerprint)
+    except ValueError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+    return HTMLResponse('<!doctype html><html lang="ru"><meta charset="utf-8"><title>Готово</title>'
+        f'<h1>Должности объединены</h1><pre>{escape(json.dumps(result, ensure_ascii=False))}</pre>'
+        '<a href="/app/settings/positions/consolidate-project-leads">Проверить результат</a></html>')
 
 
 def _reject_telegram_binding_change(current_value: str | None, proposed_value: str | None) -> None:

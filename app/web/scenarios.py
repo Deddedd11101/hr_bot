@@ -730,7 +730,7 @@ def _build_scenario_workspace_payload(
         selected_scenario = scenarios[0]
 
     scenario_timestamps = _load_scenario_timestamps(db, [scenario.id for scenario in scenarios])
-    role_scope_labels = build_role_scope_labels(db, include_inactive=True)
+    role_scope_labels = build_role_scope_labels(db)
     scenario_items = []
     for scenario in scenarios:
         steps_count = (

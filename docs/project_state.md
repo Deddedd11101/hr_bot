@@ -33,6 +33,10 @@ related:
 source_of_truth: true
 ---
 
+Подготовлено объединение подтверждённых PM-вариантов в rukovoditel_proektov:
+guarded admin preview/apply с backup, drift/audience checks; catalog-only
+save карточки и active-only role choices. До применения preview данные не меняются.
+
 PR #155 выложен на af9c596: filename guards web uploads и проверка содержимого фото профиля:
 подмена MIME/расширения не обходят decode/25 MP limit, прежнее фото сохраняется
 при ошибке. Документы/видео не сужены allowlist; antivirus не реализован.

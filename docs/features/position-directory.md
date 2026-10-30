@@ -39,8 +39,11 @@ ensure_position_exists сбрасывают snapshot. Startup не переим�
 
 Create/update API отклоняет duplicate title после casefold/нормализации пробелов
 с 409, включая конфликт с inactive строкой. Existing конфликтующие строки не
-объединяются. Разрешение свободного неизвестного значения карточки по-прежнему
-совместимо с legacy ensure; перевод на строго catalog-only save не входит в срез.
+объединяются. Редактор карточки принимает пустое значение либо уникальную активную
+позицию по ID, точному slug или названию (casefold/пробелы). Unknown/inactive
+отклоняется; save больше не создаёт позиции. Options карточки и сценария берутся
+из активного каталога, без свободных исторических значений. Legacy runtime matching
+не меняется этим ограничением редактора.
 
 ## Ограничения и приёмка
 
@@ -59,6 +62,23 @@ Create/update API отклоняет duplicate title после casefold/нор�
 понадобиться явный mapping; старое имя не выдумывается из новой строки каталога.
 Copy/portability сохраняют существующие slug-значения, новых полей схемы нет.
 Должность не назначает системную роль HR/admin или флаг руководителя.
+
+## Объединение руководителей проектов
+
+Подтверждён только mapping project_manager/rukovoditel_proekta в
+rukovoditel_proektov («Руководитель проектов»). Admin maintenance page
+`GET /app/settings/positions/consolidate-project-leads` показывает read-only
+preview без PII. POST той же страницы принимает fingerprint и same-origin form;
+делает SQLite backup/quick_check, BEGIN IMMEDIATE и повторный preview. Drift или
+изменение projected role-аудиторий блокирует применение. Обновляются текущие
+карточки, scopes сценариев/меню, Grade position_slug и только необработанные
+массовые рассылки (single/JSON multi). Старые позиции деактивируются, не удаляются.
+Обработанные рассылки, history/snapshots не переписываются. Повторный preview
+должен давать пустой changes. Это не симуляция доставки и не запуск сценариев.
+В текущих шагах с target_field=desired_position старые подписи кнопок PM
+заменяются без изменения порядка/числа кнопок и индексов ветвления. Старый
+in-flight ответ PM сохраняется под активным canonical title. Остальные custom
+значения runtime не меняются: catalog-only ограничение относится к редактору.
 
 Перед интеграцией/выкладкой нужен read-only preview текущих аудиторий:
 

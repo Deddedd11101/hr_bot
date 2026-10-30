@@ -2803,7 +2803,7 @@ class EmployeeApiSmokeTests(unittest.TestCase):
 
         update_response = self.client.patch(
             f"/api/settings/positions/{created_position['id']}",
-            json={"title": "Senior QA engineer", "sort_order": 90},
+            json={"title": f"Senior QA engineer {self.unique_tag}", "sort_order": 90},
         )
         self.assertEqual(update_response.status_code, 200)
         updated_position = next(
@@ -2811,7 +2811,7 @@ class EmployeeApiSmokeTests(unittest.TestCase):
             None,
         )
         self.assertIsNotNone(updated_position)
-        self.assertEqual(updated_position["title"], "Senior QA engineer")
+        self.assertEqual(updated_position["title"], f"Senior QA engineer {self.unique_tag}")
         self.assertEqual(updated_position["sort_order"], 90)
 
         delete_response = self.client.delete(f"/api/settings/positions/{created_position['id']}")
@@ -2823,7 +2823,7 @@ class EmployeeApiSmokeTests(unittest.TestCase):
         self.assertIsNotNone(deleted_position)
         self.assertFalse(deleted_position["is_active"])
 
-    def test_employee_detail_payload_uses_catalog_positions_and_preserves_legacy_value(self) -> None:
+    def test_employee_detail_position_options_exclude_unknown_legacy_value(self) -> None:
         position_slug = f"qa_engineer_{self.unique_tag}"
         position_title = f"QA engineer {self.unique_tag}"
         with SessionLocal() as db:
@@ -2844,7 +2844,7 @@ class EmployeeApiSmokeTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         options = response.json()["options"]["employee_role_values"]
         self.assertIn(position_title, options)
-        self.assertIn("Редактор", options)
+        self.assertNotIn("Редактор", options)
 
     def test_update_employee_api_persists_position_from_catalog(self) -> None:
         position_slug = f"qa_engineer_{self.unique_tag}"
