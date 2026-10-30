@@ -27,11 +27,13 @@ source_of_truth: true
 
 ## Стабилизация после аудита PR (28.10.2026)
 
-Doing: объединение PM в «Руководитель проектов»: guarded preview/backup/apply
+Done (30.10, code deployed/config applied): объединение PM в «Руководитель проектов»: guarded preview/backup/apply
 для карточек, scopes сценариев/меню/необработанных рассылок и Grade.
 Редактор карточки — catalog-only, inactive/unknown не создают новые позиции.
-Четыре live PM уже canonical; старые ключи есть в семи сценариях. Применение
-только после проверки live preview; история/Telegram не меняются.
+Четыре live PM canonical; старые ключи убраны из семи сценариев, две кнопки
+выбора должности переименованы без перестановки веток. Live preview:
+9 изменений, 0 audience deltas; apply после backup, повторный preview changes=0.
+История/Telegram не менялись; [[stage-change-log]].
 
 Выложено PR #155 (`af9c596`): базовая проверка web uploads, безопасные имена файлов и
 декодирование/формат/pixel limit фото профиля до замены старого файла.
