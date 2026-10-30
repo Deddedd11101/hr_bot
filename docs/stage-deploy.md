@@ -13,6 +13,11 @@ related:
 source_of_truth: true
 ---
 
+Read-only Stage Diagnostics поддерживает optional `employee_runtime_id`:
+positive numeric ID, SQLite mode=ro; выводит только active progress IDs,
+scenario/step keys, recipient IDs, flags и timestamps, без ответов, Telegram ID,
+ФИО/почты. Не выполняет reset/deploy/restart и не пишет в БД.
+
 # Runbook деплоя на stage
 
 ## Область покрытия и модель подтверждения фактов

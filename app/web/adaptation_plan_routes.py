@@ -1,7 +1,10 @@
 import json
 from datetime import datetime
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Request
+from fastapi import APIRouter, Body, Depends, Form, HTTPException, Request
+from fastapi.responses import HTMLResponse
+from html import escape
+from urllib.parse import urlsplit
 from sqlalchemy import update
 from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.exc import IntegrityError
@@ -11,7 +14,7 @@ from ..adaptation_planning import CalendarDates, build_preview, local_now, templ
 from ..database import get_session
 from ..models import AdaptationPlanTemplate, Employee, EmployeeAdaptationPlanItem, FlowLaunchRequest, ScenarioTemplate
 from ..time_utils import utc_now
-from .support import require_api_auth
+from .support import require_api_auth, require_api_admin
 
 router = APIRouter()
 
@@ -73,7 +76,11 @@ def save_template(request: Request, payload: dict = Body(...), db: Session = Dep
 @router.get("/api/employees/{employee_id}/adaptation-plan")
 def plan_api(request: Request, employee_id: int, db: Session = Depends(get_db)):
     require_api_auth(request)
-    return build_preview(db, _subject(db, employee_id))
+    result = build_preview(db, _subject(db, employee_id))
+    result["archived_items"] = [dict(id=row.id, title=row.title, requested_at=row.requested_at.isoformat(),
+        archive=json.loads(row.calculation_json).get("retest_archive"))
+        for row in db.query(EmployeeAdaptationPlanItem).filter_by(employee_id=employee_id, status="archived").order_by(EmployeeAdaptationPlanItem.id)]
+    return result
 
 
 @router.get("/api/adaptation-plan/working-days/{year}")
@@ -189,6 +196,38 @@ def replan(request: Request, employee_id: int, payload: dict = Body(...), db: Se
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         raise
     return build_preview(db, employee)
+
+
+@router.get("/app/employees/{employee_id}/adaptation-retest", response_class=HTMLResponse)
+def preview_retest(request: Request, employee_id: int, db: Session = Depends(get_db)):
+    from ..adaptation_retest import preview
+    require_api_admin(request)
+    try:
+        plan = preview(db, employee_id)
+    except ValueError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+    disabled = "disabled" if plan["blockers"] or plan["in_flight_item_ids"] or not (plan["items"] or plan["progress"] or plan["pending_request_ids"]) else ""
+    return HTMLResponse('<!doctype html><html lang="ru"><meta charset="utf-8"><title>Повторный тест адаптации</title>'
+        '<h1>Повторный тест адаптации</h1><p>Только адаптация выбранного сотрудника. История, файлы, оценки и Telegram сохраняются.</p>'
+        f'<pre>{escape(json.dumps(plan, ensure_ascii=False, indent=2))}</pre>'
+        f'<form method="post"><input type="hidden" name="fingerprint" value="{plan["fingerprint"]}">'
+        f'<button {disabled}>Архивировать тестовый план и освободить диалог</button></form></html>')
+
+
+@router.post("/app/employees/{employee_id}/adaptation-retest")
+def apply_retest(request: Request, employee_id: int, fingerprint: str = Form(...), db: Session = Depends(get_db)):
+    from ..adaptation_retest import apply
+    require_api_admin(request)
+    if urlsplit(request.headers.get("origin", "")).netloc != request.headers.get("host"):
+        raise HTTPException(status_code=403, detail="Требуется запрос с этого сайта")
+    try:
+        result = apply(db, employee_id, fingerprint)
+    except ValueError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+    return HTMLResponse('<!doctype html><html lang="ru"><meta charset="utf-8"><title>Готово</title>'
+        '<h1>Адаптация подготовлена к повторному тесту</h1>'
+        f'<pre>{escape(json.dumps(result, ensure_ascii=False))}</pre>'
+        f'<a href="/app/employees/{employee_id}">Открыть карточку сотрудника</a></html>')
 
 
 @router.patch("/api/employees/{employee_id}/adaptation-plan/{item_id}")

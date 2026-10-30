@@ -33,6 +33,13 @@ related:
 source_of_truth: true
 ---
 
+Инцидент retest №80: старый progress136 middle (21.10), self-recipient80, держит
+диалог и блокирует first_day. Organization для manager78 уже completed; наставник
+адаптации70 не является получателем first_day. 5 ожидающих тестовых этапов отменены
+по разрешению пользователя; end_other в шаблоне переведён в other. Готовится
+guarded архивирование тестового плана/прерывание только адаптационного runtime,
+без Telegram reset, удаления ответов/файлов или изменения оценок.
+
 30.10 выложено и применено объединение подтверждённых PM-вариантов в rukovoditel_proektov:
 guarded admin preview/apply с backup, drift/audience checks; catalog-only
 save карточки и active-only role choices. Deployed 3781ada; 7 scenario scopes

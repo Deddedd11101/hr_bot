@@ -14,6 +14,13 @@ related:
 source_of_truth: true
 ---
 
+Admin-only `GET /app/employees/{employee_id}/adaptation-retest` — read-only preview;
+`POST` той же страницы — fingerprint/same-origin guarded reset после backup.
+Чужие диалоги/идущая отправка или drift — 409; не-admin/cross-origin — 403.
+Архивируются только текущие items выбранной адаптации, runtime закрывается с
+причиной, остальные сущности/identity/история не удаляются. Новых запусков нет;
+[[features/adaptation-planning]].
+
 Admin-only maintenance: `GET /app/settings/positions/consolidate-project-leads`
 показывает read-only план подтверждённого PM mapping; `POST` той же страницы
 применяет fingerprint-guarded перенос после SQLite backup/quick_check и проверки
