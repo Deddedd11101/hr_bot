@@ -130,7 +130,7 @@ jobs:
             fi
 
             if [ "$TRACEBACK_FRAMES" = "true" ]; then
-              echo "== Sanitized worker traceback frames =="
+              echo "== Sanitized web/worker traceback frames =="
               python3 - <<'PY'
             import os
             import re
@@ -140,7 +140,7 @@ jobs:
             if not 1 <= minutes <= 60:
                 raise SystemExit("worker_log_minutes must be between 1 and 60")
             output = subprocess.check_output(
-                ["journalctl", "-u", "hr-bot-worker", "--since", f"{minutes} minutes ago", "--no-pager", "-o", "cat", "-n", "1000"],
+                ["journalctl", "-u", "hr-bot-worker", "-u", "hr-bot-web", "--since", f"{minutes} minutes ago", "--no-pager", "-o", "cat", "-n", "1000"],
                 text=True,
             )
             in_traceback = False
