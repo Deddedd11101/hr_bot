@@ -110,3 +110,20 @@ class PositionConsolidationTests(unittest.TestCase):
         with self.assertRaises(HTTPException) as caught:
             apply_project_lead_positions(request, "invalid", self.db)
         self.assertEqual(caught.exception.status_code, 403)
+
+    def test_http_dependency_yields_session_and_form_applies_guarded_plan(self):
+        from contextlib import nullcontext
+        from unittest.mock import patch
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+        from app.web import settings_routes
+        app = FastAPI()
+        app.include_router(settings_routes.router)
+        with patch.object(settings_routes, "get_session", return_value=nullcontext(self.db)), patch.object(settings_routes, "require_api_admin"):
+            client = TestClient(app)
+            response = client.get("/app/settings/positions/consolidate-project-leads")
+            self.assertEqual(response.status_code, 200)
+            response = client.post("/app/settings/positions/consolidate-project-leads",
+                data={"fingerprint": preview(self.db)["fingerprint"]}, headers={"origin": "http://testserver"})
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(preview(self.db)["changes"], [])

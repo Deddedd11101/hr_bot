@@ -40,8 +40,13 @@ router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
 
 
+def get_db():
+    with get_session() as db:
+        yield db
+
+
 @router.get("/app/settings/positions/consolidate-project-leads", response_class=HTMLResponse)
-def preview_project_lead_positions(request: Request, db: Session = Depends(get_session)):
+def preview_project_lead_positions(request: Request, db: Session = Depends(get_db)):
     from ..position_consolidation import preview
     require_api_admin(request)
     try:
@@ -59,7 +64,7 @@ def preview_project_lead_positions(request: Request, db: Session = Depends(get_s
 
 
 @router.post("/app/settings/positions/consolidate-project-leads")
-def apply_project_lead_positions(request: Request, fingerprint: str = Form(...), db: Session = Depends(get_session)):
+def apply_project_lead_positions(request: Request, fingerprint: str = Form(...), db: Session = Depends(get_db)):
     from ..position_consolidation import apply
     require_api_admin(request)
     if urlsplit(request.headers.get("origin", "")).netloc != request.headers.get("host"):
@@ -81,11 +86,6 @@ def _reject_telegram_binding_change(current_value: str | None, proposed_value: s
             status_code=status.HTTP_409_CONFLICT,
             detail="Telegram HR нельзя менять через общие настройки. Используйте подключение или отключение Telegram.",
         )
-
-
-def get_db():
-    with get_session() as db:
-        yield db
 
 
 def _serialize_position(position: Position) -> dict:
