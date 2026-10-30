@@ -79,6 +79,14 @@ class PositionConsolidationTests(unittest.TestCase):
                 resolve_employee_position_value(self.db, value)
         self.assertEqual(resolve_employee_position_value(self.db, CANONICAL), TITLES[CANONICAL])
 
+    def test_even_unchanged_canonical_scope_checks_recipient_delta(self):
+        self.db.add(ScenarioTemplate(title="Canonical only", scenario_key="canonical", role_scope=CANONICAL))
+        self.db.commit()
+        plan = preview(self.db)
+        self.assertTrue(plan["audience_deltas"])
+        with self.assertRaisesRegex(ValueError, "аудитории"):
+            apply(self.db, plan["fingerprint"])
+
     def test_maintenance_routes_require_admin_and_same_origin(self):
         from fastapi import HTTPException
         from types import SimpleNamespace

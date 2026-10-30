@@ -10,7 +10,7 @@ from sqlalchemy import text
 
 from .models import (BotMenuSet, Employee, GradeSpecialization, MassMessageAction,
                      MassScenarioAction, Position, ScenarioTemplate)
-from .positions import position_matches_scope, position_title_key
+from .positions import normalize_position_slug, position_matches_scope, position_title_key
 
 CANONICAL = "rukovoditel_proektov"
 TITLES = {"project_manager": "Project manager", "rukovoditel_proekta": "Руководитель проекта",
@@ -23,9 +23,9 @@ def _scope(value):
     if not value:
         return value
     items = value.split(",")
-    if not any(item.strip() in TITLES and item.strip() != CANONICAL for item in items):
+    if not any(normalize_position_slug(item) in TITLES and item.strip() != CANONICAL for item in items):
         return value
-    return ",".join(dict.fromkeys(CANONICAL if item.strip() in TITLES else item.strip() for item in items))
+    return ",".join(dict.fromkeys(CANONICAL if normalize_position_slug(item) in TITLES else item.strip() for item in items))
 
 
 def preview(db):
@@ -69,14 +69,14 @@ def preview(db):
                     items = json.loads(before)
                     if not isinstance(items, list) or not all(isinstance(item, str) for item in items):
                         raise ValueError("Некорректная сохранённая аудитория; перенос остановлен")
-                    after_items = list(dict.fromkeys(CANONICAL if item in TITLES else item for item in items))
+                    after_items = list(dict.fromkeys(CANONICAL if normalize_position_slug(item) in TITLES else item for item in items))
                     after = json.dumps(after_items, separators=(",", ":")) if items != after_items else before
                     old_scope, new_scope = ",".join(items), ",".join(after_items)
                 else:
                     after = _scope(before)
                     old_scope, new_scope = before, after
                 record(row, field, after)
-                if before == after or field == "position_slug":
+                if field == "position_slug":
                     continue
                 before_ids = [e.id for e in employees if position_matches_scope(e.desired_position, old_scope, db=db)]
                 after_ids = [e.id for e in employees if position_matches_scope(
