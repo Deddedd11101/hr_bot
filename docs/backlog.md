@@ -25,11 +25,14 @@ source_of_truth: true
 
 # Бэклог HR Bot
 
-Doing: повторный тест адаптации №80. Старый self-dialog middle от 21.10 блокировал
+Done (30.10, deployed/applied/UI checked): повторный тест адаптации №80. Старый self-dialog middle от 21.10 блокировал
 первый день. По подтверждению пользователя отменены 5 pending этапов; исправлена
 только group end_other pm→other в общем шаблоне (revision 4→5), без пересчёта планов.
-Подготовлен admin guarded archive/reset с backup и сохранением истории/identity;
-применение ещё не выполнено. Новое планирование остаётся явным действием HR.
+Admin guarded archive/reset выложен на 36481f7 и применён после backup:
+6 items архивированы. К apply старый диалог уже не был активен, принудительное
+прерывание не понадобилось. API: 9 current rows без items/errors, 6 archived.
+UI: кнопка полного планирования и 9 редактируемых дат checked без Save.
+Новое планирование остаётся явным действием HR; [[stage-change-log]].
 
 ## Стабилизация после аудита PR (28.10.2026)
 
