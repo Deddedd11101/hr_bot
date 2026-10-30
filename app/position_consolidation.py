@@ -8,7 +8,7 @@ from uuid import uuid4
 
 from sqlalchemy import text
 
-from .models import (BotMenuSet, Employee, GradeSpecialization, MassMessageAction,
+from .models import (BotMenuSet, Employee, FlowStepTemplate, GradeSpecialization, MassMessageAction,
                      MassScenarioAction, Position, ScenarioTemplate)
 from .positions import normalize_position_slug, position_matches_scope, position_title_key
 
@@ -16,7 +16,7 @@ CANONICAL = "rukovoditel_proektov"
 TITLES = {"project_manager": "Project manager", "rukovoditel_proekta": "Руководитель проекта",
           CANONICAL: "Руководитель проектов"}
 MODELS = {model.__tablename__: model for model in (
-    Position, Employee, ScenarioTemplate, BotMenuSet, GradeSpecialization, MassMessageAction, MassScenarioAction)}
+    Position, Employee, FlowStepTemplate, ScenarioTemplate, BotMenuSet, GradeSpecialization, MassMessageAction, MassScenarioAction)}
 
 
 def _scope(value):
@@ -57,6 +57,12 @@ def preview(db):
         state.append(["employees", row.id, "desired_position", row.desired_position])
         if after != row.desired_position:
             changes.append(dict(table="employees", id=row.id, field="desired_position", before=row.desired_position, after=after))
+    scenario_keys = db.query(ScenarioTemplate.scenario_key)
+    for row in db.query(FlowStepTemplate).filter(FlowStepTemplate.target_field == "desired_position",
+                                               FlowStepTemplate.flow_key.in_(scenario_keys)).order_by(FlowStepTemplate.id):
+        options = (row.button_options or "").splitlines()
+        mapped = [TITLES[CANONICAL] if position_title_key(item) in names else item for item in options]
+        record(row, "button_options", "\n".join(mapped) if options != mapped else row.button_options)
     for model, fields in ((ScenarioTemplate, ["role_scope"]), (BotMenuSet, ["role_scope"]),
                           (GradeSpecialization, ["position_slug"]),
                           (MassMessageAction, ["target_role_scope", "target_role_scopes"]),

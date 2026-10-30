@@ -24,7 +24,7 @@ from .messaging import MessengerClient, as_messenger, find_employee_by_channel_u
 from .messaging.identity import find_employees_by_channel_user_id, get_primary_chat_id
 from .staff_email_verification import chat_id_allowed, is_verified
 from .models import DocumentLibraryItem, Employee, EmployeeDocumentLink, EmployeeFeedbackRecipient, EmployeeFeedbackRun, EmployeeFile, FlowLaunchRequest, FlowStepTemplate, HrSettings, MassScenarioAction, OnboardingEvent, ScenarioProgress, ScenarioTemplate, StepButtonNotification, StepSendNotification, SurveyAnswer
-from .positions import position_matches_scope
+from .positions import canonical_project_lead_answer, position_matches_scope
 from .time_utils import utc_now
 from .models import ScenarioAnswerRun, EmployeeAdaptationPlanItem
 from .feedback_exports import feedback_workbook, latest_feedback_run
@@ -2079,7 +2079,7 @@ def apply_response_to_employee(
         return True
     if target_field == "desired_position":
         # Custom button values for a role should not block the scenario flow.
-        employee.desired_position = normalized or None
+        employee.desired_position = canonical_project_lead_answer(db, normalized) or None
         return True
     if target_field == "salary_expectation":
         employee.salary_expectation = normalized or None

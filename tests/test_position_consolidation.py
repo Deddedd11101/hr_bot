@@ -7,7 +7,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.database import Base
-from app.models import Employee, Position, ScenarioTemplate, MassMessageAction, GradeSpecialization
+from app.models import Employee, Position, ScenarioTemplate, MassMessageAction, GradeSpecialization, FlowStepTemplate
 from app.position_consolidation import CANONICAL, TITLES, apply, preview
 from app.positions import resolve_employee_position_value
 
@@ -24,6 +24,8 @@ class PositionConsolidationTests(unittest.TestCase):
             self.db.add(Position(title=title, slug=key, is_active=True, created_at=now))
             self.db.add(Employee(full_name="Private fixture", desired_position=title, created_at=now))
         self.db.add(ScenarioTemplate(title="Fixture", scenario_key="fixture", role_scope=",".join(TITLES)))
+        self.db.add(FlowStepTemplate(flow_key="fixture", step_key="position", step_title="Position",
+            default_text="Choose", target_field="desired_position", button_options="Аналитик\nРуководитель проекта"))
         self.db.add(MassMessageAction(message_text="Private message", requested_at=now, created_at=now,
             target_role_scopes='["project_manager","rukovoditel_proekta","rukovoditel_proektov"]'))
         self.db.add(MassMessageAction(message_text="Private history", requested_at=now, created_at=now,
@@ -53,6 +55,7 @@ class PositionConsolidationTests(unittest.TestCase):
         self.assertEqual(self.db.query(MassMessageAction).filter(MassMessageAction.processed_at.is_not(None)).one().target_role_scope,
                          "project_manager")
         self.assertEqual(self.db.query(GradeSpecialization).one().position_slug, CANONICAL)
+        self.assertEqual(self.db.query(FlowStepTemplate).one().button_options, "Аналитик\nРуководитель проектов")
 
     def test_stale_plan_and_audience_expansion_are_rejected_without_writes(self):
         plan = preview(self.db)
@@ -86,6 +89,13 @@ class PositionConsolidationTests(unittest.TestCase):
         self.assertTrue(plan["audience_deltas"])
         with self.assertRaisesRegex(ValueError, "аудитории"):
             apply(self.db, plan["fingerprint"])
+
+    def test_old_inflight_position_answer_uses_canonical_catalog_title(self):
+        from app.scenario_engine import apply_response_to_employee
+        employee = self.db.query(Employee).first()
+        step = self.db.query(FlowStepTemplate).one()
+        self.assertTrue(apply_response_to_employee(self.db, employee, step, "Руководитель проекта"))
+        self.assertEqual(employee.desired_position, TITLES[CANONICAL])
 
     def test_maintenance_routes_require_admin_and_same_origin(self):
         from fastapi import HTTPException

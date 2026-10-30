@@ -106,6 +106,16 @@ def position_title_key(value: str) -> str:
     return " ".join((value or "").split()).casefold()
 
 
+def canonical_project_lead_answer(db: Session, value: str) -> str:
+    aliases = {"project_manager", "project manager", "руководитель проекта", "руководитель проектов",
+               "rukovoditel_proekta", "rukovoditel_proektov"}
+    if position_title_key(value) in aliases:
+        position = db.query(Position).filter_by(slug="rukovoditel_proektov", is_active=True).first()
+        if position is not None:
+            return position.title
+    return value
+
+
 def _catalog(db: Session) -> list[tuple[int, str, str]]:
     cached = db.info.get("position_matching_catalog")
     changed = any(isinstance(row, Position) for row in (*db.new, *db.dirty, *db.deleted))
