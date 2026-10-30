@@ -13,6 +13,36 @@ source_of_truth: true
 
 # Журнал изменений тестового стенда
 
+## 30.10.2026 — повторный тест адаптации №80 с сохранением истории
+
+- Read-only runtime Diagnostics 41051642798 выявил progress136, self-recipient80,
+  middle `custom_scenario_26921655a2b4`, waiting с 21.10. Он блокировал first_day;
+  organization для manager78 уже completed, mentor_adaptation70 не self-recipient.
+- Пользователь подтвердил reset только адаптации без identity/files/Grade/history
+  deletion. Через UI отменены 5 pending этапов №80 (items1–5). Отдельно подтверждена
+  правка общего шаблона: end_other group pm→other, revision4→5, остальные entries
+  не менялись, существующие даты других сотрудников не пересчитывались.
+  Before snapshot: `D:\HRBot\outputs\adaptation-template-before-group-fix-20261030.json`.
+- PR #160 feature0613530: admin preview/apply с backup, fingerprint/lock,
+  отказом при foreign dialog/in-flight item, archive вместо удаления items,
+  отдельные history keys и archived_items API. CI 41053362826 checks/frontend
+  passed, 547 tests; локально 222 tests, compileall/Ruff F821/docs/diff passed.
+- Deployed `36481f7e352457bded0db40894506ac1b49c21ee`, Deploy41053654734 success
+  около 15:14 МСК. Verified backup `backups/hr_bot.before-deploy.20261030-121344.db`,
+  scenario snapshot создан; при deploy scenario fingerprint unchanged, HTTP303.
+- Свежий reset preview: items1–6 (5 cancelled / 1 completed), active progress[],
+  blockers[], in-flight[], pending requests[]. Старый диалог к этому моменту уже
+  не был активен; reset не прерывал новых диалогов. После reviewed preview apply
+  архивировал только items1–6. Backup/quick_check:
+  `backups/hr_bot.before-adaptation-retest.5a70fe0faf5344978082a7eab7ca717b.db`.
+  Snapshot плана: `D:\HRBot\outputs\adaptation-80-retest-preview-20261030.json`.
+- Post-apply API: 9 PM rows, item_ids[], errors[], archived_count6. UI карточки80:
+  «Запланировать адаптацию» доступна; модалка показывает 9 editable date inputs и
+  «Запланировать все этапы (9)». Закрыта «Отмена» без сохранения/новой отправки.
+  Screenshot `D:\HRBot\outputs\adaptation-80-ready-20261030.png`.
+- Telegram linkage, файлы, оценки, assignments, history/results сохранены;
+  другие сотрудники не сбрасывались. Новые даты/прохождение теста остаются за HR.
+
 ## 30.10.2026 — единая должность «Руководитель проектов»
 
 - PR #157 feature 72bf641, initial deploy 38f184c (41030226130) прошёл, но
