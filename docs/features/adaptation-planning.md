@@ -12,6 +12,23 @@ related:
 source_of_truth: true
 ---
 
+## Повторный тест без удаления истории
+
+Admin-only `GET /app/employees/{employee_id}/adaptation-retest` показывает preview
+плана и активных адаптационных progress; POST с fingerprint и same-origin Origin
+создаёт SQLite backup/quick_check и применяет под BEGIN IMMEDIATE. Drift,
+посторонний диалог или item starting/in_progress блокируют сброс.
+Текущие items получают status=archived и отдельный history entry_key; original
+entry_key/status/время архива сохраняются в calculation_json.retest_archive.
+Они исключаются из текущего preview, но не удаляются; plan API возвращает
+archived_items. Ссылки на них и started/completed dates остаются прежними.
+Выбранные progress закрываются с причиной прерывания, pending confirmation
+очищается, связанные in_progress answer runs помечаются interrupted. Ответы,
+файлы, Telegram identity и история доставок не удаляются; completion events
+не генерируются. Pending requests только этих adaptation flows гасятся без отправки.
+Новый план создаётся отдельно пользователем; reset не назначает даты и не шлёт
+сообщения. Старые archived items продолжают защищать flows от generic auto jobs.
+
 # План адаптации
 
 ## Даты и шаблон

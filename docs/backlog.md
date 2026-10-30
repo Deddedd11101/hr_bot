@@ -25,6 +25,12 @@ source_of_truth: true
 
 # Бэклог HR Bot
 
+Doing: повторный тест адаптации №80. Старый self-dialog middle от 21.10 блокировал
+первый день. По подтверждению пользователя отменены 5 pending этапов; исправлена
+только group end_other pm→other в общем шаблоне (revision 4→5), без пересчёта планов.
+Подготовлен admin guarded archive/reset с backup и сохранением истории/identity;
+применение ещё не выполнено. Новое планирование остаётся явным действием HR.
+
 ## Стабилизация после аудита PR (28.10.2026)
 
 Done (30.10, code deployed/config applied): объединение PM в «Руководитель проектов»: guarded preview/backup/apply

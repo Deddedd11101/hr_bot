@@ -15,6 +15,10 @@ on:
         description: "Показать только Python frames и класс исключения, без текста логов"
         required: false
         default: "false"
+      employee_runtime_id:
+        description: "Optional employee ID: read-only active scenario IDs/step keys, no answers or identity data"
+        required: false
+        default: ""
 
 concurrency:
   group: deploy-stage
@@ -26,6 +30,8 @@ jobs:
     env:
       WORKER_LOG_MINUTES: ${{ inputs.worker_log_minutes }}
       TRACEBACK_FRAMES: ${{ inputs.traceback_frames }}
+      EMPLOYEE_RUNTIME_ID: ${{ inputs.employee_runtime_id }}
+      STAGE_DB_PATH: ${{ secrets.STAGE_DB_PATH }}
 
     steps:
       - name: Read-only stage checks over SSH
@@ -35,11 +41,34 @@ jobs:
           username: ${{ secrets.STAGE_USERNAME }}
           password: ${{ secrets.STAGE_PASSWORD }}
           port: ${{ secrets.STAGE_PORT }}
-          envs: WORKER_LOG_MINUTES,TRACEBACK_FRAMES
+          envs: WORKER_LOG_MINUTES,TRACEBACK_FRAMES,EMPLOYEE_RUNTIME_ID,STAGE_DB_PATH
           script: |
             set -eu
             cd "${{ secrets.STAGE_APP_DIR }}"
             failures=0
+
+            if [ -n "${EMPLOYEE_RUNTIME_ID}" ]; then
+              echo "== Read-only employee runtime IDs =="
+              .venv/bin/python - <<'PY'
+            from contextlib import closing
+            import json
+            import os
+            from pathlib import Path
+            import sqlite3
+
+            raw = os.environ["EMPLOYEE_RUNTIME_ID"]
+            if not raw.isascii() or not raw.isdigit() or int(raw) <= 0:
+                raise SystemExit("employee_runtime_id must be a positive numeric ID")
+            path = Path(os.environ.get("STAGE_DB_PATH") or "hr_bot.db").resolve()
+            with closing(sqlite3.connect(path.as_uri() + "?mode=ro", uri=True)) as db:
+                db.row_factory = sqlite3.Row
+                rows = db.execute("""SELECT id, employee_id, recipient_employee_id, scenario_key,
+                    current_step_key, waiting_for_response, is_completed, adaptation_plan_item_id, updated_at
+                    FROM scenario_progress WHERE (employee_id=? OR recipient_employee_id=?)
+                    AND (waiting_for_response=1 OR is_completed=0) ORDER BY id""", (int(raw), int(raw))).fetchall()
+                print(json.dumps([dict(row) for row in rows], ensure_ascii=True))
+            PY
+            fi
 
             echo "== Git =="
             echo "deployed: $(git rev-parse HEAD) ($(git log -1 --format=%s))"

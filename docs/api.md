@@ -93,6 +93,8 @@ Final сохраняется без изменений; archived доступе�
 ## План адаптации
 
 - `GET /api/adaptation-plan/template`: authenticated, entries/revision/scenario_options, read-only defaults.
+- `GET /api/employees/{employee_id}/adaptation-plan` дополнительно возвращает archived_items
+  (id/title/requested_at/archive metadata); archived rows не занимают текущие ключи плана.
 - `POST /api/adaptation-plan/template`: entries/revision; CAS conflict 409, invalid dependency 422.
 - `GET /api/employees/{employee_id}/adaptation-plan`: authenticated employee-only preview, ordered rows, dates/statuses/conflicts/calendar_versions/fingerprint; candidates 404. Также adaptation_end (ISO date или пустая строка), adaptation_end_source=saved/calculated/missing: пустой конец рассчитывается от первого дня +3 календарных месяца без записи в карточку/очередь; заполненная дата приоритетна. При новом promote-to-adaptation пустой конец сохраняется по этому же правилу.
 - `POST /api/employees/{employee_id}/adaptation-plan`: fingerprint, rules_confirmed=true, rows [{key,requested_at local ISO minute}]; атомарное создание очереди, duplicate/stale 409, past/invalid 422.

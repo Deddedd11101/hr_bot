@@ -15,6 +15,13 @@ related:
 source_of_truth: true
 ---
 
+Adaptation retest не добавляет schema: employee_adaptation_plan_items.status=archived,
+отдельный history entry_key и calculation_json.retest_archive сохраняют прежний
+ключ/status/дату архива. Старые PK, timestamps, ссылки и результаты остаются;
+current preview исключает архив. ScenarioProgress закрывается с причиной
+прерывания; связанные незавершённые ScenarioAnswerRun получают interrupted,
+не completion event; pending FlowLaunchRequest помечается обработанным без отправки.
+
 `grade_assessments.current_grade_id` nullable: фактическое ревью допустимо без кадрового грейда. SQLite compatibility guard снимает прежний NOT NULL через транзакционный rebuild только этой таблицы, сохраняя все значения, JSON snapshots, индексы и триггеры; неизвестный формат DDL отклоняется. `grade_assessment_values` не меняется. Перед выкладкой нужен штатный verified deploy backup. Старый runtime не является безопасным rollback для оценок с null грейдом. Первичный импорт использует существующие таблицы, provenance хранит в final JSON `import_source`; даты исходного ревью не выдумываются.
 
 Для SQLite legacy transaction control guard явно открывает `BEGIN IMMEDIATE`, если драйвер ещё не начал транзакцию: исключение после DDL откатывает rebuild целиком и не оставляет временную таблицу.

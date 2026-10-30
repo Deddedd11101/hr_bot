@@ -52,6 +52,16 @@ class AdaptationPlanTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotEqual(rows["pulse1"]["proposed_at"], rows["pulse2"]["proposed_at"])
         self.assertEqual(len(preview["rows"]), 9)
 
+    def test_archived_plan_items_do_not_block_new_plan(self):
+        self.db.add(EmployeeAdaptationPlanItem(employee_id=self.employee.id, entry_key="past_fixture",
+            flow_key=default_entries()[0]["scenario_key"], title="Past plan", status="archived",
+            requested_at=datetime(2091, 1, 1), calculation_json="{}"))
+        self.db.commit()
+        result = build_preview(self.db, self.employee)
+        self.assertEqual(len(result["rows"]), 9)
+        self.assertTrue(all(row["item_id"] is None for row in result["rows"]))
+        self.assertEqual(self.db.query(EmployeeAdaptationPlanItem).count(), 1)
+
     def test_calendar_missing_year_and_workday_offsets(self):
         calendar = CalendarDates(self.db)
         self.assertEqual(calendar.shift(date(2092, 1, 7), 5, "workday"), date(2092, 1, 14))
