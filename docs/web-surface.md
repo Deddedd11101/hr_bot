@@ -14,6 +14,12 @@ related:
 source_of_truth: true
 ---
 
+Admin-only maintenance: `GET /app/settings/positions/consolidate-project-leads`
+показывает read-only план подтверждённого PM mapping; `POST` той же страницы
+применяет fingerprint-guarded перенос после SQLite backup/quick_check и проверки
+same-origin. Drift/изменение role-аудиторий — 409, не-admin/cross-origin — 403.
+История не удаляется, сценарии не запускаются; [[features/position-directory]].
+
 ## Списки карточки человека
 
 Обзор: HR-заметки запрашиваются постранично по 10, новые сверху, удаление с

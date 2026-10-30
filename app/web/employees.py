@@ -882,6 +882,7 @@ def _apply_employee_update(
     current_revision = notes_revision(db, employee.id)
     has_deleted_notes = db.query(EmployeeHrNote.id).filter(
         EmployeeHrNote.employee_id == employee.id, EmployeeHrNote.deleted_at.is_not(None)).first() is not None
+    resolved_position = resolve_employee_position_value(db, desired_position)
     if ipr_url is not None:
         _set_employee_ipr_link(db, employee.id, ipr_url)
     first_day = _parse_optional_date(first_workday)
@@ -903,7 +904,7 @@ def _apply_employee_update(
         employee.first_name = first_name.strip() or None
     _apply_employee_telegram_identity(employee, chat_id=chat_id, chat_handle=chat_handle, db=db)
     employee.first_workday = first_day
-    employee.desired_position = resolve_employee_position_value(db, desired_position)
+    employee.desired_position = resolved_position
     employee.salary_expectation = salary_expectation.strip() or None
     employee.is_bot_blocked = is_bot_blocked
 
