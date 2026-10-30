@@ -33,9 +33,11 @@ related:
 source_of_truth: true
 ---
 
-Подготовлено объединение подтверждённых PM-вариантов в rukovoditel_proektov:
+30.10 выложено и применено объединение подтверждённых PM-вариантов в rukovoditel_proektov:
 guarded admin preview/apply с backup, drift/audience checks; catalog-only
-save карточки и active-only role choices. До применения preview данные не меняются.
+save карточки и active-only role choices. Deployed 3781ada; 7 scenario scopes
+и 2 кнопки обновлены, role-аудитории не изменились. Четыре карточки уже canonical,
+старые позиции неактивны для истории. Повторный preview пуст, UI/API checked.
 
 PR #155 выложен на af9c596: filename guards web uploads и проверка содержимого фото профиля:
 подмена MIME/расширения не обходят decode/25 MP limit, прежнее фото сохраняется

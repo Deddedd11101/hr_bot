@@ -13,6 +13,40 @@ source_of_truth: true
 
 # Журнал изменений тестового стенда
 
+## 30.10.2026 — единая должность «Руководитель проектов»
+
+- PR #157 feature 72bf641, initial deploy 38f184c (41030226130) прошёл, но
+  authenticated maintenance GET выявил AttributeError: contextmanager get_session
+  был передан в Depends без yield wrapper. Данные не применялись. Санитизированные
+  web frames получены read-only workflow 41030647556 без сообщений/PII.
+- PR #158 исправил dependency и добавил настоящий HTTP GET/POST regression;
+  CI 41030959075 checks/frontend passed, 543 tests. Deployed
+  `3781ada8b1b500050b2b638a60e620cd2f3d8e2d`, Deploy 41031197210 success
+  около 12:09 МСК. Backup `backups/hr_bot.before-deploy.20261030-090915.db`,
+  scenario snapshot создан; fingerprint при deploy unchanged. HTTP 303.
+  Post-apply Diagnostics 41031561097 success: 0 failing checks, tracked tree
+  clean, web/worker/WireGuard/Caddy active, HTTPS employees/workspace/grades 303,
+  свежих Telegram/network errors нет.
+- После успешного authenticated preview применён ровно план fingerprint
+  `3fea3b38ab383cdcd33b8eae319d0c2d2d2ed56f8792703dcfd8c646cf077532`:
+  7 scenario role_scope (30/32/44/51/56/57/65) и 2 button_options (147/467).
+  Перед apply SQLite backup/quick_check:
+  `backups/hr_bot.before-position-consolidation.c443f5b10fe14375b02088ebde8d3580.db`.
+  Изменений projected role-аудиторий нет; номера/число кнопок и ветвей сохранены.
+  Конфигурация менялась намеренно только этим отдельным apply, не deploy.
+- Четыре сотрудника уже имели canonical title, их карточки не переписывались.
+  Меню, pending mass actions и Grade bindings проверены — замен не потребовалось.
+  Старые position rows 2/24 остаются inactive для истории, активная canonical 17.
+  Произвольные другие должности не объединялись, история не переписывалась.
+- Post-apply preview changes=0, audience_deltas=[]; API employee23 options и
+  scenario20 role labels не содержат старых вариантов, canonical доступен.
+  Staff list: 4 canonical / 0 legacy. Редактор catalog-only, unknown не создаёт
+  позицию; регистрация и старый in-flight PM answer сохраняют canonical title.
+  Telegram сценарии/сообщения оператором не запускались.
+- Локальные evidence: `D:\HRBot\outputs\project-leads-merge-preview-20261030.json`,
+  `D:\HRBot\outputs\project-leads-merge-result-20261030.png`,
+  `D:\HRBot\outputs\project-leads-merge-verified-20261030.png`.
+
 ## 30.10.2026 — безопасный rename и проверка новых web uploads
 
 - PR #154 feature `9850e20`, PR #155 head `717563b`; deployed
