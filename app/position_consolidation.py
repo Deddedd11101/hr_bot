@@ -36,6 +36,8 @@ def preview(db):
     for key, row in matched.items():
         if position_title_key(row.title) != position_title_key(TITLES[key]):
             raise ValueError("Название ожидаемой должности изменилось; требуется новый review")
+        if any(other.id != row.id and position_title_key(other.title) == position_title_key(row.title) for other in catalog):
+            raise ValueError("Название должности неоднозначно; требуется новый review")
     names = {position_title_key(value) for value in (*TITLES, *TITLES.values())}
     employees = db.query(Employee.id, Employee.desired_position).order_by(Employee.id).all()
     changes, deltas, state = [], [], []
