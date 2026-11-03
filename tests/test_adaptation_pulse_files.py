@@ -74,7 +74,7 @@ class AdaptationPulseFilesTests(unittest.IsolatedAsyncioTestCase):
             slot = db.query(EmployeeDocumentLink).filter_by(employee_id=subject.id, slot_key="probation_plan").one()
             self.assertEqual(slot.employee_file_id, file_row.id)
             rendered = render_telegram_message_html(db, "{probation_plan}", subject, utc_now().date(), None)
-            self.assertEqual(rendered, "plan.pdf")
+            self.assertEqual(rendered, "План испытательного срока")
             self.assertEqual([f.id for f in resolve_tagged_employee_documents(db, "{probation_plan}", subject)], [file_row.id])
             progress = db.query(ScenarioProgress).filter_by(employee_id=subject.id, scenario_key=self.key).one()
             self.assertTrue(progress.is_completed)

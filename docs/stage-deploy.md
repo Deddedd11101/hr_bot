@@ -18,6 +18,10 @@ positive numeric ID, SQLite mode=ro; выводит только active progress
 scenario/step keys, recipient IDs, flags и timestamps, без ответов, Telegram ID,
 ФИО/почты. Не выполняет reset/deploy/restart и не пишет в БД.
 
+Дополнительно выводится `adaptation_queue`: IDs этапов/запросов, scenario keys,
+статусы, planned/processed timestamps и skip_step_key. Ответы и тексты сообщений
+не читаются; соединение остаётся SQLite mode=ro.
+
 # Runbook деплоя на stage
 
 ## Область покрытия и модель подтверждения фактов

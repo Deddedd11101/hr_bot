@@ -67,6 +67,12 @@ jobs:
                     FROM scenario_progress WHERE (employee_id=? OR recipient_employee_id=?)
                     AND (waiting_for_response=1 OR is_completed=0) ORDER BY id""", (int(raw), int(raw))).fetchall()
                 print(json.dumps([dict(row) for row in rows], ensure_ascii=True))
+                plan = db.execute("""SELECT p.id, p.entry_key, p.flow_key, p.status,
+                    p.requested_at, p.launch_request_id, r.launch_type, r.processed_at,
+                    r.skip_step_key FROM employee_adaptation_plan_items p
+                    LEFT JOIN flow_launch_requests r ON r.id=p.launch_request_id
+                    WHERE p.employee_id=? AND p.status!='archived' ORDER BY p.id""", (int(raw),)).fetchall()
+                print("adaptation_queue=" + json.dumps([dict(row) for row in plan], ensure_ascii=True))
             PY
             fi
 

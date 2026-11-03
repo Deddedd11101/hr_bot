@@ -116,6 +116,9 @@ TARGET_FIELD_LABELS = {
     "test_task_result": "Ответ на тестовое",
     "test_task_explanation": "Пояснение к тестовому (Loom)",
     "adaptation_tasks_url": "Задачи на ИС (файл или ссылка)",
+    "adaptation_test1_result": "Результат тестирования на ИС (1 часть)",
+    "adaptation_test2_result": "Результат тестирования на ИС (2 часть)",
+    "adaptation_practice_result": "Результат практического задания на ИС",
     "survey_answer": "Ответ опроса (Excel)",
 }
 

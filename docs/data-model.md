@@ -15,6 +15,12 @@ related:
 source_of_truth: true
 ---
 
+Результаты адаптационного тестирования используют document slots
+`adaptation_test1_result`, `adaptation_test2_result`, `adaptation_practice_result`.
+Для файла `employee_document_links.employee_file_id` ссылается на файл того же
+subject employee; для ссылки используется `item_kind=link`. Новых колонок нет.
+Слоты независимы от кандидатского ответа на тестовое и плана ИС.
+
 Adaptation retest не добавляет schema: employee_adaptation_plan_items.status=archived,
 отдельный history entry_key и calculation_json.retest_archive сохраняют прежний
 ключ/status/дату архива. Старые PK, timestamps, ссылки и результаты остаются;
