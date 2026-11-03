@@ -192,3 +192,26 @@ class GradeCollectionTests(unittest.TestCase):
             self.assertEqual(len(messenger.texts), calls)
         self.db.expire_all()
         self.assertEqual({r.status for r in self.db.scalars(select(GradeDevelopmentAction).where(GradeDevelopmentAction.milestone_id == stage.id))}, {"started"})
+
+    def test_legacy_started_stage_can_be_preserved_while_editing_future_actions(self):
+        self.prepare()
+        first = grades.save_review(self.db, 1, 1, self.review_request())
+        self.db.add(ScenarioTemplate(scenario_key="legacy", scenario_kind="scenario", title="Legacy", trigger_mode="manual_only", role_scope="all", employee_scope="employees", recipient_mode="self"))
+        self.db.add(FlowStepTemplate(flow_key="legacy", step_key="done", step_title="Done", default_text="Done", response_type="none", send_mode="immediate", is_terminal=True))
+        self.db.commit()
+        from app.grades import development
+        development.configure(self.db, 1, dict(expected_revision=0, assessment_id=first["id"], anchor_date="2026-11-03", enabled=False,
+            **{k + "_scenario_key": "legacy" for k in development.KINDS}))
+        stage = self.db.scalar(select(development.Milestone).where(development.Milestone.kind == "ipr6"))
+        stage.status = "started"
+        self.db.commit()
+        key = str(uuid4())
+        result = development_actions.configure(self.db, 1, 1, dict(expected_revision=1, assessment_id=first["id"], anchor_date="2026-11-03", enabled=False,
+            actions=dict(ipr6=[dict(key=key, type="scenario", scenario_key="legacy")], ipr12=[], review12=[])))
+        self.db.commit()
+        self.assertEqual(result["milestones"][0]["status"], "started")
+        self.assertEqual(result["milestones"][0]["actions"][0]["status"], "started")
+        result = development_actions.configure(self.db, 1, 1, dict(expected_revision=2, assessment_id=first["id"], anchor_date="2026-11-03", enabled=False,
+            actions=dict(ipr6=[dict(key=key, type="scenario", scenario_key="legacy")], ipr12=[], review12=[])))
+        self.db.commit()
+        self.assertEqual(result["revision"], 3)

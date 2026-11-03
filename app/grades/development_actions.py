@@ -90,6 +90,14 @@ def configure(db, employee_id, actor_id, data):
     for item in old_items:
         if item.status not in dev.EDITABLE:
             old_actions = [r for r in db.scalars(select(Action).where(Action.milestone_id == item.id)) if r.action_type != "reminder"]
+            if not old_actions and item.scenario_key:
+                choices = clean[item.kind]
+                if len(choices) != 1 or choices[0]["type"] != "scenario" or choices[0]["scenario_key"] != item.scenario_key:
+                    raise GradeConflictError("Нельзя менять действия уже запущенного этапа")
+                choice = choices[0]
+                db.add(Action(milestone_id=item.id, action_key=choice["key"], action_type="scenario",
+                    scenario_key=item.scenario_key, settings_json=json.dumps(dict(actor_id=actor_id)), status=item.status))
+                continue
             comparable = [dict(key=r.action_key, type=r.action_type, scenario_key=r.scenario_key,
                 settings={k: v for k, v in json.loads(r.settings_json).items() if k != "actor_id"}) for r in old_actions]
             if clean[item.kind] != comparable:
@@ -109,7 +117,8 @@ def configure(db, employee_id, actor_id, data):
             row = previous.get(choice["key"])
             config = dict(choice["settings"], actor_id=actor_id)
             if row and row.status not in dev.EDITABLE:
-                if row.action_type != choice["type"] or row.scenario_key != choice["scenario_key"] or json.loads(row.settings_json) != config:
+                stored = {k: v for k, v in json.loads(row.settings_json).items() if k != "actor_id"}
+                if row.action_type != choice["type"] or row.scenario_key != choice["scenario_key"] or stored != choice["settings"]:
                     raise GradeConflictError("Запущенное действие нельзя изменить")
                 continue
             if not row:
