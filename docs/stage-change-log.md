@@ -11,6 +11,22 @@ related:
 source_of_truth: true
 ---
 
+## 03.11.2026 — совместимость редактирования старого цикла
+
+- PR #166, deployed `048fa372cba63fc9ef05c679f303e94ec31dbe71`;
+  Deploy `41645264352` success около 16:34 МСК. При явном сохранении
+  старого цикла запущенный legacy-этап сохраняет статус и не отправляется
+  повторно; будущие действия доступны для редактирования. Смена HR-редактора
+  не считается изменением уже запущенного действия. Реальные циклы не менялись.
+- Профильные 40 tests passed; полный PR CI `41644994244` выполнил 558 tests,
+  frontend job passed. Workflow Deploy Stage, запущенный с `--ref main`,
+  выполнил 201 smoke-test, build и imports; это не полный PR suite.
+- Проверенный backup `backups/hr_bot.before-deploy.20261103-133342.db`,
+  snapshot `backups/scenarios.before-deploy.20261103-133342.json`,
+  fingerprint unchanged. Diagnostics `41645493999` success: сервисы active,
+  свежих Telegram/network ошибок нет, 0 failing checks. Живая Telegram-приёмка
+  нового сбора оценок/запланированных действий остаётся открытой.
+
 ## 03.11.2026 — действия цикла развития и оценки коллег
 
 - PR #164, feature `53536fe`, deployed
