@@ -11,6 +11,30 @@ related:
 source_of_truth: true
 ---
 
+## 03.11.2026 — действия цикла развития и оценки коллег
+
+- PR #164, feature `53536fe`, deployed
+  `b48467b952ee1aed926d3c8f3c0b40b073a5862a`; Deploy `41644233777` success
+  около 16:27 МСК. Оба PR CI job passed; clean SQLite suite 557 tests,
+  TypeScript, Vite, compileall, Ruff F821, docs check и diff check passed.
+- На каждом этапе можно выбрать несколько необязательных действий: сценарий,
+  сбор ОС, сбор оценок. Коллеги отвечают в Telegram; отдельные результаты и
+  frozen шаблон сохраняются, среднее фиксирует HR. Пропуски исключены,
+  отображение 0..100% не меняет raw шкалу 0..4 и старые snapshots.
+- Добавлены две таблицы; legacy SQLite INTEGER affinity проверена на дробных
+  средних. Никакие реальные циклы, оценки, адресаты или расписания вручную
+  не изменялись; новые отправки в рамках приёмки не запускались.
+- Backup `backups/hr_bot.before-deploy.20261103-132644.db` проверен,
+  snapshot `backups/scenarios.before-deploy.20261103-132644.json`, scenario
+  fingerprint unchanged. Diagnostics `41644475507` success: web/worker,
+  WireGuard и Caddy active, HTTP 303, bot identity согласована, свежих
+  Telegram/network ошибок нет, 0 failing checks.
+- Локальная синтетическая база: формы создания сбора/сохранения плана,
+  отдельная паутинка и среднее 1+4 => 2.5 => 62.5%, доступность правки
+  кадрового грейда проверены. На stage новые блоки Grade открываются,
+  ошибок console нет, прежний цикл №80 остаётся на паузе. Живое прохождение
+  в Telegram и плановая доставка нового пакета ещё не приняты пользователем.
+
 ## 03.11.2026 — проверка адаптации после теста 02.11
 
 - Read-only Diagnostics `41602136165`, `41602383272`: deployed `36481f7`,
