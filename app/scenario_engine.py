@@ -54,6 +54,11 @@ TEST_TASK_RESULT_TITLE = "Ответ на тестовое"
 TEST_TASK_RESULT_SLOT = "test_task_result"
 TEST_TASK_RESULT_FILE_CATEGORY = "test_result"
 TEST_TASK_EXPLANATION_SLOT = "test_task_explanation"
+ADAPTATION_RESULT_SLOTS = {
+    "adaptation_test1_result": "Результат тестирования на ИС (1 часть)",
+    "adaptation_test2_result": "Результат тестирования на ИС (2 часть)",
+    "adaptation_practice_result": "Результат практического задания на ИС",
+}
 TEST_TASK_RESULT_TARGET_FIELDS = {TEST_TASK_RESULT_SLOT, "test_assignment_answer", "test_task_answer", TEST_TASK_RESULT_FILE_CATEGORY, TEST_TASK_EXPLANATION_SLOT}
 TEST_TASK_RESULT_TEXT_PROMPT = "Пришлите файл, фото, видео или одну ссылку http/https на выполненное тестовое задание. К ссылке можно добавить пояснение."
 SINGLE_STEP_REQUEST_PREFIX = "__single_step__:"
@@ -118,7 +123,9 @@ SCENARIO_NOTIFICATION_TEMPLATE_TAGS = [
         "description": "Актуальное резюме: ссылка или имя файла; файл также прикладывается к уведомлению. Если slot отсутствует, используется legacy resume-файл.",
     },
     {"label": "ИПР", "template": "{ipr}", "description": "Ссылка на ИПР из карточки сотрудника."},
-    {"label": "План испытательного срока", "template": "{probation_plan}", "description": "Ссылка из поля «Задачи на ИС» карточки сотрудника."},
+    {"label": "План испытательного срока", "template": "{probation_plan}", "description": "Ссылка или имя файла из «Задачи на ИС»; загруженный файл прикладывается к сообщению."},
+    *[{"label": label, "template": "{" + key + "}", "description": "Ссылка на присланный результат или имя файла; файл прикладывается к сообщению."}
+      for key, label in ADAPTATION_RESULT_SLOTS.items()],
     {"label": "Обратная связь коллег", "template": "{colleague_feedback}", "description": "Excel последнего запуска ОС; прежняя ссылка только при отсутствии запусков."},
     {"label": "ОС (Excel)", "template": "{ос}", "description": "Excel последнего сбора обратной связи по сотруднику."},
 ]
@@ -128,6 +135,7 @@ MENU_TEXT_TAGS = [
 SCENARIO_STEP_TEMPLATE_TAGS.extend([
     tag for tag in SCENARIO_NOTIFICATION_TEMPLATE_TAGS
     if tag["template"] in {"{ipr}", "{probation_plan}", "{colleague_feedback}", "{ос}"}
+    or tag["template"].strip("{}") in ADAPTATION_RESULT_SLOTS
 ])
 TELEGRAM_MESSAGE_CAPABILITIES = {
     "safe_html": True,
@@ -1204,6 +1212,8 @@ def render_telegram_message_html(db: Session, template: str, employee: Employee,
             "ос": colleague_feedback,
             "adaptation_tasks_url": probation_plan,
             "adaptation_feedback_url": colleague_feedback,
+            **{key: _render_employee_document(db, employee, key, label)
+               for key, label in ADAPTATION_RESULT_SLOTS.items()},
             "date": _escape_template_value(anchor_date.strftime("%d.%m.%Y")),
             "time": _escape_template_value(time_text),
             "test_url": _escape_template_value(settings.TEST_URL),
@@ -1260,6 +1270,8 @@ def _render_employee_document(db: Session, employee: Employee, slot_key: str, la
     if slot and slot.item_kind == "file" and slot.employee_file_id:
         file_row = db.get(EmployeeFile, slot.employee_file_id)
         if file_row and file_row.employee_id == employee.id:
+            if slot_key == "probation_plan":
+                return _escape_template_value(label)
             return _escape_template_value(file_row.original_filename or label)
     return _render_employee_link(slot.url if slot else None, label)
 
@@ -1405,6 +1417,8 @@ def _mark_employee_file_as_resume_slot(db: Session, employee: Employee, employee
 
 
 def _response_document_slot_details(step: FlowStepTemplate | None) -> tuple[str, str, str]:
+    if step and step.target_field in ADAPTATION_RESULT_SLOTS:
+        return step.target_field, ADAPTATION_RESULT_SLOTS[step.target_field], step.target_field
     if step and step.target_field == "adaptation_tasks_url":
         return "probation_plan", "План испытательного срока", "probation_plan"
     if step and step.target_field == TEST_TASK_EXPLANATION_SLOT:
@@ -1465,7 +1479,8 @@ def is_test_task_answer_step(step: FlowStepTemplate | None) -> bool:
 
 
 def is_document_answer_step(step: FlowStepTemplate | None) -> bool:
-    return is_test_task_answer_step(step) or bool(step and step.target_field == "adaptation_tasks_url")
+    return is_test_task_answer_step(step) or bool(step and (
+        step.target_field == "adaptation_tasks_url" or step.target_field in ADAPTATION_RESULT_SLOTS))
 
 
 def normalize_test_task_answer_file_category(step: FlowStepTemplate | None, category: str) -> str:
@@ -1650,6 +1665,7 @@ def resolve_tagged_employee_documents(
     for slot_key, tokens in (
         ("probation_plan", ("{probation_plan}", "{adaptation_tasks_url}")),
         ("ipr", ("{ipr}",)),
+        *((key, ("{" + key + "}",)) for key in ADAPTATION_RESULT_SLOTS),
     ):
         if not any(token in template for token in tokens):
             continue
@@ -2105,7 +2121,7 @@ def apply_response_to_employee(
         return True
     if target_field in {"resume", "candidate_file"}:
         return uploaded_file is not None
-    if target_field in TEST_TASK_RESULT_TARGET_FIELDS:
+    if target_field in TEST_TASK_RESULT_TARGET_FIELDS or target_field in ADAPTATION_RESULT_SLOTS:
         return uploaded_file is not None or extract_test_task_answer_link(normalized) is not None
     if target_field == "adaptation_tasks_url":
         employee.adaptation_tasks_url = None if uploaded_file else extract_test_task_answer_link(normalized)
