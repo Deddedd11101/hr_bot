@@ -294,7 +294,7 @@ class GradeDevelopmentTests(unittest.TestCase):
         self.db.commit()
         self.scan()
         self.assertEqual(self.item().status, "blocked")
-        self.assertIn("HR", self.item().last_error)
+        self.assertIn("очереди", self.item().last_error)
         request.processed_at = NOW
         self.db.commit()
         self.scan()
@@ -309,6 +309,35 @@ class GradeDevelopmentTests(unittest.TestCase):
         self.item().status = "cancelled"
         self.db.commit()
         self.assertFalse(dev.owns_scenario(self.db, 1, "ipr6"))
+
+    def test_future_adaptation_launch_does_not_reserve_grade_stage(self):
+        self.db.add(FlowLaunchRequest(employee_id=1, flow_key="ipr6", launch_type="adaptation_plan", requested_at=datetime(2090, 1, 1)))
+        self.db.commit()
+        self.enroll()
+        self.scan()
+        self.assertEqual(self.item().status, "started")
+
+    def test_stale_adaptation_conflict_is_not_shown_as_live_queue(self):
+        self.enroll()
+        item = self.item()
+        item.last_error = "Конфликт с отдельным запросом запуска. Он сохранён в очереди; HR должен отменить конфликтующий запрос"
+        self.db.commit()
+        self.assertIsNone(dev.payload(self.db, 1)["milestones"][0]["last_error"])
+        self.assertIsNotNone(item.last_error)
+
+    def test_earlier_adaptation_launch_defers_grade_until_request_is_consumed(self):
+        request = FlowLaunchRequest(employee_id=1, flow_key="ipr6", launch_type="adaptation_plan", requested_at=NOW)
+        self.db.add(request)
+        self.db.commit()
+        self.enroll()
+        self.scan()
+        self.assertEqual(self.item().status, "blocked")
+        self.assertIn("очереди", self.item().last_error)
+        request = self.db.get(FlowLaunchRequest, request.id)
+        request.processed_at = NOW
+        self.db.commit()
+        self.scan()
+        self.assertEqual(self.item().status, "started")
 
     def test_stale_manager_and_hr_snapshot_cancelled_before_claim(self):
         self.enroll()

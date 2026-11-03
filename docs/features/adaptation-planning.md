@@ -14,6 +14,13 @@ source_of_truth: true
 
 ## Повторный тест без удаления истории
 
+План запускает сущность `scenario`, не одноимённый `survey`. Повторные Пульсы
+различаются plan item/request ID и сохраняют отдельные answer runs. Назначение
+того же сценария в Grade не блокирует adaptation request. Due requests идут
+по requested_at/id; занятый адресат (включая незавершённый отложенный шаг)
+ожидает освобождения, не блокируя других адресатов. Claim конкретного request
+защищает повторную отправку. Существующие сроки/планы при deploy не меняются.
+
 Admin-only `GET /app/employees/{employee_id}/adaptation-retest` показывает preview
 плана и активных адаптационных progress; POST с fingerprint и same-origin Origin
 создаёт SQLite backup/quick_check и применяет под BEGIN IMMEDIATE. Drift,
