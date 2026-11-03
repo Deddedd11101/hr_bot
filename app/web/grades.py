@@ -283,7 +283,9 @@ def purge_other_reviews(db, employee_id, payload):
     expected = [integer(item, 1, 2**63 - 1, "expected_ids") for item in items(payload["expected_ids"], "expected_ids")]
     if sorted(expected) != actual or not actual:
         raise ValueError("Review history changed. Reload before deleting")
-    from ..models import GradeDevelopmentCycle, GradeDevelopmentMilestone
+    from ..models import GradeDevelopmentCycle, GradeDevelopmentMilestone, GradeReviewCollection
+    if db.scalar(select(GradeReviewCollection.id).where(GradeReviewCollection.assessment_id.in_(actual))):
+        raise GradeConflictError("Нельзя удалить итог сбора оценок коллег")
     if (db.scalar(select(GradeDevelopmentCycle.id).where(GradeDevelopmentCycle.employee_id == employee_id,
             GradeDevelopmentCycle.assessment_id.in_(actual))) or
             db.scalar(select(GradeDevelopmentMilestone.id).where(GradeDevelopmentMilestone.employee_id == employee_id,
@@ -317,7 +319,7 @@ def assessment_payload(db, assessment_id):
 
 
 def _draft_payload(db, assessment, *, frozen_override=None):
-    from app.grades.calculations import category_averages, next_grade_progress, gap_list
+    from app.grades.calculations import category_averages, fractional_category_averages, next_grade_progress, gap_list
     from app.grades.goals import build_goal_options, normalize_goal
 
     frozen = frozen_override if frozen_override is not None else json.loads(assessment.catalog_snapshot or "{}")
@@ -349,7 +351,8 @@ def _draft_payload(db, assessment, *, frozen_override=None):
                "currentLevel": values.get(s["id"], 0),
                "targetLevel": expectations.get((s["id"], goal["targetGradeId"]), 0)} for s in catalog["skills"]]
     result = _serialized(assessment)
-    category_values = {item["categoryId"]: item for item in category_averages([score for score in scores if score["assessed"]])}
+    average = fractional_category_averages if historical else category_averages
+    category_values = {item["categoryId"]: item for item in average([score for score in scores if score["assessed"]])}
     category_rows = [{"categoryId": key, "categoryName": item["name"], "current": 0, "target": 0,
                       **category_values.get(key, {}), "assessed_count": sum(score["assessed"] for score in scores if score["categoryId"] == key)}
                      for key, item in categories.items() if any(score["categoryId"] == key for score in scores)]

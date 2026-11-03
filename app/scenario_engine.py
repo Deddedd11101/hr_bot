@@ -374,7 +374,7 @@ def resolve_step_message_template(step: FlowStepTemplate) -> str:
 
 
 def is_survey(scenario: Optional[ScenarioTemplate]) -> bool:
-    return getattr(scenario, "scenario_kind", "scenario") == "survey"
+    return getattr(scenario, "scenario_kind", "scenario") in {"survey", "grade_review"}
 
 
 def store_survey_answer(

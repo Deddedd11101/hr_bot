@@ -107,6 +107,26 @@ Final сохраняется без изменений; archived доступе�
 
 ## Grade API
 
+- `PUT /api/employees/{employee_id}/grade/development/actions`: authenticated
+  transactional save, assessment_id/expected_revision/anchor_date/enabled,
+  optional due_dates, actions={ipr6:[],ipr12:[],review12:[]}.
+  Действие: key UUID, type=scenario/feedback/review, scenario_key либо null,
+  recipient_ids для feedback/review, specialization_id для review. До 10 на этап.
+  Нет обязательных действий; пустой этап только напоминает. Stale/запущенный 409,
+  invalid 422, отсутствующая сущность 404. GET development включает actions/surveys.
+- `GET /api/employees/{employee_id}/grade/collections`: authenticated список
+  запусков, статусы оценивающих, отдельные scores/categories и средние.
+- `POST /api/employees/{employee_id}/grade/collections`: request_id UUID,
+  specialization_id и 1..100 уникальных recipient_ids; immutable template snapshot,
+  только очередь (без отправки в HTTP handler). Replay same body idempotent,
+  changed body 409. Недоступные/неподтверждённые адресаты отклоняются.
+- `POST /api/employees/{employee_id}/grade/collections/{collection_id}/finalize`:
+  authenticated явная фиксация среднего после завершения всех оценивающих.
+  Чужой collection 404, незавершённый/пустой 422, replay возвращает тот же final.
+- `POST /api/grade-assessments/{assessment_id}/corrections` дополнительно
+  принимает optional current_grade_id=null/id. Допускается values=[] при изменении
+  грейда. Прежние revision/token/reason/replay guards сохраняются.
+
 - `GET /api/employees/{employee_id}/grade/development`: authenticated read-only
   configuration, latest assessment identity, scenario choices, milestones/history
   and separate reminder delivery states. No implicit enrollment.

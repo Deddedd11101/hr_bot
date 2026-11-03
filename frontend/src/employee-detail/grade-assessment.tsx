@@ -15,11 +15,13 @@ export function GradeAssessment({ initial, onFinalized, onClose, historicalVersi
   const [values, setValues] = useState<Record<number, number | null>>({});
   const [correcting, setCorrecting] = useState(false);
   const [reason, setReason] = useState("");
+  const [grade, setGrade] = useState(initial.current_grade_id == null ? "none" : String(initial.current_grade_id));
   const [requestId, setRequestId] = useState(() => crypto.randomUUID());
   const [revisions, setRevisions] = useState<{id: number; actor_id: number; reason: string; created_at: string; previous: Assessment}[] | null>(null);
   const [previous, setPrevious] = useState<Assessment | null>(null);
   const action = useAction();
-  const dirty = Object.keys(values).length > 0 || !!reason.trim();
+  const gradeChanged = grade !== (assessment.current_grade_id == null ? "none" : String(assessment.current_grade_id));
+  const dirty = Object.keys(values).length > 0 || !!reason.trim() || gradeChanged;
   const final = assessment.status !== "draft";
   useUnsaved(dirty);
   const specName = assessment.catalog.specializations.find(s => s.id === assessment.specialization_id)?.name || "Архивная специализация";
@@ -42,12 +44,12 @@ export function GradeAssessment({ initial, onFinalized, onClose, historicalVersi
     {historicalVersion && <p role="status" className="text-sm text-muted-foreground">Предыдущая версия · только чтение</p>}
     {assessment.updated_at && <p className="text-xs text-muted-foreground">Последнее изменение: {dateLabel(assessment.updated_at)}</p>}
     {!historicalVersion && assessment.status === "final" && assessment.review_mode === "historical" && !correcting && <Button variant="outline" disabled={action.busy} onClick={() => {setCorrecting(true); setRequestId(crypto.randomUUID());}}>Исправить оценку</Button>}
-    {correcting && <div className="space-y-3"><label className="block text-sm">Причина исправления<Input value={reason} maxLength={4000} disabled={action.busy} onChange={event => setReason(event.target.value)} /></label><div className="flex flex-wrap gap-2">
-      <Button disabled={action.busy || !Object.keys(values).length || !reason.trim()} onClick={() => void action.run(async () => {
-        const result = await request<Assessment>(`/api/grade-assessments/${assessment.id}/corrections`, "POST", {request_id: requestId, expected_token: assessment.edit_token, reason, values: Object.entries(values).map(([id, level]) => ({skill_id: Number(id), level}))});
+    {correcting && <div className="space-y-3"><Choice label="Грейд" value={grade} options={[{value: "none", label: "Не указан"}, ...assessment.catalog.grades.filter(g => g.active).map(g => ({value: String(g.id), label: g.name}))]} onChange={setGrade} disabled={action.busy} /><label className="block text-sm">Причина исправления<Input value={reason} maxLength={4000} disabled={action.busy} onChange={event => setReason(event.target.value)} /></label><div className="flex flex-wrap gap-2">
+      <Button disabled={action.busy || (!Object.keys(values).length && !gradeChanged) || !reason.trim()} onClick={() => void action.run(async () => {
+        const result = await request<Assessment>(`/api/grade-assessments/${assessment.id}/corrections`, "POST", {request_id: requestId, expected_token: assessment.edit_token, reason, current_grade_id: grade === "none" ? null : Number(grade), values: Object.entries(values).map(([id, level]) => ({skill_id: Number(id), level}))});
         setAssessment(result); setValues({}); setReason(""); setCorrecting(false); setRevisions(null); await onFinalized();
       }, "Исправление сохранено")}>Сохранить исправление</Button>
-      <Button variant="ghost" disabled={action.busy} onClick={() => {if (!dirty || window.confirm("Отменить несохранённые исправления?")) {setValues({}); setReason(""); setCorrecting(false);}}}>Отмена исправления</Button>
+      <Button variant="ghost" disabled={action.busy} onClick={() => {if (!dirty || window.confirm("Отменить несохранённые исправления?")) {setValues({}); setReason(""); setGrade(assessment.current_grade_id == null ? "none" : String(assessment.current_grade_id)); setCorrecting(false);}}}>Отмена исправления</Button>
     </div></div>}
     {!final && <div className="flex flex-wrap gap-3">
       <Button disabled={!dirty || action.busy} onClick={() => void action.run(save)}>Сохранить оценку</Button>
@@ -64,14 +66,14 @@ export function GradeAssessment({ initial, onFinalized, onClose, historicalVersi
           const value = Object.prototype.hasOwnProperty.call(values, score.skillId) ? values[score.skillId] : score.assessed === false ? null : score.currentLevel;
           return <div key={score.skillId} className="flex flex-wrap items-center justify-between gap-3 border-b px-3 py-3">
             <div className="min-w-0 flex-1"><p className="break-words">{score.skillName}</p><Importance value={score.importance} /></div>
-            {final && !correcting ? value === null ? <span className="text-sm text-muted-foreground">Не оценено</span> : <LevelValue value={value} /> : <div className="w-48 max-w-full"><Choice label={`Уровень: ${score.skillName}`} value={value === null ? "none" : String(value)} options={assessment.review_mode === "historical" ? levels : levels.slice(1)} disabled={action.busy} onChange={value => setValues(old => ({ ...old, [score.skillId]: value === "none" ? null : Number(value) }))} /></div>}
+            {final && (!correcting || !!assessment.collection_id) ? value === null ? <span className="text-sm text-muted-foreground">Не оценено</span> : <LevelValue value={value} /> : <div className="w-48 max-w-full"><Choice label={`Уровень: ${score.skillName}`} value={value === null ? "none" : String(value)} options={assessment.review_mode === "historical" ? levels : levels.slice(1)} disabled={action.busy} onChange={value => setValues(old => ({ ...old, [score.skillId]: value === "none" ? null : Number(value) }))} /></div>}
           </div>;
         })}
       </section>)}
       {!assessment.scores.length && <p className="p-4 text-muted-foreground">В матрице нет навыков.</p>}</div>
       <aside className="min-w-0 space-y-5"><h3 className="font-medium">Фактическая оценка</h3>
         <GradeProfileChart categories={categories} withTarget={false} />
-        <dl className="space-y-2 text-sm">{categories.map(category => <div key={category.categoryId} className="flex justify-between gap-3"><dt>{category.categoryName}</dt><dd className="shrink-0 tabular-nums">{category.current.toFixed(1)}</dd></div>)}</dl>
+        <dl className="space-y-2 text-sm">{categories.map(category => <div key={category.categoryId} className="flex justify-between gap-3"><dt>{category.categoryName}</dt><dd className="shrink-0 tabular-nums">{(category.current / 4 * 100).toFixed(1)}%</dd></div>)}</dl>
         <p className="text-sm text-muted-foreground">Оценено {assessment.scores.filter(score => score.assessed !== false).length} из {assessment.scores.length}. Неоценённые навыки исключены из средних.</p>
       </aside>
     </div>

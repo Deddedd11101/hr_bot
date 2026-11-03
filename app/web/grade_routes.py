@@ -91,6 +91,30 @@ def configure_grade_development(employee_id: int, payload: dict = Body(...), db:
     return configure(db, employee_id, payload)
 
 
+@router.put("/api/employees/{employee_id}/grade/development/actions")
+def configure_grade_actions(employee_id: int, request: Request, payload: dict = Body(...), db: Session = Depends(get_write_db)):
+    from ..grades.development_actions import configure
+    return configure(db, employee_id, require_api_auth(request).id, payload)
+
+
+@router.get("/api/employees/{employee_id}/grade/collections")
+def grade_collections(employee_id: int, db: Session = Depends(get_db)):
+    from ..grades.collections import list_reports
+    return read_payload(list_reports, db, employee_id)
+
+
+@router.post("/api/employees/{employee_id}/grade/collections")
+def create_grade_collection(employee_id: int, request: Request, payload: dict = Body(...), db: Session = Depends(get_write_db)):
+    from ..grades.collections import create, report
+    return report(db, create(db, employee_id, require_api_auth(request).id, payload))
+
+
+@router.post("/api/employees/{employee_id}/grade/collections/{collection_id}/finalize")
+def finalize_grade_collection(employee_id: int, collection_id: int, request: Request, db: Session = Depends(get_write_db)):
+    from ..grades.collections import finalize
+    return finalize(db, employee_id, collection_id, require_api_auth(request).id)
+
+
 def register_catalog_routes(kind: str):
     def create(payload: dict = Body(...), db: Session = Depends(get_write_db)):
         grades.save_catalog_item(db, kind, payload)

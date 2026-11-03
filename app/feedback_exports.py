@@ -3,9 +3,10 @@
 from io import BytesIO
 
 from openpyxl import Workbook
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .models import Employee, EmployeeFeedbackRun, FlowStepTemplate, ScenarioTemplate, SurveyAnswer
+from .models import Employee, EmployeeFeedbackRun, FlowStepTemplate, GradeReviewCollection, ScenarioTemplate, SurveyAnswer
 
 
 def _excel_text(value: str | None) -> str:
@@ -15,6 +16,7 @@ def _excel_text(value: str | None) -> str:
 
 def latest_feedback_run(db: Session, employee_id: int) -> EmployeeFeedbackRun | None:
     return (db.query(EmployeeFeedbackRun).filter_by(subject_employee_id=employee_id)
+            .filter(EmployeeFeedbackRun.id.notin_(select(GradeReviewCollection.feedback_run_id)))
             .order_by(EmployeeFeedbackRun.created_at.desc(), EmployeeFeedbackRun.id.desc()).first())
 
 

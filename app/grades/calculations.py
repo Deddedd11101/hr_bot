@@ -111,6 +111,22 @@ def category_averages(scores: Iterable[Mapping[str, Any]]) -> list[dict[str, Any
     ]
 
 
+def fractional_category_averages(scores: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    """Averaged colleague scores retain fractions; missing scores are not zero."""
+    groups = {}
+    for score in scores:
+        if not score.get("assessed", True):
+            continue
+        value = float(score["currentLevel"])
+        if not math.isfinite(value) or not 0 <= value <= MAX_LEVEL:
+            raise ValueError("Invalid assessment level")
+        weight = importance_weight(score["importance"])
+        item = groups.setdefault(score["categoryId"], dict(categoryId=score["categoryId"], categoryName=score["categoryName"], current=0.0, target=0, weight=0.0))
+        item["current"] += value * weight
+        item["weight"] += weight
+    return [{k: v for k, v in item.items() if k != "weight"} | {"current": item["current"] / item["weight"]} for item in groups.values()]
+
+
 def next_grade_progress(scores: Iterable[Mapping[str, Any]]) -> float:
     current = target = 0.0
     for score in scores:

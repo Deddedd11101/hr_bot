@@ -187,6 +187,36 @@ class GradeDevelopmentDelivery(Base):
     last_error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
 
+class GradeDevelopmentAction(Base):
+    __tablename__ = "grade_development_actions"
+    __table_args__ = (UniqueConstraint("milestone_id", "action_key"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    milestone_id: Mapped[int] = mapped_column(Integer, index=True)
+    action_key: Mapped[str] = mapped_column(String(36))
+    action_type: Mapped[str] = mapped_column(String(16))
+    scenario_key: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    settings_json: Mapped[str] = mapped_column(Text, default="{}")
+    status: Mapped[str] = mapped_column(String(16), default="planned")
+    last_error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    result_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+
+
+class GradeReviewCollection(Base):
+    __tablename__ = "grade_review_collections"
+    __table_args__ = (UniqueConstraint("employee_id", "request_id"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    employee_id: Mapped[int] = mapped_column(Integer, index=True)
+    request_id: Mapped[str] = mapped_column(String(36))
+    request_hash: Mapped[str] = mapped_column(String(64))
+    feedback_run_id: Mapped[int] = mapped_column(Integer, unique=True)
+    scenario_key: Mapped[str] = mapped_column(String(64), unique=True)
+    snapshot_json: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(16), default="open")
+    created_by: Mapped[int] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+    assessment_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+
+
 class EmployeeGradeProfile(Base):
     __tablename__ = "employee_grade_profiles"
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -250,7 +280,7 @@ class GradeAssessmentValue(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     assessment_id: Mapped[int] = mapped_column(Integer, index=True)
     skill_id: Mapped[int] = mapped_column(Integer)
-    level: Mapped[int] = mapped_column(Integer, default=0)
+    level: Mapped[float] = mapped_column(Float, default=0)
 
 
 class Employee(Base):
