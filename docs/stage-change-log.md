@@ -24,9 +24,27 @@ source_of_truth: true
   `D:/HRBot/outputs/adaptation-audit-20261103/step-texts-before.json`.
   Ссылки на задания сохранены. Кнопки, scopes, переходы, расписания и ответы
   этими copy-правками не менялись. Save проверен в UI; отправки не выполнялись.
-- Runtime результатов заданий/видимой блокировки подготовлен в PR #162,
-  но на момент этой записи не выложен. Приёмка файла/ссылки в живом Telegram
-  остаётся отдельным действием после настройки шагов и выкладки.
+- По отдельному разрешению пользователя PR #162 выложен на
+  `7f17026a2949a6027c6c5670bf7bae12495af06d`, Deploy `41604949474` success.
+  Preflight 550 tests, frontend build/imports passed. Backup:
+  `backups/hr_bot.before-deploy.20261103-084123.db`, scenario snapshot с тем же
+  timestamp, fingerprint unchanged. HTTP employees/workspace 303, сервисы active.
+- После deploy через UI изменены только шаги сбора результатов 57/56/32:
+  file response, targets `adaptation_test1_result`, `adaptation_test2_result`,
+  `adaptation_practice_result`. «Готово» и его правила заменены ожиданием файла
+  или одной HTTP(S)-ссылки. Ссылки на сами задания сохранены.
+  Уведомления перенесены на следующие завершающие шаги с тегами результатов;
+  57/56 — HR+manager+mentor_adaptation; 32 — результат manager+mentor_adaptation,
+  отдельное уведомление о встрече HR. Удалён дублирующий legacy send rule 56.
+- Save/reload трёх сценариев проверен; локальный JSON proof:
+  `D:/HRBot/outputs/adaptation-audit-20261103/result-configuration-after.json`.
+  Реальные результаты/история не изменены. Пульсы и paused Grade assignment
+  №80 не перепланировались и не запускались. Приёмка файла/ссылки в живом
+  Telegram остаётся отдельным действием пользователя.
+- Post-deploy Diagnostics `41605485832` success: deployed SHA подтверждён,
+  web/worker/WireGuard/Caddy active, 0 failing checks, свежих Telegram ошибок нет.
+  Пульсы items23/26 теперь `blocked`, requests256/259 по-прежнему unprocessed;
+  активного диалога №80 нет. Grade assignment сохранён.
 
 # Журнал изменений тестового стенда
 
