@@ -63,7 +63,26 @@ status, last_error, claimed_at UTC), `grade_development_deliveries`
 | --- | --- | --- | --- |
 | `grade_assessment_revisions` | Неизменяемые предыдущие версии Grade-ревью | `id`, indexed `assessment_id`, `actor_id`, `request_id`, `request_hash`, `previous_snapshot`, `reason`, `created_at` UTC | UNIQUE assessment_id/request_id; добавляется metadata/startup compatibility без rebuild; audit и актуальная оценка пишутся атомарно |
 
-Корректировка final сохраняет original JSON в revisions и обновляет существующие `grade_assessment_values`, `grade_assessments.catalog_snapshot` и `updated_at`. `created_at`/`finalized_at` не перезаписываются, профиль/кадровый грейд/ИПР не меняются. Старые оценки не требуют backfill: история начинается с первой явной правки. При explicit admin purge удаляются дочерние revisions вместе с оценкой после backup. Откат на старый runtime сохраняет новую таблицу и отображает актуальный snapshot, но не даёт доступа к журналу правок; не откатывать данные поверх новых записей.
+Корректировка final сохраняет original JSON в revisions и обновляет values,
+snapshot и updated_at. created_at/finalized_at не меняются. При явном изменении
+current_grade_id последнего final обновляется профиль и журнал кадрового решения;
+правка более старого final профиль не меняет. Отсчёт цикла не перезапускается.
+
+| Таблица | Назначение | Ограничения |
+| --- | --- | --- |
+| `grade_development_actions` | Отдельные действия этапа: milestone_id, action_key UUID, action_type, scenario_key, settings_json (адресаты/шаблон/actor), status, last_error, result_id | UNIQUE milestone_id/action_key; durable claims, без backfill старых циклов |
+| `grade_review_collections` | Запуск оценивания subject employee: request_id/hash, feedback_run_id, scenario_key, frozen snapshot_json, created_by/at, status, assessment_id | UNIQUE employee_id/request_id, UNIQUE feedback_run_id и scenario_key; idempotent create/finalize |
+
+Сбор использует employee_feedback_runs/recipients и survey_answers, но имеет
+внутренний scenario_kind=grade_review и не входит в обычную ОС. Новые таблицы
+создаются metadata.create_all; существующие ссылки/оценки не мигрируются.
+grade_assessment_values.level теперь Float для точных средних 0..4. SQLite
+допускает дробные значения в прежней INTEGER-affinity колонке, rebuild не нужен;
+новые базы получают FLOAT. Ручные оценки по-прежнему валидируются целыми 0..4.
+Rollback на старый runtime после появления средних небезопасен: его вычисления
+могут округлять дробные значения. Purge итогов, связанных со сбором, запрещён.
+Удаление subject/respondent карточки, связанной со сбором оценок, также
+отклоняется с 409, чтобы сохранить индивидуальные ответы и историю.
 
 | Таблица | Назначение | Поля | Ограничения |
 | --- | --- | --- | --- |

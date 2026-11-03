@@ -13,7 +13,7 @@ from ..hr_linking import is_numeric_telegram_id
 from ..mass_targeting import deserialize_target_selection, deserialize_target_values, mass_target_employee_query
 from ..messaging import as_messenger
 from ..messaging.identity import get_primary_chat_id
-from ..models import (Employee, FlowLaunchRequest, GradeAssessment, GradeDevelopmentCycle as Cycle,
+from ..models import (Employee, FlowLaunchRequest, GradeAssessment, GradeDevelopmentAction as Action, GradeDevelopmentCycle as Cycle,
                       GradeDevelopmentDelivery as Delivery, GradeDevelopmentMilestone as Milestone,
                       HrSettings, MassScenarioAction, ScenarioTemplate)
 from ..notifications import _notification_recipients
@@ -79,14 +79,23 @@ def _assessment_anchor(assessment):
 
 def owns_scenario(db, employee_id, scenario_key):
     # Pausing a cycle must not expose its scenarios to the generic scheduler.
-    return db.scalar(select(Milestone.id).join(Cycle, Cycle.employee_id == Milestone.employee_id).where(
+    legacy = db.scalar(select(Milestone.id).join(Cycle, Cycle.employee_id == Milestone.employee_id).where(
         Cycle.employee_id == employee_id, Cycle.assessment_id == Milestone.assessment_id,
         Milestone.scenario_key == scenario_key, Milestone.status != "cancelled").limit(1)) is not None
+    return legacy or db.scalar(select(Action.id).join(Milestone, Milestone.id == Action.milestone_id)
+        .join(Cycle, Cycle.employee_id == Milestone.employee_id).where(Cycle.employee_id == employee_id,
+            Cycle.assessment_id == Milestone.assessment_id, Action.scenario_key == scenario_key,
+            Action.action_type == "scenario", Milestone.status != "cancelled").limit(1)) is not None
 
 
 def record_launch_conflict(db, employee_id, scenario_key):
     cycle = db.scalar(select(Cycle).where(Cycle.employee_id == employee_id))
     if cycle:
+        for action in db.scalars(select(Action).join(Milestone, Milestone.id == Action.milestone_id).where(
+                Milestone.employee_id == employee_id, Milestone.assessment_id == cycle.assessment_id,
+                Action.scenario_key == scenario_key, Action.action_type == "scenario", Action.status.in_(EDITABLE))):
+            action.status = "blocked"
+            action.last_error = "Есть отдельный запрос запуска. Разрешите конфликт перед запуском цикла"
         for item in db.scalars(select(Milestone).where(Milestone.employee_id == employee_id,
                 Milestone.assessment_id == cycle.assessment_id, Milestone.scenario_key == scenario_key,
                 Milestone.status != "cancelled")):
@@ -119,6 +128,7 @@ def _milestone_payload(item):
 
 
 def payload(db, employee_id):
+    from .development_actions import action_payload
     if not db.get(Employee, employee_id):
         raise LookupError("Сотрудник не найден")
     cycle = db.scalar(select(Cycle).where(Cycle.employee_id == employee_id))
@@ -134,10 +144,11 @@ def payload(db, employee_id):
         anchor_date=cycle.anchor_date.isoformat() if cycle else (_assessment_anchor(latest).isoformat() if latest and not _unknown_date(latest) else None),
         enabled=cycle.enabled if cycle else False,
         **{kind + "_scenario_key": getattr(cycle, kind + "_scenario_key") if cycle else None for kind in KINDS},
-        milestones=[_milestone_payload(item) for item in current],
+        milestones=[dict(_milestone_payload(item), actions=[action_payload(a) for a in db.scalars(select(Action).where(Action.milestone_id == item.id).order_by(Action.id))]) for item in current],
         history=[_milestone_payload(item) for item in rows if item not in current], deliveries=deliveries,
         scenarios=[dict(key=s.scenario_key, title=s.title) for s in db.scalars(select(ScenarioTemplate)
                    .where(ScenarioTemplate.scenario_kind == "scenario").order_by(ScenarioTemplate.sort_order, ScenarioTemplate.id))],
+        surveys=[dict(key=s.scenario_key, title=s.title) for s in db.scalars(select(ScenarioTemplate).where(ScenarioTemplate.scenario_kind == "survey", ScenarioTemplate.recipient_mode == "self").order_by(ScenarioTemplate.title))],
         needs_anchor=bool(latest and not cycle and _unknown_date(latest)))
 
 
@@ -147,12 +158,15 @@ def _lock(db, employee_id):
     db.expire_all()
 
 
-def configure(db, employee_id, data):
+def configure(db, employee_id, data, *, allow_actions=False):
     from ..web.grades import GradeConflictError
     if not isinstance(data, dict) or set(data) - {"assessment_id", "expected_revision", "anchor_date", "enabled", "due_dates", *(k + "_scenario_key" for k in KINDS)}:
         raise ValueError("Неизвестные поля настроек цикла развития")
     _lock(db, employee_id)
     cycle = db.scalar(select(Cycle).where(Cycle.employee_id == employee_id))
+    if cycle and not allow_actions and db.scalar(select(Action.id).join(Milestone, Milestone.id == Action.milestone_id)
+            .where(Milestone.employee_id == employee_id, Milestone.assessment_id == cycle.assessment_id).limit(1)):
+        raise GradeConflictError("Используйте настройки списка действий цикла")
     expected = data.get("expected_revision")
     if type(expected) is not int or expected != (cycle.revision if cycle else 0):
         raise GradeConflictError("Настройки цикла изменились. Обновите страницу")
@@ -243,6 +257,7 @@ def renew_after_finalization(db, assessment):
     cycle = db.scalar(select(Cycle).where(Cycle.employee_id == assessment.employee_id))
     if not cycle or cycle.assessment_id == assessment.id:
         return
+    previous_assessment_id = cycle.assessment_id
     anchor = assessment.finalized_at.replace(tzinfo=ZoneInfo("UTC")).astimezone(MSK).date()
     old = list(db.scalars(select(Milestone).where(Milestone.employee_id == assessment.employee_id)))
     for item in old:
@@ -251,8 +266,15 @@ def renew_after_finalization(db, assessment):
     cycle.assessment_id, cycle.anchor_date = assessment.id, anchor
     cycle.revision += 1
     for kind, due in default_dates(anchor).items():
-        db.add(Milestone(employee_id=assessment.employee_id, assessment_id=assessment.id, kind=kind,
-                         scenario_key=getattr(cycle, kind + "_scenario_key"), due_at=due))
+        new_item = Milestone(employee_id=assessment.employee_id, assessment_id=assessment.id, kind=kind,
+                         scenario_key=getattr(cycle, kind + "_scenario_key"), due_at=due)
+        db.add(new_item)
+        db.flush()
+        previous = next((i for i in old if i.kind == kind and i.assessment_id == previous_assessment_id), None)
+        if previous:
+            for action in db.scalars(select(Action).where(Action.milestone_id == previous.id)):
+                db.add(Action(milestone_id=new_item.id, action_key=action.action_key, action_type=action.action_type,
+                    scenario_key=action.scenario_key, settings_json=action.settings_json))
     db.flush()
 
 
@@ -317,6 +339,8 @@ async def _deliver_reminders(db, bot, item):
 
 async def process_due(bot):
     """Called inside scheduler serialization. DB claims additionally guard other workers."""
+    from .collections import process_pending
+    await process_pending(bot, session_factory=SessionLocal)
     with SessionLocal() as db:
         ids = list(db.scalars(select(Milestone.id).join(Cycle, Cycle.employee_id == Milestone.employee_id).where(
             Cycle.enabled.is_(True), Cycle.assessment_id == Milestone.assessment_id,
@@ -363,6 +387,9 @@ async def _process_one(bot, item_id):
         if not assessment or assessment.status != "final" or assessment.archived_at is not None:
             item.status, item.last_error = "failed", "Исходная завершённая оценка недоступна. Требуется проверка HR"
             db.commit()
+            return
+        from .development_actions import process_actions
+        if await process_actions(db, bot, employee, item, cycle):
             return
         scenario = db.scalar(select(ScenarioTemplate).where(ScenarioTemplate.scenario_key == item.scenario_key))
         if not scenario or scenario.scenario_kind != "scenario" or employee.is_bot_blocked or not matches_role_scope(employee, scenario):

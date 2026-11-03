@@ -1480,6 +1480,12 @@ def _delete_employee_record(db: Session, employee: Employee) -> str:
     employee_id = employee.id
     # Serialize with Grade creation/finalization before any filesystem side effects.
     db.execute(update(Employee).where(Employee.id == employee_id).values(id=Employee.id))
+    from ..models import GradeReviewCollection
+    if (db.scalar(select(GradeReviewCollection.id).where(GradeReviewCollection.employee_id == employee_id).limit(1))
+            or db.scalar(select(GradeReviewCollection.id).join(EmployeeFeedbackRecipient,
+                EmployeeFeedbackRecipient.run_id == GradeReviewCollection.feedback_run_id).where(
+                EmployeeFeedbackRecipient.respondent_employee_id == employee_id).limit(1))):
+        raise HTTPException(status_code=409, detail="Нельзя удалить карточку, связанную с историей сбора оценок коллег.")
     if db.scalar(select(GradeAssessment.id).where(
         GradeAssessment.employee_id == employee_id, GradeAssessment.status == "final"
     ).limit(1)) is not None:

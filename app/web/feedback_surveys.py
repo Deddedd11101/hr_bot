@@ -5,7 +5,7 @@ from io import BytesIO
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
-from sqlalchemy import func
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..config import settings
@@ -18,6 +18,7 @@ from ..models import (
     EmployeeFeedbackRecipient,
     EmployeeFeedbackRun,
     FlowStepTemplate,
+    GradeReviewCollection,
     ScenarioProgress,
     ScenarioTemplate,
     SurveyAnswer,
@@ -72,6 +73,7 @@ def _feedback_payload(db: Session, subject: Employee) -> dict:
     runs = (
         db.query(EmployeeFeedbackRun)
         .filter_by(subject_employee_id=subject.id)
+        .filter(EmployeeFeedbackRun.id.notin_(select(GradeReviewCollection.feedback_run_id)))
         .order_by(EmployeeFeedbackRun.created_at.desc(), EmployeeFeedbackRun.id.desc())
         .all()
     )

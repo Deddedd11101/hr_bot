@@ -26,6 +26,7 @@ export type Assessment = Profile & {
   import_source?: {filename: string; sheet: string; review_date?: string | null} | null;
   review_comment?: string;
   updated_at?: string; edit_token?: string; correction_count?: number;
+  collection_id?: number;
 };
 export type EmployeeGrade = {
   employee_id: number; profile: Profile | null; suggested_specialization_id: number | null;
