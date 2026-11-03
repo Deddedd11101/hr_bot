@@ -33,11 +33,13 @@ related:
 source_of_truth: true
 ---
 
-03.11: PR #164 выложен: `b48467b952ee1aed926d3c8f3c0b40b073a5862a`,
-Deploy `41644233777`, Diagnostics `41644475507` success. Grade поддерживает
+03.11: PR #164 и compatibility fix #166 выложены:
+`048fa372cba63fc9ef05c679f303e94ec31dbe71`, Deploy `41645264352`,
+Diagnostics `41645493999` success. Grade поддерживает
 опциональные списки действий цикла и Telegram-сбор оценок коллег по frozen
 шаблону; HR явно фиксирует среднее. Проценты только для отображения, кадровый
-грейд не вычисляется автоматически. 557 tests, frontend CI и docs check passed.
+грейд не вычисляется автоматически. 558 tests в финальном PR CI, frontend CI
+и docs check passed; deploy preflight из main отдельно выполнил 201 smoke-test.
 Локально проверены создание сбора, сохранение плана и индивидуальные графики.
 Stage UI открыт read-only, прежний paused cycle сохранён; реальные циклы,
 оценки и получатели не редактировались. Живая Telegram-приёмка нового сбора открыта.
