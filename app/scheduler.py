@@ -24,7 +24,7 @@ from .mass_targeting import (
 )
 from .messaging import as_messenger
 from .messaging.identity import get_primary_chat_id
-from .models import Employee, EmployeeAdaptationPlanItem, FlowLaunchRequest, FlowStepTemplate, MassMessageAction, MassScenarioAction, OnboardingEvent, ScenarioTemplate
+from .models import Employee, FlowLaunchRequest, FlowStepTemplate, MassMessageAction, MassScenarioAction, OnboardingEvent, ScenarioTemplate
 from .scenario_engine import (
     SINGLE_STEP_REQUEST_PREFIX,
     add_workdays,
@@ -409,12 +409,7 @@ async def schedule_all_employees(scheduler: AsyncIOScheduler, bot) -> None:
 
         pending_requests = _load_pending_flow_requests(db)
         for request in pending_requests:
-            if request.skip_step_key is None and grade_owns_scenario(db, request.employee_id, request.flow_key):
-                if request.launch_type == "adaptation_plan":
-                    item = db.query(EmployeeAdaptationPlanItem).filter_by(launch_request_id=request.id).first()
-                    if item and item.status in {"planned", "blocked"}:
-                        item.status = "blocked"
-                        item.last_error = "Сценарий закреплён за циклом развития во вкладке «Грейд» (в том числе на паузе). Уберите конфликтующее назначение перед запуском адаптации."
+            if request.launch_type != "adaptation_plan" and request.skip_step_key is None and grade_owns_scenario(db, request.employee_id, request.flow_key):
                 grade_launch_conflict(db, request.employee_id, request.flow_key)
                 continue
             if await deliver_plan_request(db, bot, request):

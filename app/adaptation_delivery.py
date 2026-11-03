@@ -5,7 +5,7 @@ import logging
 from sqlalchemy import update
 
 from .models import Employee, EmployeeAdaptationPlanItem, FlowLaunchRequest, ScenarioTemplate
-from .scenario_engine import INTERACTIVE_RESPONSE_TYPES, get_scenario_steps, get_waiting_progress, matches_role_scope, resolve_scenario_recipient, start_scenario
+from .scenario_engine import INTERACTIVE_RESPONSE_TYPES, get_conflicting_progress_for_survey_launch, get_scenario_steps, get_waiting_progress, matches_role_scope, resolve_scenario_recipient, start_scenario
 from .time_utils import utc_now
 
 logger = logging.getLogger(__name__)
@@ -30,13 +30,15 @@ async def deliver_plan_request(db, bot, request):
         db.commit()
         return True
     error = None
-    if not employee or employee.is_bot_blocked or not scenario or not matches_role_scope(employee, scenario):
+    if not employee or employee.is_bot_blocked or not scenario or scenario.scenario_kind != "scenario" or not matches_role_scope(employee, scenario):
         error = "Сотрудник или сценарий недоступен"
     else:
         requires_response = any(step.response_type in INTERACTIVE_RESPONSE_TYPES for step in get_scenario_steps(db, scenario.scenario_key))
         recipient = resolve_scenario_recipient(db, employee, scenario, requires_response=requires_response)
         error = recipient.error
-        if not error and recipient.employee_id and get_waiting_progress(db, recipient.employee_id):
+        busy = recipient.employee_id and (get_waiting_progress(db, recipient.employee_id)
+            or get_conflicting_progress_for_survey_launch(db, recipient.employee_id, scenario.scenario_key))
+        if not error and busy:
             item.status = "blocked"
             item.last_error = "Получатель ещё отвечает на другой сценарий. Запуск ожидает освобождения диалога."
             db.commit()

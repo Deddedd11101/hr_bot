@@ -4,7 +4,7 @@ from uuid import UUID, NAMESPACE_URL, uuid5
 
 from sqlalchemy import select, update
 
-from ..models import (AdminAccount, Employee, EmployeeAdaptationPlanItem, EmployeeFeedbackRecipient,
+from ..models import (AdminAccount, Employee, EmployeeFeedbackRecipient,
     EmployeeFeedbackRun, GradeDevelopmentAction as Action, GradeDevelopmentMilestone as Milestone,
     FlowLaunchRequest, ScenarioTemplate)
 from ..scenario_engine import (INTERACTIVE_RESPONSE_TYPES, get_scenario_steps, get_waiting_progress,
@@ -80,10 +80,8 @@ def configure(db, employee_id, actor_id, data):
     selected = [a["scenario_key"] for values in clean.values() for a in values if a["type"] == "scenario"]
     if enabled and selected:
         pending = db.scalar(select(FlowLaunchRequest.id).where(FlowLaunchRequest.employee_id == employee_id,
-            FlowLaunchRequest.flow_key.in_(selected), FlowLaunchRequest.processed_at.is_(None)))
-        adaptation = db.scalar(select(EmployeeAdaptationPlanItem.id).where(EmployeeAdaptationPlanItem.employee_id == employee_id,
-            EmployeeAdaptationPlanItem.flow_key.in_(selected), EmployeeAdaptationPlanItem.status.in_(["planned", "blocked", "starting", "in_progress"])))
-        if pending or adaptation or dev._pending_mass_conflict(db, employee_id, selected):
+            FlowLaunchRequest.flow_key.in_(selected), FlowLaunchRequest.processed_at.is_(None), FlowLaunchRequest.launch_type != "adaptation_plan"))
+        if pending or dev._pending_mass_conflict(db, employee_id, selected):
             raise GradeConflictError("Есть другой запланированный запуск выбранного сценария")
     base.update(enabled=False, **{k + "_scenario_key": None for k in dev.KINDS})
     old_items = list(db.scalars(select(Milestone).where(Milestone.employee_id == employee_id, Milestone.assessment_id == data.get("assessment_id"))))
@@ -171,16 +169,16 @@ async def process_actions(db, bot, employee, item, cycle):
                 recipient = resolve_scenario_recipient(db, employee, scenario, requires_response=any(s.response_type in INTERACTIVE_RESPONSE_TYPES for s in get_scenario_steps(db, scenario.scenario_key)))
                 if recipient.error:
                     raise ValueError(recipient.error)
-                if recipient.employee_id and get_waiting_progress(db, recipient.employee_id):
+                if recipient.employee_id and (get_waiting_progress(db, recipient.employee_id)
+                        or dev.get_conflicting_progress_for_survey_launch(db, recipient.employee_id, row.scenario_key)):
                     row.status, row.last_error = "blocked", "Получатель отвечает на другой сценарий"
                     db.commit()
                     continue
-                conflict = db.scalar(select(EmployeeAdaptationPlanItem.id).where(EmployeeAdaptationPlanItem.employee_id == employee.id,
-                    EmployeeAdaptationPlanItem.flow_key == row.scenario_key, EmployeeAdaptationPlanItem.status.in_(["planned", "blocked", "starting", "in_progress"])))
                 pending = db.scalar(select(FlowLaunchRequest.id).where(FlowLaunchRequest.employee_id == employee.id,
-                    FlowLaunchRequest.flow_key == row.scenario_key, FlowLaunchRequest.processed_at.is_(None)))
-                if conflict or pending or dev._pending_mass_conflict(db, employee.id, [row.scenario_key]):
-                    row.status, row.last_error = "blocked", "Есть отдельный запрос запуска или незавершённый план адаптации"
+                    FlowLaunchRequest.flow_key == row.scenario_key, FlowLaunchRequest.processed_at.is_(None),
+                    (FlowLaunchRequest.launch_type != "adaptation_plan") | (FlowLaunchRequest.requested_at <= item.due_at)))
+                if pending or dev._pending_mass_conflict(db, employee.id, [row.scenario_key]):
+                    row.status, row.last_error = "blocked", "Ожидается более ранний запрос запуска; действие сохранено в очереди"
                     db.commit()
                     continue
                 changed = db.execute(update(Action).where(Action.id == row.id, Action.status.in_(dev.EDITABLE)).values(status="starting")).rowcount

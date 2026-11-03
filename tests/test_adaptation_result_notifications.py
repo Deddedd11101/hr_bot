@@ -1,4 +1,5 @@
 from datetime import datetime
+from contextlib import nullcontext
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
@@ -77,16 +78,38 @@ class AdaptationResultTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(messenger.documents[-1]["filename"], "result.pdf")
             self.assertIsNone(self.db.query(EmployeeDocumentLink).filter_by(slot_key="test_task_result").first())
 
-    async def test_paused_grade_conflict_is_visible_and_does_not_consume_plan_request(self):
+    async def test_paused_grade_does_not_block_adaptation_and_repeated_pulses_queue(self):
+        self.db.add(ScenarioTemplate(scenario_key="pulse", title="Pulse", scenario_kind="scenario", role_scope="all", employee_scope="employees", trigger_mode="manual_only"))
+        self.db.add(FlowStepTemplate(flow_key="pulse", step_key="question", step_title="Question", default_text="How are you?", response_type="text", target_field="survey_answer", send_mode="immediate", is_terminal=True))
         request = FlowLaunchRequest(employee_id=self.subject.id, flow_key="pulse", requested_at=datetime(2020, 1, 1), launch_type="adaptation_plan")
         self.db.add(request)
         self.db.flush()
         item = EmployeeAdaptationPlanItem(employee_id=self.subject.id, entry_key="pulse1", flow_key="pulse", title="Pulse", status="planned", requested_at=request.requested_at, launch_request_id=request.id, calculation_json="{}")
         self.db.add(item)
         self.db.commit()
-        item_id, request_id = item.id, request.id
-        with patch("app.scheduler.SessionLocal", return_value=self.db), patch("app.scheduler._load_all_employees", return_value=[]), patch("app.scheduler._load_scenarios", return_value=[]), patch("app.scheduler.grade_owns_scenario", return_value=True), patch("app.scheduler.grade_launch_conflict"), patch("app.grades.development.process_due", new_callable=AsyncMock):
-            await schedule_all_employees(None, None)
-        self.assertEqual(self.db.get(EmployeeAdaptationPlanItem, item_id).status, "blocked")
-        self.assertIn("Грейд", self.db.get(EmployeeAdaptationPlanItem, item_id).last_error)
-        self.assertIsNone(self.db.get(FlowLaunchRequest, request_id).processed_at)
+        request2 = FlowLaunchRequest(employee_id=self.subject.id, flow_key="pulse", requested_at=datetime(2020, 1, 2), launch_type="adaptation_plan")
+        self.db.add(request2)
+        self.db.flush()
+        item2 = EmployeeAdaptationPlanItem(employee_id=self.subject.id, entry_key="pulse2", flow_key="pulse", title="Pulse 2", status="planned", requested_at=request2.requested_at, launch_request_id=request2.id, calculation_json="{}")
+        self.db.add(item2)
+        self.db.commit()
+        item_id, request_id, item2_id, request2_id = item.id, request.id, item2.id, request2.id
+        messenger = FakeMessenger()
+        with patch("app.scheduler.SessionLocal", side_effect=lambda: nullcontext(self.db)), patch("app.scheduler._load_all_employees", return_value=[]), patch("app.scheduler._load_scenarios", return_value=[]), patch("app.scheduler.grade_owns_scenario", return_value=True), patch("app.scheduler.grade_launch_conflict"), patch("app.grades.development.process_due", new_callable=AsyncMock):
+            await schedule_all_employees(None, messenger)
+            self.assertIsNotNone(self.db.get(FlowLaunchRequest, request_id).processed_at)
+            self.assertEqual(self.db.get(EmployeeAdaptationPlanItem, item2_id).status, "blocked")
+            self.assertIsNone(self.db.get(FlowLaunchRequest, request2_id).processed_at)
+            self.assertTrue(await handle_text_response(messenger, self.db, self.subject, SimpleNamespace(text="First")))
+            await schedule_all_employees(None, messenger)
+            self.assertIsNotNone(self.db.get(FlowLaunchRequest, request2_id).processed_at)
+            self.assertTrue(await handle_text_response(messenger, self.db, self.subject, SimpleNamespace(text="Second")))
+            sent = len(messenger.texts)
+            await schedule_all_employees(None, messenger)
+            self.assertEqual(len(messenger.texts), sent)
+        self.assertEqual(self.db.get(EmployeeAdaptationPlanItem, item_id).status, "completed")
+        self.assertEqual(self.db.get(EmployeeAdaptationPlanItem, item2_id).status, "completed")
+        from app.models import SurveyAnswer
+        answers = self.db.query(SurveyAnswer).filter_by(scenario_key="pulse").order_by(SurveyAnswer.id).all()
+        self.assertEqual([a.answer_value for a in answers], ["First", "Second"])
+        self.assertNotEqual(answers[0].answer_run_id, answers[1].answer_run_id)
