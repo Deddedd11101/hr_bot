@@ -138,13 +138,21 @@ def payload(db, employee_id):
     ids = [item.id for item in rows]
     deliveries = [dict(id=d.id, milestone_id=d.milestone_id, role=d.role, status=d.status, last_error=d.last_error)
                   for d in db.scalars(select(Delivery).where(Delivery.milestone_id.in_(ids)).order_by(Delivery.id))] if ids else []
+    def visible_item(item):
+        result = _milestone_payload(item)
+        old_conflict = "Конфликт с отдельным запросом запуска. Он сохранён в очереди; HR должен отменить конфликтующий запрос"
+        if item.last_error == old_conflict and not db.scalar(select(FlowLaunchRequest.id).where(
+                FlowLaunchRequest.employee_id == employee_id, FlowLaunchRequest.flow_key == item.scenario_key,
+                FlowLaunchRequest.processed_at.is_(None), FlowLaunchRequest.launch_type != "adaptation_plan").limit(1)):
+            result["last_error"] = None
+        return result
     return dict(revision=cycle.revision if cycle else 0,
         assessment_id=cycle.assessment_id if cycle else (latest.id if latest else None),
         latest_final_assessment_id=latest.id if latest else None,
         anchor_date=cycle.anchor_date.isoformat() if cycle else (_assessment_anchor(latest).isoformat() if latest and not _unknown_date(latest) else None),
         enabled=cycle.enabled if cycle else False,
         **{kind + "_scenario_key": getattr(cycle, kind + "_scenario_key") if cycle else None for kind in KINDS},
-        milestones=[dict(_milestone_payload(item), actions=[action_payload(a) for a in db.scalars(select(Action).where(Action.milestone_id == item.id).order_by(Action.id))]) for item in current],
+        milestones=[dict(visible_item(item), actions=[action_payload(a) for a in db.scalars(select(Action).where(Action.milestone_id == item.id).order_by(Action.id))]) for item in current],
         history=[_milestone_payload(item) for item in rows if item not in current], deliveries=deliveries,
         scenarios=[dict(key=s.scenario_key, title=s.title) for s in db.scalars(select(ScenarioTemplate)
                    .where(ScenarioTemplate.scenario_kind == "scenario").order_by(ScenarioTemplate.sort_order, ScenarioTemplate.id))],
@@ -198,13 +206,12 @@ def configure(db, employee_id, data, *, allow_actions=False):
             raise ValueError("Для включения цикла выберите все три сценария")
         keys[kind] = key
     if data["enabled"]:
-        from ..adaptation_delivery import owns_scenario as adaptation_owns_scenario
         selected = list(keys.values())
         pending = db.scalar(select(FlowLaunchRequest.id).where(FlowLaunchRequest.employee_id == employee_id,
             FlowLaunchRequest.flow_key.in_(selected), FlowLaunchRequest.skip_step_key.is_(None),
-            FlowLaunchRequest.processed_at.is_(None)).limit(1))
+            FlowLaunchRequest.processed_at.is_(None), FlowLaunchRequest.launch_type != "adaptation_plan").limit(1))
         mass = _pending_mass_conflict(db, employee_id, selected)
-        if pending or mass or any(adaptation_owns_scenario(db, employee_id, key) for key in selected):
+        if pending or mass:
             raise GradeConflictError("Есть отдельный запуск или план адаптации для выбранного сценария. Разрешите конфликт перед включением цикла")
     dates = default_dates(anchor)
     overrides = data.get("due_dates", {})
@@ -408,11 +415,11 @@ async def _process_one(bot, item_id):
                 or get_conflicting_progress_for_survey_launch(db, employee.id, scenario.scenario_key))
         pending = db.scalar(select(FlowLaunchRequest.id).where(FlowLaunchRequest.employee_id == employee.id,
             FlowLaunchRequest.flow_key == scenario.scenario_key, FlowLaunchRequest.skip_step_key.is_(None),
-            FlowLaunchRequest.processed_at.is_(None)).limit(1))
+            FlowLaunchRequest.processed_at.is_(None),
+            (FlowLaunchRequest.launch_type != "adaptation_plan") | (FlowLaunchRequest.requested_at <= item.due_at)).limit(1))
         mass = _pending_mass_conflict(db, employee.id, [scenario.scenario_key])
-        from ..adaptation_delivery import owns_scenario as adaptation_owns_scenario
-        if pending or mass or adaptation_owns_scenario(db, employee.id, scenario.scenario_key):
-            item.status, item.last_error = "blocked", "Есть другой запрос запуска этого сценария. HR должен отменить конфликтующий запрос"
+        if pending or mass:
+            item.status, item.last_error = "blocked", "Ожидается более ранний запрос запуска этого сценария; этап сохранён в очереди"
             db.commit()
             return
         if busy or (predecessor and predecessor.status != "started"):
