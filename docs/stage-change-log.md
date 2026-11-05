@@ -11,6 +11,36 @@ related:
 source_of_truth: true
 ---
 
+## 05.11.2026 — аудит адаптации №80 и дополнительные HR-наблюдатели
+
+- PR #170, deployed `07ee41ead97ab4e72f45e2e8eb141887feb0fbb3`, Deploy
+  `42021829498` success около 14:49 МСК. PR CI `42021550506`: 566 tests и
+  frontend passed; локально206 smoke/recipient tests,38 Grade/recipient,
+  npm ci (0 vulnerabilities), TypeScript/build, compileall, Ruff F821,
+  docs check и diff check passed. Main deploy preflight отдельно201 smoke.
+- Общий HR resolver использует основной HR ID и дополнительные employee
+  tokens из существующего поля. Явные observer tokens получают также копии
+  manager/mentor notification rules. Изменение состава admin-only; статус,
+  блокировка, подтверждённый Telegram и дубли проверяются. Schema не менялась.
+  Приватные сообщения/обычные шаги/OTP не копируются, права HR не выдаются.
+- Backup `backups/hr_bot.before-deploy.20261105-114906.db` проверен,
+  snapshot `backups/scenarios.before-deploy.20261105-114906.json`, fingerprint
+  unchanged. Включение observer78 пока ожидает финального подтверждения в UI.
+- Проверены 7 этапов/6 сценариев/30 шагов аналитика80, включая Pulse branch.
+  Diagnostics `42018710052`, `42020401129`, `42020406500`: у80 и manager78
+  нет активных runtime; adaptation queue80 пустая. У mentor70 два старых
+  non-waiting self progress127/128, не используемых для уведомлений.
+- По подтверждению пользователя на шаг279 сценария33 добавлен HR rule об
+  итоговой встрече с employee_full_name/position/probation_plan/colleague_feedback;
+  save и API reread passed. Файл плана6 успешно скачивается. Legacy ОС ссылка
+  открывается как DOCX; feedback runs нет, поэтому Excel нового сбора отсутствует.
+  Private folder шаблона требует Яндекс login; доступ владельца не проверен.
+- Исходная конфигурация всех шагов сохранена локально в
+  `D:/HRBot/outputs/galina-adaptation-scenarios-audit-20261105.json`, отчёт
+  `D:/HRBot/outputs/galina-adaptation-audit-20261105.md`. Ничего не запланировали
+  и не отправили. Для сегодняшнего теста нужны будущие ручные даты всех7 этапов,
+  ответы сотрудников и права доступа к папке. Живое полное прохождение открыто.
+
 ## 03.11.2026 — адаптация и Grade используют один сценарий независимо
 
 - PR #169, deployed `ae2de6336b00587a1a1eb1a43568423cc83fdcbd`,
