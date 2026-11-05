@@ -117,6 +117,30 @@ class ScenarioQueueTests(unittest.TestCase):
             row = connection.execute(text("SELECT waiting_for_response, interrupted_at FROM scenario_progress WHERE id=:id"), {"id": progress_id}).one()
         self.assertEqual(tuple(row), (1, None))
 
+    def test_independent_request_can_restart_interrupted_scenario(self):
+        import asyncio
+        from contextlib import nullcontext
+        from unittest.mock import AsyncMock
+        from app.scheduler import schedule_all_employees
+        progress, run = self.progress()
+        interrupt_progress(None, 1, progress.id, {"expected_at": self.now.isoformat()}, self.db)
+        request = FlowLaunchRequest(employee_id=1, flow_key="test_queue", requested_at=self.now, launch_type="scheduled")
+        self.db.add(request); self.db.commit()
+        with patch("app.scheduler.SessionLocal", side_effect=lambda: nullcontext(self.db)), \
+             patch("app.grades.development.process_due", new_callable=AsyncMock), \
+             patch("app.scheduler._load_all_employees", return_value=[]), \
+             patch("app.scheduler._load_scenarios", return_value=[]), \
+             patch("app.scheduler._load_pending_mass_scenario_actions", return_value=[]), \
+             patch("app.scheduler._load_pending_mass_message_actions", return_value=[]), \
+             patch("app.scheduler._load_pending_flow_requests", return_value=[request]), \
+             patch("app.scheduler.schedule_employee_scenario") as schedule:
+            asyncio.run(schedule_all_employees(SimpleNamespace(), SimpleNamespace()))
+        self.assertEqual(schedule.call_count, 1)
+        self.db.refresh(progress); self.db.refresh(run); self.db.refresh(request)
+        self.assertIsNone(progress.interrupted_at)
+        self.assertIsNotNone(request.processed_at)
+        self.assertEqual(run.status, "interrupted")
+
 
 if __name__ == "__main__":
     unittest.main()
