@@ -33,9 +33,13 @@ related:
 source_of_truth: true
 ---
 
-В работе 05.11: локальный пакет управления очередью карточки (отдельные запросы
+Выложено 05.11: PR #172, `3f15251e081bd6c36d41548756d1acb4cb568b69`,
+Deploy `42029557798` success, Diagnostics `42029896825`: 0 failing checks.
+CI финального feature SHA `8082e63`: 574 tests и frontend passed.
+Пакет управления очередью карточки (отдельные запросы
 и waiting-диалоги). Admin-only cancel/interrupt с optimistic timestamps, сохранением
-ответов и явным interrupted_at. Не выложен, реальные запуски не менялись.
+ответов и явным interrupted_at. Карточка80 → Сценарии показывает пустую очередь;
+реальные запуски не менялись. Cancel/interrupt в живом Telegram не проверялись.
 Глобальная FIFO всех источников не реализована; см. [[features/scenario-engine]].
 
 05.11: PR #170 выложен: `07ee41ead97ab4e72f45e2e8eb141887feb0fbb3`,

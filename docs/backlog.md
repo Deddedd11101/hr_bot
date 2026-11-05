@@ -25,9 +25,11 @@ source_of_truth: true
 
 # Бэклог HR Bot
 
-Doing (05.11): управление существующей очередью в карточке — snapshot активных
+Выложено / живая приёмка открыта (05.11, PR #172): управление существующей очередью в карточке — snapshot активных
 диалогов/отдельных запросов, причина ожидания, admin-only guarded cancel/interrupt,
-сохранение ответов и истории. Не выложено. Единая FIFO всех источников и durable
+сохранение ответов и истории. Deploy `42029557798`, Diagnostics `42029896825`
+success; SHA `3f15251e`, CI 574 tests. Browser empty-state карточки80 проверен;
+живые cancel/interrupt не выполнялись. Единая FIFO всех источников и durable
 recipient reservation не входят в первый пакет; Grade/mass/feedback сохраняют
 свои lifecycle. Реальные диалоги/расписания не изменялись.
 
