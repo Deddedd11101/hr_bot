@@ -33,6 +33,11 @@ related:
 source_of_truth: true
 ---
 
+В работе 05.11: локальный пакет управления очередью карточки (отдельные запросы
+и waiting-диалоги). Admin-only cancel/interrupt с optimistic timestamps, сохранением
+ответов и явным interrupted_at. Не выложен, реальные запуски не менялись.
+Глобальная FIFO всех источников не реализована; см. [[features/scenario-engine]].
+
 05.11: PR #170 выложен: `07ee41ead97ab4e72f45e2e8eb141887feb0fbb3`,
 Deploy `42021829498` success. 566 tests в PR CI, frontend job passed.
 Единый список дополнительных HR-получателей:

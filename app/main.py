@@ -73,6 +73,7 @@ from .web.dashboard_routes import router as dashboard_router
 from .web.employee_routes import router as employee_router
 from .web.feedback_surveys import router as feedback_surveys_router
 from .web.scenario_results import router as scenario_results_router
+from .web.scenario_queue import router as scenario_queue_router
 from .web.production_calendar_routes import router as production_calendar_router
 from .web.adaptation_plan_routes import router as adaptation_plan_router
 from .web.employees import (
@@ -183,6 +184,7 @@ app.include_router(integration_router)
 app.include_router(employee_router)
 app.include_router(feedback_surveys_router)
 app.include_router(scenario_results_router)
+app.include_router(scenario_queue_router)
 app.include_router(production_calendar_router)
 app.include_router(adaptation_plan_router)
 app.include_router(bulk_action_router)

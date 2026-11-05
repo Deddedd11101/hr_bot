@@ -17,6 +17,7 @@ import { CandidateStage } from "./candidate-stage";
 import { EmployeeFeedbackSurveys } from "./feedback-surveys";
 import { EmployeeScenarioResults } from "./scenario-results";
 import { AdaptationPlanner } from "./adaptation-planner";
+import { ScenarioQueue } from "./scenario-queue";
 import { EmployeeFileWorkspace, EmployeeFeedbackFiles } from "./file-workspace";
 import { TELEGRAM_DOCUMENT_TEMPLATE_TAGS, type TelegramCustomEmoji, type TelegramTemplateTag } from "@/components/ui/telegram-message-tools";
 import {
@@ -915,6 +916,7 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
                         <EmployeeOperationsSection {...operationsProps} view="test" />
                     </TabsContent> : null}
                     <TabsContent value="scenarios" keepMounted className="admin-page-stack min-w-0">
+                        <ScenarioQueue employeeId={Number(form.id)} visible={activeTab === "scenarios"} />
                         <EmployeeOperationsSection {...operationsProps} launchItems={launchItems.filter(item => isCandidate || item.purpose !== "adaptation")} manualLaunchItems={manualLaunchItems.filter(item => isCandidate || item.purpose !== "adaptation")} view="scenarios" />
                         <EmployeeScenarioResults employeeId={Number(form.id)} />
                         {!isCandidate ? <EmployeeFeedbackSurveys employeeId={Number(form.id)} legacyUrl={form.adaptation_feedback_url} /> : null}

@@ -95,10 +95,13 @@ def employee_activity(db: Session, employee_id: int, page: int, page_size: int, 
             # requested_at is a scheduled target, not a creation timestamp.
             if row.processed_at:
                 add("launch", row, row.processed_at, "launch", "Запрос запуска обработан", row.flow_key)
-    if kind in ("all", "onboarding"):
+    if kind in ("all", "onboarding", "launch"):
         for row in rows(OnboardingEvent):
             if row.sent_at:
-                add("onboarding", row, row.sent_at, "onboarding", "Событие онбординга отправлено", row.event_key)
+                if row.event_key == "scenario_queue_action" and kind != "onboarding":
+                    add("onboarding", row, row.sent_at, "launch", "Управление очередью сценариев", row.message)
+                elif row.event_key != "scenario_queue_action" and kind != "launch":
+                    add("onboarding", row, row.sent_at, "onboarding", "Событие онбординга отправлено", row.event_key)
     if kind in ("all", "assignment"):
         for row in rows(EmployeeAssignmentHistory, EmployeeAssignmentHistory.subject_employee_id):
             detail = f"{row.assignment_role}: #{row.assigned_employee_id}"

@@ -25,6 +25,12 @@ source_of_truth: true
 
 # Бэклог HR Bot
 
+Doing (05.11): управление существующей очередью в карточке — snapshot активных
+диалогов/отдельных запросов, причина ожидания, admin-only guarded cancel/interrupt,
+сохранение ответов и истории. Не выложено. Единая FIFO всех источников и durable
+recipient reservation не входят в первый пакет; Grade/mass/feedback сохраняют
+свои lifecycle. Реальные диалоги/расписания не изменялись.
+
 Doing (05.11): read-only аудит всех адаптационных шагов №80 с учётом текущей
 должности, доступности получателей, уведомлений/ссылок/документов. Diagnostics
 42018710052: adaptation_queue empty, 0 failing checks; это не Telegram-приёмка.

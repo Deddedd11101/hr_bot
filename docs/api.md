@@ -14,6 +14,23 @@ related:
 source_of_truth: true
 ---
 
+## Управление очередью сценариев карточки
+
+- `GET /api/employees/{employee_id}/scenario-queue`: authenticated; активные
+  диалоги subject/recipient и необработанные FlowLaunchRequest, источник,
+  блокирующий диалог/адресат, timestamps и can_manage. Ответы/Telegram IDs не выдаёт.
+- `POST /api/employees/{employee_id}/scenario-queue/requests/{request_id}/cancel`:
+  admin-only, `{expected_at}` равен requested_at; атомарно помечает необработанный
+  отдельный запуск processed и отменяет связанный planned/blocked этап адаптации.
+  Продолжения шагов этим endpoint не отменяются.
+- `POST /api/employees/{employee_id}/scenario-queue/progress/{progress_id}/interrupt`:
+  admin-only, `{expected_at}` равен updated_at. Только диалог в waiting state;
+  stale/in-delivery/чужой объект возвращает 409. Прерывает диалог и связанные
+  answer run/adaptation item, очищает pending choice, сохраняет ответы/историю.
+  Продолжения этого диалога закрываются, независимые будущие запуски сохраняются.
+  Оба POST возвращают обновлённый snapshot; изменения фиксируются в истории.
+
+
 Web file upload handlers карточек (generic/profile/resume/offer), библиотеки
 и step attachments используют `WEB_UPLOAD_MAX_BYTES` (50 МиБ по умолчанию).
 Превышение возвращает 413 с `detail` и не сохраняет новый файл/не заменяет старый.

@@ -8,7 +8,7 @@ from typing import Optional
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from pytz import timezone as tz_get
-from sqlalchemy import and_, or_
+from sqlalchemy import and_, or_, update
 from sqlalchemy.orm import Session
 
 from .config import settings
@@ -24,16 +24,19 @@ from .mass_targeting import (
 )
 from .messaging import as_messenger
 from .messaging.identity import get_primary_chat_id
-from .models import Employee, FlowLaunchRequest, FlowStepTemplate, MassMessageAction, MassScenarioAction, OnboardingEvent, ScenarioTemplate
+from .models import Employee, FlowLaunchRequest, FlowStepTemplate, MassMessageAction, MassScenarioAction, OnboardingEvent, ScenarioTemplate, ScenarioProgress
 from .scenario_engine import (
     SINGLE_STEP_REQUEST_PREFIX,
     add_workdays,
     format_message,
     get_scenario_steps,
     get_step_by_key,
+    get_conflicting_progress_for_survey_launch,
     matches_role_scope,
     queue_followup_step,
     resolve_followup_step,
+    resolve_scenario_recipient,
+    reset_progress,
     scenario_anchor_date,
     send_step,
     start_scenario,
@@ -438,6 +441,21 @@ async def schedule_all_employees(scheduler: AsyncIOScheduler, bot) -> None:
                     await send_step(bot, db, employee, scenario, step, scheduled_at=request.requested_at)
                 request.processed_at = utc_now()
                 continue
+            if request.skip_step_key is None:
+                recipient = resolve_scenario_recipient(db, employee, scenario, requires_response=True)
+                if recipient.employee_id and get_conflicting_progress_for_survey_launch(db, recipient.employee_id, scenario.scenario_key):
+                    continue
+                claimed = db.execute(update(FlowLaunchRequest).where(
+                    FlowLaunchRequest.id == request.id, FlowLaunchRequest.processed_at.is_(None),
+                    FlowLaunchRequest.requested_at == request.requested_at,
+                ).values(processed_at=utc_now()))
+                if claimed.rowcount != 1:
+                    db.rollback()
+                    continue
+                previous = db.query(ScenarioProgress).filter_by(employee_id=employee.id, scenario_key=scenario.scenario_key).first()
+                if previous and previous.interrupted_at is not None:
+                    reset_progress(db, employee.id, scenario.scenario_key)
+                db.commit()
             if request.launch_type == "status_transition":
                 if normalize_candidate_work_stage(scenario.candidate_work_stage_trigger) != normalize_candidate_work_stage(
                     employee.candidate_work_stage

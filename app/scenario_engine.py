@@ -447,6 +447,9 @@ def _survey_launch_id(db: Session, employee_id: int, scenario_key: str) -> int |
 
 
 def _complete_feedback_recipient(db: Session, progress: ScenarioProgress) -> None:
+    db.refresh(progress, ["interrupted_at"])
+    if progress.interrupted_at is not None:
+        return
     if progress.adaptation_plan_item_id is not None:
         item = db.get(EmployeeAdaptationPlanItem, progress.adaptation_plan_item_id)
         if item and item.employee_id == progress.employee_id and item.flow_key == progress.scenario_key:
@@ -538,6 +541,7 @@ def reset_progress(db: Session, employee_id: int, scenario_key: str) -> Scenario
     progress.step_history = None
     progress.response_undo_history = None
     _clear_pending_choice_confirmation(progress)
+    progress.interrupted_at = None
     progress.waiting_for_response = False
     progress.is_completed = False
     progress.last_delivery_error = None
@@ -2212,6 +2216,9 @@ async def send_step(
         return False
 
     progress = get_or_create_progress(db, employee.id, scenario.scenario_key)
+    db.refresh(progress, ["interrupted_at"])
+    if progress.interrupted_at is not None:
+        return False
     if (progress.answer_run_id is None and not is_survey(scenario)
             and progress.feedback_run_id is None and progress.survey_launch_id is None
             and db.query(FlowStepTemplate.id).filter_by(flow_key=scenario.scenario_key, target_field="survey_answer").first()):
@@ -2391,6 +2398,9 @@ async def advance_after_response(
 ) -> None:
     messenger = as_messenger(messenger_or_bot)
     progress = get_or_create_progress(db, employee.id, scenario.scenario_key)
+    db.refresh(progress, ["interrupted_at"])
+    if progress.interrupted_at is not None:
+        return
     progress.waiting_for_response = False
     progress.updated_at = utc_now()
     next_step = resolve_followup_step(db, scenario.scenario_key, current_step)
