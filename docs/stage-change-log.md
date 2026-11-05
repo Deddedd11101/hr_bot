@@ -11,6 +11,27 @@ related:
 source_of_truth: true
 ---
 
+## 05.11.2026 — управление ожидающими сценариями карточки
+
+- PR #172, deployed `3f15251e081bd6c36d41548756d1acb4cb568b69` около15:45 МСК.
+  Deploy Stage `42029557798` success; финальный feature SHA `8082e63`,
+  CI `42029321458`: 574 tests и frontend passed. Локально8 focused tests,
+  typecheck/build, Ruff F821 и docs check passed; основная локальная проверка
+  предыдущего SHA573 tests passed на отдельной CI-env SQLite.
+- Карточка → Сценарии: активные диалоги, отдельные pending requests, blocker,
+  длительное ожидание; admin-only cancel и interrupt waiting-диалога.
+  Ответы/история сохраняются, nullable interrupted_at добавляется compatibility
+  patch. Повторный независимый запрос может начать новое прохождение после
+  прерывания; старое продолжение не отправляется. Не глобальная FIFO всех источников.
+- Backup `backups/hr_bot.before-deploy.20261105-124451.db` создан и проверен;
+  snapshot `backups/scenarios.before-deploy.20261105-124451.json`, fingerprint unchanged.
+- Diagnostics `42029896825`: deployed SHA совпал, web/worker/WireGuard/Caddy active,
+  0 failing checks, no Telegram/network errors; adaptation_queue80 empty.
+- Browser: карточка80, вкладка Сценарии — новый блок и empty state без ошибки.
+  Screenshot `D:/HRBot/outputs/scenario-queue-stage-20261105.png`.
+  Реальные диалоги не прерывали, запросы не отменяли, планы/сообщения не запускали.
+  Живая приёмка cancel/interrupt остаётся открыта.
+
 ## 05.11.2026 — аудит адаптации №80 и дополнительные HR-наблюдатели
 
 - PR #170, deployed `07ee41ead97ab4e72f45e2e8eb141887feb0fbb3`, Deploy
