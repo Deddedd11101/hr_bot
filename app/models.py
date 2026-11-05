@@ -1121,6 +1121,8 @@ class ScenarioProgress(Base):
     answer_run_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
     adaptation_plan_item_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
 
+    interrupted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
 
 class SurveyAnswer(Base):
     """Ответ пользователя на вопрос опроса."""

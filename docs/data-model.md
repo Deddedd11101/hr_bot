@@ -15,6 +15,15 @@ related:
 source_of_truth: true
 ---
 
+`scenario_progress.interrupted_at` — nullable DATETIME, явное прерывание HR через
+управление очередью. Прерванный progress имеет is_completed=true для освобождения
+runtime, но не означает успешное прохождение: answer run/adaptation item получают
+status=interrupted. send_step запрещает доставку до явного reset_progress нового
+прохождения. SQLite compatibility добавляет колонку без изменения старых строк.
+Событие управления сохраняется в onboarding_events с event_key=scenario_queue_action;
+история отображает его как управление запуском, не как отправленное сообщение.
+
+
 Результаты адаптационного тестирования используют document slots
 `adaptation_test1_result`, `adaptation_test2_result`, `adaptation_practice_result`.
 Для файла `employee_document_links.employee_file_id` ссылается на файл того же

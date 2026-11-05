@@ -1969,7 +1969,7 @@ def _build_employee_detail_payload(db: Session, employee: Employee) -> dict:
         },
         "adaptation_scenarios": [
             {"key": scenario.scenario_key, "title": scenario.title,
-             "status": ("delivery_error" if progress.last_delivery_error else "completed" if progress.is_completed else "in_progress") if progress else "not_started"}
+             "status": ("interrupted" if progress.interrupted_at else "delivery_error" if progress.last_delivery_error else "completed" if progress.is_completed else "in_progress") if progress else "not_started"}
             for scenario in scenarios if scenario.purpose == "adaptation"
             for progress in [db.query(ScenarioProgress).filter_by(employee_id=employee.id, scenario_key=scenario.scenario_key).first()]
         ],

@@ -8,7 +8,7 @@ from typing import Optional
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from pytz import timezone as tz_get
-from sqlalchemy import and_, or_
+from sqlalchemy import and_, or_, update
 from sqlalchemy.orm import Session
 
 from .config import settings
@@ -31,9 +31,11 @@ from .scenario_engine import (
     format_message,
     get_scenario_steps,
     get_step_by_key,
+    get_conflicting_progress_for_survey_launch,
     matches_role_scope,
     queue_followup_step,
     resolve_followup_step,
+    resolve_scenario_recipient,
     scenario_anchor_date,
     send_step,
     start_scenario,
@@ -438,6 +440,18 @@ async def schedule_all_employees(scheduler: AsyncIOScheduler, bot) -> None:
                     await send_step(bot, db, employee, scenario, step, scheduled_at=request.requested_at)
                 request.processed_at = utc_now()
                 continue
+            if request.skip_step_key is None:
+                recipient = resolve_scenario_recipient(db, employee, scenario, requires_response=True)
+                if recipient.employee_id and get_conflicting_progress_for_survey_launch(db, recipient.employee_id, scenario.scenario_key):
+                    continue
+                claimed = db.execute(update(FlowLaunchRequest).where(
+                    FlowLaunchRequest.id == request.id, FlowLaunchRequest.processed_at.is_(None),
+                    FlowLaunchRequest.requested_at == request.requested_at,
+                ).values(processed_at=utc_now()))
+                if claimed.rowcount != 1:
+                    db.rollback()
+                    continue
+                db.commit()
             if request.launch_type == "status_transition":
                 if normalize_candidate_work_stage(scenario.candidate_work_stage_trigger) != normalize_candidate_work_stage(
                     employee.candidate_work_stage
