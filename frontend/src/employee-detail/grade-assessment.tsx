@@ -7,6 +7,7 @@ import { Choice, Feedback, Importance, LevelValue, useAction, useUnsaved } from 
 import { dateLabel, request } from "@/grades/data";
 import type { Assessment } from "@/grades/types";
 import { GradeProfileChart } from "./grade-profile-chart";
+import { ReviewDetailDialog } from "./grade-review-detail";
 
 const levels = [{ value: "none", label: "Не оценено" }, ...["Нет", "Понимание", "Умение", "Экспертиза", "Лидерство"].map((label, value) => ({ value: String(value), label: `${value} · ${label}` }))];
 
@@ -59,6 +60,7 @@ export function GradeAssessment({ initial, onFinalized, onClose, historicalVersi
     </div>}
     <Feedback error={action.error} message={dirty ? "Есть несохранённые изменения. График показывает последнюю сохранённую оценку." : action.message} />
     {assessment.review_comment && <p className="text-sm text-muted-foreground">{assessment.review_comment}</p>}
+    {!!assessment.colleague_reviews?.length && <ReviewDetailDialog title="Итог и ответы коллег" scores={assessment.scores} reviewers={assessment.colleague_reviews} />}
     <div className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
       <div className="min-w-0 space-y-5">{assessment.categories.map(category => <section key={category.categoryId}>
         <h3 className="border-b bg-muted/40 px-3 py-2 font-medium break-words">{category.categoryName}</h3>

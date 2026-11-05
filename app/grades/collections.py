@@ -17,6 +17,7 @@ from ..time_utils import utc_now
 from .calculations import fractional_category_averages
 from .catalog import integer, require
 from .history import matrix_version
+from .recommendations import matrix_coverage
 
 logger = logging.getLogger(__name__)
 
@@ -40,8 +41,15 @@ def create(db, employee_id, actor_id, data):
     subject = require(db, Employee, employee_id)
     if subject.employee_stage not in {"staff", "adaptation", "ipr"} or subject.is_bot_blocked:
         raise ValueError("Сотрудник недоступен для оценки")
-    if set(data) != {"request_id", "specialization_id", "recipient_ids"}:
+    required = {"request_id", "specialization_id", "recipient_ids"}
+    if not required <= set(data) or set(data) - required - {"open_questions"}:
         raise ValueError("Неизвестные поля сбора оценок")
+    questions = data.get("open_questions", [])
+    if not isinstance(questions, list) or len(questions) > 20 or any(
+        not isinstance(q, str) or not 1 <= len(q.strip()) <= 2000 for q in questions
+    ):
+        raise ValueError("Нужно не более 20 открытых вопросов, каждый от 1 до 2000 символов")
+    questions = [q.strip() for q in questions]
     request_id = str(UUID(data["request_id"]))
     digest = matrix_version(data)
     previous = db.scalar(select(GradeReviewCollection).where(GradeReviewCollection.employee_id == employee_id, GradeReviewCollection.request_id == request_id))
@@ -55,6 +63,7 @@ def create(db, employee_id, actor_id, data):
     specialization_id = integer(data.get("specialization_id"), 1, 2**63 - 1, "specialization_id")
     profile = db.scalar(select(EmployeeGradeProfile).where(EmployeeGradeProfile.employee_id == employee_id))
     view = grades.preview_review(db, employee_id, specialization_id, profile.current_grade_id if profile else None)
+    view["open_questions"] = questions
     if not view["scores"]:
         raise ValueError("В выбранном шаблоне нет навыков")
     key = "grade_review_" + uuid4().hex
@@ -65,7 +74,12 @@ def create(db, employee_id, actor_id, data):
                   "\n\n0 — нет · 1 — понимание · 2 — умение · 3 — экспертиза · 4 — лидерство. Если не можешь оценить, пропусти навык.")
         db.add(FlowStepTemplate(flow_key=key, step_key=f"skill_{score['skillId']}", step_title=score["skillName"], sort_order=index,
             default_text=prompt, response_type="buttons", button_options="0\n1\n2\n3\n4\nНе могу оценить", target_field="survey_answer", send_mode="immediate"))
-    db.add(FlowStepTemplate(flow_key=key, step_key="done", step_title="Завершение оценки", sort_order=len(view["scores"]),
+    for index, question in enumerate(questions):
+        db.add(FlowStepTemplate(flow_key=key, step_key=f"open_{index}", step_title=f"Комментарий {index + 1}",
+            sort_order=len(view["scores"]) + index,
+            default_text="Обратная связь о сотруднике {employee_full_name}.\n\n" + html.escape(question),
+            response_type="text", target_field="survey_answer", send_mode="immediate"))
+    db.add(FlowStepTemplate(flow_key=key, step_key="done", step_title="Завершение оценки", sort_order=len(view["scores"]) + len(questions),
         default_text="Спасибо! Твои оценки сохранены и будут учтены HR.", response_type="none", send_mode="immediate", is_terminal=True))
     run = EmployeeFeedbackRun(subject_employee_id=employee_id, scenario_key=key, scenario_title="Оценка навыков коллегами", created_at=utc_now())
     db.add(run)
@@ -81,6 +95,8 @@ def create(db, employee_id, actor_id, data):
 
 def report(db, collection):
     snapshot = json.loads(collection.snapshot_json)
+    final_assessment = db.get(GradeAssessment, collection.assessment_id) if collection.assessment_id else None
+    profile = db.scalar(select(EmployeeGradeProfile).where(EmployeeGradeProfile.employee_id == collection.employee_id))
     recipients = list(db.scalars(select(EmployeeFeedbackRecipient).where(EmployeeFeedbackRecipient.run_id == collection.feedback_run_id).order_by(EmployeeFeedbackRecipient.id)))
     answers = list(db.scalars(select(SurveyAnswer).where(SurveyAnswer.feedback_run_id == collection.feedback_run_id).order_by(SurveyAnswer.id)))
     latest = {(a.employee_id, a.step_key): a.answer_value for a in answers}
@@ -97,10 +113,14 @@ def report(db, collection):
                 totals[source["skillId"]].append(level)
         employee = db.get(Employee, recipient.respondent_employee_id)
         reviewers.append(dict(employee_id=recipient.respondent_employee_id, name=employee.full_name if employee else f"#{recipient.respondent_employee_id}",
-            status=recipient.delivery_status, scores=scores, categories=fractional_category_averages(scores)))
+            status=recipient.delivery_status, scores=scores, categories=fractional_category_averages(scores),
+            comments=[dict(question=question, answer=latest.get((recipient.respondent_employee_id, f"open_{index}")))
+                      for index, question in enumerate(snapshot.get("open_questions", []))]))
     scores = [dict(s, assessed=bool(totals[s["skillId"]]), currentLevel=sum(totals[s["skillId"]]) / len(totals[s["skillId"]]) if totals[s["skillId"]] else 0,
                    respondent_count=len(totals[s["skillId"]])) for s in snapshot["scores"]]
     return dict(id=collection.id, status=collection.status, created_at=collection.created_at.isoformat(), assessment_id=collection.assessment_id,
+        current_grade_id=final_assessment.current_grade_id if final_assessment else profile.current_grade_id if profile else None,
+        grades=snapshot["catalog"]["grades"], recommendation=matrix_coverage(snapshot["catalog"], snapshot["specialization_id"], scores),
         template=snapshot["catalog"]["specializations"], reviewers=reviewers, scores=scores, categories=fractional_category_averages(scores),
         completed_count=len(completed), recipient_count=len(recipients), can_finalize=collection.status == "open" and len(completed) == len(recipients) and any(s["assessed"] for s in scores))
 
@@ -110,20 +130,38 @@ def list_reports(db, employee_id):
     return [report(db, row) for row in db.scalars(select(GradeReviewCollection).where(GradeReviewCollection.employee_id == employee_id).order_by(GradeReviewCollection.id.desc()))]
 
 
-def finalize(db, employee_id, collection_id, actor_id):
+def finalize(db, employee_id, collection_id, actor_id, data=None):
     from ..web import grades
     grades._lock_employee(db, employee_id)
     collection = require(db, GradeReviewCollection, collection_id)
     if collection.employee_id != employee_id:
         raise LookupError("Сбор оценок не найден")
+    data = {} if data is None else data
+    if not isinstance(data, dict) or set(data) - {"current_grade_id", "comment", "expected_current_grade_id"}:
+        raise ValueError("Неизвестные поля итоговой оценки")
+    comment = data.get("comment", "Средняя оценка коллег")
+    if not isinstance(comment, str) or len(comment) > 4000:
+        raise ValueError("Комментарий должен быть строкой до 4000 символов")
     if collection.assessment_id:
+        if "current_grade_id" in data and data["current_grade_id"] != db.get(GradeAssessment, collection.assessment_id).current_grade_id:
+            raise ValueError("Итог уже сохранён; используйте исправление оценки")
         return grades.assessment_payload(db, collection.assessment_id)
+    profile = db.scalar(select(EmployeeGradeProfile).where(EmployeeGradeProfile.employee_id == employee_id))
+    if "expected_current_grade_id" in data and data["expected_current_grade_id"] != (profile.current_grade_id if profile else None):
+        raise grades.GradeConflictError("Грейд сотрудника изменён другим HR. Обновите данные перед фиксацией.")
     result = report(db, collection)
     if not result["can_finalize"]:
         raise ValueError("Дождитесь завершения оценивания всеми выбранными сотрудниками; нужен хотя бы один оценённый навык")
     frozen = deepcopy(json.loads(collection.snapshot_json))
+    grade_id = data.get("current_grade_id", frozen["current_grade_id"])
+    if grade_id is not None:
+        from ..models import Grade
+        require(db, Grade, integer(grade_id, 1, 2**63 - 1, "current_grade_id"), active=True)
+    if "current_grade_id" in data:
+        grades.update_employee_grade(db, employee_id, dict(specialization_id=frozen["specialization_id"],
+            current_grade_id=grade_id, target_grade_id=None, target_specialization_id=None, comment=comment), actor_id=actor_id)
     now = utc_now()
-    assessment = GradeAssessment(employee_id=employee_id, specialization_id=frozen["specialization_id"], current_grade_id=frozen["current_grade_id"],
+    assessment = GradeAssessment(employee_id=employee_id, specialization_id=frozen["specialization_id"], current_grade_id=grade_id,
         assessor_admin_account_id=actor_id, status="final", created_at=now, updated_at=now, finalized_at=now,
         catalog_snapshot=json.dumps(dict(review_mode="historical", draft_catalog=frozen["catalog"]), ensure_ascii=False))
     db.add(assessment)
@@ -133,7 +171,8 @@ def finalize(db, employee_id, collection_id, actor_id):
             db.add(GradeAssessmentValue(assessment_id=assessment.id, skill_id=score["skillId"], level=score["currentLevel"]))
     db.flush()
     snapshot = grades._draft_payload(db, assessment)
-    snapshot.update(review_comment="Средняя оценка коллег", collection_id=collection.id,
+    snapshot.update(review_comment=comment, collection_id=collection.id, recommendation=result["recommendation"],
+        colleague_reviews=result["reviewers"], open_questions=frozen.get("open_questions", []),
         aggregation=dict(method="mean_per_skill", respondent_count=result["completed_count"], frozen_template=True))
     assessment.catalog_snapshot = json.dumps(snapshot, ensure_ascii=False, allow_nan=False)
     collection.assessment_id, collection.status = assessment.id, "final"

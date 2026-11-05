@@ -14,6 +14,7 @@ export type Workspace = Catalog & { positions: { slug: string; name?: string; ti
 export type EntityKind = "grades" | "specializations" | "categories" | "skills";
 export type Profile = { specialization_id: number | null; current_grade_id: number | null; target_grade_id: number | null; target_specialization_id: number | null };
 export type Score = { skillId: number; skillName: string; categoryId: number; categoryName: string; importance: number; currentLevel: number; targetLevel: number; assessed?: boolean };
+export type ColleagueReview = {employee_id: number; name: string; status: string; scores: Score[]; categories: Assessment["categories"]; comments?: {question: string; answer: string | null}[]};
 export type Assessment = Profile & {
   id: number; employee_id: number; status: "draft" | "final" | "archived"; created_at: string; finalized_at: string | null;
   catalog: Catalog;
@@ -27,6 +28,7 @@ export type Assessment = Profile & {
   review_comment?: string;
   updated_at?: string; edit_token?: string; correction_count?: number;
   collection_id?: number;
+  colleague_reviews?: ColleagueReview[];
 };
 export type EmployeeGrade = {
   employee_id: number; profile: Profile | null; suggested_specialization_id: number | null;
