@@ -169,6 +169,23 @@ class GradeCollectionTests(unittest.TestCase):
             collections.finalize(self.db, 1, row.id, 1, dict(current_grade_id=1, expected_current_grade_id=None))
         self.assertIsNone(row.assessment_id)
 
+    def test_new_personnel_grade_keeps_label_without_changing_frozen_matrix(self):
+        self.prepare()
+        row = self.create()
+        new_grade = grades.save_catalog_item(self.db, "grades", dict(name="Principal", slug="principal", rank=5))
+        grades.update_employee_grade(self.db, 1, dict(specialization_id=self.spec["id"], current_grade_id=new_grade["id"],
+            target_grade_id=None, target_specialization_id=None, comment="Decision"), actor_id=1)
+        self.db.commit()
+        self.assertIn(new_grade["id"], [g["id"] for g in collections.report(self.db, row)["grades"]])
+        messenger = FakeMessenger()
+        asyncio.run(collections.process_pending(messenger, session_factory=self.sessions))
+        self.db.expire_all()
+        self.answer(messenger, row, 2, self.skill["id"], 2)
+        self.answer(messenger, row, 3, self.skill["id"], 3)
+        final = collections.finalize(self.db, 1, row.id, 1, dict(current_grade_id=new_grade["id"], expected_current_grade_id=new_grade["id"]))
+        self.assertIn("Principal", [g["name"] for g in final["catalog"]["grades"]])
+        self.assertNotIn(new_grade["id"], [g["grade_id"] for g in final["recommendation"]["levels"]])
+
     def test_ambiguous_delivery_is_not_automatically_retried(self):
         self.prepare()
         row = self.create()

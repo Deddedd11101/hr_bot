@@ -10,12 +10,12 @@ from sqlalchemy import and_, or_, select, update
 from ..database import SessionLocal
 from ..messaging.identity import get_primary_chat_id
 from ..models import (Employee, EmployeeFeedbackRun, EmployeeFeedbackRecipient, EmployeeGradeProfile,
-                      FlowStepTemplate, GradeAssessment, GradeAssessmentValue, GradeReviewCollection,
+                      FlowStepTemplate, Grade, GradeAssessment, GradeAssessmentValue, GradeReviewCollection,
                       GradeDevelopmentAction, ScenarioTemplate, SurveyAnswer)
 from ..scenario_engine import get_conflicting_progress_for_survey_launch, start_scenario
 from ..time_utils import utc_now
 from .calculations import fractional_category_averages
-from .catalog import integer, require
+from .catalog import integer, require, row as catalog_row
 from .history import matrix_version
 from .recommendations import matrix_coverage
 
@@ -97,6 +97,11 @@ def report(db, collection):
     snapshot = json.loads(collection.snapshot_json)
     final_assessment = db.get(GradeAssessment, collection.assessment_id) if collection.assessment_id else None
     profile = db.scalar(select(EmployeeGradeProfile).where(EmployeeGradeProfile.employee_id == collection.employee_id))
+    grade_options = deepcopy(snapshot["catalog"]["grades"])
+    if profile and profile.current_grade_id and profile.current_grade_id not in {g["id"] for g in grade_options}:
+        current_grade = db.get(Grade, profile.current_grade_id)
+        if current_grade:
+            grade_options.append(catalog_row(current_grade))
     recipients = list(db.scalars(select(EmployeeFeedbackRecipient).where(EmployeeFeedbackRecipient.run_id == collection.feedback_run_id).order_by(EmployeeFeedbackRecipient.id)))
     answers = list(db.scalars(select(SurveyAnswer).where(SurveyAnswer.feedback_run_id == collection.feedback_run_id).order_by(SurveyAnswer.id)))
     latest = {(a.employee_id, a.step_key): a.answer_value for a in answers}
@@ -120,7 +125,7 @@ def report(db, collection):
                    respondent_count=len(totals[s["skillId"]])) for s in snapshot["scores"]]
     return dict(id=collection.id, status=collection.status, created_at=collection.created_at.isoformat(), assessment_id=collection.assessment_id,
         current_grade_id=final_assessment.current_grade_id if final_assessment else profile.current_grade_id if profile else None,
-        grades=snapshot["catalog"]["grades"], recommendation=matrix_coverage(snapshot["catalog"], snapshot["specialization_id"], scores),
+        grades=grade_options, recommendation=matrix_coverage(snapshot["catalog"], snapshot["specialization_id"], scores),
         template=snapshot["catalog"]["specializations"], reviewers=reviewers, scores=scores, categories=fractional_category_averages(scores),
         completed_count=len(completed), recipient_count=len(recipients), can_finalize=collection.status == "open" and len(completed) == len(recipients) and any(s["assessed"] for s in scores))
 
@@ -155,8 +160,9 @@ def finalize(db, employee_id, collection_id, actor_id, data=None):
     frozen = deepcopy(json.loads(collection.snapshot_json))
     grade_id = data.get("current_grade_id", frozen["current_grade_id"])
     if grade_id is not None:
-        from ..models import Grade
-        require(db, Grade, integer(grade_id, 1, 2**63 - 1, "current_grade_id"), active=True)
+        grade = require(db, Grade, integer(grade_id, 1, 2**63 - 1, "current_grade_id"), active=True)
+        if grade.id not in {g["id"] for g in frozen["catalog"]["grades"]}:
+            frozen["catalog"]["grades"].append(catalog_row(grade))
     if "current_grade_id" in data:
         grades.update_employee_grade(db, employee_id, dict(specialization_id=frozen["specialization_id"],
             current_grade_id=grade_id, target_grade_id=None, target_specialization_id=None, comment=comment), actor_id=actor_id)
