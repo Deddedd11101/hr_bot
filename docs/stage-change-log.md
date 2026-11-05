@@ -25,7 +25,8 @@ source_of_truth: true
   Приватные сообщения/обычные шаги/OTP не копируются, права HR не выдаются.
 - Backup `backups/hr_bot.before-deploy.20261105-114906.db` проверен,
   snapshot `backups/scenarios.before-deploy.20261105-114906.json`, fingerprint
-  unchanged. Включение observer78 пока ожидает финального подтверждения в UI.
+  unchanged. По финальному подтверждению observer78 включён; повторный API GET
+  подтвердил сохранение observer token, неизменность primary HR и настроек.
 - Проверены 7 этапов/6 сценариев/30 шагов аналитика80, включая Pulse branch.
   Diagnostics `42018710052`, `42020401129`, `42020406500`: у80 и manager78
   нет активных runtime; adaptation queue80 пустая. У mentor70 два старых
