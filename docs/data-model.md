@@ -208,6 +208,11 @@ Rollback на старый runtime после появления средних 
 
 ### Files и documents
 
+`hr_settings.notification_recipient_ids` сохраняет legacy numeric IDs и новые
+`employee:<id>` токены дополнительных HR-получателей. Список общий для HR
+уведомлений; основной `telegram_user_id` и link/disconnect identity не меняются.
+Новых колонок/таблиц для этого списка нет.
+
 | Таблица | Назначение | Ключевые поля | Связи и примечания |
 | --- | --- | --- | --- |
 | `employee_files` | Inbound и outbound employee files | `employee_id`, `direction`, `category`, Telegram file ids, `stored_path`, `mime_type`, `file_size` | Backed by local filesystem storage |

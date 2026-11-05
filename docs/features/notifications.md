@@ -37,7 +37,16 @@ source_of_truth: true
 - Legacy `notify_on_send_*` поля в `flow_step_templates` остаются compatibility seam, но не должны считаться целевой product-моделью.
 - Уведомление может отправлять текст, когда шаг показан пользователю.
 - Targeting получателей для новых scenario notification rules теперь role-only: `hr`, `manager`, `mentor_adaptation`, `mentor_ipr`.
-- `hr` резолвится через `HrSettings.telegram_user_id`.
+- `hr` резолвится через единый список: основной `HrSettings.telegram_user_id`
+  и `notification_recipient_ids`. Дополнительные выбранные карточки хранятся
+  как `employee:<id>` только в HR settings (не в новых сценарных правилах).
+  Действующий статус, отсутствие блокировки и подтверждённый numeric Telegram
+  проверяются при сохранении и доставке; дубли удаляются. Изменять состав
+  получателей может только admin, в обоих settings endpoints.
+- Список общий для системных HR events, сценарных `hr` и Grade reminders.
+  Правила без `hr`, личные сообщения сотруднику и OTP не получают копий.
+  Дополнительный адресат не становится владельцем HR Telegram link и не
+  получает административных полномочий в боте.
 - `manager` / `mentor_adaptation` / `mentor_ipr` резолвятся через relation-поля карточки сотрудника и их primary Telegram chat id.
 - Если роль не может быть резолвлена в chat id, уведомление просто пропускается и не валит отправку шага или кнопочного ответа.
 - Legacy `employee:{id}` допускается только как runtime compatibility seam для уже существующих строк БД; новые UI/API payloads не должны его сохранять.

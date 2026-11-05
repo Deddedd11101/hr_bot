@@ -1580,6 +1580,12 @@ def resolve_notification_recipients(
 ) -> list[str]:
     recipients: list[str] = []
     for raw_value in _split_notification_recipients(explicit_ids):
+        if raw_value == "hr" and db is not None:
+            from .notifications import _notification_recipients
+            for chat_id in _notification_recipients(db.get(HrSettings, 1), db=db):
+                if chat_id not in recipients:
+                    recipients.append(chat_id)
+            continue
         resolved_value = _resolve_explicit_notification_recipient(db, raw_value)
         if resolved_value in NOTIFICATION_SCOPE_TO_EMPLOYEE_FIELD:
             employee_fields = NOTIFICATION_SCOPE_TO_EMPLOYEE_FIELD[resolved_value]
@@ -1588,6 +1594,12 @@ def resolve_notification_recipients(
         if resolved_value and resolved_value not in recipients:
             recipients.append(resolved_value)
     for scope_key in _split_notification_recipients(recipient_scope):
+        if scope_key == "hr" and db is not None:
+            from .notifications import _notification_recipients
+            for chat_id in _notification_recipients(db.get(HrSettings, 1), db=db):
+                if chat_id not in recipients:
+                    recipients.append(chat_id)
+            continue
         employee_fields = NOTIFICATION_SCOPE_TO_EMPLOYEE_FIELD.get(scope_key)
         if not employee_fields:
             continue

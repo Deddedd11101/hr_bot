@@ -121,7 +121,7 @@ type Workspace = {
   hr_settings: HrSettings;
   menu_sets: MenuSet[];
   available_scenarios: ScenarioOption[];
-  employee_options: { id: number; label: string }[];
+  employee_options: { id: number; label: string; audience?: string }[];
   employee_stage_options: SelectOption[];
   candidate_stage_options: SelectOption[];
   accounts: AdminAccount[];
@@ -688,6 +688,15 @@ export function SettingsPage({ apiUrl }: SettingsPageProps) {
             <FieldLabel>Имя HR</FieldLabel>
             <Input value={workspace.hr_settings.hr_name} onChange={(event) => updateHrSettings({ hr_name: event.target.value })} placeholder="Иван Петров" autoComplete="name" />
           </Field>
+          <details className="min-w-0 space-y-2">
+            <summary className="cursor-pointer text-sm font-medium">Дополнительные HR-получатели</summary>
+            <div className="max-h-48 space-y-2 overflow-y-auto py-2">
+              {workspace.employee_options.filter(item => item.audience === "employee").map(item => {
+                const token = `employee:${item.id}`, selected = workspace.hr_settings.notification_recipient_ids.split(/[\n,]/).map(value => value.trim()).filter(Boolean);
+                return <label key={item.id} className="flex items-start gap-2 text-sm"><Checkbox aria-label={item.label} checked={selected.includes(token)} disabled={workspace.current_user.role !== "admin"} onCheckedChange={checked => updateHrSettings({notification_recipient_ids: (checked ? [...selected, token] : selected.filter(value => value !== token)).join(",")})} /><span className="min-w-0 break-words">{item.label}</span></label>;
+              })}
+            </div>
+          </details>
         </FieldGroup>
         <div className="flex justify-end">
           <Button onClick={() => setWorkspaceFromApi(requestJson("/api/settings/hr", { method: "POST", body: JSON.stringify(editableHrSettingsPayload(workspace.hr_settings)) }), "HR-настройки сохранены")}>

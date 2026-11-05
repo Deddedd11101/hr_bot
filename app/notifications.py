@@ -26,7 +26,7 @@ async def notify_hr(messenger_or_bot, text: str) -> None:
     messenger = as_messenger(messenger_or_bot)
     with SessionLocal() as db:
         settings = db.get(HrSettings, 1)
-        recipients = [chat_id for chat_id in _notification_recipients(settings) if chat_id_allowed(db, chat_id)]
+        recipients = _notification_recipients(settings, db=db)
     if not recipients:
         return
     for chat_id in recipients:
@@ -36,7 +36,7 @@ async def notify_hr(messenger_or_bot, text: str) -> None:
             continue
 
 
-def _notification_recipients(settings: HrSettings | None) -> list[str]:
+def _notification_recipients(settings: HrSettings | None, *, db=None) -> list[str]:
     if not settings:
         return []
     raw_values = []
@@ -50,7 +50,15 @@ def _notification_recipients(settings: HrSettings | None) -> list[str]:
     recipients: list[str] = []
     for value in raw_values:
         normalized = (value or "").strip()
-        if normalized and normalized not in recipients:
+        if normalized.startswith("employee:"):
+            employee_id = normalized.removeprefix("employee:")
+            person = db.get(Employee, int(employee_id)) if db is not None and employee_id.isdigit() else None
+            if not person or person.is_bot_blocked or person.employee_stage not in {"staff", "adaptation", "ipr"}:
+                continue
+            from .messaging.identity import get_primary_chat_id
+            normalized = get_primary_chat_id(person, db=db)
+        if (is_numeric_telegram_id(normalized) and normalized not in recipients
+                and (db is None or chat_id_allowed(db, normalized))):
             recipients.append(normalized)
     return recipients
 
@@ -73,7 +81,7 @@ async def notify_hr_by_kind(messenger_or_bot, text: str, kind: str) -> None:
         settings = db.get(HrSettings, 1)
         if not _is_notification_enabled(settings, kind):
             return
-        recipients = [chat_id for chat_id in _notification_recipients(settings) if chat_id_allowed(db, chat_id)]
+        recipients = _notification_recipients(settings, db=db)
     if not recipients:
         return
     for chat_id in recipients:
