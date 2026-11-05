@@ -171,7 +171,7 @@ Mobile-specific раскладка клавиатуры этим изменен�
 - Технические `scenario_key` / `step_key` остаются только diagnostic/audit identifiers и не должны попадать в Telegram-текст для пользователей.
 - Allowed recipient tokens для scenario notifications: `hr`, `manager`, `mentor_adaptation`, `mentor_ipr`.
 - `hr` резолвится через `HrSettings.telegram_user_id`; если он не задан, HR notification пропускается без остановки сценария.
-- `notification_recipient_ids` из HR settings не расширяет scenario notification token `hr`; это legacy/additional recipients для глобального notification layer.
+- `hr` в сценарном правиле разворачивается в основной HR Telegram и дополнительные HR-получатели из `notification_recipient_ids`. Токены `employee:<id>` разрешаются через подтверждённую Telegram-привязку действующего сотрудника; blocked/archived/candidate/неподтверждённые пропускаются. Адресаты дедуплицируются. Только явно включённые `observer:employee:<id>` получают также копии настроенных manager/mentor notification rules. Обычные шаги/личные сообщения и OTP не копируются.
 - Runtime-only backward compatibility для старых строк БД `employee:{id}` сохраняется, но raw chat ids и произвольные recipient ids больше не резолвятся.
 
 ## Step attachments

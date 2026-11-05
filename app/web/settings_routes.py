@@ -99,6 +99,23 @@ def _serialize_position(position: Position) -> dict:
     }
 
 
+def _validated_hr_notification_ids(request, db, current, raw):
+    recipients = str(raw or "").strip()
+    if recipients != (current or ""):
+        require_api_admin(request)
+        for token in re.split(r"[\n,]", recipients):
+            token = token.strip()
+            if token.startswith("observer:employee:"):
+                token = token.removeprefix("observer:")
+            if not token.startswith("employee:"):
+                continue
+            raw_id = token.removeprefix("employee:")
+            person = db.get(Employee, int(raw_id)) if raw_id.isascii() and raw_id.isdigit() else None
+            if not person or person.is_bot_blocked or person.employee_stage not in {"staff", "adaptation", "ipr"} or not get_primary_chat_id(person, db=db):
+                raise HTTPException(422, "Дополнительный HR-получатель должен быть действующим сотрудником с подтверждённым Telegram")
+    return recipients or None
+
+
 @router.post("/settings")
 def update_settings(
     request: Request,
@@ -116,8 +133,9 @@ def update_settings(
         return auth_redirect
     hr_settings = _get_or_create_hr_settings(db)
     _reject_telegram_binding_change(hr_settings.telegram_user_id, telegram_user_id)
+    recipients = _validated_hr_notification_ids(request, db, hr_settings.notification_recipient_ids, notification_recipient_ids)
     hr_settings.hr_name = hr_name.strip() or None
-    hr_settings.notification_recipient_ids = notification_recipient_ids.strip() or None
+    hr_settings.notification_recipient_ids = recipients
     hr_settings.default_menu_set_id = int(default_menu_set_id) if default_menu_set_id.strip().isdigit() else None
     hr_settings.notify_scenario_completed = notify_scenario_completed == "on"
     hr_settings.notify_test_task_received = notify_test_task_received == "on"
@@ -791,11 +809,12 @@ def update_hr_settings_api(
     hr_settings = _get_or_create_hr_settings(db)
     if "telegram_user_id" in payload:
         _reject_telegram_binding_change(hr_settings.telegram_user_id, payload.get("telegram_user_id"))
+    recipients = _validated_hr_notification_ids(request, db, hr_settings.notification_recipient_ids, payload.get("notification_recipient_ids"))
     default_menu_set_id = payload.get("default_menu_set_id")
     default_employee_menu_set_id = payload.get("default_employee_menu_set_id")
     default_candidate_menu_set_id = payload.get("default_candidate_menu_set_id")
     hr_settings.hr_name = str(payload.get("hr_name") or "").strip() or None
-    hr_settings.notification_recipient_ids = str(payload.get("notification_recipient_ids") or "").strip() or None
+    hr_settings.notification_recipient_ids = recipients or None
     hr_settings.default_menu_set_id = int(default_menu_set_id) if str(default_menu_set_id or "").isdigit() else None
     hr_settings.default_employee_menu_set_id = (
         int(default_employee_menu_set_id) if str(default_employee_menu_set_id or "").isdigit() else None

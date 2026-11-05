@@ -287,7 +287,7 @@ def renew_after_finalization(db, assessment):
 
 def _reminder_recipients(db, employee):
     settings = db.get(HrSettings, 1)
-    hr = [chat for chat in _notification_recipients(settings) if is_numeric_telegram_id(chat) and chat_id_allowed(db, chat)]
+    hr = _notification_recipients(settings, db=db)
     manager = db.get(Employee, employee.manager_employee_id) if employee.manager_employee_id else None
     manager_chat = get_primary_chat_id(manager, db=db) if _active_staff(manager) else None
     return {"hr": hr, "manager": [manager_chat] if manager_chat and is_numeric_telegram_id(manager_chat) else []}

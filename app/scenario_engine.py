@@ -1580,6 +1580,12 @@ def resolve_notification_recipients(
 ) -> list[str]:
     recipients: list[str] = []
     for raw_value in _split_notification_recipients(explicit_ids):
+        if raw_value == "hr" and db is not None:
+            from .notifications import _notification_recipients
+            for chat_id in _notification_recipients(db.get(HrSettings, 1), db=db):
+                if chat_id not in recipients:
+                    recipients.append(chat_id)
+            continue
         resolved_value = _resolve_explicit_notification_recipient(db, raw_value)
         if resolved_value in NOTIFICATION_SCOPE_TO_EMPLOYEE_FIELD:
             employee_fields = NOTIFICATION_SCOPE_TO_EMPLOYEE_FIELD[resolved_value]
@@ -1588,6 +1594,12 @@ def resolve_notification_recipients(
         if resolved_value and resolved_value not in recipients:
             recipients.append(resolved_value)
     for scope_key in _split_notification_recipients(recipient_scope):
+        if scope_key == "hr" and db is not None:
+            from .notifications import _notification_recipients
+            for chat_id in _notification_recipients(db.get(HrSettings, 1), db=db):
+                if chat_id not in recipients:
+                    recipients.append(chat_id)
+            continue
         employee_fields = NOTIFICATION_SCOPE_TO_EMPLOYEE_FIELD.get(scope_key)
         if not employee_fields:
             continue
@@ -1595,6 +1607,12 @@ def resolve_notification_recipients(
         employee_chat_id = _resolve_related_employee_chat_id(db, employee, relation_field, legacy_chat_field)
         if employee_chat_id and employee_chat_id not in recipients:
             recipients.append(employee_chat_id)
+    configured = _split_notification_recipients(explicit_ids) + _split_notification_recipients(recipient_scope)
+    if db is not None and any(token in ROLE_ONLY_NOTIFICATION_TOKEN_SET or token.startswith("employee:") for token in configured):
+        from .notifications import _notification_recipients
+        for chat_id in _notification_recipients(db.get(HrSettings, 1), db=db, observers_only=True):
+            if chat_id not in recipients:
+                recipients.append(chat_id)
     return recipients
 
 
