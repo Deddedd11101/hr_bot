@@ -105,6 +105,8 @@ def _validated_hr_notification_ids(request, db, current, raw):
         require_api_admin(request)
         for token in re.split(r"[\n,]", recipients):
             token = token.strip()
+            if token.startswith("observer:employee:"):
+                token = token.removeprefix("observer:")
             if not token.startswith("employee:"):
                 continue
             raw_id = token.removeprefix("employee:")

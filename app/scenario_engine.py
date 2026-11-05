@@ -1607,6 +1607,12 @@ def resolve_notification_recipients(
         employee_chat_id = _resolve_related_employee_chat_id(db, employee, relation_field, legacy_chat_field)
         if employee_chat_id and employee_chat_id not in recipients:
             recipients.append(employee_chat_id)
+    configured = _split_notification_recipients(explicit_ids) + _split_notification_recipients(recipient_scope)
+    if db is not None and any(token in ROLE_ONLY_NOTIFICATION_TOKEN_SET or token.startswith("employee:") for token in configured):
+        from .notifications import _notification_recipients
+        for chat_id in _notification_recipients(db.get(HrSettings, 1), db=db, observers_only=True):
+            if chat_id not in recipients:
+                recipients.append(chat_id)
     return recipients
 
 

@@ -41,6 +41,16 @@ class HrNotificationRecipientsTests(unittest.TestCase):
     def test_non_hr_notification_does_not_gain_additional_recipient(self):
         self.assertEqual(resolve_notification_recipients(self.db, SimpleNamespace(), "", ""), [])
 
+    def test_observer_receives_related_role_notifications_without_hr_and_dedupes(self):
+        self.hr.notification_recipient_ids = "observer:employee:78,employee:78"
+        self.db.flush()
+        subject = SimpleNamespace(manager_employee_id=78, manager_telegram_id=None)
+        self.assertEqual(resolve_notification_recipients(self.db, subject, "manager", ""), ["9078"])
+        with patch("app.scenario_engine._resolve_related_employee_chat_id", return_value="9080"):
+            self.assertEqual(resolve_notification_recipients(self.db, subject, "manager", ""), ["9080", "9078"])
+        self.assertEqual(resolve_notification_recipients(self.db, subject, "", ""), [])
+        self.assertEqual(_notification_recipients(self.hr, db=self.db), ["9001", "9078"])
+
     def test_blocked_candidate_and_unlinked_recipient_are_excluded(self):
         for stage, blocked in (("candidate", False), ("archived", False), ("staff", True)):
             self.person.employee_stage, self.person.is_bot_blocked = stage, blocked
@@ -56,11 +66,14 @@ class HrNotificationRecipientsTests(unittest.TestCase):
                 _validated_hr_notification_ids(None, self.db, "", "employee:78")
         with patch("app.web.settings_routes.require_api_admin"), patch("app.web.settings_routes.get_primary_chat_id", return_value="9078"):
             self.assertEqual(_validated_hr_notification_ids(None, self.db, "", "employee:78"), "employee:78")
+            self.assertEqual(_validated_hr_notification_ids(None, self.db, "", "observer:employee:78"), "observer:employee:78")
             self.person.employee_stage = "candidate"
             self.db.flush()
             with self.assertRaises(HTTPException) as error:
                 _validated_hr_notification_ids(None, self.db, "", "employee:78")
             self.assertEqual(error.exception.status_code, 422)
+            with self.assertRaises(HTTPException):
+                _validated_hr_notification_ids(None, self.db, "", "observer:employee:78")
         self.person.employee_stage, self.person.is_bot_blocked = "staff", False
         self.db.flush()
         with patch("app.messaging.identity.get_primary_chat_id", return_value=None):

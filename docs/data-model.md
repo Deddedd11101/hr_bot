@@ -209,7 +209,8 @@ Rollback на старый runtime после появления средних 
 ### Files и documents
 
 `hr_settings.notification_recipient_ids` сохраняет legacy numeric IDs и новые
-`employee:<id>` токены дополнительных HR-получателей. Список общий для HR
+`employee:<id>` токены дополнительных HR-получателей; `observer:employee:<id>`
+явно включает также копии остальных настроенных служебных notification rules. Список общий для HR
 уведомлений; основной `telegram_user_id` и link/disconnect identity не меняются.
 Новых колонок/таблиц для этого списка нет.
 

@@ -36,11 +36,11 @@ async def notify_hr(messenger_or_bot, text: str) -> None:
             continue
 
 
-def _notification_recipients(settings: HrSettings | None, *, db=None) -> list[str]:
+def _notification_recipients(settings: HrSettings | None, *, db=None, observers_only=False) -> list[str]:
     if not settings:
         return []
     raw_values = []
-    if is_numeric_telegram_id(settings.telegram_user_id):
+    if not observers_only and is_numeric_telegram_id(settings.telegram_user_id):
         raw_values.append(settings.telegram_user_id)
     if settings.notification_recipient_ids:
         raw_values.extend(
@@ -50,6 +50,11 @@ def _notification_recipients(settings: HrSettings | None, *, db=None) -> list[st
     recipients: list[str] = []
     for value in raw_values:
         normalized = (value or "").strip()
+        observer = normalized.startswith("observer:")
+        if observers_only and not observer:
+            continue
+        if observer:
+            normalized = normalized.removeprefix("observer:")
         if normalized.startswith("employee:"):
             employee_id = normalized.removeprefix("employee:")
             person = db.get(Employee, int(employee_id)) if db is not None and employee_id.isdigit() else None
