@@ -23,8 +23,9 @@ source_of_truth: true
   colleague grade collection remain unchanged. No application deploy/restart.
 - First apply attempt `42205619257` stopped at checkout (short SHA unsupported);
   no server action occurred. Rerun used full reviewed SHA.
-- Automatic pending collection delivery is left to the normal worker tick;
-  receipt/completion in Telegram remains user acceptance, not implied by repair.
+- Diagnostics `42205865812`: no active legacy progresses for70, 0 failures.
+  Browser card80 collection1 changed reviewer70 from queued to answering after
+  normal worker dispatch. Receipt/completion in Telegram remains user acceptance.
 
 ## 06.11.2026 — детали коллег и навигация грейда
 
