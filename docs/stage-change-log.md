@@ -11,6 +11,35 @@ related:
 source_of_truth: true
 ---
 
+## 06.11.2026 — финальные критерии оценки навыков
+
+- PR #181 CI `42208703975` passed; deployed runtime
+  `41276d0763c6ac68e3db60e34d625149dd84a958`, Deploy `42209972155` success.
+  After browser session expired during the pause, exact same reviewed SHA was
+  deployed again (`42244750989`) to obtain a fresh verified backup immediately
+  before catalog writes: `backups/hr_bot.before-deploy.20261106-153834.db` and
+  `backups/scenarios.before-deploy.20261106-153834.json`. Scenario fingerprint unchanged.
+- Five existing specializations updated through authenticated UI import with
+  individual preview/fingerprint confirmations: РП23, Дизайнер сервисов24,
+  Дизайнер концептов24, Бизнес аналитик43, Системный аналитик42. Post-import
+  JSON exports confirmed156 rubrics,3 open questions each,0 rubric mismatches.
+  No new specialization created; UX/demo templates unchanged.
+- Whitespace-only PM names resolved against exported skill IDs (82,83,90,92),
+  editorial normalization only. Service-designer removed scope IDs28/77/78/79/80
+  and added the five user-approved competencies (one reused existing global81).
+  Old SA matrix contained duplicate corporate/soft occurrences: preserve
+  corporate19/21/22; omit redundant soft27/29/31 from the new SA scope only.
+  Global skills and historical records are not deleted.
+- Source converter now preserves the first duplicate occurrence only when grade
+  requirements are identical, and rejects conflicting duplicate requirements.
+  Corrected prepared JSON mirrors the applied SA grouping. No runtime patch needed.
+- Browser card70: old history visible; new form shows42 skills and expanded
+  behavioral anchors; closed without saving. Screenshot
+  `D:/HRBot/outputs/grade-rubrics-stage-20261106.png`.
+  Existing assessment/collection snapshots, employee grades and schedules were
+  not edited; no new Telegram review launched. Actual Telegram rubric flow remains
+  user acceptance, not established by import/export checks.
+
 ## 06.11.2026 — детали коллег и навигация грейда
 
 - PR #174 с открытыми вопросами, детальной расшифровкой, frozen source reviews,

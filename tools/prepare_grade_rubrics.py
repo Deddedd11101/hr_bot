@@ -39,7 +39,13 @@ def prepare(questions_path, skills_path):
                 if row[0]:
                     category = row[0]
                 if row[1]:
-                    old[normalize(row[1])] = (category, row)
+                    key = normalize(row[1])
+                    if key in old:
+                        if old[key][1][2:6] != row[2:6]:
+                            raise ValueError(f"Conflicting requirements for duplicate skill: {target}/{row[1]}")
+                        # The final questionnaire asks once; retain the first matrix occurrence.
+                        continue
+                    old[key] = (category, row)
             sheet = questions[source]
             headers = [cell.value for cell in sheet[3]]
             index = {value: i for i, value in enumerate(headers) if value}
@@ -89,6 +95,6 @@ if __name__ == "__main__":
     parser.add_argument("--out", required=True)
     args = parser.parse_args()
     result = prepare(args.questions, args.skills)
-    Path(args.out).write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    Path(args.out).write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8", newline="\n")
     print(json.dumps({p["source_sheet"]: {"count": sum(len(c["skills"]) for c in p["catalog"]["categories"]),
         "added": p["added"], "removed": p["removed"]} for p in result["packages"]}, ensure_ascii=False))
