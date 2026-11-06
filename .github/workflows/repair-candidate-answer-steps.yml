@@ -9,6 +9,7 @@ on:
         options:
           - candidate
           - adaptation_pulse
+          - grade70_stale_dialogs
         default: "candidate"
       expected_plan_sha256:
         description: "For adaptation_pulse apply: SHA256 printed by the reviewed dry-run"
@@ -32,8 +33,45 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  grade70:
+    if: inputs.package == 'grade70_stale_dialogs'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+      - name: Upload guarded repair
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.STAGE_HOST }}
+          username: ${{ secrets.STAGE_USERNAME }}
+          password: ${{ secrets.STAGE_PASSWORD }}
+          port: ${{ secrets.STAGE_PORT }}
+          source: tools/repair_grade70_stale_dialogs.py
+          target: /tmp/hrbot-grade70-${{ github.run_id }}
+      - name: Run approved repair
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          REPAIR_MODE: ${{ inputs.mode }}
+          STAGE_DB_PATH: ${{ secrets.STAGE_DB_PATH }}
+        with:
+          host: ${{ secrets.STAGE_HOST }}
+          username: ${{ secrets.STAGE_USERNAME }}
+          password: ${{ secrets.STAGE_PASSWORD }}
+          port: ${{ secrets.STAGE_PORT }}
+          envs: REPAIR_MODE,STAGE_DB_PATH
+          script: |
+            set -eu
+            cd "${{ secrets.STAGE_APP_DIR }}"
+            test -z "$(git status --porcelain)"
+            case "$REPAIR_MODE" in
+              dry_run) flag="" ;;
+              apply) flag="--apply" ;;
+              *) exit 1 ;;
+            esac
+            .venv/bin/python /tmp/hrbot-grade70-${{ github.run_id }}/tools/repair_grade70_stale_dialogs.py --db "${STAGE_DB_PATH:-hr_bot.db}" $flag
   repair:
-    if: inputs.package != 'adaptation_pulse'
+    if: inputs.package == 'candidate'
     runs-on: ubuntu-latest
     env:
       REPAIR_REF: ${{ inputs.ref }}

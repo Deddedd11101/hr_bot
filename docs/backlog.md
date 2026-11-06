@@ -25,6 +25,11 @@ source_of_truth: true
 
 # Бэклог HR Bot
 
+## Runtime watchdog follow-up (06.11.2026)
+
+- User-approved one-off repair: interrupt only stale employee70 progress127/128 after verified backup and exact runtime snapshot guard. Preserve answers/history and independent future requests; do not recreate the pending colleague grade collection.
+- Next engine package: distinguish waiting-for-human, future scheduled continuation, blocked queue, stale non-waiting runtime and uncertain delivery. Three hours is an alert threshold, not permission to resend or auto-complete. Add visible blocker/age, deduplicated HR alerts and guarded recovery actions. Never replay ambiguous external sends automatically; legitimate multi-day answers must not expire silently. Validate queue handoff and legacy progress regression tests.
+
 ## Scrollbar consistency (06.11.2026)
 
 - Prepared in feature: shared native scrollbar tokens, employee grade list ScrollArea and adaptation rule Select migration. Local typecheck/build and synthetic long-list keyboard checks passed; stage deployment and live acceptance remain pending.
