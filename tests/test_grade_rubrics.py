@@ -85,6 +85,12 @@ class RubricTests(unittest.TestCase):
         designer = data["packages"][1]
         self.assertEqual(len(designer["added"]), 5)
         self.assertEqual(len(designer["removed"]), 5)
+        analyst = data["packages"][4]["catalog"]["categories"]
+        corporate = next(c for c in analyst if c["name"] == "Корпоративные компетенции")
+        soft = next(c for c in analyst if c["name"] == "Soft skills")
+        duplicates = {"Командная работа", "Системность", "Ответственность"}
+        self.assertTrue(duplicates <= {s["name"] for s in corporate["skills"]})
+        self.assertFalse(duplicates & {s["name"] for s in soft["skills"]})
 
     def test_invalid_anchors_rejected(self):
         p = self.payload()
