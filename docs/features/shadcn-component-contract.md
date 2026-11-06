@@ -83,7 +83,14 @@ source_of_truth: true
 - The employee manual message endpoint passes text through the same safe HTML renderer before Telegram delivery and resolves supported employee template tags from the current card context.
 - Custom emoji catalog is backed by `GET /api/settings/workspace` (`custom_emojis`) and the CRUD endpoints `/api/settings/custom-emojis*`. Admins create/update/deactivate entries; editors show only active catalog entries and insert numeric `emoji_id` values through the shared editor. Menu keyboard labels continue using ordinary fallback emoji because Telegram custom entities are message content, not keyboard labels.
 
-## Current Migration Debt
+## Scroll Regions
+
+- Native page, dialog, table, textarea and popup scrollbars use the same border/hover tokens and rounded 10px track geometry as `ScrollArea`; Firefox uses its thin native equivalent. Forced-colors mode retains system rendering.
+- Keep Base UI Select's own list as the scrolling element so keyboard navigation, selected-item positioning and scroll arrows retain their behavior. Styling only the outer popup does not cover its inner list.
+- Employee grade reviewer lists use `ScrollArea`; adaptation rule choices use the shared `Select`. Intentional scrollbar hiding inside these primitives must not be overridden by global styles.
+- OS file/time pickers are outside the DOM scrollbar styling contract. Existing minute-precision time input behavior is unchanged.
+
+## Remaining Migration Debt
 
 - Older Radix wrappers may still exist elsewhere, but `frontend/src/components/ui/scroll-area.tsx` is now the Base UI wrapper and should be used for custom scroll regions.
 - Some older pages still contain raw Tailwind color classes such as red/amber statuses. Replace them with semantic tokens during the next page pass.

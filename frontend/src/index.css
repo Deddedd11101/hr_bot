@@ -358,28 +358,38 @@
 
   [data-slot="select-content"] {
     max-height: min(var(--available-height, var(--select-content-max-height)), var(--select-content-max-height));
-    scrollbar-color: color-mix(in oklch, var(--muted-foreground) 42%, transparent) transparent;
     scrollbar-gutter: stable;
+  }
+
+  /* Keep native popup/textarea/page scrollers on the ScrollArea visual tokens.
+   * Do not replace the scroller owned by Select: its focus/scroll arrows depend on it. */
+  * {
+    scrollbar-color: var(--border) transparent;
     scrollbar-width: thin;
   }
 
-  [data-slot="select-content"]::-webkit-scrollbar {
-    width: 0.625rem;
+  @supports selector(::-webkit-scrollbar) {
+    * { scrollbar-color: auto; scrollbar-width: auto; }
+
+    *::-webkit-scrollbar { width: 0.625rem; height: 0.625rem; }
+    *::-webkit-scrollbar-track, *::-webkit-scrollbar-corner { background: transparent; }
+
+    *::-webkit-scrollbar-thumb {
+      background-color: var(--border);
+      border: 1px solid transparent;
+      border-radius: var(--radius-full);
+      background-clip: padding-box;
+    }
+
+    *::-webkit-scrollbar-thumb:hover {
+      background-color: color-mix(in oklch, var(--muted-foreground) 40%, transparent);
+    }
   }
 
-  [data-slot="select-content"]::-webkit-scrollbar-track {
-    background: transparent;
-  }
-
-  [data-slot="select-content"]::-webkit-scrollbar-thumb {
-    background-color: color-mix(in oklch, var(--muted-foreground) 30%, transparent);
-    border: 0.1875rem solid transparent;
-    border-radius: var(--radius-full);
-    background-clip: content-box;
-  }
-
-  [data-slot="select-content"]::-webkit-scrollbar-thumb:hover {
-    background-color: color-mix(in oklch, var(--muted-foreground) 48%, transparent);
+  @media (forced-colors: active) {
+    * { scrollbar-color: auto; scrollbar-width: auto; }
+    *::-webkit-scrollbar { width: revert; height: revert; }
+    *::-webkit-scrollbar-thumb { background: revert; border: revert; border-radius: revert; }
   }
 
   .scenario-graph-shell {
