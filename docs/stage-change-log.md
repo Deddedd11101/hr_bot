@@ -11,6 +11,30 @@ related:
 source_of_truth: true
 ---
 
+## 06.11.2026 — детали коллег и навигация грейда
+
+- PR #174 с открытыми вопросами, детальной расшифровкой, frozen source reviews,
+  сопоставлением требованиям матрицы и явным решением HR выложен на `605adce`:
+  Deploy `42193105731`, Diagnostics `42193348217` success. CI `42192149294`:
+  581 tests и frontend passed; локально15 focused tests, typecheck/build,
+  compileall, Ruff F821, docs check и diff check passed. Schema не менялась.
+- При browser smoke найден layout defect: nested Tabs оказались рядом с контентом.
+  PR #175 добавляет explicit flex-col, как у внешних Tabs, line-вариант и
+  aria-hidden вертикальный разделитель. Template asset version75→76.
+  Финальный deployed SHA `4eb1195e8c7088b918814276f802bdc199d01000`,
+  Deploy `42194016448` success; hotfix CI `42193779460` passed.
+- Перед финальной выкладкой проверен backup
+  `backups/hr_bot.before-deploy.20261106-091910.db`, snapshot
+  `backups/scenarios.before-deploy.20261106-091910.json`; scenario fingerprint unchanged.
+  До первой выкладки также сохранён backup `backups/hr_bot.before-deploy.20261106-091203.db`.
+- Diagnostics `42194276177`: deployed ref совпал, web/worker active,
+  no Telegram/network errors, 0 failing checks.
+- Browser80: Грейд → Оценки/Цикл развития открываются; навигация находится второй
+  горизонтальной строкой над контентом. Цикл остаётся на паузе, существующие оценки
+  доступны. Screenshot `D:/HRBot/outputs/grade-tabs-stage-20261106.png`.
+  Новые сборы, фиксацию решений, отмены и расписания не выполняли.
+  Актуальные открытые вопросы и живой Telegram-сбор остаются для приёмки.
+
 ## 05.11.2026 — управление ожидающими сценариями карточки
 
 - PR #172, deployed `3f15251e081bd6c36d41548756d1acb4cb568b69` около15:45 МСК.
