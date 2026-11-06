@@ -11,6 +11,21 @@ related:
 source_of_truth: true
 ---
 
+## 06.11.2026 — stale grade-review recipient repair
+
+- User approved interrupting only employee70 progress127/128 from14 October.
+  PR #179 tooling CI `42205464494` passed; local2 focused tests passed.
+  Dry-run `42205461947` matched both exact snapshots.
+- Apply `42205776023` succeeded with verified backup
+  `backups/hr_bot.before-grade70-repair.20261106-105123-459323.db`.
+  Both progresses marked interrupted/completed; history and answers preserved.
+  Only continuation requests are cancelled; independent future launches and
+  colleague grade collection remain unchanged. No application deploy/restart.
+- First apply attempt `42205619257` stopped at checkout (short SHA unsupported);
+  no server action occurred. Rerun used full reviewed SHA.
+- Automatic pending collection delivery is left to the normal worker tick;
+  receipt/completion in Telegram remains user acceptance, not implied by repair.
+
 ## 06.11.2026 — детали коллег и навигация грейда
 
 - PR #174 с открытыми вопросами, детальной расшифровкой, frozen source reviews,

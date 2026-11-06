@@ -200,7 +200,7 @@ targeted DB/runtime review passed; локальный UI configure/save/pause и
 
 # Состояние проекта
 
-06.11.2026: employee70 pending colleague review is blocked by legacy non-waiting progress127/128 unchanged since14 October. User approved interrupting these two records while preserving history. Narrow repair tooling uses exact snapshots and verified SQLite backup; generalized timeout/recovery watchdog is a separate engine follow-up, not enabled.
+06.11.2026: legacy non-waiting employee70 progress127/128 interrupted with user approval and verified backup (repair42205776023). Pending colleague review unchanged, normal worker may now dispatch it. Telegram receipt remains acceptance. Generalized timeout/recovery watchdog is recorded for the next engine package, not enabled.
 
 Scrollbar consistency is prepared in a separate feature worktree (06.11.2026): shared DOM scrollbar styling and employee-card select/list cleanup. No backend, employee records, schedules or Telegram deliveries changed. Not deployed; live acceptance pending.
 
