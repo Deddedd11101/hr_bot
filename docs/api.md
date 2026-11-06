@@ -14,6 +14,31 @@ related:
 source_of_truth: true
 ---
 
+## Детали сбора оценок коллег
+
+`POST /api/employees/{employee_id}/grade/collections` дополнительно принимает
+optional open_questions: list[string], максимум20, каждый непустой1..2000 символов.
+Вопросы фиксируются вместе с матрицей и становятся text-этапами после навыков.
+Старый payload без списка допустим, request_id replay проверяет исходные настройки.
+
+`GET /api/employees/{employee_id}/grade/collections` дополнительно возвращает
+scores, reviewers[].scores/categories/comments[{question, answer}], grades,
+current_grade_id и recommendation: method, grade_id/name либо null, levels с
+coverage_percent, fully_met, missing_requirements, unassessed, unmet.
+Это auth-protected HR-данные, не публичный endpoint.
+
+`POST /api/employees/{employee_id}/grade/collections/{collection_id}/finalize`
+поддерживает optional JSON {current_grade_id: id|null, comment: string<=4000,
+expected_current_grade_id: id|null}. UI передаёт expected grade; изменение профиля
+другим HR между чтением и фиксацией возвращает409 без перезаписи решения.
+Только явно переданный грейд применяется к профилю с HR decision history;
+recommendation не применяется автоматически. Без JSON прежний контракт сохранён.
+Готовность по-прежнему требует завершения всех выбранных отвечающих и хотя бы
+одного оценённого навыка. Повторная фиксация с другим grade отклоняется.
+Финальный assessment snapshot содержит colleague_reviews и recommendation;
+исправления сохраняют эти поля и не переписывают ответы респондентов.
+
+
 ## Управление очередью сценариев карточки
 
 - `GET /api/employees/{employee_id}/scenario-queue`: authenticated; активные

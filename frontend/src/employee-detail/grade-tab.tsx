@@ -11,6 +11,7 @@ import { GradeReviewForm } from "./grade-review-form";
 import { Choice } from "@/grades/components";
 import { GradeDevelopment } from "./grade-development";
 import { GradeCollections } from "./grade-collections";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 export function GradeTab({employeeId, visible = true}: {employeeId: number; visible?: boolean}) {
   const [data, setData] = useState<EmployeeGrade | null>(null);
@@ -22,6 +23,7 @@ export function GradeTab({employeeId, visible = true}: {employeeId: number; visi
   const [notice, setNotice] = useState("");
   const [attempt, retry] = useState(0);
   const action = useAction();
+  const [subtab, setSubtab] = useState("assessments");
   const endpoint = `/api/employees/${employeeId}/grade`;
   async function load(signal?: AbortSignal) {
     const result = await request<EmployeeGrade>(endpoint, "GET", undefined, signal);
@@ -38,7 +40,7 @@ export function GradeTab({employeeId, visible = true}: {employeeId: number; visi
   const archived = data.assessments.filter(item => item.status === "archived");
   const existingDraft = active.find(item => item.status === "draft");
   async function start() { setDraft(existingDraft ? await request<Assessment>(`/api/grade-assessments/${existingDraft.id}`) : null); setForm(true); }
-  return <div className="space-y-6">
+  return <Tabs value={subtab} onValueChange={value => setSubtab(String(value))} className="min-w-0 space-y-5"><div className="employee-card-tabs-scroll"><TabsList variant="line" aria-label="Разделы грейда"><TabsTrigger value="assessments">Оценки</TabsTrigger><span aria-hidden="true" className="h-4 w-px self-center bg-border" /><TabsTrigger value="development">Цикл развития</TabsTrigger></TabsList></div><TabsContent value="assessments" keepMounted className="space-y-6">
     <header className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-semibold">Грейд и развитие</h2>{data.profile?.current_grade_id && <p className="text-sm text-muted-foreground">{data.specializations.find(item => item.id === data.profile?.specialization_id)?.name} · {data.grades.find(item => item.id === data.profile?.current_grade_id)?.name}</p>}</div>{active.length > 0 && <Button disabled={action.busy} onClick={() => void action.run(start, "")}>{existingDraft ? "Продолжить оценку" : "Новая оценка"}</Button>}</header>
     <Feedback error={action.error || error} message={notice} />
     {!active.length ? <div className="space-y-4 py-12 text-center"><p className="text-muted-foreground">Ранее не оценивался</p><Button disabled={action.busy} onClick={() => void action.run(start, "")}>Начать оценку</Button></div> : <div className="grid min-w-0 gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(260px,360px)]">
@@ -47,11 +49,10 @@ export function GradeTab({employeeId, visible = true}: {employeeId: number; visi
       </section>
       <section className="min-w-0 space-y-3"><h3 className="text-sm font-medium">История оценок</h3>{active.map(item => <div key={item.id} className="flex items-center justify-between gap-2 border-b py-3"><Button variant="ghost" className="h-auto min-w-0 flex-1 justify-start whitespace-normal text-left" disabled={action.busy} onClick={() => void action.run(async () => { if (item.status === "draft") await start(); else setView(await request<Assessment>(`/api/grade-assessments/${item.id}`)); }, "")}><span>{dateLabel(item.created_at)}<span className="block text-xs text-muted-foreground">{item.status === "draft" ? "Черновик" : "Сохранена"}</span></span></Button>{item.status === "draft" && <ArchiveReview id={item.id} refresh={() => load()} />}</div>)}</section>
     </div>}
-    <GradeCollections employeeId={employeeId} visible={visible} specializations={data.specializations} onFinalized={() => load()} />
-    <GradeDevelopment key={`${employeeId}:${active.map(item => item.id).join(",")}`} employeeId={employeeId} visible={visible} />
+    <GradeCollections employeeId={employeeId} visible={visible && subtab === "assessments"} specializations={data.specializations} defaultSpecializationId={data.profile?.specialization_id || data.suggested_specialization_id} onFinalized={() => load()} />
     {!!archived.length && <details className="border-t pt-3"><summary className="cursor-pointer text-sm text-muted-foreground">Архив · {archived.length}</summary><div className="mt-3 space-y-2">{archived.map(item => <Button key={item.id} variant="ghost" onClick={() => void action.run(async () => setView(await request<Assessment>(`/api/grade-assessments/${item.id}`)), "")}>{dateLabel(item.created_at)}</Button>)}</div></details>}
     {data.assessments.length > 1 && <PurgeReviews employeeId={employeeId} assessments={data.assessments} refresh={async backup => { await load(); setNotice(`История очищена. Резервная копия: ${backup}`); }} />}
-  </div>;
+  </TabsContent><TabsContent value="development" keepMounted><GradeDevelopment key={`${employeeId}:${active.map(item => item.id).join(",")}`} employeeId={employeeId} visible={visible && subtab === "development"} /></TabsContent></Tabs>;
 }
 
 function PurgeReviews({employeeId, assessments, refresh}: {employeeId: number; assessments: EmployeeGrade["assessments"]; refresh: (backup: string) => Promise<void>}) {

@@ -15,6 +15,15 @@ related:
 source_of_truth: true
 ---
 
+GradeReviewCollection.snapshot_json дополнительно хранит frozen open_questions.
+SurveyAnswer ключи open_<index> относятся к текстовым вопросам этой коллекции,
+employee_id остаётся respondent ID. Числовые skill_<id> агрегируются отдельно.
+GradeAssessment.catalog_snapshot после finalize содержит colleague_reviews
+(имена, индивидуальные scores/categories, comments question/answer), open_questions
+и recommendation по frozen matrix. Эти поля сохраняются при correction версии.
+Новых таблиц/колонок в этом пакете нет; старые snapshots без вопросов допустимы.
+
+
 `scenario_progress.interrupted_at` — nullable DATETIME, явное прерывание HR через
 управление очередью. Прерванный progress имеет is_completed=true для освобождения
 runtime, но не означает успешное прохождение: answer run/adaptation item получают

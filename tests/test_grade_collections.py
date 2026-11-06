@@ -114,6 +114,78 @@ class GradeCollectionTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             collections.finalize(self.db, 1, row.id, 1)
 
+    def test_open_questions_and_individual_details_survive_finalization_and_correction(self):
+        from types import SimpleNamespace
+        from app.scenario_engine import handle_text_response
+        self.prepare()
+        row = collections.create(self.db, 1, 1, dict(request_id=str(uuid4()), specialization_id=self.spec["id"],
+            recipient_ids=[2, 3], open_questions=["Что получается хорошо?"]))
+        self.db.commit()
+        messenger = FakeMessenger()
+        asyncio.run(collections.process_pending(messenger, session_factory=self.sessions))
+        self.db.expire_all()
+        self.answer(messenger, row, 2, self.skill["id"], 2)
+        self.assertEqual(collections.report(self.db, row)["completed_count"], 0)
+        asyncio.run(handle_text_response(messenger, self.db, self.db.get(Employee, 2), SimpleNamespace(text="Хорошо объясняет решения")))
+        first = collections.report(self.db, row)
+        self.assertEqual(first["completed_count"], 1)
+        self.assertEqual(first["scores"][0]["currentLevel"], 2)
+        self.assertEqual(first["reviewers"][0]["comments"][0]["answer"], "Хорошо объясняет решения")
+        self.answer(messenger, row, 3, self.skill["id"], 4)
+        asyncio.run(handle_text_response(messenger, self.db, self.db.get(Employee, 3), SimpleNamespace(text="Помогает команде")))
+        result = collections.report(self.db, row)
+        self.assertEqual(result["scores"][0]["currentLevel"], 3)
+        self.assertTrue(result["can_finalize"])
+        final = collections.finalize(self.db, 1, row.id, 1, dict(current_grade_id=2, comment="Решение HR"))
+        self.db.commit()
+        self.assertEqual(final["current_grade_id"], 2)
+        self.assertEqual(final["colleague_reviews"][1]["comments"][0]["answer"], "Помогает команде")
+        editable = view(self.db, final["id"])
+        changed = correct(self.db, final["id"], 1, dict(request_id=str(uuid4()), expected_token=editable["edit_token"], reason="Уточнение решения", values=[], current_grade_id=1))
+        self.assertEqual(changed["colleague_reviews"], final["colleague_reviews"])
+        self.assertEqual(changed["current_grade_id"], 1)
+        with self.assertRaises(ValueError):
+            collections.finalize(self.db, 1, row.id, 1, dict(current_grade_id=2))
+
+    def test_open_question_validation_and_template_freezing(self):
+        self.prepare()
+        data = dict(request_id=str(uuid4()), specialization_id=self.spec["id"], recipient_ids=[2, 3])
+        for invalid in ("not a list", [""], ["x" * 2001], ["a"] * 21, [None]):
+            with self.assertRaises(ValueError):
+                collections.create(self.db, 1, 1, dict(data, open_questions=invalid))
+        row = collections.create(self.db, 1, 1, dict(data, open_questions=["<b>Комментарий</b>"]))
+        question = self.db.scalar(select(FlowStepTemplate).where(FlowStepTemplate.flow_key == row.scenario_key, FlowStepTemplate.step_key == "open_0"))
+        self.assertEqual(question.response_type, "text")
+        self.assertIn("&lt;b&gt;", question.default_text)
+        self.assertEqual(collections.report(self.db, row)["reviewers"][0]["comments"][0]["answer"], None)
+
+    def test_finalization_does_not_overwrite_concurrent_hr_grade(self):
+        self.prepare()
+        row = self.create()
+        grades.update_employee_grade(self.db, 1, dict(specialization_id=self.spec["id"], current_grade_id=2,
+            target_grade_id=None, target_specialization_id=None, comment="Other HR"), actor_id=1)
+        self.db.commit()
+        with self.assertRaises(grades.GradeConflictError):
+            collections.finalize(self.db, 1, row.id, 1, dict(current_grade_id=1, expected_current_grade_id=None))
+        self.assertIsNone(row.assessment_id)
+
+    def test_new_personnel_grade_keeps_label_without_changing_frozen_matrix(self):
+        self.prepare()
+        row = self.create()
+        new_grade = grades.save_catalog_item(self.db, "grades", dict(name="Principal", slug="principal", rank=5))
+        grades.update_employee_grade(self.db, 1, dict(specialization_id=self.spec["id"], current_grade_id=new_grade["id"],
+            target_grade_id=None, target_specialization_id=None, comment="Decision"), actor_id=1)
+        self.db.commit()
+        self.assertIn(new_grade["id"], [g["id"] for g in collections.report(self.db, row)["grades"]])
+        messenger = FakeMessenger()
+        asyncio.run(collections.process_pending(messenger, session_factory=self.sessions))
+        self.db.expire_all()
+        self.answer(messenger, row, 2, self.skill["id"], 2)
+        self.answer(messenger, row, 3, self.skill["id"], 3)
+        final = collections.finalize(self.db, 1, row.id, 1, dict(current_grade_id=new_grade["id"], expected_current_grade_id=new_grade["id"]))
+        self.assertIn("Principal", [g["name"] for g in final["catalog"]["grades"]])
+        self.assertNotIn(new_grade["id"], [g["grade_id"] for g in final["recommendation"]["levels"]])
+
     def test_ambiguous_delivery_is_not_automatically_retried(self):
         self.prepare()
         row = self.create()

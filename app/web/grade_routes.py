@@ -110,9 +110,9 @@ def create_grade_collection(employee_id: int, request: Request, payload: dict = 
 
 
 @router.post("/api/employees/{employee_id}/grade/collections/{collection_id}/finalize")
-def finalize_grade_collection(employee_id: int, collection_id: int, request: Request, db: Session = Depends(get_write_db)):
+def finalize_grade_collection(employee_id: int, collection_id: int, request: Request, payload: dict | None = Body(default=None), db: Session = Depends(get_write_db)):
     from ..grades.collections import finalize
-    return finalize(db, employee_id, collection_id, require_api_auth(request).id)
+    return finalize(db, employee_id, collection_id, require_api_auth(request).id, payload)
 
 
 def register_catalog_routes(kind: str):
