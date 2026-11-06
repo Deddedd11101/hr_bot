@@ -166,7 +166,7 @@ Rollback на старый runtime после появления средних 
 | Таблица | Содержание / ограничения |
 | --- | --- |
 | `grades` | slug и rank уникальны; name, sort_order, active |
-| `grade_specializations` | уникальный slug, description, active, nullable position_slug; nullable skill_ids_json задаёт точный состав импортированной матрицы, NULL сохраняет legacy global scope |
+| `grade_specializations` | уникальный slug, description, active, nullable position_slug; nullable skill_ids_json задаёт точный состав импортированной матрицы, NULL сохраняет legacy global scope; nullable assessment_guidance_json содержит intro, open_questions и skills[id] с поведенческими критериями levels 1..4 и na, отдельно для каждой специализации |
 | `grade_skill_categories` | глобальные категории, уникальное name, active |
 | `grade_skills` | category_id + name уникальны, complexity, sort_order, active; revision default 1, nullable description критериев |
 | `grade_skill_importances` | unique(skill_id, specialization_id), importance 1..3 |

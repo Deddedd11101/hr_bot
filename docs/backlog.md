@@ -25,6 +25,10 @@ source_of_truth: true
 
 # Бэклог HR Bot
 
+## Финальные критерии скиллсета (06.11.2026)
+
+- Feature: специализация-scoped rubric1..4/NA, Telegram-пояснения, frozen детализация и сравнение изменённых критериев без delta, defaults открытых вопросов, JSON preview/export. Подготовлены156 навыков; пользователь подтвердил пять замен у сервисного дизайнера. Код/данные требуют интеграции, backup и live preview/apply; текущие оценки и уже начатые сборы не менять.
+
 ## Runtime watchdog follow-up (06.11.2026)
 
 - User-approved one-off repair: interrupt only stale employee70 progress127/128 after verified backup and exact runtime snapshot guard. Preserve answers/history and independent future requests; do not recreate the pending colleague grade collection.

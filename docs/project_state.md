@@ -200,6 +200,8 @@ targeted DB/runtime review passed; локальный UI configure/save/pause и
 
 # Состояние проекта
 
+06.11.2026: подготовлен feature-пакет финальных поведенческих критериев из файла вопросов:156 навыков по5 специализациям, в том числе согласованные5 замен у сервисного дизайнера. Nullable guidance JSON scoped к специализации; новые сборы фиксируют его в snapshot, старые не переписываются. Deploy и live catalog import ещё не выполнены; details в [[features/grades]].
+
 06.11.2026: employee70 pending colleague review is blocked by legacy non-waiting progress127/128 unchanged since14 October. User approved interrupting these two records while preserving history. Narrow repair tooling uses exact snapshots and verified SQLite backup; generalized timeout/recovery watchdog is a separate engine follow-up, not enabled.
 
 Scrollbar consistency is prepared in a separate feature worktree (06.11.2026): shared DOM scrollbar styling and employee-card select/list cleanup. No backend, employee records, schedules or Telegram deliveries changed. Not deployed; live acceptance pending.

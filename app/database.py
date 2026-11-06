@@ -100,6 +100,7 @@ def _ensure_sqlite_schema() -> None:
             ("grade_skills", "revision", "INTEGER NOT NULL DEFAULT 1"),
             ("grade_skills", "description", "TEXT"),
             ("grade_specializations", "skill_ids_json", "TEXT"),
+            ("grade_specializations", "assessment_guidance_json", "TEXT"),
             ("grade_assessments", "archived_at", "DATETIME"),
         ):
             known = {row[1] for row in conn.execute(text(f"PRAGMA table_info({table})"))}

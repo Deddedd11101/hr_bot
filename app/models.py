@@ -107,6 +107,7 @@ class GradeSpecialization(Base):
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     position_slug: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     skill_ids_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    assessment_guidance_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
 
 class GradeSkillCategory(Base):

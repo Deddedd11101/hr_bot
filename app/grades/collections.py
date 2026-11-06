@@ -44,7 +44,11 @@ def create(db, employee_id, actor_id, data):
     required = {"request_id", "specialization_id", "recipient_ids"}
     if not required <= set(data) or set(data) - required - {"open_questions"}:
         raise ValueError("Неизвестные поля сбора оценок")
-    questions = data.get("open_questions", [])
+    from .rubrics import guidance
+    specialization_id = integer(data.get("specialization_id"), 1, 2**63 - 1, "specialization_id")
+    from ..models import GradeSpecialization
+    spec_guidance = guidance(catalog_row(require(db, GradeSpecialization, specialization_id, active=True)))
+    questions = data.get("open_questions", spec_guidance.get("open_questions", []))
     if not isinstance(questions, list) or len(questions) > 20 or any(
         not isinstance(q, str) or not 1 <= len(q.strip()) <= 2000 for q in questions
     ):
@@ -60,7 +64,6 @@ def create(db, employee_id, actor_id, data):
     ids = recipient_ids(db, data.get("recipient_ids"))
     if employee_id in ids:
         raise ValueError("Выберите коллег; самооценку можно сохранить отдельным ревью")
-    specialization_id = integer(data.get("specialization_id"), 1, 2**63 - 1, "specialization_id")
     profile = db.scalar(select(EmployeeGradeProfile).where(EmployeeGradeProfile.employee_id == employee_id))
     view = grades.preview_review(db, employee_id, specialization_id, profile.current_grade_id if profile else None)
     view["open_questions"] = questions
@@ -69,11 +72,19 @@ def create(db, employee_id, actor_id, data):
     key = "grade_review_" + uuid4().hex
     scenario = ScenarioTemplate(scenario_key=key, title="Оценка навыков коллегами", scenario_kind="grade_review", purpose="ipr", recipient_mode="self", role_scope="all", employee_scope="employees", trigger_mode="manual_only")
     db.add(scenario)
+    if view.get("assessment_intro"):
+        db.add(FlowStepTemplate(flow_key=key, step_key="intro", step_title="Начало оценки", sort_order=-1,
+            default_text=html.escape(view["assessment_intro"]), response_type="none", send_mode="immediate"))
     for index, score in enumerate(view["scores"]):
         prompt = ("Оцени навыки сотрудника {employee_full_name}.\n\n" + html.escape(score["categoryName"]) + ": " + html.escape(score["skillName"]) +
                   "\n\n0 — нет · 1 — понимание · 2 — умение · 3 — экспертиза · 4 — лидерство. Если не можешь оценить, пропусти навык.")
+        rubric = score.get("rubric")
+        if rubric:
+            prompt = ("Оцени навык сотрудника {employee_full_name}.\n\n" + html.escape(score["skillName"]) + "\n\n" +
+                "\n\n".join(f"{level}. {html.escape(text)}" for level, text in rubric["levels"].items()) +
+                "\n\n" + html.escape(rubric["na"]))
         db.add(FlowStepTemplate(flow_key=key, step_key=f"skill_{score['skillId']}", step_title=score["skillName"], sort_order=index,
-            default_text=prompt, response_type="buttons", button_options="0\n1\n2\n3\n4\nНе могу оценить", target_field="survey_answer", send_mode="immediate"))
+            default_text=prompt, response_type="buttons", button_options=("1\n2\n3\n4\nНе могу оценить" if rubric else "0\n1\n2\n3\n4\nНе могу оценить"), target_field="survey_answer", send_mode="immediate"))
     for index, question in enumerate(questions):
         db.add(FlowStepTemplate(flow_key=key, step_key=f"open_{index}", step_title=f"Комментарий {index + 1}",
             sort_order=len(view["scores"]) + index,

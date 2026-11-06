@@ -8,45 +8,445 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { ConfirmAction } from "@/components/ui/confirm-action";
 import { Choice, Feedback, useAction } from "@/grades/components";
 import { dateLabel, errorMessage, request } from "@/grades/data";
-import type { Assessment, CatalogItem, ColleagueReview, Grade, Score } from "@/grades/types";
+import type {
+  Assessment,
+  Specialization,
+  ColleagueReview,
+  Grade,
+  Score,
+} from "@/grades/types";
 import { GradeProfileChart } from "./grade-profile-chart";
 import { ReviewDetailDialog } from "./grade-review-detail";
 
-export type Reviewer = {id: number; full_name: string; position: string; available: boolean};
-export function ReviewerPicker({items, value, onChange, disabled}: {items: Reviewer[]; value: number[]; onChange: (value: number[]) => void; disabled?: boolean}) {
+export type Reviewer = {
+  id: number;
+  full_name: string;
+  position: string;
+  available: boolean;
+};
+export function ReviewerPicker({
+  items,
+  value,
+  onChange,
+  disabled,
+}: {
+  items: Reviewer[];
+  value: number[];
+  onChange: (value: number[]) => void;
+  disabled?: boolean;
+}) {
   const [search, setSearch] = useState("");
-  return <fieldset className="space-y-2"><legend className="text-sm font-medium">Оценивающие / отвечающие · {value.length}</legend><Input aria-label="Поиск отвечающих" placeholder="Имя или должность" value={search} onChange={e => setSearch(e.target.value)} disabled={disabled} /><ScrollArea className="h-48 rounded-md border"><div className="p-2 pr-3">{items.filter(i => `${i.full_name} ${i.position}`.toLowerCase().includes(search.toLowerCase())).map(i => <label key={i.id} className="flex items-start gap-2 py-2 text-sm"><Checkbox checked={value.includes(i.id)} disabled={disabled || !i.available} onCheckedChange={checked => onChange(checked ? [...value, i.id] : value.filter(id => id !== i.id))} /><span>{i.full_name}<span className="block text-xs text-muted-foreground">{i.position}{!i.available ? " · Недоступен в боте" : ""}</span></span></label>)}</div></ScrollArea></fieldset>;
+  return (
+    <fieldset className="space-y-2">
+      <legend className="text-sm font-medium">
+        Оценивающие / отвечающие · {value.length}
+      </legend>
+      <Input
+        aria-label="Поиск отвечающих"
+        placeholder="Имя или должность"
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        disabled={disabled}
+      />
+      <ScrollArea className="h-48 rounded-md border">
+        <div className="p-2 pr-3">
+          {items
+            .filter((i) =>
+              `${i.full_name} ${i.position}`
+                .toLowerCase()
+                .includes(search.toLowerCase()),
+            )
+            .map((i) => (
+              <label key={i.id} className="flex items-start gap-2 py-2 text-sm">
+                <Checkbox
+                  checked={value.includes(i.id)}
+                  disabled={disabled || !i.available}
+                  onCheckedChange={(checked) =>
+                    onChange(
+                      checked
+                        ? [...value, i.id]
+                        : value.filter((id) => id !== i.id),
+                    )
+                  }
+                />
+                <span>
+                  {i.full_name}
+                  <span className="block text-xs text-muted-foreground">
+                    {i.position}
+                    {!i.available ? " · Недоступен в боте" : ""}
+                  </span>
+                </span>
+              </label>
+            ))}
+        </div>
+      </ScrollArea>
+    </fieldset>
+  );
 }
-type Recommendation = {name: string | null; levels: {grade_id: number; name: string; coverage_percent: number | null; missing_requirements: number; unassessed: number; unmet: number}[]};
-type Collection = {id: number; status: string; created_at: string; completed_count: number; recipient_count: number; can_finalize: boolean; current_grade_id: number | null; grades: Grade[]; recommendation?: Recommendation; scores: Score[]; categories: Assessment["categories"]; reviewers: ColleagueReview[]};
-const statuses: Record<string, string> = {pending: "В очереди", starting: "Проверить доставку", sent: "Отвечает", completed: "Завершил", failed: "Ошибка доставки", unavailable: "Недоступен"};
-export function GradeCollections({employeeId, specializations, onFinalized, visible = true, defaultSpecializationId}: {employeeId: number; specializations: CatalogItem[]; onFinalized: () => Promise<void>; visible?: boolean; defaultSpecializationId?: number | null}) {
+type Recommendation = {
+  name: string | null;
+  levels: {
+    grade_id: number;
+    name: string;
+    coverage_percent: number | null;
+    missing_requirements: number;
+    unassessed: number;
+    unmet: number;
+  }[];
+};
+type Collection = {
+  id: number;
+  status: string;
+  created_at: string;
+  completed_count: number;
+  recipient_count: number;
+  can_finalize: boolean;
+  current_grade_id: number | null;
+  grades: Grade[];
+  recommendation?: Recommendation;
+  scores: Score[];
+  categories: Assessment["categories"];
+  reviewers: ColleagueReview[];
+};
+const statuses: Record<string, string> = {
+  pending: "В очереди",
+  starting: "Проверить доставку",
+  sent: "Отвечает",
+  completed: "Завершил",
+  failed: "Ошибка доставки",
+  unavailable: "Недоступен",
+};
+export function GradeCollections({
+  employeeId,
+  specializations,
+  onFinalized,
+  visible = true,
+  defaultSpecializationId,
+}: {
+  employeeId: number;
+  specializations: Specialization[];
+  onFinalized: () => Promise<void>;
+  visible?: boolean;
+  defaultSpecializationId?: number | null;
+}) {
   const endpoint = `/api/employees/${employeeId}/grade/collections`;
-  const [runs, setRuns] = useState<Collection[]>([]), [people, setPeople] = useState<Reviewer[]>([]);
-  const [error, setError] = useState(""), [form, setForm] = useState(false), [spec, setSpec] = useState("");
-  const [ids, setIds] = useState<number[]>([]), [requestId, setRequestId] = useState(() => crypto.randomUUID());
+  const [runs, setRuns] = useState<Collection[]>([]),
+    [people, setPeople] = useState<Reviewer[]>([]);
+  const [error, setError] = useState(""),
+    [form, setForm] = useState(false),
+    [spec, setSpec] = useState("");
+  const [ids, setIds] = useState<number[]>([]),
+    [requestId, setRequestId] = useState(() => crypto.randomUUID());
   const [selected, setSelected] = useState<Record<number, string>>({});
   const [questions, setQuestions] = useState("");
+  function selectTemplate(value: string) {
+    const key = value === "none" ? "" : value;
+    setSpec(key);
+    const item = specializations.find(s => String(s.id) === key);
+    try {
+      const defaults = JSON.parse(item?.assessment_guidance_json || "{}").open_questions || [];
+      setQuestions(defaults.join("\n"));
+    } catch { setQuestions(""); }
+  }
   const [decisions, setDecisions] = useState<Record<number, string>>({});
   const [comments, setComments] = useState<Record<number, string>>({});
   const action = useAction();
-  async function load(signal?: AbortSignal) {try {const [r, f] = await Promise.all([request<Collection[]>(endpoint, "GET", undefined, signal), request<{recipients: Reviewer[]}>(`/api/employees/${employeeId}/feedback-surveys`, "GET", undefined, signal)]); if (!signal?.aborted) {setRuns(r); setPeople(f.recipients); setError("");}} catch(e) {if (!signal?.aborted) setError(errorMessage(e));}}
-  useEffect(() => {if (!visible) return; const c = new AbortController(); void load(c.signal); const timer = window.setInterval(() => {if (!document.hidden) void load(c.signal);}, 30000); return () => {c.abort(); window.clearInterval(timer);};}, [endpoint, visible]);
-  return <section className="space-y-4 border-t pt-5" aria-label="Оценки коллег"><header className="flex flex-wrap justify-between gap-3"><h3 className="font-medium">Оценки коллег</h3>{!form && <Button variant="outline" size="sm" onClick={() => {setRequestId(crypto.randomUUID()); setSpec(defaultSpecializationId ? String(defaultSpecializationId) : ""); setForm(true);}}>Собрать оценки</Button>}</header><Feedback error={error || action.error} message={action.message} />
-    {form && <form className="max-w-xl space-y-4" onSubmit={e => {e.preventDefault(); void action.run(async () => {await request(endpoint, "POST", {request_id: requestId, specialization_id: Number(spec), recipient_ids: ids, open_questions: questions.split("\n").map(q => q.trim()).filter(Boolean)}); await load(); setForm(false); setIds([]); setQuestions("");}, "Сбор создан. Опросы в очереди отправки");}}><Choice label="Шаблон навыков" value={spec || "none"} options={[{value: "none", label: "Выберите шаблон"}, ...specializations.filter(s => s.active).map(s => ({value: String(s.id), label: s.name}))]} onChange={v => setSpec(v === "none" ? "" : v)} disabled={action.busy} /><ReviewerPicker items={people} value={ids} onChange={setIds} disabled={action.busy} /><label className="block space-y-2 text-sm"><span>Открытые вопросы · по одному в строке</span><Textarea value={questions} onChange={e => setQuestions(e.target.value)} disabled={action.busy} maxLength={42000} rows={4} /></label><div className="flex gap-2"><Button type="submit" disabled={!spec || !ids.length || action.busy}>Запустить сбор</Button><Button type="button" variant="ghost" onClick={() => setForm(false)}>Отмена</Button></div></form>}
-    {!runs.length && !form && <p className="text-sm text-muted-foreground">Сбор оценок ещё не запускался</p>}
-    {runs.map(run => {
-      const current = selected[run.id] || "average", reviewer = run.reviewers.find(r => String(r.employee_id) === current);
-      const title = reviewer?.name || "Итоговая оценка", decision = decisions[run.id] ?? String(run.current_grade_id ?? "none");
-      return <details key={run.id} className="border-b pb-4"><summary className="cursor-pointer text-sm">{dateLabel(run.created_at)} · {run.completed_count} из {run.recipient_count} ответили{run.status === "final" ? " · Итог зафиксирован" : " · Сбор идёт"}</summary>
-        <div className="mt-5 grid min-w-0 gap-6 lg:grid-cols-[minmax(200px,260px)_minmax(0,1fr)]">
-          <nav aria-label={`Оценки сбора №${run.id}`} className="min-w-0 space-y-2"><Button variant={!reviewer ? "secondary" : "ghost"} className="w-full justify-start" aria-pressed={!reviewer} onClick={() => setSelected({...selected, [run.id]: "average"})}>Итог · {run.completed_count}/{run.recipient_count}</Button><ScrollArea className="h-72"><div className="space-y-1 pr-3">{run.reviewers.map(r => <Button key={r.employee_id} variant={reviewer?.employee_id === r.employee_id ? "secondary" : "ghost"} className="h-auto w-full justify-start whitespace-normal py-3 text-left" aria-pressed={reviewer?.employee_id === r.employee_id} onClick={() => setSelected({...selected, [run.id]: String(r.employee_id)})}><span className="min-w-0 break-words">{r.name}<span className="block text-xs text-muted-foreground">{statuses[r.status] || r.status}</span></span></Button>)}</div></ScrollArea></nav>
-          <div className="min-w-0 space-y-4"><div className="flex flex-wrap items-center justify-between gap-3"><div><h4 className="font-medium break-words">{title}</h4><Badge variant="secondary">{reviewer ? statuses[reviewer.status] || reviewer.status : run.status === "final" ? "Зафиксирована" : "Предварительная"}</Badge></div><ReviewDetailDialog title={title} scores={reviewer?.scores || run.scores} reviewers={reviewer ? [reviewer] : run.reviewers} /></div><GradeProfileChart categories={reviewer?.categories || run.categories} withTarget={false} currentLabel={reviewer ? "Оценка коллеги" : "Среднее завершённых ответов"} />
-            {!reviewer && run.recommendation && <section className="space-y-2 border-t pt-4"><p className="text-sm font-medium">По требованиям шаблона: {run.recommendation.name || "нет полностью покрытого уровня"}</p><p className="text-xs text-muted-foreground">Предварительное сопоставление, не решение о грейде.</p><details><summary className="cursor-pointer text-xs text-muted-foreground">Соответствие требованиям</summary><ul className="mt-2 space-y-2 text-xs">{run.recommendation.levels.map(level => <li key={level.grade_id}>{level.name}: {level.coverage_percent === null ? "нет требований для расчёта" : `${level.coverage_percent.toFixed(1)}%`}{!!level.unassessed && ` · не оценено: ${level.unassessed}`}{!!level.unmet && ` · ниже требований: ${level.unmet}`}{!!level.missing_requirements && ` · не заданы требования: ${level.missing_requirements}`}</li>)}</ul></details></section>}
+  async function load(signal?: AbortSignal) {
+    try {
+      const [r, f] = await Promise.all([
+        request<Collection[]>(endpoint, "GET", undefined, signal),
+        request<{ recipients: Reviewer[] }>(
+          `/api/employees/${employeeId}/feedback-surveys`,
+          "GET",
+          undefined,
+          signal,
+        ),
+      ]);
+      if (!signal?.aborted) {
+        setRuns(r);
+        setPeople(f.recipients);
+        setError("");
+      }
+    } catch (e) {
+      if (!signal?.aborted) setError(errorMessage(e));
+    }
+  }
+  useEffect(() => {
+    if (!visible) return;
+    const c = new AbortController();
+    void load(c.signal);
+    const timer = window.setInterval(() => {
+      if (!document.hidden) void load(c.signal);
+    }, 30000);
+    return () => {
+      c.abort();
+      window.clearInterval(timer);
+    };
+  }, [endpoint, visible]);
+  return (
+    <section className="space-y-4 border-t pt-5" aria-label="Оценки коллег">
+      <header className="flex flex-wrap justify-between gap-3">
+        <h3 className="font-medium">Оценки коллег</h3>
+        {!form && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              setRequestId(crypto.randomUUID());
+              selectTemplate(
+                defaultSpecializationId ? String(defaultSpecializationId) : "",
+              );
+              setForm(true);
+            }}
+          >
+            Собрать оценки
+          </Button>
+        )}
+      </header>
+      <Feedback error={error || action.error} message={action.message} />
+      {form && (
+        <form
+          className="max-w-xl space-y-4"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void action.run(async () => {
+              await request(endpoint, "POST", {
+                request_id: requestId,
+                specialization_id: Number(spec),
+                recipient_ids: ids,
+                open_questions: questions
+                  .split("\n")
+                  .map((q) => q.trim())
+                  .filter(Boolean),
+              });
+              await load();
+              setForm(false);
+              setIds([]);
+              setQuestions("");
+            }, "Сбор создан. Опросы в очереди отправки");
+          }}
+        >
+          <Choice
+            label="Шаблон навыков"
+            value={spec || "none"}
+            options={[
+              { value: "none", label: "Выберите шаблон" },
+              ...specializations
+                .filter((s) => s.active)
+                .map((s) => ({ value: String(s.id), label: s.name })),
+            ]}
+            onChange={selectTemplate}
+            disabled={action.busy}
+          />
+          <ReviewerPicker
+            items={people}
+            value={ids}
+            onChange={setIds}
+            disabled={action.busy}
+          />
+          <label className="block space-y-2 text-sm">
+            <span>Открытые вопросы · по одному в строке</span>
+            <Textarea
+              value={questions}
+              onChange={(e) => setQuestions(e.target.value)}
+              disabled={action.busy}
+              maxLength={42000}
+              rows={4}
+            />
+          </label>
+          <div className="flex gap-2">
+            <Button
+              type="submit"
+              disabled={!spec || !ids.length || action.busy}
+            >
+              Запустить сбор
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => setForm(false)}
+            >
+              Отмена
+            </Button>
           </div>
-        </div>
-        {run.can_finalize && <div className="mt-5 max-w-xl space-y-3 border-t pt-4"><Choice label="Грейд по решению HR" value={decision} onChange={value => setDecisions({...decisions, [run.id]: value})} options={[{value: "none", label: "Не указывать"}, ...run.grades.filter(g => g.active || g.id === run.current_grade_id).map(g => ({value: String(g.id), label: g.name}))]} disabled={action.busy} /><label className="block space-y-2 text-sm"><span>Комментарий к решению</span><Textarea value={comments[run.id] || ""} onChange={e => setComments({...comments, [run.id]: e.target.value})} maxLength={4000} disabled={action.busy} /></label><ConfirmAction title="Зафиксировать итог и решение HR?" description="Среднее и ответы коллег сохранятся в истории. В профиль будет записан выбранный вами грейд, не автоматическая рекомендация." actionLabel="Сохранить итог" onConfirm={() => void action.run(async () => {await request(`${endpoint}/${run.id}/finalize`, "POST", {current_grade_id: decision === "none" ? null : Number(decision), expected_current_grade_id: run.current_grade_id, comment: comments[run.id] || "Средняя оценка коллег"}); await load(); await onFinalized();}, "Итоговая оценка сохранена")}><Button disabled={action.busy}>Зафиксировать итог</Button></ConfirmAction></div>}
-      </details>;
-    })}
-  </section>;
+        </form>
+      )}
+      {!runs.length && !form && (
+        <p className="text-sm text-muted-foreground">
+          Сбор оценок ещё не запускался
+        </p>
+      )}
+      {runs.map((run) => {
+        const current = selected[run.id] || "average",
+          reviewer = run.reviewers.find(
+            (r) => String(r.employee_id) === current,
+          );
+        const title = reviewer?.name || "Итоговая оценка",
+          decision =
+            decisions[run.id] ?? String(run.current_grade_id ?? "none");
+        return (
+          <details key={run.id} className="border-b pb-4">
+            <summary className="cursor-pointer text-sm">
+              {dateLabel(run.created_at)} · {run.completed_count} из{" "}
+              {run.recipient_count} ответили
+              {run.status === "final" ? " · Итог зафиксирован" : " · Сбор идёт"}
+            </summary>
+            <div className="mt-5 grid min-w-0 gap-6 lg:grid-cols-[minmax(200px,260px)_minmax(0,1fr)]">
+              <nav
+                aria-label={`Оценки сбора №${run.id}`}
+                className="min-w-0 space-y-2"
+              >
+                <Button
+                  variant={!reviewer ? "secondary" : "ghost"}
+                  className="w-full justify-start"
+                  aria-pressed={!reviewer}
+                  onClick={() =>
+                    setSelected({ ...selected, [run.id]: "average" })
+                  }
+                >
+                  Итог · {run.completed_count}/{run.recipient_count}
+                </Button>
+                <ScrollArea className="h-72">
+                  <div className="space-y-1 pr-3">
+                    {run.reviewers.map((r) => (
+                      <Button
+                        key={r.employee_id}
+                        variant={
+                          reviewer?.employee_id === r.employee_id
+                            ? "secondary"
+                            : "ghost"
+                        }
+                        className="h-auto w-full justify-start whitespace-normal py-3 text-left"
+                        aria-pressed={reviewer?.employee_id === r.employee_id}
+                        onClick={() =>
+                          setSelected({
+                            ...selected,
+                            [run.id]: String(r.employee_id),
+                          })
+                        }
+                      >
+                        <span className="min-w-0 break-words">
+                          {r.name}
+                          <span className="block text-xs text-muted-foreground">
+                            {statuses[r.status] || r.status}
+                          </span>
+                        </span>
+                      </Button>
+                    ))}
+                  </div>
+                </ScrollArea>
+              </nav>
+              <div className="min-w-0 space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <h4 className="font-medium break-words">{title}</h4>
+                    <Badge variant="secondary">
+                      {reviewer
+                        ? statuses[reviewer.status] || reviewer.status
+                        : run.status === "final"
+                          ? "Зафиксирована"
+                          : "Предварительная"}
+                    </Badge>
+                  </div>
+                  <ReviewDetailDialog
+                    title={title}
+                    scores={reviewer?.scores || run.scores}
+                    reviewers={reviewer ? [reviewer] : run.reviewers}
+                  />
+                </div>
+                <GradeProfileChart
+                  categories={reviewer?.categories || run.categories}
+                  withTarget={false}
+                  currentLabel={
+                    reviewer ? "Оценка коллеги" : "Среднее завершённых ответов"
+                  }
+                />
+                {!reviewer && run.recommendation && (
+                  <section className="space-y-2 border-t pt-4">
+                    <p className="text-sm font-medium">
+                      По требованиям шаблона:{" "}
+                      {run.recommendation.name ||
+                        "нет полностью покрытого уровня"}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Предварительное сопоставление, не решение о грейде.
+                    </p>
+                    <details>
+                      <summary className="cursor-pointer text-xs text-muted-foreground">
+                        Соответствие требованиям
+                      </summary>
+                      <ul className="mt-2 space-y-2 text-xs">
+                        {run.recommendation.levels.map((level) => (
+                          <li key={level.grade_id}>
+                            {level.name}:{" "}
+                            {level.coverage_percent === null
+                              ? "нет требований для расчёта"
+                              : `${level.coverage_percent.toFixed(1)}%`}
+                            {!!level.unassessed &&
+                              ` · не оценено: ${level.unassessed}`}
+                            {!!level.unmet &&
+                              ` · ниже требований: ${level.unmet}`}
+                            {!!level.missing_requirements &&
+                              ` · не заданы требования: ${level.missing_requirements}`}
+                          </li>
+                        ))}
+                      </ul>
+                    </details>
+                  </section>
+                )}
+              </div>
+            </div>
+            {run.can_finalize && (
+              <div className="mt-5 max-w-xl space-y-3 border-t pt-4">
+                <Choice
+                  label="Грейд по решению HR"
+                  value={decision}
+                  onChange={(value) =>
+                    setDecisions({ ...decisions, [run.id]: value })
+                  }
+                  options={[
+                    { value: "none", label: "Не указывать" },
+                    ...run.grades
+                      .filter((g) => g.active || g.id === run.current_grade_id)
+                      .map((g) => ({ value: String(g.id), label: g.name })),
+                  ]}
+                  disabled={action.busy}
+                />
+                <label className="block space-y-2 text-sm">
+                  <span>Комментарий к решению</span>
+                  <Textarea
+                    value={comments[run.id] || ""}
+                    onChange={(e) =>
+                      setComments({ ...comments, [run.id]: e.target.value })
+                    }
+                    maxLength={4000}
+                    disabled={action.busy}
+                  />
+                </label>
+                <ConfirmAction
+                  title="Зафиксировать итог и решение HR?"
+                  description="Среднее и ответы коллег сохранятся в истории. В профиль будет записан выбранный вами грейд, не автоматическая рекомендация."
+                  actionLabel="Сохранить итог"
+                  onConfirm={() =>
+                    void action.run(async () => {
+                      await request(`${endpoint}/${run.id}/finalize`, "POST", {
+                        current_grade_id:
+                          decision === "none" ? null : Number(decision),
+                        expected_current_grade_id: run.current_grade_id,
+                        comment: comments[run.id] || "Средняя оценка коллег",
+                      });
+                      await load();
+                      await onFinalized();
+                    }, "Итоговая оценка сохранена")
+                  }
+                >
+                  <Button disabled={action.busy}>Зафиксировать итог</Button>
+                </ConfirmAction>
+              </div>
+            )}
+          </details>
+        );
+      })}
+    </section>
+  );
 }
