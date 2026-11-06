@@ -200,7 +200,7 @@ targeted DB/runtime review passed; локальный UI configure/save/pause и
 
 # Состояние проекта
 
-Scrollbar consistency is prepared in a separate feature worktree (06.11.2026): shared DOM scrollbar styling and employee-card select/list cleanup. No backend, employee records, schedules or Telegram deliveries changed. Not deployed; live acceptance pending.
+Scrollbar consistency deployed in PR #177 on 06.11.2026 (`f1ee2a2`): shared DOM scrollbar styling and employee-card select/list cleanup. Server diagnostics passed. Browser confirmed themed popup styling; residual last-option clipping under the Select scroll arrow remains open. No employee records, schedules or Telegram deliveries changed.
 
 - Grade corrections PR #129 выложен: `5ba0c58`, Deploy `40480944419`, Diagnostics `40481140790` success. Frozen предыдущие версии/actor/reason в additive таблице, CAS/UUID, updated_at и UI исправления/истории. Локально 456 tests и UI-cycle прошли; stage №34 проверены открытие режима, disabled пустой Save и отмена, 24/24 исходных балла. Реальные правки не сохранялись: пользовательская приёмка записи открыта. Исходные даты/кадровый грейд/ИПР не меняются; [[stage-change-log]].
 

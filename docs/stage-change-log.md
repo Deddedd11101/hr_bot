@@ -11,6 +11,19 @@ related:
 source_of_truth: true
 ---
 
+## 06.11.2026 — единые скроллбары карточки
+
+- PR #177 deployed as `f1ee2a28dd4f447c3fe8b793cf4de99aa7e742be`.
+  CI `42197466732`, Deploy `42199891642`, Diagnostics `42200104507`: success.
+- Backup `backups/hr_bot.before-deploy.20261106-100600.db` verified;
+  scenario snapshot `backups/scenarios.before-deploy.20261106-100600.json`,
+  scenario fingerprint unchanged. Web/worker/WireGuard active; 0 failing checks.
+- Browser card80: loaded, position popup opens, End focuses last option,
+  DS thumb color and 10px width confirmed. Escape closes without modifying data.
+  Residual Select defect: last option can remain partly clipped by the bottom
+  scroll arrow after End. Mouse reachability/layout needs a separate fix.
+- No employee records, schedules, reviews or Telegram messages changed.
+
 ## 06.11.2026 — детали коллег и навигация грейда
 
 - PR #174 с открытыми вопросами, детальной расшифровкой, frozen source reviews,
