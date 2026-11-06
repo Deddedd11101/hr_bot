@@ -25,6 +25,10 @@ source_of_truth: true
 
 # Бэклог HR Bot
 
+## Scrollbar consistency (06.11.2026)
+
+- Prepared in feature: shared native scrollbar tokens, employee grade list ScrollArea and adaptation rule Select migration. Local typecheck/build and synthetic long-list keyboard checks passed; stage deployment and live acceptance remain pending.
+
 Выложено / живая приёмка открыта (06.11, PR #174/#175): Grade collection details — открытые вопросы, frozen индивидуальные
 ответы в итоговой записи, объяснимое сопоставление с требованиями шаблона,
 редактируемое решение HR при фиксации, два подтаба, понятные серии сравнения.

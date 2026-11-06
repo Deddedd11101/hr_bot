@@ -200,6 +200,8 @@ targeted DB/runtime review passed; локальный UI configure/save/pause и
 
 # Состояние проекта
 
+Scrollbar consistency is prepared in a separate feature worktree (06.11.2026): shared DOM scrollbar styling and employee-card select/list cleanup. No backend, employee records, schedules or Telegram deliveries changed. Not deployed; live acceptance pending.
+
 - Grade corrections PR #129 выложен: `5ba0c58`, Deploy `40480944419`, Diagnostics `40481140790` success. Frozen предыдущие версии/actor/reason в additive таблице, CAS/UUID, updated_at и UI исправления/истории. Локально 456 tests и UI-cycle прошли; stage №34 проверены открытие режима, disabled пустой Save и отмена, 24/24 исходных балла. Реальные правки не сохранялись: пользовательская приёмка записи открыта. Исходные даты/кадровый грейд/ИПР не меняются; [[stage-change-log]].
 
 - Grade PR #125/#126 выложены (`9c0dba0`, Deploy `40339221258`, Diagnostics `40339600375` success). Кадровый грейд необязателен. Через admin UI с verified backup импортированы 6 шаблонов и 15 первых final-оценок; №70/оценка №5 пропущена без изменений (сейчас отображается final, 26/45). CI 453 tests passed. Реальная запись/защита от дублей подтверждены UI; пользовательская приёмка и отдельная следующая UI-итерация открыты; [[features/grades]], [[stage-change-log]].
