@@ -1,6 +1,6 @@
 export type CatalogItem = { id: number; name: string; sort_order: number; active: boolean };
 export type Grade = CatalogItem & { slug: string; rank: number };
-export type Specialization = CatalogItem & { slug: string; description: string; position_slug: string | null; skill_ids_json?: string | null };
+export type Specialization = CatalogItem & { slug: string; description: string; position_slug: string | null; skill_ids_json?: string | null; assessment_guidance_json?: string | null };
 export type Skill = CatalogItem & { category_id: number; complexity: number; revision: number };
 export type Catalog = {
   grades: Grade[];
@@ -13,7 +13,8 @@ export type Catalog = {
 export type Workspace = Catalog & { positions: { slug: string; name?: string; title?: string; label?: string; active?: boolean }[] };
 export type EntityKind = "grades" | "specializations" | "categories" | "skills";
 export type Profile = { specialization_id: number | null; current_grade_id: number | null; target_grade_id: number | null; target_specialization_id: number | null };
-export type Score = { skillId: number; skillName: string; categoryId: number; categoryName: string; importance: number; currentLevel: number; targetLevel: number; assessed?: boolean };
+export type SkillRubric = {levels: Record<string, string>; na: string};
+export type Score = { skillId: number; skillName: string; categoryId: number; categoryName: string; importance: number; currentLevel: number; targetLevel: number; assessed?: boolean; rubric?: SkillRubric | null };
 export type ColleagueReview = {employee_id: number; name: string; status: string; scores: Score[]; categories: Assessment["categories"]; comments?: {question: string; answer: string | null}[]};
 export type Assessment = Profile & {
   id: number; employee_id: number; status: "draft" | "final" | "archived"; created_at: string; finalized_at: string | null;

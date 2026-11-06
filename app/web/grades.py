@@ -333,6 +333,8 @@ def _draft_payload(db, assessment, *, frozen_override=None):
                            "targetSpecializationId": assessment.target_specialization_id
                            if assessment.target_specialization_id in specs else None}, assessment.specialization_id)
     spec_id = goal["targetSpecializationId"] or assessment.specialization_id
+    from app.grades.rubrics import guidance
+    assessment_guidance = guidance(specs.get(spec_id, {}))
     categories = {c["id"]: c for c in catalog["categories"]}
     catalog["skills"] = [s for s in catalog["skills"] if s["category_id"] in categories and spec_id in specs]
     skill_ids = {s["id"] for s in catalog["skills"]}
@@ -346,6 +348,7 @@ def _draft_payload(db, assessment, *, frozen_override=None):
     importances = {i["skill_id"]: i["importance"] for i in catalog["importances"]}
     expectations = {(e["skill_id"], e["grade_id"]): e["level"] for e in catalog["expectations"]}
     scores = [{"skillId": s["id"], "skillName": s["name"], "categoryId": s["category_id"],
+               "rubric": assessment_guidance.get("skills", {}).get(str(s["id"])),
                "categoryName": categories[s["category_id"]]["name"], "importance": importances.get(s["id"], 1),
                "assessed": s["id"] in values if historical else True,
                "currentLevel": values.get(s["id"], 0),
@@ -358,6 +361,8 @@ def _draft_payload(db, assessment, *, frozen_override=None):
                      for key, item in categories.items() if any(score["categoryId"] == key for score in scores)]
     from app.grades.history import matrix_version
     result.update(catalog=catalog, scores=scores, categories=category_rows,
+                  assessment_intro=assessment_guidance.get("intro", ""),
+                  default_open_questions=assessment_guidance.get("open_questions", []),
                   review_mode="historical" if historical else "legacy", scale_version="levels-0-4-v1", matrix_version=matrix_version(catalog),
                   import_source=frozen.get("import_source"),
                   progress=next_grade_progress(scores) if goal["targetGradeId"] else None,

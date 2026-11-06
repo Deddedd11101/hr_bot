@@ -14,6 +14,10 @@ related:
 source_of_truth: true
 ---
 
+### Grade rubric payload extension (06.11.2026)
+
+Existing authenticated `POST /api/grades/import` accepts optional `specialization.assessment_intro`, `specialization.open_questions` and per-skill `rubric` (`levels` keys1..4, `na`). Dry-run reports `rubric_changed` and `guidance_changes`; fingerprint includes the incoming guidance and stored catalog. `GET /api/grades/workspace` exposes nullable `assessment_guidance_json` on specializations; ordinary catalog-item writes cannot set that raw field. Review score payloads add optional `rubric`, review previews add `assessment_intro`/`default_open_questions`. Collection creation defaults omitted `open_questions` to the specialization template; explicit[] disables them. Old frozen assessment/collection payloads remain unchanged.
+
 ## Детали сбора оценок коллег
 
 `POST /api/employees/{employee_id}/grade/collections` дополнительно принимает

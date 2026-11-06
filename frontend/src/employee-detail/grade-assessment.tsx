@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { SkillRubric } from "./skill-rubric";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -67,7 +68,7 @@ export function GradeAssessment({ initial, onFinalized, onClose, historicalVersi
         {assessment.scores.filter(s => s.categoryId === category.categoryId).map(score => {
           const value = Object.prototype.hasOwnProperty.call(values, score.skillId) ? values[score.skillId] : score.assessed === false ? null : score.currentLevel;
           return <div key={score.skillId} className="flex flex-wrap items-center justify-between gap-3 border-b px-3 py-3">
-            <div className="min-w-0 flex-1"><p className="break-words">{score.skillName}</p><Importance value={score.importance} /></div>
+            <div className="min-w-0 flex-1"><p className="break-words">{score.skillName}</p><Importance value={score.importance} /><SkillRubric rubric={score.rubric} /></div>
             {final && (!correcting || !!assessment.collection_id) ? value === null ? <span className="text-sm text-muted-foreground">Не оценено</span> : <LevelValue value={value} /> : <div className="w-48 max-w-full"><Choice label={`Уровень: ${score.skillName}`} value={value === null ? "none" : String(value)} options={assessment.review_mode === "historical" ? levels : levels.slice(1)} disabled={action.busy} onChange={value => setValues(old => ({ ...old, [score.skillId]: value === "none" ? null : Number(value) }))} /></div>}
           </div>;
         })}

@@ -23,7 +23,7 @@ def compare_reviews(previous, current):
         state = "added" if old is None else "removed" if new is None else "comparable"
         if old and new:
             legacy_changed = ("revision" not in previous_skills[key] or "revision" not in current_skills[key]) and any(previous_skills[key].get(field) != current_skills[key].get(field) for field in ("name", "category_id", "complexity", "description"))
-            if not same_scale or legacy_changed or previous_skills[key].get("revision", 1) != current_skills[key].get("revision", 1) or old["categoryId"] != new["categoryId"]:
+            if not same_scale or legacy_changed or old.get("rubric") != new.get("rubric") or previous_skills[key].get("revision", 1) != current_skills[key].get("revision", 1) or old["categoryId"] != new["categoryId"]:
                 state = "changed"
             elif not old.get("assessed", old["currentLevel"] != 0) or not new.get("assessed", new["currentLevel"] != 0):
                 state = "unassessed"
