@@ -27,7 +27,7 @@ source_of_truth: true
 
 ## Scrollbar consistency (06.11.2026)
 
-- Prepared in feature: shared native scrollbar tokens, employee grade list ScrollArea and adaptation rule Select migration. Local typecheck/build and synthetic long-list keyboard checks passed; stage deployment and live acceptance remain pending.
+- Deployed PR #177: shared native scrollbar tokens, employee grade list ScrollArea and adaptation rule Select migration. Typecheck/build, CI and server diagnostics passed. Live popup styling confirmed; remaining defect: last option can be partly clipped under the Select bottom scroll arrow after keyboard End. Full cross-browser acceptance remains open.
 
 Выложено / живая приёмка открыта (06.11, PR #174/#175): Grade collection details — открытые вопросы, frozen индивидуальные
 ответы в итоговой записи, объяснимое сопоставление с требованиями шаблона,
