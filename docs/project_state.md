@@ -200,6 +200,8 @@ targeted DB/runtime review passed; локальный UI configure/save/pause и
 
 # Состояние проекта
 
+06.11.2026: employee70 pending colleague review is blocked by legacy non-waiting progress127/128 unchanged since14 October. User approved interrupting these two records while preserving history. Narrow repair tooling uses exact snapshots and verified SQLite backup; generalized timeout/recovery watchdog is a separate engine follow-up, not enabled.
+
 Scrollbar consistency is prepared in a separate feature worktree (06.11.2026): shared DOM scrollbar styling and employee-card select/list cleanup. No backend, employee records, schedules or Telegram deliveries changed. Not deployed; live acceptance pending.
 
 - Grade corrections PR #129 выложен: `5ba0c58`, Deploy `40480944419`, Diagnostics `40481140790` success. Frozen предыдущие версии/actor/reason в additive таблице, CAS/UUID, updated_at и UI исправления/истории. Локально 456 tests и UI-cycle прошли; stage №34 проверены открытие режима, disabled пустой Save и отмена, 24/24 исходных балла. Реальные правки не сохранялись: пользовательская приёмка записи открыта. Исходные даты/кадровый грейд/ИПР не меняются; [[stage-change-log]].
