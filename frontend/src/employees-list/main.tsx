@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import "@/index.css";
 
 import { EmployeesListPage } from "./page";
+import { CatalogGroupsProvider } from "@/components/catalog-groups";
 import type { ListKind } from "./types";
 
 const rootElement = document.getElementById("react-employees-root");
@@ -13,10 +14,10 @@ if (rootElement) {
   const defaultListKind = (rootElement.getAttribute("data-default-list-kind") || "employees") as ListKind;
 
   ReactDOM.createRoot(rootElement).render(
-    <EmployeesListPage
+    <CatalogGroupsProvider scope="people"><EmployeesListPage
       apiBaseUrl={apiBaseUrl}
       createUrl={createUrl}
       defaultListKind={defaultListKind}
-    />,
+    /></CatalogGroupsProvider>,
   );
 }

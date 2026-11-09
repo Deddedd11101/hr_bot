@@ -1544,6 +1544,8 @@ def _delete_employee_record(db: Session, employee: Employee) -> str:
     if employee_dir.exists():
         shutil.rmtree(employee_dir, ignore_errors=True)
 
+    from ..models import CatalogMembership
+    db.query(CatalogMembership).filter_by(scope="people", object_id=employee.id).delete()
     db.delete(employee)
     db.commit()
     return redirect_url

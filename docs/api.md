@@ -14,6 +14,15 @@ related:
 source_of_truth: true
 ---
 
+## Общие группы каталогов
+
+- `GET /api/catalog-groups?scope=people|scenarios`: authenticated, groups (id/name/revision) и memberships (object id → group id). People scope общий для кандидатов/сотрудников; scenarios scope общий для сценариев/опросов. GET фильтрует отсутствующие объекты и группы без записи в БД.
+- `POST /api/catalog-groups`: scope/name (1..80 символов после нормализации). NFKC/whitespace/casefold uniqueness внутри scope; «Все»/«Без группы» зарезервированы. Возвращает created_group_id и текущие группы/memberships.
+- `PATCH /api/catalog-groups/{group_id}`: scope/name/expected_revision. Stale revision →409, scope mismatch/not found →404.
+- `DELETE /api/catalog-groups/{group_id}?scope=...&expected_revision=...`: удаляет только группу и её memberships; карточки, сценарии, ответы, расписания не меняет. UI требует отдельное подтверждение.
+- `PUT /api/catalog-group-membership`: scope/object_id/group_id (nullable)/expected_group_id (nullable). Ровно одна группа на объект; null — «Без группы». Проверяет существование объекта/целевой группы и соответствие scope. Stale membership →409 без перезаписи. SQLite BEGIN IMMEDIATE сериализует move/rename/delete; изменения общие для HR и не влияют на доступы/runtime/audience.
+- Новые/скопированные объекты по умолчанию «Без группы». Обычное удаление сценария или карточки очищает соответствующее membership через существующие central delete helpers.
+
 ## Глобальная очередь и журнал дашборда
 
 - `GET /api/scenario-queue`: authenticated read-only projection, `state=all|attention|blocked|waiting|scheduled|queued|active`, `search` до200 символов, `page>=1`. Возвращает items/total/counts/page/pages/truncated/generated_at. Даты нормализованы UTC ISO, UI показывает МСК. Pending scheduled/adaptation даты без continuation интерпретируются в TIMEZONE; остальные — UTC.

@@ -1353,4 +1353,6 @@ def _delete_template_entity(db: Session, scenario: ScenarioTemplate) -> None:
         SurveyAnswer.feedback_run_id.is_(None),
     ).delete()
     db.query(FlowLaunchRequest).filter(FlowLaunchRequest.flow_key == scenario.scenario_key).delete()
+    from ..models import CatalogMembership
+    db.query(CatalogMembership).filter_by(scope="scenarios", object_id=scenario.id).delete()
     db.delete(scenario)

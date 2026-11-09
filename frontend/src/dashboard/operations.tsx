@@ -492,10 +492,10 @@ export function QueuePage() {
         title="Очередь сценариев"
         actions={
           <a
-            href="/app/dashboard"
+            href="/app/flows/workspace-v2"
             className={buttonVariants({ variant: "outline", size: "sm" })}
           >
-            <ArrowLeft /> Дашборд
+            <ArrowLeft /> К сценариям
           </a>
         }
       />
