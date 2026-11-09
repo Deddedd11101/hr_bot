@@ -1604,6 +1604,7 @@ def _schedule_employee_flow_request(
     *,
     flow_key: str,
     requested_at: str,
+    requested_by_account_id: int | None = None,
 ) -> Optional[str]:
     if employee.is_bot_blocked:
         return "Для этого сотрудника доступ к боту заблокирован."
@@ -1626,6 +1627,7 @@ def _schedule_employee_flow_request(
             requested_at=run_at,
             processed_at=None,
             launch_type="scheduled",
+            requested_by_account_id=requested_by_account_id,
             skip_step_key=None,
         )
     )
@@ -1638,6 +1640,7 @@ async def _launch_employee_flow_now(
     employee: Employee,
     *,
     flow_key: str,
+    requested_by_account_id: int | None = None,
 ) -> Optional[str]:
     if employee.is_bot_blocked:
         return "Для этого сотрудника доступ к боту заблокирован."
@@ -1671,6 +1674,7 @@ async def _launch_employee_flow_now(
                 requested_at=datetime.now(),
                 processed_at=datetime.now(),
                 launch_type="manual",
+                requested_by_account_id=requested_by_account_id,
                 skip_step_key=None,
             )
         )

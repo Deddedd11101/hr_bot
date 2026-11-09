@@ -31,6 +31,10 @@ def _subject(db, employee_id):
     return employee
 
 
+def _initiator(request):
+    return getattr(getattr(getattr(request, "state", None), "current_user", None), "id", None)
+
+
 def _lock_subject(db, employee):
     db.execute(update(Employee).where(Employee.id == employee.id).values(id=Employee.id))
     db.refresh(employee)
@@ -135,7 +139,7 @@ def apply_plan(request: Request, employee_id: int, payload: dict = Body(...), db
             requested_at = _timestamp(choice.get("requested_at"))
             if not CalendarDates(db).working(requested_at.date()):
                 raise ValueError("Выберите рабочий день для запуска")
-            launch = FlowLaunchRequest(employee_id=employee.id, flow_key=row["scenario_key"], requested_at=requested_at, launch_type="adaptation_plan")
+            launch = FlowLaunchRequest(employee_id=employee.id, flow_key=row["scenario_key"], requested_at=requested_at, launch_type="adaptation_plan", requested_by_account_id=_initiator(request))
             db.add(launch)
             db.flush()
             db.add(EmployeeAdaptationPlanItem(employee_id=employee.id, entry_key=key, flow_key=row["scenario_key"], title=row["title"],
@@ -268,7 +272,7 @@ def edit_item(request: Request, employee_id: int, item_id: int, payload: dict = 
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         if launch and launch.processed_at is None:
             launch.processed_at = utc_now()
-        launch = FlowLaunchRequest(employee_id=employee.id, flow_key=item.flow_key, launch_type="adaptation_plan", requested_at=value)
+        launch = FlowLaunchRequest(employee_id=employee.id, flow_key=item.flow_key, launch_type="adaptation_plan", requested_at=value, requested_by_account_id=_initiator(request))
         db.add(launch)
         db.flush()
         item.launch_request_id = launch.id
@@ -289,7 +293,7 @@ def edit_item(request: Request, employee_id: int, item_id: int, payload: dict = 
             db.rollback()
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         if not launch or launch.processed_at:
-            launch = FlowLaunchRequest(employee_id=employee.id, flow_key=item.flow_key, launch_type="adaptation_plan", requested_at=value)
+            launch = FlowLaunchRequest(employee_id=employee.id, flow_key=item.flow_key, launch_type="adaptation_plan", requested_at=value, requested_by_account_id=_initiator(request))
             db.add(launch)
             db.flush()
             item.launch_request_id = launch.id

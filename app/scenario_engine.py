@@ -2335,6 +2335,8 @@ async def send_step(
             sent_at=utc_now(),
             event_key=step.step_key,
             message=message_text,
+            scenario_title=scenario.title,
+            step_title=step.step_title,
         )
     )
     db.commit()

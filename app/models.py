@@ -599,6 +599,8 @@ class OnboardingEvent(Base):
         doc="Ключ события (start_day, fill_form, manager_meeting и т.д.)",
     )
     message: Mapped[str] = mapped_column(String(2048), nullable=False)
+    scenario_title: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    step_title: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
 
 
 class FlowLaunchRequest(Base):
@@ -608,6 +610,7 @@ class FlowLaunchRequest(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     employee_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    requested_by_account_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     flow_key: Mapped[str] = mapped_column(
         String(64),
         nullable=False,

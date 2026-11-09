@@ -15,6 +15,10 @@ related:
 source_of_truth: true
 ---
 
+## История сценариев (09.11.2026)
+
+`onboarding_events.scenario_title` и `step_title` — nullable snapshots названий на момент отправки. Текст `message` сохраняется без изменений. `flow_launch_requests.requested_by_account_id` — nullable ID инициатора запуска из карточки или планирования адаптации; для автоматических и исторических записей может отсутствовать. SQLite compatibility patch добавляет колонки без backfill и удаления истории. `processed_at` означает обработку запроса, а не доказанную доставку.
+
 GradeReviewCollection.snapshot_json дополнительно хранит frozen open_questions.
 SurveyAnswer ключи open_<index> относятся к текстовым вопросам этой коллекции,
 employee_id остаётся respondent ID. Числовые skill_<id> агрегируются отдельно.
