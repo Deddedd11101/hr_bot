@@ -33,6 +33,8 @@ related:
 source_of_truth: true
 ---
 
+09.11: PR188/189 выложены общим `b3178a3`, Deploy42694673421 success. Backup и scenario fingerprint checked; browser toolbar/queue back smoke passed. Группы реальные не создавались/не назначались, записи остаются «Без группы». Подготовительные записи ниже «не выложено» по этим feature superseded. Приёмка реального HR workflow и saved-password autofill остаётся пользовательской.
+
 09.11 feature/catalog-groups: по решению пользователя группы общие для HR, одна на объект. People scope сохраняется при смене candidate/staff; scenario scope охватывает сценарии/опросы. Runtime, расписания, роли и документы не меняются. CAS защищает stale move/rename/delete; UI сохраняет search/sort/status при группировке. Зависит от PR188; подготовка к совместной выкладке, пока не выложено.
 
 09.11 feature scrollbars-login-dark: shared scrollbar CSS covers React/login/legacy pages and dark native control color-scheme. Login corners/autofill background scoped to card; no auth/backend/DB semantics changed. Local visual checks light/dark, long Select End, custom ScrollArea without double native bar passed. Saved credential autofill and cross-browser manual checks remain open. Пока не выложено.

@@ -11,6 +11,15 @@ related:
 source_of_truth: true
 ---
 
+## 09.11.2026 — общие группы каталогов и тёмная тема
+
+- PR188 (`786cc8d`, CI42689435110) и PR189 (`6e39542`, CI42694394412) merged; оба backend/frontend CI passed. Общий stage runtime `b3178a30ccc10491f9fd5e09786d9c7d52db0b83`, Deploy Stage42694673421 success.
+- Backup verified `backups/hr_bot.before-deploy.20261109-203816.db`, scenario snapshot `backups/scenarios.before-deploy.20261109-203816.json`, scenario fingerprint unchanged. Service/HTTP/Telegram reachability/fresh worker-log workflow gates passed.
+- Shared scrollbars CSS for React/login/legacy, dark native color-scheme and login appearance/autofill surface. Local light/dark login, ScrollArea and long Select checked; saved-credential autofill/cross-browser acceptance remains open.
+- One common organizational group per scenario/survey or person; two additive metadata tables, CAS and scope guards, group deletion preserves objects/runtime. dnd-kit pointer move handle + dialog for keyboard/mobile. Existing native scenario reorder retained. Queue back now goes to scenario catalog.
+- Local synthetic UI: create, dialog/pointer move for people/scenarios, search/sort/status inside folder passed. Local full619 tests, typecheck, clean npm ci, reproducible build, docs contracts passed.
+- Stage browser read-only: queue back link correct; scenario catalog29 records and people38 records show group toolbar/move actions, no error alerts. Real groups/memberships were not created or assigned; existing records remain ungrouped. No scenarios launched/interrupted manually.
+
 ## 06.11.2026 — финальные критерии оценки навыков
 
 - PR #181 CI `42208703975` passed; deployed runtime

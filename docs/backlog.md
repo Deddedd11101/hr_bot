@@ -23,6 +23,8 @@ related:
 source_of_truth: true
 ---
 
+- 09.11: PR188 (scroll/login theme) + PR189 (catalog groups/queue navigation) выложены `b3178a3`, Deploy42694673421 success. Stage browser read-only passed; local synthetic CRUD/move/search/sort/status passed, реальные записи не группировались. Подготовительные «не выложено» по этим пакетам superseded; пользовательское раскладывание/приёмка остаётся открытым.
+
 - 09.11 feature/catalog-groups поверх PR188: общие одноуровневые группы сценариев/опросов и людей (одна на запись), CRUD, drag/drop и клавиатурный move; группы совместимы с поиском/фильтрами/сортировкой. Queue back → каталог сценариев. Новые additive metadata tables, без миграции runtime/status/audience. Не выложено; пользователь разрешил выкатить вместе с188 после проверок.
 
 - 09.11 feature scrollbar/login audit: source review of React scroll regions and shared primitives; common token stylesheet now covers React/login/legacy shells, dark color-scheme and native arrows, Command scrollbar visibility. Login appearance/autofill corner fix. Local light/dark login, long Select and ScrollArea checked; real saved-password autofill and other browsers not claimed. Не выложено.
