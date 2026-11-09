@@ -33,6 +33,8 @@ related:
 source_of_truth: true
 ---
 
+09.11: PR185/186 выложены общим `e9835ce`, Deploy42654875362 success. Backup и scenario fingerprint проверены. Browser smoke дашборда/истории/общей очереди и attention filter passed. Старые/orphan runtime видны, но не очищались; реальные сценарии вручную не запускались. Подготовительные записи ниже «не выложено» superseded. Global FIFO/reservation и подтверждение фактических HR alerts остаются открытыми.
+
 09.11 feature dashboard-scenario-queue поверх watchdog PR185: глобальная read-only очередь и новый дашборд, без перенастройки запусков/получателей/БД. Отдельные delivery facts и processed requests в журнале, ошибки адаптации в attention, ссылки к сценарию/шагу. Пока не выложено. New queue aggregation bounded500 per source with explicit truncation; не объявляется общей FIFO.
 
 09.11 feature runtime watchdog: пакет2 добавляет диагностику idle progress и

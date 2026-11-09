@@ -11,6 +11,14 @@ related:
 source_of_truth: true
 ---
 
+## 09.11.2026 — watchdog и оперативный дашборд
+
+- PR185 (`67f1a8f`, CI42654453795 passed) и PR186 (`67bae12`, CI42654464170 passed) merged в stage. Общий runtime `e9835cee7044e0b238dc55690e3daa179e57d350`, Deploy Stage42654875362 success.
+- Backup verified `backups/hr_bot.before-deploy.20261109-162831.db`, scenario snapshot `backups/scenarios.before-deploy.20261109-162831.json`. Scenario configuration fingerprint unchanged. Service/HTTP/Telegram reachability/fresh worker-log workflow gates passed.
+- Watchdog: additive nullable alert fingerprint, three-hour non-waiting diagnostics and best-effort deduplicated HR digest. Digest HTML-escaped and bounded to Telegram size. No scenario resend/reset/expiry.
+- Dashboard: queue summary, actionable errors, filtered persisted event history; stat tiles and Modules removed. New authenticated `/app/scenario-queue` with state/search/pagination; links to employee/scenario/step. Full generated assets and template cache versions updated.
+- Browser stage: dashboard loaded without alerts,20 history rows, removed UI blocks absent. Queue loaded22 rows across2 pages; attention filter12 rows, no API errors. Old/orphan runtime records are visible; none manually interrupted/removed. History/device dark/mobile acceptance and actual HR notification receipt remain open; no new Telegram scenarios launched manually.
+
 ## 06.11.2026 — финальные критерии оценки навыков
 
 - PR #181 CI `42208703975` passed; deployed runtime
