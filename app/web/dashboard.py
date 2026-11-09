@@ -273,6 +273,12 @@ def _upcoming_events(db: Session, now, until) -> list[dict]:
 
 def _attention_items(db: Session, candidates_without_channel: list[Employee], now) -> list[dict]:
     items: list[dict] = []
+    from .operational_queue import queue_payload
+    queue = queue_payload(db, state="attention", page_size=8)
+    for item in queue["items"]:
+        items.append({"id": item["id"], "kind": "scenario_error", "severity": "danger",
+            "title": f"{item['employee_name']} · {item['title']}", "subtitle": item["reason"],
+            "href": item["employee_href"] or "/app/scenario-queue?state=attention"})
     for candidate in candidates_without_channel[:5]:
         items.append(
             {
@@ -346,6 +352,7 @@ def _sent_history(db: Session, limit: int = 15) -> list[dict]:
         event["id"] = f"sent-scenario-{action.id}"
         event["processed_at"] = action.processed_at.isoformat() if action.processed_at else ""
         event["processed_at_label"] = _format_dt(action.processed_at)
+        event["launch_source"] = "По расписанию" if action.launch_type == "scheduled" else "Вручную" if action.launch_type == "manual" else "Автоматически"
         entries.append(event)
 
     message_actions = (
@@ -360,6 +367,7 @@ def _sent_history(db: Session, limit: int = 15) -> list[dict]:
         event["id"] = f"sent-message-{action.id}"
         event["processed_at"] = action.processed_at.isoformat() if action.processed_at else ""
         event["processed_at_label"] = _format_dt(action.processed_at)
+        event["launch_source"] = "По расписанию" if action.launch_type == "scheduled" else "Вручную" if action.launch_type == "manual" else "Автоматически"
         entries.append(event)
 
     entries.sort(key=lambda item: item["processed_at"], reverse=True)
