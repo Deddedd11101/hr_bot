@@ -1136,9 +1136,6 @@ def _replace_template_fields(template: str, values: dict[str, str]) -> str:
 
 
 def resolve_employee_first_name(employee: Employee) -> str:
-    explicit = (getattr(employee, "first_name", None) or "").strip()
-    if explicit and explicit.casefold() not in {"имя", "{name}", "{first_name}"}:
-        return explicit
     parts = (employee.full_name or "").split()
     return parts[1] if len(parts) > 1 else (parts[0] if parts else "")
 

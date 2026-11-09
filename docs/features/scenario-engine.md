@@ -22,7 +22,7 @@ source_of_truth: true
 - Adaptation preview rechecks current recipient for failed entries with no `started_at`: after card assignment is saved the cause can be shown resolved, without changing/sending the plan on GET. `can_retry` is false until recipient requirements are satisfied and no separate pending request conflicts.
 - Explicit PATCH action `retry` queues only that failed plan item at application-local current time on a working calendar date. Revalidates owner/date/status/recipient and separate requests under the subject write lock; prior continuation/request is retired, a new request is linked, other stages unchanged. Replayed/stale attempts return409. The scheduler dispatches later and still observes busy recipient queues.
 - `started_at` excludes ambiguous delivery from quick retry: inspect messages and use deliberate rescheduling instead. No 3-hour auto-restart/completion rule is introduced.
-- Name tags `{name}` / `{first_name}` ignore explicit field placeholders `ИМЯ`, `{name}`, `{first_name}` (case-insensitive) and derive the name from ФИО. Real explicit names retain priority. Plain message text is not globally rewritten. Live diagnosis: card70 had explicit `first_name=ИМЯ`, while the scenario correctly used `{name}`.
+- Name tags `{name}` / `{first_name}` derive the name only from current ФИО. Legacy `employees.first_name` is ignored, including real names and placeholders. Plain message text is not globally rewritten. Live diagnosis: card70 had legacy `first_name=ИМЯ`, while the scenario correctly used `{name}`.
 
 ## Управление ожидающими запусками
 
@@ -117,7 +117,7 @@ Scenario engine превращает scenario templates плюс employee state 
 
 Тексты шагов, уведомлений и меню используют общий безопасный Telegram HTML renderer. Старый plain text остается совместимым. В сценариях доступны `{employee_full_name}`, `{position}`, `{first_workday}` и `{first_name}`; в уведомлениях дополнительно доступен `{resume}`/`{резюме}`. В menu set `menu_text` доступны `{employee_full_name}`, `{full_name}`, `{first_name}`, `{position}` и `{first_workday}`. Значения карточки экранируются перед вставкой.
 
-`{first_name}` / `{name}` предпочитают непустое `employees.first_name`; иначе берут второе слово `full_name` в формате «Фамилия Имя Отчество», либо единственное слово. При отсутствии обоих полей возвращается пустая строка. Производное имя не записывается в БД; Telegram display name не используется. Отдельное поле имени не требуется для обычной регистрации.
+`{first_name}` / `{name}` берут только второе слово `full_name` в формате «Фамилия Имя Отчество», либо единственное слово. При пустом ФИО возвращается пустая строка. Legacy `employees.first_name` игнорируется; колонка сохранена для совместимости. Производное имя не записывается в БД; Telegram display name не используется.
 
 После выбора даты бот отправляет «Вы выбрали дату: ДД.ММ.ГГГГ» и продолжает сценарий. История возврата хранит предыдущий `first_workday` как ISO-строку или `null`; «Назад» восстанавливает значение и позволяет выбрать другую дату. Повтор callback после принятого ответа не продвигает сценарий второй раз. Старые кнопки того же календарного шага после возврата пока не имеют отдельного идентификатора версии.
 
