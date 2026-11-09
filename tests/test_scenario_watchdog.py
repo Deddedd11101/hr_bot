@@ -84,6 +84,20 @@ class WatchdogTests(unittest.IsolatedAsyncioTestCase):
             await check_runtime(self.db, object())
             notify.assert_awaited_once()
 
+    async def test_digest_escapes_titles_and_fits_telegram_limit(self):
+        self.db.query(ScenarioTemplate).one().title = "<b>&" * 50
+        for _ in range(25):
+            self.db.add(ScenarioProgress(employee_id=1, scenario_key="watch", started_at=self.progress.started_at,
+                updated_at=self.progress.updated_at, waiting_for_response=False, is_completed=False))
+        self.db.commit()
+        with patch("app.scenario_watchdog.utc_now", return_value=self.now), patch("app.scenario_watchdog.notify_hr", new_callable=AsyncMock) as notify:
+            await check_runtime(self.db, object())
+            message = notify.call_args.args[1]
+            self.assertLess(len(message), 4096)
+            self.assertNotIn("<b>", message)
+            self.assertIn("&lt;b&gt;", message)
+            self.assertIn("Ещё записей", message)
+
     async def test_schema_patch_is_repeatable_and_preserves_state(self):
         self.db.close()
         with self.engine.begin() as conn:

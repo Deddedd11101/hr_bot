@@ -2,6 +2,7 @@
 
 import hashlib
 import logging
+from html import escape
 from datetime import timedelta
 
 from sqlalchemy import update
@@ -82,10 +83,18 @@ async def check_runtime(db, messenger, scheduler=None):
         title = scenario.title if scenario else "Удалённый сценарий"
         alerts.append(f"Карточка №{progress.employee_id}, диалог №{progress.id}: {title}")
     if alerts:
+        lines = []
+        size = 0
+        for alert in alerts[:20]:
+            line = escape(alert)
+            if size + len(line) > 3000:
+                break
+            lines.append(line)
+            size += len(line) + 1
         try:
             await notify_hr(messenger, "Нужна проверка сценариев: нет движения больше 3 часов.\n"
-                            + "\n".join(alerts[:20])
-                            + (f"\nЕщё записей: {len(alerts) - 20}" if len(alerts) > 20 else "")
+                            + "\n".join(lines)
+                            + (f"\nЕщё записей: {len(alerts) - len(lines)}" if len(alerts) > len(lines) else "")
                             + "\nАвтоматический повтор отключён: доставка может быть неоднозначной. "
                             "Откройте карточку → Сценарии → Очередь сценариев.")
         except Exception:
