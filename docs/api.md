@@ -14,6 +14,15 @@ related:
 source_of_truth: true
 ---
 
+## Queue runtime health
+
+`GET /api/employees/{employee_id}/scenario-queue`: `active[].health` и
+`pending[].blocker.health` содержат state/reason/idle_seconds/alert_due/next_at.
+`pending[].recipient_error` сообщает точную ошибку назначения/Telegram.
+`alert_due` — диагностический признак, не разрешение retry и не подтверждение
+отправленного HR-уведомления. In-memory scheduler jobs недоступны web projection.
+GET read-only, существующие admin-only cancel/interrupt guards не меняются.
+
 ## История сценариев карточки (09.11.2026)
 
 `GET /api/employees/{employee_id}/activity` показывает снимки названий сценария/шага и отправленный текст вместо технического event_key. Старые записи могут использовать текущее название только при однозначном совпадении step_key; иначе явно показывают отсутствие сохранённого названия. Сообщение отправляет «Бот», запись обработанного запроса отдельно показывает ручной/плановый/автоматический источник и сохранённого инициатора. Исторический неизвестный инициатор не выводится как выдуманный пользователь. Обработка запроса не означает успешную доставку.

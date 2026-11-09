@@ -33,6 +33,12 @@ related:
 source_of_truth: true
 ---
 
+09.11 feature runtime watchdog: пакет2 добавляет диагностику idle progress и
+дедуплицированные best-effort HR alerts после3 часов, без автоповторов и изменений
+runtime/history. Future continuations/jobs и waiting human не истекают. Queue UI
+показывает причину/возраст/получателя. Schema additive (одна nullable колонка).
+Пока не выложено; global FIFO и durable recipient reservation отдельно.
+
 09.11.2026, feature PR183: история карточки показывает понятные названия сценария/шага и отправленный текст. Новые сообщения сохраняют snapshots названий; ручные/плановые запросы из карточки и плана адаптации сохраняют ID инициатора. Для исторических записей неизвестные названия и инициатор не выдумываются. Nullable schema additions, без backfill и без запуска сценариев. Пока не выложено.
 
 06.11 выложено PR #174/#175: `4eb1195e8c7088b918814276f802bdc199d01000`,

@@ -11,8 +11,10 @@ from ..models import (Employee, EmployeeAdaptationPlanItem, EmployeeFeedbackReci
                       FlowLaunchRequest, OnboardingEvent, ScenarioAnswerRun,
                       ScenarioProgress, ScenarioTemplate)
 from ..scenario_engine import (get_conflicting_progress_for_survey_launch,
-                               resolve_scenario_recipient)
+                               resolve_scenario_recipient, get_scenario_steps,
+                               INTERACTIVE_RESPONSE_TYPES)
 from ..time_utils import utc_now
+from ..scenario_watchdog import progress_health
 from .support import require_api_admin, require_api_auth
 
 router = APIRouter()
@@ -44,7 +46,8 @@ def _progress_row(db, progress):
             "updated_at": progress.updated_at.isoformat(),
             "started_at": progress.started_at.isoformat(),
             "waiting": progress.waiting_for_response,
-            "long_wait": progress.updated_at < utc_now() - timedelta(days=1)}
+            "long_wait": progress.updated_at < utc_now() - timedelta(days=1),
+            "health": progress_health(db, progress)}
 
 
 def snapshot(db, employee_id):
@@ -59,11 +62,14 @@ def snapshot(db, employee_id):
     person = db.get(Employee, employee_id)
     for row in requests:
         scenario = db.query(ScenarioTemplate).filter_by(scenario_key=row.flow_key).first()
-        recipient = resolve_scenario_recipient(db, person, scenario, requires_response=True) if scenario else None
+        recipient = resolve_scenario_recipient(db, person, scenario, requires_response=any(
+            step.response_type in INTERACTIVE_RESPONSE_TYPES for step in get_scenario_steps(db, row.flow_key)
+        )) if scenario else None
         busy = get_conflicting_progress_for_survey_launch(db, recipient.employee_id, row.flow_key) if recipient and recipient.employee_id else None
         pending.append({"id": row.id, "title": _title(db, row.flow_key),
                         "source": row.launch_type, "requested_at": row.requested_at.isoformat(),
                         "blocker": _progress_row(db, busy) if busy else None,
+                        "recipient_error": recipient.error if recipient else "Сценарий не найден",
                         "can_cancel": row.skip_step_key is None})
     return {"active": [_progress_row(db, row) for row in active], "pending": pending,
             "timezone_note": "Время диалогов — UTC; время плановых запусков — часовой пояс приложения"}

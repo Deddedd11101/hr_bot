@@ -16,6 +16,34 @@ related:
 source_of_truth: true
 ---
 
+## Runtime watchdog (пакет 2, 09.11.2026)
+
+Очередь карточки показывает `health`: `waiting_human`, `scheduled`, `processing`,
+`stale_runtime`, `delivery_uncertain`, `closed`, причину, время без изменений
+и дату durable-продолжения. Pending request показывает точную ошибку получателя.
+Ожидание ответа человека не имеет автоматического срока завершения.
+
+После прохода scheduler watchdog проверяет незавершённые non-waiting progress
+без изменений минимум3 часа. Future durable continuations и будущие задания
+текущего APScheduler исключаются из уведомлений. Web projection видит только
+durable-запросы; in-memory jobs недоступны web-процессу, поэтому её «нужна проверка»
+не является доказательством зависания. Watchdog не перепланирует и не отправляет
+повторно шаги, не завершает progress и не удаляет ответы.
+
+HR получает одну сводку за проход через существующий resolver HR/наблюдателей,
+без ответов, токенов, chat IDs и технического текста ошибок. Nullable
+`scenario_progress.watchdog_alert_key` хранит hash состояния started_at/updated_at
+и класса проблемы. Conditional claim до отправки даёт at-most-once попытку
+уведомления на неизменившееся состояние, в том числе после restart. Сбой/отсутствие
+адресатов не приводит к автоматическому повтору той же тревоги; статус в UI остаётся.
+Digest ограничен20 строками и3000 символами списка, названия HTML-экранируются;
+показывается количество остальных. Это не durable outbox.
+
+Безопасное ручное прерывание waiting-диалога и отмена независимого запроса
+сохраняют существующие admin-only guards. Non-waiting/неоднозначную доставку
+принудительно не закрываем. Межисточниковая FIFO и durable recipient reservation
+не реализованы этим диагностическим пакетом.
+
 ## Восстановление получателя адаптации (09.11.2026)
 
 - Missing recipient errors explicitly identify руководитель, наставник адаптации or наставник ИПР. Missing/unverified Telegram errors also retain that role.
