@@ -33,6 +33,8 @@ related:
 source_of_truth: true
 ---
 
+09.11 feature dashboard-scenario-queue поверх watchdog PR185: глобальная read-only очередь и новый дашборд, без перенастройки запусков/получателей/БД. Отдельные delivery facts и processed requests в журнале, ошибки адаптации в attention, ссылки к сценарию/шагу. Пока не выложено. New queue aggregation bounded500 per source with explicit truncation; не объявляется общей FIFO.
+
 09.11 feature runtime watchdog: пакет2 добавляет диагностику idle progress и
 дедуплицированные best-effort HR alerts после3 часов, без автоповторов и изменений
 runtime/history. Future continuations/jobs и waiting human не истекают. Queue UI

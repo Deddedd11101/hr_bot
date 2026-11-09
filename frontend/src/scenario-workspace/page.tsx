@@ -443,8 +443,10 @@ export function ScenarioWorkspacePage() {
           setPayload(nextPayload);
           setSelectedScenarioId(nextSelectedScenarioId);
           const root = makeRootContainer(nextPayload.workspace);
-          setStack([root]);
-          setSelectedItemKey(itemKey(root.items[0]));
+          const requestedStepId = Number(new URL(window.location.href).searchParams.get("step_id"));
+          const requestedPath = requestedStepId ? findWorkspacePathToStep(nextPayload.workspace, requestedStepId) : null;
+          setStack(requestedPath?.stack || [root]);
+          setSelectedItemKey(requestedPath?.selectedItemKey || itemKey(root.items[0]));
         } else {
           setPayload(nextPayload);
           setSelectedScenarioId(nextSelectedScenarioId);
@@ -1105,12 +1107,12 @@ export function ScenarioWorkspacePage() {
           /* Счётчик стоит там же, где выдача: в детали числу нечего считать. */
           counter={scenarios.length}
           actions={
-            !creatingScenario ? (
+            <><a className={buttonVariants({size: "sm", variant: "outline"})} href="/app/scenario-queue">Очередь сценариев</a>{!creatingScenario ? (
               <Button size="sm" onClick={() => setCreatingScenario(true)} title={createItemLabel}>
                 <Plus data-icon="inline-start" />
                 Создать
               </Button>
-            ) : undefined
+            ) : null}</>
           }
         />
       ) : (

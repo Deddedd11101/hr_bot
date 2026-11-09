@@ -193,7 +193,7 @@ app.include_router(settings_router)
 
 
 def _api_tag_for_path(path: str) -> str:
-    if path.startswith("/api/dashboard"):
+    if path.startswith(("/api/dashboard", "/api/scenario-queue")):
         return "Dashboard"
     if path.startswith("/api/employees"):
         return "Employees"

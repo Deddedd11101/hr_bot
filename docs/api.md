@@ -14,6 +14,13 @@ related:
 source_of_truth: true
 ---
 
+## Глобальная очередь и журнал дашборда
+
+- `GET /api/scenario-queue`: authenticated read-only projection, `state=all|attention|blocked|waiting|scheduled|queued|active`, `search` до200 символов, `page>=1`. Возвращает items/total/counts/page/pages/truncated/generated_at. Даты нормализованы UTC ISO, UI показывает МСК. Pending scheduled/adaptation даты без continuation интерпретируются в TIMEZONE; остальные — UTC.
+- Источники очереди: active ScenarioProgress, pending FlowLaunchRequest, failed/blocked адаптация, pending feedback/Grade recipients и pending массовые сценарии/опросы. Не является FIFO/dispatcher; Grade milestones до появления конкретного запроса и in-memory scheduler jobs не входят. До500 строк каждого источника, при ограничении `truncated=true`, totals/counts относятся только к выборке.
+- `GET /api/dashboard/history`: authenticated, `kind=all|steps|surveys|messages|launches`, `page=1..100`. Возвращает items/page/has_more,20 строк на страницу. Sent onboarding events и manual messages отделены от processed launch/mass requests; обработка не доказывает доставку. Unknown legacy инициатор/способ запуска не выдумывается. Удалённые тексты manual messages не возвращаются. Ссылки ведут только на существующие карточки/сценарии; step_id добавляется при однозначном текущем владельце шага.
+- Existing `/api/dashboard/workspace` сохраняет contract stats/upcoming/module_links для совместимости; UI больше не показывает плитки и «Модули». Attention дополнен ошибками очереди/адаптации. Никаких write/send side effects у новых GET нет.
+
 ## Queue runtime health
 
 `GET /api/employees/{employee_id}/scenario-queue`: `active[].health` и

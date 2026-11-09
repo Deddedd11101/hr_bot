@@ -13,10 +13,11 @@
     <div
         id="react-dashboard-root"
         data-api-url="{{ react_api_url }}"
+        data-queue-page="{{ 'true' if queue_page else 'false' }}"
     ></div>
 </section>
 {% endblock %}
 
 {% block scripts %}
-    <script type="module" src="/static/workspace_v2/dashboard.js?v=44"></script>
+    <script type="module" src="/static/workspace_v2/dashboard.js?v=45"></script>
 {% endblock %}
