@@ -768,6 +768,8 @@ def _ensure_sqlite_schema() -> None:
                 conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN answer_run_id INTEGER"))
             conn.execute(text(f"CREATE INDEX IF NOT EXISTS ix_{table_name}_answer_run_id ON {table_name} (answer_run_id)"))
         progress_columns = {row[1] for row in conn.execute(text("PRAGMA table_info(scenario_progress)"))}
+        if "watchdog_alert_key" not in progress_columns:
+            conn.execute(text("ALTER TABLE scenario_progress ADD COLUMN watchdog_alert_key TEXT"))
         if "interrupted_at" not in progress_columns:
             conn.execute(text("ALTER TABLE scenario_progress ADD COLUMN interrupted_at DATETIME"))
         if "adaptation_plan_item_id" not in progress_columns:

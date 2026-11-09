@@ -15,6 +15,14 @@ related:
 source_of_truth: true
 ---
 
+## Runtime watchdog
+
+`scenario_progress.watchdog_alert_key`: nullable string64, fingerprint последнего
+заявленного уведомления watchdog. Атомарный claim проверяет updated_at, active,
+non-waiting и отсутствие interruption; не меняет updated_at/ответы/history.
+SQLite compatibility patch additive/idempotent, без backfill. Не является
+подтверждением доставки уведомления и не управляет жизненным циклом сценария.
+
 ## История сценариев (09.11.2026)
 
 `onboarding_events.scenario_title` и `step_title` — nullable snapshots названий на момент отправки. Текст `message` сохраняется без изменений. `flow_launch_requests.requested_by_account_id` — nullable ID инициатора запуска из карточки или планирования адаптации; для автоматических и исторических записей может отсутствовать. SQLite compatibility patch добавляет колонки без backfill и удаления истории. `processed_at` означает обработку запроса, а не доказанную доставку.

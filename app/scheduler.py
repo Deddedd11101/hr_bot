@@ -484,3 +484,5 @@ async def schedule_all_employees(scheduler: AsyncIOScheduler, bot) -> None:
 
         if employees or pending_requests:
             db.commit()
+        from .scenario_watchdog import check_runtime
+        await check_runtime(db, bot, scheduler)
