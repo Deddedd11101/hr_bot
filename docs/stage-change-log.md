@@ -11,6 +11,15 @@ related:
 source_of_truth: true
 ---
 
+## 09.11.2026 — имя из ФИО, восстановление адаптации и история
+
+- PR #183 merged; CI `42636498497` passed (backend + frontend). Stage runtime `35bf06982c32245101ddcdee2ed5500a7309ea7f`, Deploy Stage `42636824917` success.
+- Backup verified: `backups/hr_bot.before-deploy.20261109-144047.db`; scenario snapshot `backups/scenarios.before-deploy.20261109-144047.json`. Scenario configuration fingerprint unchanged.
+- Name tags now use current full_name only; legacy first_name ignored. Missing recipient errors identify role; safe pre-delivery retry is explicit and does not auto-send after card save.
+- Timeline shows scenario/step titles and message text; new sends snapshot titles, card/adaptation requests persist initiator. Three nullable columns added through idempotent SQLite compatibility patch; historical unknown initiators are not fabricated.
+- Workflow service/HTTP/Telegram reachability/fresh worker-log gates passed. Browser card70: missing manager shown explicitly; History displays scenario/step, message text, plan launch source and Bot actor.
+- No assignments, schedules or repeat deliveries changed manually. Actual new Telegram name substitution and retry after assigning recipient remain user acceptance; historical greeting is preserved as sent.
+
 ## 06.11.2026 — финальные критерии оценки навыков
 
 - PR #181 CI `42208703975` passed; deployed runtime
