@@ -39,15 +39,15 @@ export function LoginPage({ errorMessage = "" }: LoginPageProps) {
             </Alert>
           ) : null}
 
-          <form method="post" action="/login">
+          <form method="post" action="/login" className="login-form">
             <FieldGroup>
               <Field>
                 <FieldLabel htmlFor="login">Логин</FieldLabel>
-                <Input id="login" name="login" type="text" autoComplete="username" required autoFocus />
+                <Input id="login" name="login" type="text" autoComplete="username" className="appearance-none bg-clip-padding" required autoFocus />
               </Field>
               <Field>
                 <FieldLabel htmlFor="password">Пароль</FieldLabel>
-                <Input id="password" name="password" type="password" autoComplete="current-password" required />
+                <Input id="password" name="password" type="password" autoComplete="current-password" className="appearance-none bg-clip-padding" required />
               </Field>
               <Button type="submit" className="w-full" size="lg">
                 Войти
