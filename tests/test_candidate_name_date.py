@@ -23,14 +23,14 @@ from tests.test_scenario_engine_smoke import FakeMessenger
 
 
 class CandidateNameTests(unittest.TestCase):
-    def test_surname_first_fio_and_explicit_override(self):
+    def test_surname_first_fio_ignores_legacy_explicit_name(self):
         for full_name, explicit, expected in [
             ("Surname Given Patronymic", None, "Given"),
             ("  Surname\tGiven  Patronymic ", "  ", "Given"),
             ("Given", None, "Given"),
             (" ", None, ""),
             (None, None, ""),
-            ("Surname Given", " Preferred ", "Preferred"),
+            ("Surname Given", " Preferred ", "Given"),
         ]:
             with self.subTest(full_name=full_name, explicit=explicit):
                 employee = SimpleNamespace(full_name=full_name, first_name=explicit)
