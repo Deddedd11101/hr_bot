@@ -243,7 +243,39 @@ def edit_item(request: Request, employee_id: int, item_id: int, payload: dict = 
     launch = db.get(FlowLaunchRequest, item.launch_request_id) if item.launch_request_id else None
     if launch and launch.processed_at is not None and item.status in {"planned", "blocked"}:
         raise HTTPException(status_code=409, detail="Запуск уже обрабатывается")
-    if payload.get("action") == "cancel":
+    if payload.get("action") == "retry":
+        # Only preflight failures are safe to retry without inspecting prior delivery.
+        if item.status != "failed" or item.started_at is not None:
+            raise HTTPException(status_code=409, detail="Была попытка доставки. Проверьте сообщения перед перепланированием.")
+        from ..scenario_engine import resolve_scenario_recipient, get_scenario_steps, INTERACTIVE_RESPONSE_TYPES, matches_role_scope
+        scenario = db.query(ScenarioTemplate).filter_by(scenario_key=item.flow_key).first()
+        if not scenario or scenario.scenario_kind != "scenario" or employee.is_bot_blocked or not matches_role_scope(employee, scenario):
+            raise HTTPException(status_code=409, detail="Сотрудник или сценарий недоступен")
+        recipient = resolve_scenario_recipient(db, employee, scenario, requires_response=any(
+            step.response_type in INTERACTIVE_RESPONSE_TYPES for step in get_scenario_steps(db, item.flow_key)))
+        if recipient.error:
+            raise HTTPException(status_code=409, detail=recipient.error)
+        separate = db.query(FlowLaunchRequest.id).filter(
+            FlowLaunchRequest.employee_id == employee.id, FlowLaunchRequest.flow_key == item.flow_key,
+            FlowLaunchRequest.processed_at.is_(None), FlowLaunchRequest.id != (item.launch_request_id or -1)).first()
+        if separate:
+            raise HTTPException(status_code=409, detail="Уже есть отдельный запрос этого сценария. Проверьте очередь запусков.")
+        value = local_now()
+        try:
+            if not CalendarDates(db).working(value.date()):
+                raise ValueError("Сегодня нерабочий день. Выберите рабочую дату через «Запланировать повторно».")
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        if launch and launch.processed_at is None:
+            launch.processed_at = utc_now()
+        launch = FlowLaunchRequest(employee_id=employee.id, flow_key=item.flow_key, launch_type="adaptation_plan", requested_at=value)
+        db.add(launch)
+        db.flush()
+        item.launch_request_id = launch.id
+        item.requested_at = value
+        item.status = "planned"
+        item.last_error = None
+    elif payload.get("action") == "cancel":
         if launch and launch.processed_at is None:
             db.delete(launch)
         item.launch_request_id = None

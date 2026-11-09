@@ -200,6 +200,8 @@ targeted DB/runtime review passed; локальный UI configure/save/pause и
 
 # Состояние проекта
 
+09.11.2026: live read-only сверка выявила `first_name=ИМЯ` в карточке70 при корректном `{name}` в сценарии первого дня. Feature игнорирует известные заглушки имени и использует ФИО; добавляет точную роль missing-recipient и явный retry failed preflight после назначения получателя. Без автоматических повторных отправок и вмешательства в расписания. Stage пока не изменён.
+
 06.11.2026: PR #181 выложен (`41276d0`), финальные156 критериев импортированы в5 существующих специализаций с backup и UI preview/apply. Обратный экспорт подтвердил0 расхождений и3 открытых вопроса в каждом шаблоне. Пять замен сервисного дизайнера применены; три дубля SA исключены только из нового состава. Старые snapshot/оценки/начатые сборы не менялись. Browser70: новая форма42 навыка/критерии, без сохранения. Живой Telegram-сбор остаётся пользовательской приёмкой; details в [[features/grades]] и [[stage-change-log]].
 
 06.11.2026: employee70 pending colleague review is blocked by legacy non-waiting progress127/128 unchanged since14 October. User approved interrupting these two records while preserving history. Narrow repair tooling uses exact snapshots and verified SQLite backup; generalized timeout/recovery watchdog is a separate engine follow-up, not enabled.

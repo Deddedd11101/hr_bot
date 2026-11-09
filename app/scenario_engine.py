@@ -667,11 +667,13 @@ def resolve_scenario_recipient(
         recipient = None
 
     if mode in {RECIPIENT_MODE_MANAGER, RECIPIENT_MODE_MENTOR_ADAPTATION, RECIPIENT_MODE_MENTOR_IPR}:
+        role_label = {RECIPIENT_MODE_MANAGER: "Руководитель", RECIPIENT_MODE_MENTOR_ADAPTATION: "Наставник адаптации",
+                      RECIPIENT_MODE_MENTOR_IPR: "Наставник ИПР"}[mode]
         if recipient is None:
-            return ScenarioRecipientResolution(mode, None, None, mode, "Получатель не назначен в карточке сотрудника.")
+            return ScenarioRecipientResolution(mode, None, None, role_label, f"{role_label} не назначен в карточке сотрудника.")
         chat_id = get_primary_chat_id(recipient, db=db)
         if not chat_id:
-            return ScenarioRecipientResolution(mode, recipient.id, None, recipient.full_name or f"Employee #{recipient.id}", "У получателя не привязан Telegram.")
+            return ScenarioRecipientResolution(mode, recipient.id, None, recipient.full_name or f"Employee #{recipient.id}", f"{role_label}: не привязан или не подтверждён Telegram.")
         return ScenarioRecipientResolution(mode, recipient.id, chat_id, recipient.full_name or f"Employee #{recipient.id}")
 
     hr_settings = db.get(HrSettings, 1)
@@ -1135,7 +1137,7 @@ def _replace_template_fields(template: str, values: dict[str, str]) -> str:
 
 def resolve_employee_first_name(employee: Employee) -> str:
     explicit = (getattr(employee, "first_name", None) or "").strip()
-    if explicit:
+    if explicit and explicit.casefold() not in {"имя", "{name}", "{first_name}"}:
         return explicit
     parts = (employee.full_name or "").split()
     return parts[1] if len(parts) > 1 else (parts[0] if parts else "")

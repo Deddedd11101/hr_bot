@@ -232,6 +232,10 @@ class ScenarioEngineSmokeTests(unittest.IsolatedAsyncioTestCase):
             db.commit()
             db.refresh(employee)
             self.assertEqual(format_message(db, "{first_name}", employee, now.date(), None), "Галина")
+            for placeholder in ("ИМЯ", " имя ", "{name}", "{first_name}"):
+                employee.first_name = placeholder
+                self.assertEqual(format_message(db, "{name}", employee, now.date(), None), "Галина")
+                self.assertEqual(render_menu_text("{first_name}", employee), "Галина")
             employee.first_name = "Галя"
             db.commit()
             self.assertEqual(render_menu_text("<b>{first_name}</b> {position}", employee), "<b>Галя</b> не указана")

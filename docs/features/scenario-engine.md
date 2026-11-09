@@ -16,6 +16,14 @@ related:
 source_of_truth: true
 ---
 
+## Восстановление получателя адаптации (09.11.2026)
+
+- Missing recipient errors explicitly identify руководитель, наставник адаптации or наставник ИПР. Missing/unverified Telegram errors also retain that role.
+- Adaptation preview rechecks current recipient for failed entries with no `started_at`: after card assignment is saved the cause can be shown resolved, without changing/sending the plan on GET. `can_retry` is false until recipient requirements are satisfied and no separate pending request conflicts.
+- Explicit PATCH action `retry` queues only that failed plan item at application-local current time on a working calendar date. Revalidates owner/date/status/recipient and separate requests under the subject write lock; prior continuation/request is retired, a new request is linked, other stages unchanged. Replayed/stale attempts return409. The scheduler dispatches later and still observes busy recipient queues.
+- `started_at` excludes ambiguous delivery from quick retry: inspect messages and use deliberate rescheduling instead. No 3-hour auto-restart/completion rule is introduced.
+- Name tags `{name}` / `{first_name}` ignore explicit field placeholders `ИМЯ`, `{name}`, `{first_name}` (case-insensitive) and derive the name from ФИО. Real explicit names retain priority. Plain message text is not globally rewritten. Live diagnosis: card70 had explicit `first_name=ИМЯ`, while the scenario correctly used `{name}`.
+
 ## Управление ожидающими запусками
 
 Во вкладке «Сценарии» карточки показаны активные subject/recipient диалоги и
