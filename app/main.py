@@ -70,6 +70,7 @@ from .web.bulk_actions import (
     _format_dt,
 )
 from .web.dashboard_routes import router as dashboard_router
+from .web.catalog_groups import router as catalog_groups_router
 from .web.employee_routes import router as employee_router
 from .web.feedback_surveys import router as feedback_surveys_router
 from .web.scenario_results import router as scenario_results_router
@@ -178,6 +179,7 @@ templates = Jinja2Templates(directory="app/templates")
 
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 app.include_router(dashboard_router)
+app.include_router(catalog_groups_router)
 app.include_router(document_router)
 app.include_router(grade_router)
 app.include_router(integration_router)

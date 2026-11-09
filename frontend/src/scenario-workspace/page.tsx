@@ -1,4 +1,5 @@
 import React from "react";
+import { CatalogGroupToolbar, useCatalogGroups } from "@/components/catalog-groups";
 import { Download, History, Plus, RefreshCw, Send, Settings, X } from "lucide-react";
 
 import { Card } from "@/components/ui/card";
@@ -462,7 +463,8 @@ export function ScenarioWorkspacePage() {
       });
   }, [apiUrl, applyPayload, isSurveyWorkspace, itemLabelGenitive, routeScenarioId, selectedScenarioId, workspaceKind, workspaceRouteMode]);
 
-  const scenarios = React.useMemo(() => {
+  const grouping = useCatalogGroups();
+  const catalogItems = React.useMemo(() => {
     const items = payload?.scenarios || [];
     const filtered = items.filter((scenario) => {
       const matchesAudience = audienceFilter === "all" || scenario.employee_scope === audienceFilter;
@@ -488,6 +490,11 @@ export function ScenarioWorkspacePage() {
       return timestampValue(right.updated_at || right.created_at, right.id) - timestampValue(left.updated_at || left.created_at, left.id);
     });
   }, [audienceFilter, payload, search, sortMode]);
+  const scenarios = grouping.filter(catalogItems);
+  React.useEffect(() => {
+    const ids = new Set(grouping.filter(catalogItems).map(item => item.id));
+    setSelectedScenarioIds(prev => prev.filter(id => ids.has(id)));
+  }, [grouping.selected, grouping.data.memberships]);
 
   React.useEffect(() => {
     const availableIds = new Set((payload?.scenarios || []).map((scenario) => scenario.id));
@@ -976,7 +983,7 @@ export function ScenarioWorkspacePage() {
   };
 
   const renderScenarioCatalogSection = () => (
-    <WorkspaceCatalogSection
+    <><div className="admin-page-shell mb-4"><CatalogGroupToolbar ids={catalogItems.map(item => item.id)} /></div><WorkspaceCatalogSection
       isSurveyWorkspace={isSurveyWorkspace}
       itemNamePlaceholder={itemNamePlaceholder}
       creatingScenario={creatingScenario}
@@ -1006,7 +1013,7 @@ export function ScenarioWorkspacePage() {
       onScenarioDrop={handleScenarioDrop}
       onScenarioDragEnd={() => setDragScenarioId(null)}
       onToggleScenarioSelection={toggleScenarioSelection}
-    />
+    /></>
   );
 
   const renderCanvasSection = () => (

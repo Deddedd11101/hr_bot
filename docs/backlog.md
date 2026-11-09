@@ -23,6 +23,8 @@ related:
 source_of_truth: true
 ---
 
+- 09.11 feature/catalog-groups поверх PR188: общие одноуровневые группы сценариев/опросов и людей (одна на запись), CRUD, drag/drop и клавиатурный move; группы совместимы с поиском/фильтрами/сортировкой. Queue back → каталог сценариев. Новые additive metadata tables, без миграции runtime/status/audience. Не выложено; пользователь разрешил выкатить вместе с188 после проверок.
+
 - 09.11 feature scrollbar/login audit: source review of React scroll regions and shared primitives; common token stylesheet now covers React/login/legacy shells, dark color-scheme and native arrows, Command scrollbar visibility. Login appearance/autofill corner fix. Local light/dark login, long Select and ScrollArea checked; real saved-password autofill and other browsers not claimed. Не выложено.
 
 - 09.11 feature dashboard-scenario-queue (зависимость PR185): отдельная read-only очередь + компактная сводка; attention по ошибкам адаптации/получателя; журнал с фильтрами и переходами в карточку/сценарий/шаг. Стат-плитки и «Модули» убраны из UI, старый API сохранён. Не выложено, штатные процессы не менялись.

@@ -1,4 +1,5 @@
 import * as React from "react";
+import { GroupMoveButton, useCatalogGroups } from "@/components/catalog-groups";
 import {
   ArrowDown,
   ArrowUp,
@@ -139,6 +140,7 @@ function ItemActions({ item, внутри }: { item: EmployeeItem; внутри:
  * подписях, и вопрос решается их сокращением.
  */
 export function EmployeeCard({ item }: { item: EmployeeItem }) {
+  const grouping = useCatalogGroups();
   const isCandidate = item.list_kind === "candidates";
   const statusValue = isCandidate ? item.candidate_work_stage_label : item.status_label;
   const dateLabel = isCandidate ? item.test_task_due_at_label : item.first_workday_label;
@@ -175,11 +177,13 @@ export function EmployeeCard({ item }: { item: EmployeeItem }) {
 
   return (
     <RecordCard
+      draggable={grouping.ready && !grouping.busy}
+      onDragStart={event => grouping.startDrag(event, item.id)}
       title={item.full_name || "Без имени"}
       subtitle={item.position || "Без должности"}
       tags={чипы}
       href={item.react_edit_url || item.edit_url}
-      actions={<ItemActions item={item} внутри="card" />}
+      actions={<><GroupMoveButton objectId={item.id} name={item.full_name || "Без имени"} /><ItemActions item={item} внутри="card" /></>}
     />
   );
 }
@@ -212,7 +216,7 @@ const КОЛОНКИ: ColumnSpec[] = [
   { key: "channel", field: "channel", label: () => "Канал", width: 190 },
   { key: "date", field: "date", label: (kind) => (kind === "candidates" ? "Дедлайн" : "Выход"), width: 130 },
   { key: "scenario", field: "scenario", label: () => "Сценарий", width: 220 },
-  { key: null, field: null, label: () => "Действия", width: 64, align: "text-right", labelHidden: true },
+  { key: null, field: null, label: () => "Действия", width: 104, align: "text-right", labelHidden: true },
 ];
 
 function видимыеКолонки(columns: Record<ColumnKey, boolean>): ColumnSpec[] {
@@ -369,6 +373,7 @@ export function EmployeeTableRow({
   item: EmployeeItem;
   columns: Record<ColumnKey, boolean>;
 }) {
+  const grouping = useCatalogGroups();
   const isCandidate = item.list_kind === "candidates";
   const statusValue = isCandidate ? item.candidate_work_stage_label : item.status_label;
   const dateLabel = isCandidate ? item.test_task_due_at_label : item.first_workday_label;
@@ -390,6 +395,8 @@ export function EmployeeTableRow({
      * заливка по наведению и по фокусу внутри — обещание клика по всей строке.
      */
     <TableRow
+      draggable={grouping.ready && !grouping.busy}
+      onDragStart={event => grouping.startDrag(event, item.id)}
       className="group/row cursor-pointer focus-within:bg-muted/50"
       onClick={(event) => открытьЗаписьПоСтроке(event, href)}
     >
@@ -419,6 +426,7 @@ export function EmployeeTableRow({
         */}
       <TableCell className="sticky right-0 z-[1] bg-card px-4 py-2.5 text-right group-hover/row:bg-muted/50 group-focus-within/row:bg-muted/50">
         <div className="flex items-center justify-end">
+          <GroupMoveButton objectId={item.id} name={item.full_name || "Без имени"} />
           <ItemActions item={item} внутри="row" />
         </div>
       </TableCell>

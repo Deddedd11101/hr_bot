@@ -33,6 +33,8 @@ related:
 source_of_truth: true
 ---
 
+09.11 feature/catalog-groups: по решению пользователя группы общие для HR, одна на объект. People scope сохраняется при смене candidate/staff; scenario scope охватывает сценарии/опросы. Runtime, расписания, роли и документы не меняются. CAS защищает stale move/rename/delete; UI сохраняет search/sort/status при группировке. Зависит от PR188; подготовка к совместной выкладке, пока не выложено.
+
 09.11 feature scrollbars-login-dark: shared scrollbar CSS covers React/login/legacy pages and dark native control color-scheme. Login corners/autofill background scoped to card; no auth/backend/DB semantics changed. Local visual checks light/dark, long Select End, custom ScrollArea without double native bar passed. Saved credential autofill and cross-browser manual checks remain open. Пока не выложено.
 
 09.11 feature dashboard-scenario-queue поверх watchdog PR185: глобальная read-only очередь и новый дашборд, без перенастройки запусков/получателей/БД. Отдельные delivery facts и processed requests в журнале, ошибки адаптации в attention, ссылки к сценарию/шагу. Пока не выложено. New queue aggregation bounded500 per source with explicit truncation; не объявляется общей FIFO.

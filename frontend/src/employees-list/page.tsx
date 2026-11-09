@@ -1,4 +1,5 @@
 import * as React from "react";
+import { CatalogGroupToolbar, useCatalogGroups } from "@/components/catalog-groups";
 import {
   ArrowUpDown,
   BadgeCheck,
@@ -63,6 +64,7 @@ export function EmployeesListPage({
   defaultListKind: ListKind;
 }) {
   const [listKind, setListKind] = React.useState<ListKind>(defaultListKind);
+  const grouping = useCatalogGroups();
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState("");
   const [payload, setPayload] = React.useState<EmployeesPayload | null>(null);
@@ -134,7 +136,7 @@ export function EmployeesListPage({
   const meta = payload?.meta;
   const payloadListKind = (meta?.list_kind || listKind) as ListKind;
 
-  const visibleItems = React.useMemo(() => {
+  const filteredItems = React.useMemo(() => {
     let next = items.filter((item) => {
       const currentStatus = payloadListKind === "candidates" ? item.candidate_work_stage_label || "—" : item.status_label || "—";
       const matchesStatus = statusFilter === "all" || currentStatus === statusFilter;
@@ -199,6 +201,7 @@ export function EmployeesListPage({
 
     return next;
   }, [items, payloadListKind, search, sortMode, statusFilter]);
+  const visibleItems = grouping.filter(filteredItems);
 
   const stats = React.useMemo(() => {
     const withChannel = items.filter((item) => Boolean(item.chat_id || item.chat_handle)).length;
@@ -281,6 +284,7 @@ export function EmployeesListPage({
         }
       />
       <div className="admin-page-shell">
+        <div className="mb-4"><CatalogGroupToolbar ids={filteredItems.map(item => item.id)} /></div>
 
         <PageFilters
           className="mb-4"
@@ -428,7 +432,7 @@ export function EmployeesListPage({
                     <Users />
                   </EmptyMedia>
                   <EmptyTitle>Нет записей</EmptyTitle>
-                  <EmptyDescription>{meta?.empty_message || "Список пока пуст."}</EmptyDescription>
+                  <EmptyDescription>{grouping.selected !== "all" ? "В выбранной группе нет записей, подходящих под фильтры." : meta?.empty_message || "Список пока пуст."}</EmptyDescription>
                 </EmptyHeader>
               </Empty>
             ) : (

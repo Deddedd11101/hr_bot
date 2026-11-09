@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from typing import Optional
 
-from sqlalchemy import Boolean, CheckConstraint, Date, DateTime, Float, Index, Integer, String, Text, UniqueConstraint, text
+from sqlalchemy import Boolean, CheckConstraint, Date, DateTime, Float, ForeignKeyConstraint, Index, Integer, String, Text, UniqueConstraint, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .database import Base
@@ -14,6 +14,26 @@ class ScenarioBootstrapState(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     initialized_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utc_now)
     mode: Mapped[str] = mapped_column(String(16), nullable=False)
+
+
+class CatalogGroup(Base):
+    __tablename__ = "catalog_groups"
+    __table_args__ = (UniqueConstraint("scope", "normalized_name"), UniqueConstraint("scope", "id"),
+                      CheckConstraint("scope IN ('people', 'scenarios')"), {"sqlite_autoincrement": True})
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    scope: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(80), nullable=False)
+    normalized_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    revision: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+
+
+class CatalogMembership(Base):
+    __tablename__ = "catalog_memberships"
+    __table_args__ = (ForeignKeyConstraint(["scope", "group_id"], ["catalog_groups.scope", "catalog_groups.id"], ondelete="CASCADE"),
+                      CheckConstraint("scope IN ('people', 'scenarios')"))
+    scope: Mapped[str] = mapped_column(String(16), primary_key=True)
+    object_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    group_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
 
 
 class AdaptationPlanTemplate(Base):

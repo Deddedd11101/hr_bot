@@ -1,4 +1,5 @@
 import * as React from "react";
+import { GroupMoveButton, useCatalogGroups } from "@/components/catalog-groups";
 import { ChevronRight, Copy, PanelLeft, Paperclip, Plus, Send, Trash2, X } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -331,6 +332,7 @@ export function WorkspaceCatalogSection(props: {
   onScenarioDragEnd: () => void;
   onToggleScenarioSelection: (scenarioId: number) => void;
 }) {
+  const grouping = useCatalogGroups();
   const {
     isSurveyWorkspace,
     itemNamePlaceholder,
@@ -532,6 +534,7 @@ export function WorkspaceCatalogSection(props: {
             subtitle={scenario.description || "Без описания"}
             tags={теги}
             href={адресЗаписи(scenario.id)}
+            actions={<GroupMoveButton objectId={scenario.id} name={scenario.title} />}
             onOpen={(event) => {
               if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
               event.preventDefault();
@@ -544,6 +547,7 @@ export function WorkspaceCatalogSection(props: {
             dropTarget={isDropTarget}
             draggable
             onDragStart={(event) => {
+              grouping.startDrag(event, scenario.id);
               event.dataTransfer.effectAllowed = "move";
               setWorkspaceDragImage(event, {
                 title: scenario.title,
@@ -590,6 +594,7 @@ export function WorkspaceCatalogSection(props: {
       {/* Создание записи — не фильтр, поэтому идёт под полосой, а не в ней. */}
       {формаСоздания ? <div className="mb-4">{формаСоздания}</div> : null}
       {сообщение}
+      {!scenarios.length && <p className="py-6 text-sm text-muted-foreground">Нет записей по выбранным условиям.</p>}
       {карточки}
       {панельВыделения}
     </div>

@@ -15,6 +15,12 @@ related:
 source_of_truth: true
 ---
 
+## Организационные группы
+
+- `catalog_groups`: id, scope (`people`/`scenarios`), name, normalized_name, revision. Unique(scope, normalized_name), composite unique(scope,id), scope check, SQLite AUTOINCREMENT предотвращает повторное использование удалённого group id для stale drop target. Отдельные additive tables через Base.metadata.create_all; старые строки Employee/ScenarioTemplate не изменяются и не backfill-ятся.
+- `catalog_memberships`: composite PK(scope, object_id) гарантирует одну группу; group_id индексирован, composite FK(scope,group_id) → catalog_groups(scope,id), scope check. Полиморфный object_id проверяется API по Employee/ScenarioTemplate; cleanup в central delete helpers предотвращает наследование membership при переиспользовании id. Прямой SQL вне API должен сохранять этот инвариант; SQLite FK enforcement не считается единственной защитой.
+- Группа не является статусом, должностью, назначением, security audience или runtime ownership. Удаление группы очищает только metadata membership. Импорт/экспорт сценариев не переносит группы между средами; это UI-каталог, не сценарный контракт запуска.
+
 ## Runtime watchdog
 
 `scenario_progress.watchdog_alert_key`: nullable string64, fingerprint последнего
