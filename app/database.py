@@ -802,6 +802,12 @@ def _ensure_sqlite_schema() -> None:
         flow_launch_columns = {
             row[1] for row in conn.execute(text("PRAGMA table_info(flow_launch_requests)")).fetchall()
         }
+        if flow_launch_columns and "requested_by_account_id" not in flow_launch_columns:
+            conn.execute(text("ALTER TABLE flow_launch_requests ADD COLUMN requested_by_account_id INTEGER"))
+        event_columns = {row[1] for row in conn.execute(text("PRAGMA table_info(onboarding_events)")).fetchall()}
+        for column in ("scenario_title", "step_title"):
+            if event_columns and column not in event_columns:
+                conn.execute(text(f"ALTER TABLE onboarding_events ADD COLUMN {column} TEXT"))
         if flow_launch_columns and "skip_step_key" not in flow_launch_columns:
             conn.execute(text("ALTER TABLE flow_launch_requests ADD COLUMN skip_step_key TEXT"))
         if flow_launch_columns and "launch_type" not in flow_launch_columns:

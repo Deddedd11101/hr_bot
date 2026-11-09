@@ -10,6 +10,7 @@ from sqlalchemy import text
 from .models import (
     AdminAccount, Employee, EmployeeAssignmentHistory, EmployeeFile, EmployeeHrNote,
     EmployeeManualBotMessage, FlowLaunchRequest, GradeAssessment, OnboardingEvent,
+    FlowStepTemplate, ScenarioTemplate,
 )
 
 
@@ -19,7 +20,7 @@ KINDS = [
     {"value": "message", "label": "Ручные сообщения"},
     {"value": "file", "label": "Файлы"},
     {"value": "launch", "label": "Запросы запуска"},
-    {"value": "onboarding", "label": "Онбординг"},
+    {"value": "onboarding", "label": "Сообщения сценариев"},
     {"value": "assignment", "label": "Назначения"},
     {"value": "grade", "label": "Grade"},
 ]
@@ -54,6 +55,10 @@ def page_payload(items: list, total: int, page: int, page_size: int) -> dict:
 def employee_activity(db: Session, employee_id: int, page: int, page_size: int, kind: str) -> dict:
     events = []
     actors = {}
+    scenarios = {row.scenario_key: row.title for row in db.query(ScenarioTemplate).all()}
+    steps = {}
+    for step in db.query(FlowStepTemplate).all():
+        steps.setdefault(step.step_key, []).append(step)
 
     def actor(account_id):
         if account_id is None:
@@ -63,10 +68,10 @@ def employee_activity(db: Session, employee_id: int, page: int, page_size: int, 
             actors[account_id] = (account.login or None) if account else None
         return actors[account_id]
 
-    def add(source, row, at, event_kind, label, detail=None, account_id=None, suffix=""):
+    def add(source, row, at, event_kind, label, detail=None, account_id=None, suffix="", actor_label=None):
         if at is not None:
             events.append({"id": f"{source}:{row.id}{suffix}", "occurred_at": utc_datetime(at).isoformat(),
-                           "kind": event_kind, "label": label, "detail": detail, "actor": actor(account_id)})
+                           "kind": event_kind, "label": label, "detail": detail, "actor": actor_label or actor(account_id)})
 
     def rows(model, column=None):
         return db.query(model).filter((column if column is not None else model.employee_id) == employee_id).all()
@@ -94,14 +99,31 @@ def employee_activity(db: Session, employee_id: int, page: int, page_size: int, 
         for row in rows(FlowLaunchRequest):
             # requested_at is a scheduled target, not a creation timestamp.
             if row.processed_at:
-                add("launch", row, row.processed_at, "launch", "Запрос запуска обработан", row.flow_key)
+                launch_label = {"manual": "Ручной запуск", "scheduled": "Запуск по расписанию",
+                    "adaptation_plan": "Запуск по плану адаптации", "status_transition": "Запуск по смене этапа",
+                    "registration": "Запуск при регистрации"}.get(row.launch_type, "Системный запрос запуска")
+                initiator = actor(row.requested_by_account_id)
+                automatic = row.launch_type not in {"manual", "scheduled", "adaptation_plan"}
+                add("launch", row, row.processed_at, "launch", f"{launch_label}: запрос обработан",
+                    scenarios.get(row.flow_key, "Сценарий удалён или недоступен"),
+                    actor_label=initiator or ("Система" if automatic else "Инициатор не сохранён (старая запись)"))
     if kind in ("all", "onboarding", "launch"):
         for row in rows(OnboardingEvent):
             if row.sent_at:
                 if row.event_key == "scenario_queue_action" and kind != "onboarding":
                     add("onboarding", row, row.sent_at, "launch", "Управление очередью сценариев", row.message)
                 elif row.event_key != "scenario_queue_action" and kind != "launch":
-                    add("onboarding", row, row.sent_at, "onboarding", "Событие онбординга отправлено", row.event_key)
+                    candidates = steps.get(row.event_key, [])
+                    step = candidates[0] if len(candidates) == 1 else None
+                    title = row.scenario_title or (scenarios.get(step.flow_key) if step else None)
+                    step_title = row.step_title or (step.step_title if step else None)
+                    detail = "\n".join(filter(None, [
+                        f"Сценарий: {title}" if title else "Название сценария не сохранено (старая запись)",
+                        f"Шаг: {step_title}" if step_title else None,
+                        row.message,
+                    ]))
+                    add("onboarding", row, row.sent_at, "onboarding", "Сообщение сценария отправлено", detail,
+                        actor_label="Бот")
     if kind in ("all", "assignment"):
         for row in rows(EmployeeAssignmentHistory, EmployeeAssignmentHistory.subject_employee_id):
             detail = f"{row.assignment_role}: #{row.assigned_employee_id}"

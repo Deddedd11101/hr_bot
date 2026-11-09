@@ -343,7 +343,8 @@ async def launch_flow(
     employee = db.get(Employee, employee_id)
     if not employee:
         return RedirectResponse(url="/employees", status_code=status.HTTP_303_SEE_OTHER)
-    error_message = await _launch_employee_flow_now(db, employee, flow_key=flow_key)
+    error_message = await _launch_employee_flow_now(db, employee, flow_key=flow_key,
+        requested_by_account_id=getattr(getattr(request.state, "current_user", None), "id", None))
     if error_message:
         return _employee_edit_redirect(employee_id, error_message, "error")
     return _employee_edit_redirect(employee_id, "Сценарий успешно запущен.", "success")
@@ -368,6 +369,7 @@ def schedule_flow(
         employee,
         flow_key=flow_key,
         requested_at=requested_at,
+        requested_by_account_id=getattr(getattr(request.state, "current_user", None), "id", None),
     )
     if error_message:
         return _employee_edit_redirect(employee_id, error_message, "error")
@@ -880,6 +882,7 @@ def schedule_employee_flow_api(
         employee,
         flow_key=str(payload.get("flow_key") or ""),
         requested_at=str(payload.get("requested_at") or ""),
+        requested_by_account_id=getattr(getattr(request.state, "current_user", None), "id", None),
     )
     if error_message:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=error_message)
@@ -925,6 +928,7 @@ async def launch_flow_api(
         db,
         employee,
         flow_key=str(payload.get("flow_key") or ""),
+        requested_by_account_id=getattr(getattr(request.state, "current_user", None), "id", None),
     )
     if error_message:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=error_message)

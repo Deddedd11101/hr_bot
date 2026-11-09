@@ -131,7 +131,8 @@ class EmployeeMaintenanceTests(unittest.TestCase):
         self.assertEqual(first["total"], 7)
         self.assertTrue(all(item["occurred_at"].endswith("+00:00") for item in first["items"]))
         self.assertEqual([item["id"] for item in first["items"]], sorted((item["id"] for item in first["items"]), reverse=True))
-        self.assertTrue(all(item["actor"] is None for item in first["items"] if item["kind"] in ("file", "launch", "onboarding")))
+        self.assertTrue(all(item["actor"] is None for item in first["items"] if item["kind"] == "file"))
+        self.assertEqual(next(item["actor"] for item in first["items"] if item["kind"] == "onboarding"), "Бот")
         self.assertNotIn("future", str(first))
         filtered = self.client.get(path + "?kind=note&page_size=1&page=2", headers=self.auth).json()
         self.assertEqual((filtered["total"], filtered["pages"], len(filtered["items"])), (2, 2, 1))
@@ -244,6 +245,53 @@ class EmployeeMaintenanceTests(unittest.TestCase):
         for item in history["items"]:
             self.assertEqual(item["actor"], None if item["id"].endswith((":ended", ":finalized", ":archived")) else "operator")
         self.assertEqual(employee_activity(self.db, 1, 1, 20, "grade")["total"], 3)
+
+    def test_scenario_history_uses_snapshots_and_recorded_launch_source(self):
+        self.db.add_all([
+            OnboardingEvent(employee_id=1, scheduled_at=self.at, sent_at=self.at,
+                event_key="scenario_opaque_step_123", message="Привет!",
+                scenario_title="Первый день", step_title="Приветствие"),
+            FlowLaunchRequest(employee_id=1, flow_key="deleted", requested_at=self.at,
+                processed_at=self.at, launch_type="adaptation_plan", requested_by_account_id=1),
+        ])
+        self.db.commit()
+        items = employee_activity(self.db, 1, 1, 20, "all")["items"]
+        message = next(item for item in items if item["kind"] == "onboarding")
+        self.assertEqual(message["actor"], "Бот")
+        self.assertIn("Сценарий: Первый день", message["detail"])
+        self.assertIn("Шаг: Приветствие", message["detail"])
+        self.assertNotIn("scenario_opaque", message["detail"])
+        launch = next(item for item in items if item["kind"] == "launch")
+        self.assertIn("по плану адаптации", launch["label"])
+        self.assertEqual(launch["actor"], "operator")
+
+    def test_legacy_scenario_history_does_not_invent_name_or_initiator(self):
+        self.db.add_all([
+            OnboardingEvent(employee_id=1, scheduled_at=self.at, sent_at=self.at,
+                event_key="deleted_step", message="Старый текст"),
+            FlowLaunchRequest(employee_id=1, flow_key="deleted", requested_at=self.at,
+                processed_at=self.at, launch_type="manual"),
+        ])
+        self.db.commit()
+        items = employee_activity(self.db, 1, 1, 20, "all")["items"]
+        self.assertTrue(any("старая запись" in (item["detail"] or "") for item in items))
+        self.assertTrue(any(item["actor"] == "Инициатор не сохранён (старая запись)" for item in items))
+
+    def test_history_schema_patch_is_additive_and_idempotent(self):
+        self.db.close()
+        with self.engine.begin() as conn:
+            conn.execute(text("ALTER TABLE flow_launch_requests DROP COLUMN requested_by_account_id"))
+            conn.execute(text("ALTER TABLE onboarding_events DROP COLUMN scenario_title"))
+            conn.execute(text("ALTER TABLE onboarding_events DROP COLUMN step_title"))
+        with patch("app.database.engine", self.engine):
+            _ensure_sqlite_schema()
+            _ensure_sqlite_schema()
+        self.db = Session(self.engine)
+        self.db.add(OnboardingEvent(employee_id=1, scheduled_at=self.at, event_key="old", message="old"))
+        self.db.commit()
+        event = self.db.query(OnboardingEvent).one()
+        self.assertIsNone(event.scenario_title)
+        self.assertIsNone(event.step_title)
 
     def test_legacy_schema_adds_nullable_deletion_columns_idempotently(self):
         self.seed_records()

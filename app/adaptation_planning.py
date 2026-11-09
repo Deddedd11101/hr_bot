@@ -12,7 +12,7 @@ from .config import settings
 from .models import AdaptationPlanTemplate, Employee, EmployeeAdaptationPlanItem, FlowLaunchRequest, ProductionCalendarVersion, ProductionCalendarYear, ScenarioProgress, ScenarioTemplate
 from .positions import position_matches_scope
 from .time_utils import default_adaptation_end
-from .scenario_engine import matches_role_scope
+from .scenario_engine import matches_role_scope, resolve_scenario_recipient, get_scenario_steps, INTERACTIVE_RESPONSE_TYPES
 
 
 def default_entries() -> list[dict]:
@@ -163,6 +163,13 @@ def build_preview(db: Session, employee: Employee) -> dict:
         previous_completed = bool(progress and progress.is_completed)
         request = db.get(FlowLaunchRequest, item.launch_request_id) if item and item.launch_request_id else None
         item_status = "cancelled" if item and item.status in {"planned", "blocked"} and not request else item.status if item else None
+        recipient = resolve_scenario_recipient(db, employee, scenario, requires_response=any(
+            step.response_type in INTERACTIVE_RESPONSE_TYPES for step in get_scenario_steps(db, scenario.scenario_key))) if scenario else None
+        safe_retry = bool(item and item.status == "failed" and item.started_at is None and scenario
+                          and not employee.is_bot_blocked and matches_role_scope(employee, scenario))
+        last_error = item.last_error if item else None
+        if safe_retry:
+            last_error = recipient.error if recipient and recipient.error else "Причина запуска устранена. Можно повторить запуск."
         anchor_entry = by_key.get(entry["anchor"])
         anchor_scenario = scenarios.get(anchor_entry["scenario_key"]) if anchor_entry else None
         anchor_label = "первый рабочий день" if entry["anchor"] == "first" else "конец адаптации" if entry["anchor"] == "end" else anchor_scenario.title if anchor_scenario else entry["anchor"]
@@ -173,7 +180,9 @@ def build_preview(db: Session, employee: Employee) -> dict:
                      "past": bool(planned and planned <= local_now()), "conflict_ids": conflicts, "previous_completed": previous_completed,
                      "item_id": item.id if item else None, "status": item_status or ("previously_completed" if previous_completed else "not_planned"),
                      "requested_at": item.requested_at.isoformat(timespec="minutes") if item else "", "manual_date": item.manual_date if item else False,
-                     "last_error": item.last_error if item else None})
+                     "last_error": last_error, "recipient_role": recipient.mode if recipient else None,
+                     "recipient_error": recipient.error if recipient else None,
+                     "can_retry": safe_retry and not conflicts and bool(recipient and not recipient.error)})
     for key, item in items.items():
         if key not in visible_keys:
             rows.append({"key": key, "scenario_key": item.flow_key, "title": item.title, "rule": None,

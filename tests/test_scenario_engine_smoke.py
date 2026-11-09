@@ -216,7 +216,7 @@ class ScenarioEngineSmokeTests(unittest.IsolatedAsyncioTestCase):
                 "ФИО: Антон Востриков; должность: Аналитик; первый день: 01.09.2026",
             )
 
-    def test_first_name_derives_from_fio_unless_explicit(self) -> None:
+    def test_first_name_derives_only_from_fio(self) -> None:
         init_db()
         now = datetime.now(UTC).replace(tzinfo=None)
         with SessionLocal() as db:
@@ -232,9 +232,19 @@ class ScenarioEngineSmokeTests(unittest.IsolatedAsyncioTestCase):
             db.commit()
             db.refresh(employee)
             self.assertEqual(format_message(db, "{first_name}", employee, now.date(), None), "Галина")
+            for placeholder in ("ИМЯ", " имя ", "{name}", "{first_name}"):
+                employee.first_name = placeholder
+                self.assertEqual(format_message(db, "{name}", employee, now.date(), None), "Галина")
+                self.assertEqual(render_menu_text("{first_name}", employee), "Галина")
             employee.first_name = "Галя"
             db.commit()
-            self.assertEqual(render_menu_text("<b>{first_name}</b> {position}", employee), "<b>Галя</b> не указана")
+            self.assertEqual(render_menu_text("<b>{first_name}</b> {position}", employee), "<b>Галина</b> не указана")
+            employee.full_name = "Востриков Антон Сергеевич"
+            self.assertEqual(format_message(db, "{name}", employee, now.date(), None), "Антон")
+            employee.full_name = "Антон"
+            self.assertEqual(render_menu_text("{first_name}", employee), "Антон")
+            employee.full_name = ""
+            self.assertEqual(render_menu_text("{first_name}", employee), "")
 
     def test_format_message_uses_safe_fallbacks_for_empty_employee_tags(self) -> None:
         init_db()

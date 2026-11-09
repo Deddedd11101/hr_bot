@@ -14,6 +14,14 @@ related:
 source_of_truth: true
 ---
 
+## История сценариев карточки (09.11.2026)
+
+`GET /api/employees/{employee_id}/activity` показывает снимки названий сценария/шага и отправленный текст вместо технического event_key. Старые записи могут использовать текущее название только при однозначном совпадении step_key; иначе явно показывают отсутствие сохранённого названия. Сообщение отправляет «Бот», запись обработанного запроса отдельно показывает ручной/плановый/автоматический источник и сохранённого инициатора. Исторический неизвестный инициатор не выводится как выдуманный пользователь. Обработка запроса не означает успешную доставку.
+
+### Adaptation recipient recovery (09.11.2026)
+
+`GET /api/employees/{employee_id}/adaptation-plan` adds `recipient_role`, `recipient_error` and `can_retry` for configured stages. Failed preflight descriptions are recalculated from current assignments without writes. `PATCH /api/employees/{employee_id}/adaptation-plan/{item_id}` accepts `{action: "retry", expected_at: "..."}` only for failed items with no delivery start. Revalidates recipient, status/date, separate pending requests and working date; creates a due launch request, does not send inline or change other plan entries. Stale/started/missing-recipient/conflict cases return409; unavailable calendar/working date returns422. Existing explicit date rescheduling remains available.
+
 ### Grade rubric payload extension (06.11.2026)
 
 Existing authenticated `POST /api/grades/import` accepts optional `specialization.assessment_intro`, `specialization.open_questions` and per-skill `rubric` (`levels` keys1..4, `na`). Dry-run reports `rubric_changed` and `guidance_changes`; fingerprint includes the incoming guidance and stored catalog. `GET /api/grades/workspace` exposes nullable `assessment_guidance_json` on specializations; ordinary catalog-item writes cannot set that raw field. Review score payloads add optional `rubric`, review previews add `assessment_intro`/`default_open_questions`. Collection creation defaults omitted `open_questions` to the specialization template; explicit[] disables them. Old frozen assessment/collection payloads remain unchanged.
