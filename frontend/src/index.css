@@ -301,7 +301,7 @@
   select:-webkit-autofill:focus {
     -webkit-text-fill-color: var(--foreground);
     caret-color: var(--foreground);
-    box-shadow: 0 0 0 1000px var(--background) inset !important;
+    box-shadow: 0 0 0 1000px var(--autofill-background, var(--background)) inset !important;
     transition: background-color 999999s ease-out;
   }
 }
@@ -361,35 +361,8 @@
     scrollbar-gutter: stable;
   }
 
-  /* Keep native popup/textarea/page scrollers on the ScrollArea visual tokens.
-   * Do not replace the scroller owned by Select: its focus/scroll arrows depend on it. */
-  * {
-    scrollbar-color: var(--border) transparent;
-    scrollbar-width: thin;
-  }
-
-  @supports selector(::-webkit-scrollbar) {
-    * { scrollbar-color: auto; scrollbar-width: auto; }
-
-    *::-webkit-scrollbar { width: 0.625rem; height: 0.625rem; }
-    *::-webkit-scrollbar-track, *::-webkit-scrollbar-corner { background: transparent; }
-
-    *::-webkit-scrollbar-thumb {
-      background-color: var(--border);
-      border: 1px solid transparent;
-      border-radius: var(--radius-full);
-      background-clip: padding-box;
-    }
-
-    *::-webkit-scrollbar-thumb:hover {
-      background-color: color-mix(in oklch, var(--muted-foreground) 40%, transparent);
-    }
-  }
-
-  @media (forced-colors: active) {
-    * { scrollbar-color: auto; scrollbar-width: auto; }
-    *::-webkit-scrollbar { width: revert; height: revert; }
-    *::-webkit-scrollbar-thumb { background: revert; border: revert; border-radius: revert; }
+  .login-form {
+    --autofill-background: var(--card);
   }
 
   .scenario-graph-shell {

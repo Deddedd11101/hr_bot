@@ -85,6 +85,8 @@ source_of_truth: true
 
 ## Scroll Regions
 
+- Shared scrollbar stylesheet is `app/static/scrollbars.css`, loaded by React, login and legacy template shells. It owns root light/dark `color-scheme`, token-based native thumbs and hides WebKit scrollbar buttons. Do not duplicate these rules in Vite index.css. Command lists retain a visible styled scrollbar; Base UI ScrollArea viewports still hide their native bar to avoid duplicates.
+- Login inputs use appearance-none/padding-box clipping; autofill uses the card surface token rather than page background. Focus ring, autocomplete and browser password-manager behavior remain enabled. OS/password-manager popups are not DOM-controlled surfaces.
 - Native page, dialog, table, textarea and popup scrollbars use the same border/hover tokens and rounded 10px track geometry as `ScrollArea`; Firefox uses its thin native equivalent. Forced-colors mode retains system rendering.
 - Keep Base UI Select's own list as the scrolling element so keyboard navigation, selected-item positioning and scroll arrows retain their behavior. Styling only the outer popup does not cover its inner list.
 - Employee grade reviewer lists use `ScrollArea`; adaptation rule choices use the shared `Select`. Intentional scrollbar hiding inside these primitives must not be overridden by global styles.

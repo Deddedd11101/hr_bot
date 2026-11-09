@@ -1,0 +1,41 @@
+/* Match native scrollers to ScrollArea without replacing control-owned viewports. */
+:root {
+    color-scheme: light;
+    --app-scrollbar-thumb: var(--border, #c5c8cc);
+    --app-scrollbar-hover: color-mix(in oklch, var(--muted-foreground, #62666d) 40%, transparent);
+}
+
+:root.dark {
+    color-scheme: dark;
+    --app-scrollbar-thumb: var(--border, #45494f);
+    --app-scrollbar-hover: color-mix(in oklch, var(--muted-foreground, #a5abb4) 40%, transparent);
+}
+
+* {
+    scrollbar-color: var(--app-scrollbar-thumb) transparent;
+    scrollbar-width: thin;
+}
+
+@supports selector(::-webkit-scrollbar) {
+    * { scrollbar-color: auto; scrollbar-width: auto; }
+    *::-webkit-scrollbar { width: 0.625rem; height: 0.625rem; }
+    *::-webkit-scrollbar-track,
+    *::-webkit-scrollbar-corner { background: transparent; }
+    *::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
+    *::-webkit-scrollbar-thumb {
+        background-color: var(--app-scrollbar-thumb);
+        border: 1px solid transparent;
+        border-radius: var(--radius-full, 999px);
+        background-clip: padding-box;
+    }
+    *::-webkit-scrollbar-thumb:hover { background-color: var(--app-scrollbar-hover); }
+}
+
+/* System high-contrast mode owns native controls and must remain legible. */
+@media (forced-colors: active) {
+    :root, :root.dark { color-scheme: light dark; }
+    * { scrollbar-color: auto; scrollbar-width: auto; }
+    *::-webkit-scrollbar { width: revert; height: revert; }
+    *::-webkit-scrollbar-button { display: revert; width: revert; height: revert; }
+    *::-webkit-scrollbar-thumb { background: revert; border: revert; border-radius: revert; }
+}
