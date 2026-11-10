@@ -11,6 +11,27 @@ related:
 source_of_truth: true
 ---
 
+## 10.11.2026 — транзакционный допуск root-сценариев
+
+- PR #196 выложен на `c069fdfadcd014aa55559ed854fb14ba1dfc2068`:
+  Deploy Stage `42804122647` success, Stage Diagnostics `42804232721` success.
+  Combined CI `42803486417`:655 tests и frontend passed. Итоговый stage tree
+  совпал с проверенным feature tree. Main workflow deploy preflight использует
+  smoke subset; полный suite подтверждён отдельным CI пакета.
+- Verified backup `backups/hr_bot.before-deploy.20261110-110333.db`, snapshot
+  `backups/scenarios.before-deploy.20261110-110333.json`; configuration fingerprint
+  unchanged. Web поднялся после стандартного startup wait, финальные HTTP303.
+- Diagnostics подтвердил exact SHA, web/worker/WireGuard/Caddy active,
+  HTTPS employees/flows/grades303, Telegram connectivity/identity gates passed,
+  fresh worker log gate passed,0 failing checks.
+- Root start_scenario admission теперь сериализуется SQLite-транзакцией:
+  активный progress не сбрасывается повторным стартом; pre-I/O busy сохраняет
+  durable источники pending/blocked. После неопределённой отправки авто-replay
+  не включается. Schema и персональные настройки/расписания не менялись.
+- Агент не запускал реальные Telegram-сценарии вручную. Приёмка доставки,
+  диалогов и Excel остаётся открыта. Прямые legacy send_step jobs, HR-only
+  адресаты без employee row и полная FIFO всех источников вне этого среза.
+
 ## 06.11.2026 — финальные критерии оценки навыков
 
 - PR #181 CI `42208703975` passed; deployed runtime
