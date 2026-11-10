@@ -92,11 +92,13 @@ def queue_rows(db):
             item.requested_at.replace(tzinfo=ZoneInfo(settings.TIMEZONE)).astimezone(UTC).replace(tzinfo=None), "План адаптации", title=item.title)
 
     feedback = bounded(db.query(EmployeeFeedbackRecipient, EmployeeFeedbackRun).join(EmployeeFeedbackRun,
-        EmployeeFeedbackRun.id == EmployeeFeedbackRecipient.run_id).filter(EmployeeFeedbackRecipient.delivery_status == "pending").order_by(EmployeeFeedbackRun.created_at))
+        EmployeeFeedbackRun.id == EmployeeFeedbackRecipient.run_id).filter(EmployeeFeedbackRecipient.delivery_status.in_(["pending", "starting", "failed"])).order_by(EmployeeFeedbackRun.created_at))
     for recipient, run in feedback:
         blocker = busy.get(recipient.respondent_employee_id)
+        attention = recipient.delivery_status in {"starting", "failed"}
         add(f"feedback:{recipient.id}", run.subject_employee_id, run.scenario_key,
-            "blocked" if blocker else "queued", f"Оценивающий занят диалогом №{blocker.id}" if blocker else "Ожидает отправки опрашиваемому",
+            "attention" if attention else "blocked" if blocker else "queued",
+            "Проверьте результат доставки; автоматический повтор отключён" if attention else f"Оценивающий занят диалогом №{blocker.id}" if blocker else "Ожидает отправки опрашиваемому",
             run.created_at, "Сбор оценок / обратной связи", recipient.respondent_employee_id, run.scenario_title)
 
     deliveries = bounded(db.query(MassScenarioRecipient, MassScenarioAction).join(MassScenarioAction,

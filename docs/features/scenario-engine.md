@@ -16,6 +16,27 @@ related:
 source_of_truth: true
 ---
 
+## Общая отправка сбора оценок и ОС (10.11.2026)
+
+Новые сборы ОС из карточки (`queued_delivery=true`) используют существующий
+Grade recipient dispatcher. API немедленно обрабатывает только созданный run;
+свободные коллеги получают опрос, занятые остаются pending без ошибки409.
+Scheduler продолжает их в следующих scans. Порядок внутри этого источника:
+created_at запуска, run ID, recipient ID. Это ещё не общий порядок с mass/flow.
+
+Перед попыткой повторно проверяются доступность subject/respondent, Telegram,
+аудитория и self-режим survey/grade_review. Conditional claim pending→starting
+и first-step snapshot предшествуют I/O. Ошибка сохраняет starting, не закрывает
+progress и не вызывает автоматического повтора. Общая очередь и карточка
+отличают pending от requiring-check starting. История, frozen Grade матрица,
+открытые ответы, feedback_run_id и XLSX запусков не меняются.
+
+Старые standalone runs получают queued_delivery=false, не подхватываются
+автоматически. Grade collections/actions продолжают работать по их собственному
+open/started lifecycle независимо от этого флага; закрытый сбор не оживает.
+Rollback на предыдущий worker оставит новые standalone pending ожидать,
+но сам по себе не отправит их повторно.
+
 ## Поадресная очередь плановых рассылок (10.11.2026)
 
 Новые scheduled MassScenarioAction используют recipient ledger. При первом due

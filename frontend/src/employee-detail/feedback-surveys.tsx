@@ -10,7 +10,7 @@ type Recipient = { id: number; full_name: string; position: string; available: b
 type FeedbackPayload = {
     surveys: Array<{ key: string; title: string; eligible_recipient_ids: number[] }>;
     recipients: Recipient[];
-    runs: Array<{ id: number; title: string; created_at: string; recipient_count: number; completed_count: number; failed_count: number; answer_count: number; download_url: string | null }>;
+    runs: Array<{ id: number; title: string; created_at: string; recipient_count: number; completed_count: number; failed_count: number; pending_count: number; starting_count: number; answer_count: number; download_url: string | null }>;
     answer_count: number;
     download_url: string | null;
 };
@@ -69,7 +69,9 @@ export function EmployeeFeedbackSurveys({ employeeId, legacyUrl }: { employeeId:
             setSelectedIds([]);
             setSelectedPositions([]);
             const failedCount = (next as FeedbackPayload).runs[0]?.failed_count || 0;
-            setNotice(failedCount ? `Не удалось отправить опрос ${failedCount} сотрудникам. Проверьте их связь с ботом.` : "Опрос запущен. Ответы появятся в общем файле после прохождения.");
+            const pendingCount = (next as FeedbackPayload).runs[0]?.pending_count || 0;
+            const startingCount = (next as FeedbackPayload).runs[0]?.starting_count || 0;
+            setNotice(startingCount ? "Результат части отправок требует проверки. Не запускайте сбор повторно." : failedCount ? `Не удалось отправить опрос ${failedCount} сотрудникам. Проверьте их связь с ботом.` : pendingCount ? `Опрос принят. В очереди: ${pendingCount}; отправится после освобождения диалога.` : "Опрос запущен. Ответы появятся в общем файле после прохождения.");
         } catch (cause) {
             setError(cause instanceof Error ? cause.message : "Не удалось запустить опрос.");
         } finally {
@@ -89,7 +91,7 @@ export function EmployeeFeedbackSurveys({ employeeId, legacyUrl }: { employeeId:
                 </div> : null}
                 {payload.runs.length ? <div className="space-y-2 text-sm text-muted-foreground">
                     {payload.runs.map(run => <div key={run.id} className="flex flex-wrap items-center justify-between gap-2">
-                        <p>{run.title}: {run.completed_count} из {run.recipient_count} завершили{run.failed_count ? `, ошибок отправки: ${run.failed_count}` : ""} · {new Date(run.created_at).toLocaleString("ru-RU")}</p>
+                        <p>{run.title}: {run.completed_count} из {run.recipient_count} завершили{run.pending_count ? `, в очереди: ${run.pending_count}` : ""}{run.starting_count ? `, проверить доставку: ${run.starting_count}` : ""}{run.failed_count ? `, ошибок отправки: ${run.failed_count}` : ""} · {new Date(run.created_at).toLocaleString("ru-RU")}</p>
                         {run.download_url ? (
                             <a className={buttonVariants({ variant: "outline", size: "sm" })} href={run.download_url}>
                                 <Download aria-hidden="true" /> Ответы (.xlsx)

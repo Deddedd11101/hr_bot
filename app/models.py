@@ -1207,6 +1207,7 @@ class EmployeeFeedbackRun(Base):
     scenario_key: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     scenario_title: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    queued_delivery: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=text("0"))
 
 
 class EmployeeFeedbackRecipient(Base):

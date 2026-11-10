@@ -33,6 +33,12 @@ related:
 source_of_truth: true
 ---
 
+10.11 feature/feedback-recipient-queue поверх PR192: общий recipient dispatcher
+для Grade и новых standalone ОС из карточки. Занятые адресаты ожидают без409,
+свободные получают опрос сразу. Старые runs не replay-ятся; неопределённая
+доставка сохраняет starting/progress для проверки. UI показывает pending/starting.
+Пока не выложено, требуется DB/runtime review и интеграционный CI.
+
 10.11 feature/mass-scenario-recipient-queue поверх PR191: новые плановые массовые
 запуски получают durable snapshot и индивидуальные статусы адресатов. Ожидающие
 не теряются при частичном старте; неопределённая отправка не повторяется.

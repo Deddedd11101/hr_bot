@@ -12,6 +12,7 @@ from openpyxl import load_workbook
 from app.auth import authenticate_account, create_admin_session_token
 from app.database import SessionLocal, init_db
 from app.main import AUTH_COOKIE_NAME, app
+from app.grades.collections import process_pending
 from app.models import Employee, EmployeeFeedbackRecipient, EmployeeFeedbackRun, FlowStepTemplate, ScenarioProgress, ScenarioTemplate, SurveyAnswer
 from app.scenario_engine import get_or_create_progress, handle_text_response, start_scenario
 from app.web.employees import _delete_employee_active_scenario_runtime_state, _delete_employee_record
@@ -132,13 +133,15 @@ class EmployeeFeedbackSurveyTests(TestCase):
         self.assertEqual(len(saved_rows), 4)
         self.assertEqual({row[3] for row in saved_rows[1:]}, {"Как работает Анна Объект, Дизайнер?"})
 
-    def test_active_progress_rejects_launch_without_replacing_answers(self):
+    def test_active_progress_queues_next_launch_without_replacing_answers(self):
         messenger = FakeMessenger()
         self.assertEqual(self._launch([self.first_id], messenger).status_code, 200)
         response = self._launch([self.first_id], messenger)
-        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["runs"][0]["pending_count"], 1)
+        queued_run_id = response.json()["runs"][0]["id"]
         with SessionLocal() as db:
-            self.assertEqual(db.query(EmployeeFeedbackRun).filter_by(subject_employee_id=self.subject_id).count(), 1)
+            self.assertEqual(db.query(EmployeeFeedbackRun).filter_by(subject_employee_id=self.subject_id).count(), 2)
             progress = db.query(ScenarioProgress).filter_by(employee_id=self.first_id, scenario_key=self.scenario_key).one()
             self.assertTrue(progress.waiting_for_response)
             run_id = progress.feedback_run_id
@@ -147,7 +150,7 @@ class EmployeeFeedbackSurveyTests(TestCase):
             self.assertEqual(progress.feedback_run_id, run_id)
             progress.current_step_key = None
             db.commit()
-            self.assertEqual(self._launch([self.first_id], messenger).status_code, 409)
+            asyncio.run(process_pending(messenger, run_id=queued_run_id))
             self.assertFalse(asyncio.run(start_scenario(messenger, db, db.get(Employee, self.first_id), self.scenario_key)))
             self.assertFalse(asyncio.run(start_scenario(
                 messenger, db, db.get(Employee, self.first_id), self.scenario_key, feedback_run_id=run_id,
@@ -169,7 +172,7 @@ class EmployeeFeedbackSurveyTests(TestCase):
         self.assertEqual(response.status_code, 200, response.text)
         self.assertEqual(len(messenger.messages), 1)
 
-    def test_active_progress_addressed_to_respondent_explains_conflict(self):
+    def test_active_progress_addressed_to_respondent_keeps_feedback_pending(self):
         other_key = f"other_{self.scenario_key}"
         with SessionLocal() as db:
             progress = get_or_create_progress(db, self.second_id, other_key)
@@ -178,11 +181,10 @@ class EmployeeFeedbackSurveyTests(TestCase):
             progress.waiting_for_response = True
             db.commit()
         response = self._launch([self.first_id], FakeMessenger())
-        self.assertEqual(response.status_code, 409)
-        self.assertIn("Борис Отвечающий", response.json()["detail"])
-        self.assertIn(other_key, response.json()["detail"])
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["runs"][0]["pending_count"], 1)
         with SessionLocal() as db:
-            self.assertEqual(db.query(EmployeeFeedbackRun).filter_by(subject_employee_id=self.subject_id).count(), 0)
+            self.assertEqual(db.query(EmployeeFeedbackRun).filter_by(subject_employee_id=self.subject_id).count(), 1)
 
     def test_same_scenario_context_progress_for_other_recipient_is_not_reset(self):
         with SessionLocal() as db:
@@ -193,7 +195,8 @@ class EmployeeFeedbackSurveyTests(TestCase):
             db.commit()
             progress_id = progress.id
         response = self._launch([self.first_id], FakeMessenger())
-        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["runs"][0]["pending_count"], 1)
         with SessionLocal() as db:
             run = EmployeeFeedbackRun(
                 subject_employee_id=self.subject_id, scenario_key=self.scenario_key,
@@ -224,14 +227,90 @@ class EmployeeFeedbackSurveyTests(TestCase):
         self._answer(self.first_id, "Ответ на старый вопрос", messenger)
         self.assertEqual(self._sheet_rows()[1][3], "Как работает Анна Объект, Дизайнер?")
 
-    def test_failed_first_send_does_not_leave_active_progress(self):
+    def test_uncertain_first_send_keeps_reservation_without_replay(self):
         response = self._launch([self.first_id], FailingMessenger())
         self.assertEqual(response.status_code, 200, response.text)
-        self.assertEqual(response.json()["runs"][0]["failed_count"], 1)
+        self.assertEqual(response.json()["runs"][0]["starting_count"], 1)
+        run_id = response.json()["runs"][0]["id"]
         with SessionLocal() as db:
             progress = db.query(ScenarioProgress).filter_by(employee_id=self.first_id, scenario_key=self.scenario_key).one()
-            self.assertTrue(progress.is_completed)
+            self.assertFalse(progress.is_completed)
             self.assertFalse(progress.waiting_for_response)
+            self.assertIsNotNone(progress.last_delivery_error)
+        messenger = FakeMessenger()
+        asyncio.run(process_pending(messenger, run_id=run_id))
+        self.assertEqual(messenger.messages, [])
+
+    def test_busy_colleague_does_not_block_free_colleague_and_resumes_later(self):
+        with SessionLocal() as db:
+            progress = get_or_create_progress(db, self.first_id, "busy_" + self.scenario_key)
+            progress.current_step_key, progress.waiting_for_response = "question", True
+            db.commit()
+        messenger = FakeMessenger()
+        response = self._launch([self.first_id, self.second_id], messenger)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["runs"][0]["pending_count"], 1)
+        self.assertEqual(len(messenger.messages), 1)
+        run_id = response.json()["runs"][0]["id"]
+        self._answer(self.second_id, "Первый ответ", messenger)
+        with SessionLocal() as db:
+            progress = db.query(ScenarioProgress).filter_by(employee_id=self.first_id, scenario_key="busy_" + self.scenario_key).one()
+            progress.is_completed, progress.waiting_for_response = True, False
+            db.commit()
+        asyncio.run(process_pending(messenger, run_id=run_id))
+        self.assertEqual(len(messenger.messages), 2)
+        self._answer(self.first_id, "Второй ответ", messenger)
+        self.assertEqual(len(self._sheet_rows()), 3)
+
+    def test_legacy_pending_feedback_is_not_automatically_replayed(self):
+        with SessionLocal() as db:
+            run = EmployeeFeedbackRun(subject_employee_id=self.subject_id, scenario_key=self.scenario_key,
+                created_at=datetime.now(UTC).replace(tzinfo=None))
+            db.add(run)
+            db.flush()
+            db.add(EmployeeFeedbackRecipient(run_id=run.id, respondent_employee_id=self.first_id))
+            db.commit()
+            run_id = run.id
+        messenger = FakeMessenger()
+        asyncio.run(process_pending(messenger, run_id=run_id))
+        self.assertEqual(messenger.messages, [])
+
+    def test_queued_feedback_revalidates_recipient_mode_before_sending(self):
+        with SessionLocal() as db:
+            progress = get_or_create_progress(db, self.first_id, "busy_" + self.scenario_key)
+            progress.current_step_key, progress.waiting_for_response = "question", True
+            db.commit()
+        messenger = FakeMessenger()
+        response = self._launch([self.first_id], messenger)
+        self.assertEqual(response.status_code, 200)
+        run_id = response.json()["runs"][0]["id"]
+        with SessionLocal() as db:
+            db.query(ScenarioTemplate).filter_by(scenario_key=self.scenario_key).one().recipient_mode = "manager"
+            db.commit()
+        asyncio.run(process_pending(messenger, run_id=run_id))
+        self.assertEqual(messenger.messages, [])
+        with SessionLocal() as db:
+            self.assertEqual(db.query(EmployeeFeedbackRecipient).filter_by(run_id=run_id).one().delivery_status, "failed")
+
+    def test_new_launch_does_not_jump_older_pending_feedback(self):
+        with SessionLocal() as db:
+            progress = get_or_create_progress(db, self.first_id, "busy_" + self.scenario_key)
+            progress.current_step_key, progress.waiting_for_response = "question", True
+            db.commit()
+        messenger = FakeMessenger()
+        first = self._launch([self.first_id], messenger).json()["runs"][0]["id"]
+        with SessionLocal() as db:
+            progress = db.query(ScenarioProgress).filter_by(employee_id=self.first_id, scenario_key="busy_" + self.scenario_key).one()
+            progress.is_completed, progress.waiting_for_response = True, False
+            db.commit()
+        second = self._launch([self.first_id], messenger).json()["runs"][0]["id"]
+        self.assertNotEqual(first, second)
+        self.assertEqual(messenger.messages, [])
+        asyncio.run(process_pending(messenger, run_id=first))
+        self.assertEqual(len(messenger.messages), 1)
+        self._answer(self.first_id, "Первый запуск", messenger)
+        asyncio.run(process_pending(messenger, run_id=second))
+        self.assertEqual(len(messenger.messages), 2)
 
     def test_survey_audience_is_visible_and_enforced(self):
         with SessionLocal() as db:
