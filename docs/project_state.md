@@ -33,6 +33,16 @@ related:
 source_of_truth: true
 ---
 
+10.11 delivery update: весь пакет PR191–194 выложен на
+`dddc1a3b1f3f643649035a55b7dcc49e6619e382`, Deploy42799098233 и
+Diagnostics42799335793 success. Подготовительные «не выложено» ниже для
+feature/unified-launch-queue, mass-scenario-recipient-queue,
+feedback-recipient-queue и integration review superseded этой записью.
+Backup/snapshot verified, scenario fingerprint unchanged, services active,
+0 failing checks. Живое Telegram-прохождение и XLSX приёмка открыты.
+Общая FIFO/cross-source reservation и manual mass API migration ещё не реализованы.
+Правила ledger-aware rollback сохраняются: [[stage-deploy]], [[stage-change-log]].
+
 10.11 integration review пакета191–193: найден и устранён Grade↔mass deadlock.
 Dispatch больше не трактует future/paused назначение как занятой диалог;
 Grade ждёт только due запросы и собственную pending/starting строку массового

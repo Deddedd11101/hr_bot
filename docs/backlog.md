@@ -35,6 +35,13 @@ source_of_truth: true
 
 ## Очередь запусков: первый безопасный срез (10.11.2026)
 
+- Выложено: весь пакет PR191–194, SHA `dddc1a3`, Deploy42799098233 и
+  Diagnostics42799335793 success;644 CI tests, stage services/HTTP/Telegram gates
+  passed. Прежние «не выложено» в подготовительных записях этого раздела
+  superseded. Не менялись живые назначения/расписания, ручных отправок не было.
+  Живая приёмка открыта; общая FIFO/recipient reservation и manual mass APIs
+  остаются следующими отдельными задачами, не объявляются завершёнными.
+
 - Integration review follow-up: устранено взаимное ожидание Grade↔mass;
   dispatch Grade учитывает только due запросы и ledger конкретного subject,
   future/paused назначения не подавляют явный scheduled root. Generic automatic

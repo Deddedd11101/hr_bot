@@ -11,6 +11,33 @@ related:
 source_of_truth: true
 ---
 
+## 10.11.2026 — поадресные очереди и устранение Grade/mass deadlock
+
+- PR #191/#192/#193/#194 интегрированы в `stage`. Выложен точный SHA
+  `dddc1a3b1f3f643649035a55b7dcc49e6619e382`, Deploy Stage
+  `42799098233` success; операция завершена около13:27 МСК.
+- Combined CI `42797675322` passed (644 tests и frontend). Финальные локальные
+  Grade/mass/scheduler проверки64 passed, compileall/Ruff F821/docs contracts passed.
+  Deploy запущен workflow из main с explicit SHA: его preflight выполняет
+  стандартный smoke subset, не весь discover; полный suite подтверждён CI пакета.
+- Verified SQLite backup: `backups/hr_bot.before-deploy.20261110-102728.db`;
+  scenario snapshot: `backups/scenarios.before-deploy.20261110-102728.json`.
+  Scenario configuration fingerprint unchanged после startup/schema compatibility.
+- Stage Diagnostics `42799335793` success: deployed SHA совпал, hr-bot-web,
+  hr-bot-worker, wg-quick@redshield и caddy active; HTTPS employees/flows/grades303,
+  Telegram connectivity/identity gates passed,0 failing checks, fresh log gate passed.
+- Новые scheduled mass actions получают поадресный ledger; новые ОС из карточки
+  используют общий с Grade recipient dispatcher. Busy адресаты ожидают, starting
+  не повторяется автоматически. Будущие Grade назначения не подавляют explicit
+  scheduled delivery, устранено взаимное ожидание Grade/mass. Employee asset v83.
+- Старые mass actions и standalone feedback pending не backfill/replay-ятся;
+  персональные настройки, циклы и расписания агент не менял, ручных запусков
+  Telegram не выполнял. Естественная обработка существующей очереди остаётся
+  обязанностью worker. Живая доставка/прохождение/XLSX — открытая приёмка.
+- Это не глобальная FIFO и не общая cross-source durable reservation. Manual mass
+  APIs пока не мигрированы. Откат при materialized незавершённой mass action
+  требует ledger-aware проверки из [[stage-deploy]], не простого возврата старого worker.
+
 ## 06.11.2026 — финальные критерии оценки навыков
 
 - PR #181 CI `42208703975` passed; deployed runtime
