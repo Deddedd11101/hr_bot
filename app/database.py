@@ -778,6 +778,8 @@ def _ensure_sqlite_schema() -> None:
         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_scenario_progress_adaptation_plan_item_id ON scenario_progress (adaptation_plan_item_id)"))
 
         feedback_run_columns = {row[1] for row in conn.execute(text("PRAGMA table_info(employee_feedback_runs)"))}
+        if "queued_delivery" not in feedback_run_columns:
+            conn.execute(text("ALTER TABLE employee_feedback_runs ADD COLUMN queued_delivery BOOLEAN NOT NULL DEFAULT 0"))
         if feedback_run_columns and "scenario_title" not in feedback_run_columns:
             conn.execute(text("ALTER TABLE employee_feedback_runs ADD COLUMN scenario_title VARCHAR(255)"))
 

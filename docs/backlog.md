@@ -35,6 +35,12 @@ source_of_truth: true
 
 ## Очередь запусков: первый безопасный срез (10.11.2026)
 
+- Dependency-пакет ОС: новые сборы из карточки включены в общий с Grade recipient
+  dispatcher. Busy → pending вместо409, free → отправка; starting сохраняется
+  для проверки, старые standalone pending не переигрываются. Additive flag,
+  счётчики ожидания/проверки в карточке. Не выложено; общая FIFO всех источников
+  и немедленные массовые API остаются открыты.
+
 - Следующий dependency-пакет: поадресный ledger новых scheduled mass scenario/survey
   actions. Busy recipient остаётся pending, свободные стартуют независимо;
   starting не переигрывается. Старые действия и manual APIs не мигрируются.

@@ -1,6 +1,5 @@
 """Employee-scoped colleague feedback surveys."""
 
-import logging
 from io import BytesIO
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Request
@@ -19,16 +18,14 @@ from ..models import (
     EmployeeFeedbackRun,
     FlowStepTemplate,
     GradeReviewCollection,
-    ScenarioProgress,
     ScenarioTemplate,
     SurveyAnswer,
 )
-from ..scenario_engine import get_conflicting_progress_for_survey_launch, get_first_step, matches_role_scope, start_scenario
+from ..scenario_engine import get_first_step, matches_role_scope
 from ..time_utils import utc_now
 from .support import require_api_auth
 
 router = APIRouter()
-logger = logging.getLogger(__name__)
 
 
 def _excel_text(value: str | None) -> str:
@@ -46,15 +43,6 @@ def _subject(db: Session, employee_id: int) -> Employee:
     if employee is None or employee.employee_stage == "candidate":
         raise HTTPException(status_code=404, detail="Сотрудник не найден")
     return employee
-
-
-def _finish_failed_start(db: Session, employee_id: int, scenario_key: str, run_id: int) -> None:
-    progress = db.query(ScenarioProgress).filter_by(employee_id=employee_id, scenario_key=scenario_key).first()
-    if progress and progress.feedback_run_id == run_id:
-        progress.waiting_for_response = False
-        progress.is_completed = True
-        progress.completed_at = utc_now()
-        progress.last_delivery_error = progress.last_delivery_error or "Не удалось отправить опрос."
 
 
 def _feedback_payload(db: Session, subject: Employee) -> dict:
@@ -116,6 +104,8 @@ def _feedback_payload(db: Session, subject: Employee) -> dict:
                 "recipient_count": sum(row.run_id == run.id for row in recipient_rows),
                 "completed_count": sum(row.run_id == run.id and row.delivery_status == "completed" for row in recipient_rows),
                 "failed_count": sum(row.run_id == run.id and row.delivery_status == "failed" for row in recipient_rows),
+                "pending_count": sum(row.run_id == run.id and row.delivery_status == "pending" for row in recipient_rows),
+                "starting_count": sum(row.run_id == run.id and row.delivery_status == "starting" for row in recipient_rows),
                 "answer_count": run_answer_counts.get(run.id, 0),
                 "download_url": (
                     f"/api/employees/{subject.id}/feedback-surveys/runs/{run.id}/export"
@@ -166,20 +156,10 @@ async def launch_feedback_survey_api(
         for item in recipients
     ):
         raise HTTPException(status_code=400, detail="Некоторые сотрудники недоступны для этого опроса или не привязаны к боту.")
-    for recipient in recipients:
-        active_progress = get_conflicting_progress_for_survey_launch(db, recipient.id, scenario_key)
-        if active_progress is not None:
-            active_scenario = db.query(ScenarioTemplate).filter_by(scenario_key=active_progress.scenario_key).first()
-            scenario_title = active_scenario.title if active_scenario else active_progress.scenario_key
-            recipient_name = recipient.full_name or f"Сотрудник #{recipient.id}"
-            raise HTTPException(
-                status_code=409,
-                detail=f"{recipient_name}: запуск конфликтует с незавершённым сценарием «{scenario_title}». Опрос не отправлен, чтобы ответы не перепутались.",
-            )
     if not settings.TELEGRAM_BOT_TOKEN:
         raise HTTPException(status_code=400, detail="Не задан токен Telegram-бота.")
 
-    run = EmployeeFeedbackRun(subject_employee_id=subject.id, scenario_key=scenario_key, scenario_title=survey.title, created_at=utc_now())
+    run = EmployeeFeedbackRun(subject_employee_id=subject.id, scenario_key=scenario_key, scenario_title=survey.title, created_at=utc_now(), queued_delivery=True)
     db.add(run)
     db.flush()
     for recipient_id in recipient_ids:
@@ -188,25 +168,11 @@ async def launch_feedback_survey_api(
 
     messenger = create_telegram_messenger(settings.TELEGRAM_BOT_TOKEN)
     try:
-        for recipient in recipients:
-            row = db.query(EmployeeFeedbackRecipient).filter_by(run_id=run.id, respondent_employee_id=recipient.id).one()
-            try:
-                started = await start_scenario(
-                    messenger, db, recipient, scenario_key, feedback_run_id=run.id,
-                )
-                if row.delivery_status != "completed":
-                    row.delivery_status = "sent" if started else "failed"
-                if not started:
-                    _finish_failed_start(db, recipient.id, scenario_key, run.id)
-            except Exception:
-                logger.exception("Feedback survey delivery failed for run=%s recipient=%s", run.id, recipient.id)
-                db.rollback()
-                row = db.query(EmployeeFeedbackRecipient).filter_by(run_id=run.id, respondent_employee_id=recipient.id).one()
-                row.delivery_status = "failed"
-                _finish_failed_start(db, recipient.id, scenario_key, run.id)
-            db.commit()
+        from ..grades.collections import process_pending
+        await process_pending(messenger, run_id=run.id)
     finally:
         await messenger.close()
+    db.expire_all()
     return _feedback_payload(db, subject)
 
 

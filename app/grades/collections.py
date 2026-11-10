@@ -199,17 +199,26 @@ def finalize(db, employee_id, collection_id, actor_id, data=None):
     return snapshot
 
 
-async def process_pending(bot, *, session_factory=None):
+async def process_pending(bot, *, session_factory=None, run_id=None):
     factory = session_factory or SessionLocal
     with factory() as db:
-        pairs = list(db.execute(select(EmployeeFeedbackRecipient.id, EmployeeFeedbackRun.id)
+        query = (select(EmployeeFeedbackRecipient.id, EmployeeFeedbackRun.id)
             .join(EmployeeFeedbackRun, EmployeeFeedbackRun.id == EmployeeFeedbackRecipient.run_id)
             .outerjoin(GradeReviewCollection, GradeReviewCollection.feedback_run_id == EmployeeFeedbackRun.id)
             .outerjoin(GradeDevelopmentAction, and_(GradeDevelopmentAction.result_id == EmployeeFeedbackRun.id, GradeDevelopmentAction.action_type == "feedback"))
-            .where(or_(GradeReviewCollection.status == "open", GradeDevelopmentAction.status == "started"), EmployeeFeedbackRecipient.delivery_status == "pending")))
+            .where(or_(GradeReviewCollection.status == "open", GradeDevelopmentAction.status == "started",
+                and_(EmployeeFeedbackRun.queued_delivery.is_(True), GradeReviewCollection.id.is_(None), GradeDevelopmentAction.id.is_(None))),
+                EmployeeFeedbackRecipient.delivery_status == "pending")
+            .order_by(EmployeeFeedbackRun.created_at, EmployeeFeedbackRun.id, EmployeeFeedbackRecipient.id))
+        eligible_query = query
+        if run_id is not None:
+            query = query.where(EmployeeFeedbackRun.id == run_id)
+        pairs = list(db.execute(query))
     for recipient_id, run_id in pairs:
         with factory() as db:
             row, run = db.get(EmployeeFeedbackRecipient, recipient_id), db.get(EmployeeFeedbackRun, run_id)
+            if row is None or run is None:
+                continue
             from ..web.grades import _lock_employee
             _lock_employee(db, row.respondent_employee_id)
             db.refresh(row)
@@ -221,9 +230,20 @@ async def process_pending(bot, *, session_factory=None):
                 EmployeeFeedbackRecipient.delivery_status == "starting"))
             if reserved:
                 continue
+            earliest = db.execute(eligible_query.where(
+                EmployeeFeedbackRecipient.respondent_employee_id == row.respondent_employee_id).limit(1)).first()
+            if earliest is None or earliest[0] != row.id:
+                continue
             employee = db.get(Employee, row.respondent_employee_id)
             subject = db.get(Employee, run.subject_employee_id)
             if not subject or subject.is_bot_blocked or subject.employee_stage not in {"staff", "adaptation", "ipr"} or not employee or employee.employee_stage not in {"staff", "adaptation", "ipr"} or employee.is_bot_blocked or not get_primary_chat_id(employee, db=db):
+                row.delivery_status = "failed"
+                db.commit()
+                continue
+            from ..scenario_engine import get_first_step, matches_role_scope, is_survey
+            scenario = db.scalar(select(ScenarioTemplate).where(ScenarioTemplate.scenario_key == run.scenario_key))
+            if (not is_survey(scenario) or scenario.recipient_mode != "self"
+                    or not get_first_step(db, run.scenario_key) or not matches_role_scope(employee, scenario)):
                 row.delivery_status = "failed"
                 db.commit()
                 continue
@@ -235,7 +255,7 @@ async def process_pending(bot, *, session_factory=None):
             if claimed != 1:
                 continue
             try:
-                started = await start_scenario(bot, db, employee, run.scenario_key, feedback_run_id=run.id)
+                started = await start_scenario(bot, db, employee, run.scenario_key, feedback_run_id=run.id, reserve_first_step=True)
                 db.refresh(row)
                 if row.delivery_status != "completed":
                     row.delivery_status = "sent" if started else "failed"
