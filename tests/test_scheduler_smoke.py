@@ -177,6 +177,77 @@ class SchedulerSmokeTests(unittest.IsolatedAsyncioTestCase):
             db.refresh(scenario)
             return employee, scenario
 
+    def _queue_interactive_requests(self):
+        self._create_scenario_with_employee()
+        with SessionLocal() as db:
+            scenario = db.query(ScenarioTemplate).filter_by(scenario_key=self.scenario_key).one()
+            scenario.trigger_mode = "manual_only"
+            step = db.query(FlowStepTemplate).filter_by(flow_key=self.scenario_key, step_key="first_step").one()
+            step.response_type = "text"
+            step.send_mode = "immediate"
+            requests = [FlowLaunchRequest(employee_id=self.employee_id, flow_key=self.scenario_key,
+                requested_at=datetime(2025, 1, 1, 12, minute), launch_type="scheduled") for minute in (0, 1)]
+            db.add_all(requests)
+            db.commit()
+            return [row.id for row in requests]
+
+    async def test_interactive_scheduled_roots_wait_without_overwriting_jobs(self):
+        ids = self._queue_interactive_requests()
+        scheduler, messenger = _FakeScheduler(), _FakeMessenger()
+        with patch("app.scheduler._load_all_employees", return_value=[]), patch("app.scheduler._load_scenarios", return_value=[]):
+            await schedule_all_employees(scheduler, messenger)
+            await schedule_all_employees(scheduler, messenger)
+        self.assertEqual(len(messenger.sent_texts), 1)
+        self.assertEqual(scheduler.jobs, {})
+        with SessionLocal() as db:
+            self.assertIsNotNone(db.get(FlowLaunchRequest, ids[0]).processed_at)
+            self.assertIsNone(db.get(FlowLaunchRequest, ids[1]).processed_at)
+            progress = db.query(ScenarioProgress).filter_by(employee_id=self.employee_id, scenario_key=self.scenario_key).one()
+            self.assertTrue(progress.waiting_for_response)
+            self.assertIsNone(progress.last_delivery_error)
+            progress.is_completed = True
+            progress.waiting_for_response = False
+            db.commit()
+        with patch("app.scheduler._load_all_employees", return_value=[]), patch("app.scheduler._load_scenarios", return_value=[]):
+            await schedule_all_employees(scheduler, messenger)
+        self.assertEqual(len(messenger.sent_texts), 2)
+        with SessionLocal() as db:
+            self.assertIsNotNone(db.get(FlowLaunchRequest, ids[1]).processed_at)
+
+    async def test_uncertain_interactive_send_reserves_dialog_without_replay(self):
+        ids = self._queue_interactive_requests()
+        scheduler, messenger = _FakeScheduler(), _FakeMessenger()
+        async def fail_send(*args, **kwargs):
+            # A separate connection must see both the claim and reservation before I/O.
+            with SessionLocal() as db:
+                progress = db.query(ScenarioProgress).filter_by(employee_id=self.employee_id, scenario_key=self.scenario_key).one()
+                self.assertEqual(progress.current_step_key, "first_step")
+                self.assertEqual(progress.recipient_employee_id, self.employee_id)
+                self.assertIsNotNone(progress.last_delivery_error)
+                self.assertIsNotNone(db.get(FlowLaunchRequest, ids[0]).processed_at)
+            raise OSError("simulated ambiguous send")
+        with patch.object(messenger, "send_text", side_effect=fail_send), patch("app.scheduler._load_all_employees", return_value=[]), patch("app.scheduler._load_scenarios", return_value=[]):
+            with self.assertLogs("app.scheduler", level="ERROR"):
+                await schedule_all_employees(scheduler, messenger)
+        with patch("app.scheduler._load_all_employees", return_value=[]), patch("app.scheduler._load_scenarios", return_value=[]):
+            await schedule_all_employees(scheduler, messenger)
+        self.assertEqual(messenger.sent_texts, [])
+        with SessionLocal() as db:
+            self.assertIsNone(db.get(FlowLaunchRequest, ids[1]).processed_at)
+
+    async def test_pending_roots_sort_by_actual_instant_not_wall_clock(self):
+        self._create_scenario_with_employee()
+        with SessionLocal() as db:
+            local = FlowLaunchRequest(employee_id=self.employee_id, flow_key=self.scenario_key,
+                requested_at=datetime(2025, 1, 1, 12), launch_type="scheduled")
+            internal = FlowLaunchRequest(employee_id=self.employee_id, flow_key=self.scenario_key,
+                requested_at=datetime(2025, 1, 1, 10), launch_type="trigger")
+            db.add_all([internal, local])
+            db.commit()
+            with patch.object(settings, "TIMEZONE", "Europe/Moscow"):
+                ordered = [row.id for row in _load_pending_flow_requests(db) if row.employee_id == self.employee_id]
+            self.assertEqual(ordered, [local.id, internal.id])
+
     async def test_explicit_scheduled_launch_without_first_workday_is_queued(self) -> None:
         employee, scenario = self._create_scenario_with_employee()
         scheduler = _FakeScheduler()
