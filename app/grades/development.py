@@ -15,7 +15,7 @@ from ..messaging import as_messenger
 from ..messaging.identity import get_primary_chat_id
 from ..models import (Employee, FlowLaunchRequest, GradeAssessment, GradeDevelopmentAction as Action, GradeDevelopmentCycle as Cycle,
                       GradeDevelopmentDelivery as Delivery, GradeDevelopmentMilestone as Milestone,
-                      HrSettings, MassScenarioAction, ScenarioTemplate)
+                      HrSettings, MassScenarioAction, MassScenarioRecipient, ScenarioTemplate)
 from ..notifications import _notification_recipients
 from ..scenario_engine import (INTERACTIVE_RESPONSE_TYPES, get_conflicting_progress_for_survey_launch,
                                get_scenario_steps, get_waiting_progress, matches_role_scope,
@@ -105,9 +105,31 @@ def record_launch_conflict(db, employee_id, scenario_key):
         db.flush()
 
 
-def _pending_mass_conflict(db, employee_id, scenario_keys):
+def _pending_flow_conflict(db, employee_id, scenario_key, *, include_continuations=False):
+    query = select(FlowLaunchRequest).where(FlowLaunchRequest.employee_id == employee_id,
+        FlowLaunchRequest.flow_key == scenario_key, FlowLaunchRequest.processed_at.is_(None))
+    if not include_continuations:
+        query = query.where(FlowLaunchRequest.skip_step_key.is_(None))
+    requests = db.scalars(query)
+    for request in requests:
+        now = local_now() if request.launch_type in {"scheduled", "adaptation_plan"} and request.skip_step_key is None else utc_now()
+        if request.requested_at <= now:
+            return True
+    return False
+
+
+def _pending_mass_conflict(db, employee_id, scenario_keys, *, due_only=False):
     for action in db.scalars(select(MassScenarioAction).where(MassScenarioAction.flow_key.in_(scenario_keys),
             MassScenarioAction.scenario_kind == "scenario", MassScenarioAction.processed_at.is_(None))):
+        if due_only and action.launch_type == "scheduled" and action.requested_at > local_now():
+            continue
+        if action.recipient_queue_enabled and db.scalar(select(MassScenarioRecipient.id).where(
+                MassScenarioRecipient.action_id == action.id).limit(1)) is not None:
+            if db.scalar(select(MassScenarioRecipient.id).where(MassScenarioRecipient.action_id == action.id,
+                    MassScenarioRecipient.employee_id == employee_id,
+                    MassScenarioRecipient.status.in_(["pending", "starting"])).limit(1)) is not None:
+                return True
+            continue
         query = mass_target_employee_query(db,
             target_all=action.target_all,
             target_employee_stages=deserialize_target_values(action.target_employee_stages, kind="employee"),
@@ -412,12 +434,10 @@ async def _process_one(bot, item_id):
         predecessor = db.scalar(select(Milestone).where(Milestone.employee_id == employee.id,
             Milestone.assessment_id == item.assessment_id, Milestone.kind == "ipr12")) if item.kind == "review12" else None
         busy = ((recipient.employee_id and get_waiting_progress(db, recipient.employee_id))
+                or (recipient.employee_id and get_conflicting_progress_for_survey_launch(db, recipient.employee_id, scenario.scenario_key))
                 or get_conflicting_progress_for_survey_launch(db, employee.id, scenario.scenario_key))
-        pending = db.scalar(select(FlowLaunchRequest.id).where(FlowLaunchRequest.employee_id == employee.id,
-            FlowLaunchRequest.flow_key == scenario.scenario_key, FlowLaunchRequest.skip_step_key.is_(None),
-            FlowLaunchRequest.processed_at.is_(None),
-            (FlowLaunchRequest.launch_type != "adaptation_plan") | (FlowLaunchRequest.requested_at <= item.due_at)).limit(1))
-        mass = _pending_mass_conflict(db, employee.id, [scenario.scenario_key])
+        pending = _pending_flow_conflict(db, employee.id, scenario.scenario_key)
+        mass = _pending_mass_conflict(db, employee.id, [scenario.scenario_key], due_only=True)
         if pending or mass:
             item.status, item.last_error = "blocked", "Ожидается более ранний запрос запуска этого сценария; этап сохранён в очереди"
             db.commit()
