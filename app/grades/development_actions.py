@@ -174,10 +174,8 @@ async def process_actions(db, bot, employee, item, cycle):
                     row.status, row.last_error = "blocked", "Получатель отвечает на другой сценарий"
                     db.commit()
                     continue
-                pending = db.scalar(select(FlowLaunchRequest.id).where(FlowLaunchRequest.employee_id == employee.id,
-                    FlowLaunchRequest.flow_key == row.scenario_key, FlowLaunchRequest.processed_at.is_(None),
-                    (FlowLaunchRequest.launch_type != "adaptation_plan") | (FlowLaunchRequest.requested_at <= item.due_at)))
-                if pending or dev._pending_mass_conflict(db, employee.id, [row.scenario_key]):
+                pending = dev._pending_flow_conflict(db, employee.id, row.scenario_key, include_continuations=True)
+                if pending or dev._pending_mass_conflict(db, employee.id, [row.scenario_key], due_only=True):
                     row.status, row.last_error = "blocked", "Ожидается более ранний запрос запуска; действие сохранено в очереди"
                     db.commit()
                     continue

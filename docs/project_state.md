@@ -33,6 +33,13 @@ related:
 source_of_truth: true
 ---
 
+10.11 integration review пакета191–193: найден и устранён Grade↔mass deadlock.
+Dispatch больше не трактует future/paused назначение как занятой диалог;
+Grade ждёт только due запросы и собственную pending/starting строку массового
+snapshot. Явный scheduled launch отличается от generic auto trigger.
+Реальные активные recipient progress (в том числе non-waiting у руководителя)
+продолжают блокировать доставку. Не выложено; общая FIFO остаётся открытой.
+
 10.11 feature/feedback-recipient-queue поверх PR192: общий recipient dispatcher
 для Grade и новых standalone ОС из карточки. Занятые адресаты ожидают без409,
 свободные получают опрос сразу. Старые runs не replay-ятся; неопределённая

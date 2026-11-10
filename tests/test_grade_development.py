@@ -20,7 +20,7 @@ from app.database import Base
 from app.grades import development as dev
 from app.models import (Employee, FlowLaunchRequest, FlowStepTemplate,
                         GradeAssessment, GradeDevelopmentCycle as Cycle, GradeDevelopmentDelivery as Delivery,
-                        GradeDevelopmentMilestone as Milestone, HrSettings, MassScenarioAction, ScenarioTemplate)
+                        GradeDevelopmentMilestone as Milestone, HrSettings, MassScenarioAction, MassScenarioRecipient, ScenarioTemplate)
 from app.web import grades
 
 NOW = datetime(2026, 10, 27, 9)
@@ -372,6 +372,54 @@ class GradeDevelopmentTests(unittest.TestCase):
         self.assertEqual(self.item().status, "started")
         self.started.assert_awaited_once()
 
+    def test_future_targeted_mass_action_does_not_block_due_cycle(self):
+        self.enroll()
+        self.db.add(MassScenarioAction(flow_key="ipr6", scenario_kind="scenario", requested_at=datetime(2035, 1, 1),
+            created_at=NOW, target_employee_id=1, launch_type="scheduled"))
+        self.db.commit()
+        self.scan()
+        self.assertEqual(self.item().status, "started")
+        self.started.assert_awaited_once()
+
+    def test_future_explicit_request_does_not_block_due_cycle(self):
+        self.enroll()
+        self.db.add(FlowLaunchRequest(employee_id=1, flow_key="ipr6", launch_type="scheduled", requested_at=datetime(2035, 1, 1)))
+        self.db.commit()
+        self.scan()
+        self.assertEqual(self.item().status, "started")
+
+    def test_partial_mass_action_does_not_reserve_finished_subject(self):
+        self.enroll()
+        action = MassScenarioAction(flow_key="ipr6", scenario_kind="scenario", requested_at=NOW,
+            created_at=NOW, target_all=True, launch_type="scheduled")
+        self.db.add(action)
+        self.db.flush()
+        self.db.add_all([MassScenarioRecipient(action_id=action.id, employee_id=1, status="started"),
+                         MassScenarioRecipient(action_id=action.id, employee_id=2, status="pending")])
+        self.db.commit()
+        self.scan()
+        self.assertEqual(self.item().status, "started")
+
+    def test_due_mass_pending_subject_still_has_dispatch_precedence(self):
+        self.enroll()
+        action = MassScenarioAction(flow_key="ipr6", scenario_kind="scenario", requested_at=NOW,
+            created_at=NOW, target_employee_id=1, launch_type="scheduled")
+        self.db.add(action)
+        self.db.flush()
+        self.db.add(MassScenarioRecipient(action_id=action.id, employee_id=1, status="pending"))
+        self.db.commit()
+        self.scan()
+        self.assertEqual(self.item().status, "blocked")
+        self.started.assert_not_awaited()
+
+    def test_nonwaiting_manager_dialog_blocks_cycle_delivery(self):
+        self.enroll()
+        with patch.object(dev, "resolve_scenario_recipient", return_value=SimpleNamespace(employee_id=2, chat_id="222", error=None)), patch.object(
+                dev, "get_conflicting_progress_for_survey_launch", side_effect=lambda db, person_id, key: object() if person_id == 2 else None):
+            self.scan()
+        self.assertEqual(self.item().status, "blocked")
+        self.started.assert_not_awaited()
+
     def test_targeted_mass_action_blocks_activation(self):
         self.db.add(MassScenarioAction(flow_key="ipr6", scenario_kind="scenario", requested_at=datetime(2035, 1, 1),
             created_at=NOW, target_employee_id=1, launch_type="scheduled"))
@@ -379,7 +427,7 @@ class GradeDevelopmentTests(unittest.TestCase):
         with self.assertRaises(grades.GradeConflictError):
             self.enroll()
 
-    def test_scheduler_root_guard_and_followup_request_preserved(self):
+    def test_explicit_scheduler_root_and_followup_are_not_reserved_by_future_cycle(self):
         from app import scheduler
         self.enroll()
         root = FlowLaunchRequest(employee_id=1, flow_key="ipr6", launch_type="scheduled", requested_at=NOW)
@@ -389,14 +437,15 @@ class GradeDevelopmentTests(unittest.TestCase):
         self.db.commit()
         with patch.object(scheduler, "SessionLocal", self.sessions), patch.object(scheduler, "send_step", new_callable=AsyncMock) as send:
             asyncio.run(scheduler.run_scheduled_step(object(), 1, "ipr6", "ipr6-step", NOW, explicit=True))
-            send.assert_not_awaited()
+            send.assert_awaited_once()
+            send.reset_mock()
             with patch.object(scheduler, "_local_now_naive", return_value=NOW + timedelta(minutes=1)):
                 asyncio.run(scheduler.schedule_all_employees(MagicMock(), object()))
             send.assert_awaited_once()
         self.db.expire_all()
-        self.assertIsNone(self.db.get(FlowLaunchRequest, root.id).processed_at)
+        self.assertIsNotNone(self.db.get(FlowLaunchRequest, root.id).processed_at)
         self.assertIsNotNone(self.db.get(FlowLaunchRequest, followup.id).processed_at)
-        self.assertIn("HR", self.item().last_error)
+        self.assertIsNone(self.item().last_error)
 
     def test_concurrent_scans_claim_only_once(self):
         self.enroll()

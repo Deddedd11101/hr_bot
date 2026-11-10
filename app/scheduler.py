@@ -209,7 +209,7 @@ def _compute_step_run_at(anchor_date, step: FlowStepTemplate, manual: bool) -> O
 @_serialize_scheduler_delivery
 async def run_scheduled_step(bot, employee_id: int, scenario_key: str, step_key: str, scheduled_at: datetime, explicit: bool = False) -> None:
     with SessionLocal() as db:
-        if grade_owns_scenario(db, employee_id, scenario_key):
+        if not explicit and grade_owns_scenario(db, employee_id, scenario_key):
             return
         if not explicit and owns_scenario(db, employee_id, scenario_key):
             return
@@ -264,7 +264,7 @@ def schedule_employee_scenario(
     skip_step_key: Optional[str] = None,
     now: Optional[datetime] = None,
 ) -> None:
-    if grade_owns_scenario(db, employee.id, scenario.scenario_key):
+    if not manual and grade_owns_scenario(db, employee.id, scenario.scenario_key):
         return
     if employee.is_bot_blocked:
         return
@@ -436,7 +436,7 @@ async def schedule_all_employees(scheduler: AsyncIOScheduler, bot) -> None:
 
         pending_requests = _load_pending_flow_requests(db)
         for request in pending_requests:
-            if request.launch_type != "adaptation_plan" and request.skip_step_key is None and grade_owns_scenario(db, request.employee_id, request.flow_key):
+            if request.launch_type not in {"adaptation_plan", "scheduled"} and request.skip_step_key is None and grade_owns_scenario(db, request.employee_id, request.flow_key):
                 grade_launch_conflict(db, request.employee_id, request.flow_key)
                 continue
             if await deliver_plan_request(db, bot, request):

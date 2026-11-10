@@ -64,9 +64,7 @@ async def deliver_mass_action(db, bot, action_id, recipient_ids):
             recipient = resolve_scenario_recipient(db, employee, scenario,
                 requires_response=any(s.response_type in INTERACTIVE_RESPONSE_TYPES for s in steps))
             error = recipient.error or ("В сценарии нет шагов" if not steps else None)
-            from .grades.development import owns_scenario
-            if not error and (owns_scenario(db, employee.id, scenario.scenario_key) or
-                    (recipient.employee_id and get_conflicting_progress_for_survey_launch(db, recipient.employee_id, scenario.scenario_key)) or
+            if not error and ((recipient.employee_id and get_conflicting_progress_for_survey_launch(db, recipient.employee_id, scenario.scenario_key)) or
                     get_conflicting_progress_for_survey_launch(db, employee.id, scenario.scenario_key)):
                 continue
         changed = db.execute(update(MassScenarioRecipient).where(MassScenarioRecipient.id == row.id,

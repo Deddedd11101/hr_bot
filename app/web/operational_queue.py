@@ -109,12 +109,8 @@ def queue_rows(db):
         resolution = resolve_scenario_recipient(db, person, scenario, requires_response=action.flow_key in interactive) if person and scenario else None
         rid = resolution.employee_id if resolution else None
         blocker = busy.get(rid)
-        from ..grades.development import owns_scenario
-        grade_reserved = person and owns_scenario(db, person.id, action.flow_key)
         state = "attention" if delivery.status in {"starting", "failed"} else "blocked" if blocker else "queued"
         reason = delivery.last_error or (f"Получатель занят диалогом №{blocker.id}" if blocker else "Ожидает обработки планировщиком")
-        if delivery.status == "pending" and grade_reserved:
-            state, reason = "blocked", "Сценарий зарезервирован циклом развития; проверьте назначение во вкладке Грейд"
         add(f"mass-recipient:{delivery.id}", delivery.employee_id, action.flow_key, state, reason,
             request_utc(action), "Массовый запуск", rid)
 

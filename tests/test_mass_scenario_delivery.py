@@ -76,6 +76,12 @@ class MassScenarioDeliveryTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(db.query(MassScenarioRecipient).count(), 1)
             self.assertEqual(self.messenger.sent_texts, [])
 
+    async def test_future_grade_configuration_does_not_reserve_mass_dialog(self):
+        with patch("app.grades.development.owns_scenario", return_value=True):
+            with self.factory() as db:
+                await deliver_mass_action(db, self.messenger, self.action_id, [self.ids[0]])
+                self.assertEqual(delivery_counts(db, self.action_id), {"started": 1})
+
     async def test_shared_manager_only_receives_one_interactive_dialog(self):
         with self.factory() as db:
             manager = Employee(full_name="Manager", employee_stage="staff", created_at=datetime(2026, 1, 1))

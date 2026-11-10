@@ -35,6 +35,12 @@ source_of_truth: true
 
 ## Очередь запусков: первый безопасный срез (10.11.2026)
 
+- Integration review follow-up: устранено взаимное ожидание Grade↔mass;
+  dispatch Grade учитывает только due запросы и ledger конкретного subject,
+  future/paused назначения не подавляют явный scheduled root. Generic automatic
+  Grade ownership guard сохранён; дополнена проверка non-waiting адресата-руководителя.
+  Не выложено. Данные и активные расписания не менялись.
+
 - Dependency-пакет ОС: новые сборы из карточки включены в общий с Grade recipient
   dispatcher. Busy → pending вместо409, free → отправка; starting сохраняется
   для проверки, старые standalone pending не переигрываются. Additive flag,
