@@ -2881,6 +2881,7 @@ async def start_scenario(
     feedback_run_id: int | None = None,
     survey_launch_id: int | None = None,
     adaptation_plan_item_id: int | None = None,
+    reserve_first_step: bool = False,
 ) -> bool:
     messenger = as_messenger(messenger_or_bot)
     if employee.is_bot_blocked:
@@ -2921,5 +2922,11 @@ async def start_scenario(
     progress.survey_launch_id = survey_launch_id
     progress.adaptation_plan_item_id = adaptation_plan_item_id
     progress.recipient_mode = _scenario_recipient_mode(scenario)
+    if reserve_first_step:
+        resolution = resolve_scenario_recipient(db, employee, scenario, requires_response=step_requires_response(first_step))
+        if not resolution.error and resolution.chat_id:
+            _store_progress_recipient(progress, resolution)
+            progress.current_step_key = first_step.step_key
+            progress.last_delivery_error = "Результат начатой доставки неизвестен. Перед повтором проверьте сообщения получателя."
     db.commit()
     return await send_step(messenger, db, employee, scenario, first_step)

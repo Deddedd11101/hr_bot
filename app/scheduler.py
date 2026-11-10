@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from functools import wraps
-from datetime import date
+from datetime import UTC, date
 from datetime import datetime, time, timedelta
 from typing import Optional
 
@@ -26,6 +27,7 @@ from .messaging import as_messenger
 from .messaging.identity import get_primary_chat_id
 from .models import Employee, FlowLaunchRequest, FlowStepTemplate, MassMessageAction, MassScenarioAction, OnboardingEvent, ScenarioTemplate, ScenarioProgress
 from .scenario_engine import (
+    INTERACTIVE_RESPONSE_TYPES,
     SINGLE_STEP_REQUEST_PREFIX,
     add_workdays,
     format_message,
@@ -52,6 +54,7 @@ IMMEDIATE_TRIGGER_MODES = {
 }
 
 _scheduler_delivery_lock = asyncio.Lock()
+logger = logging.getLogger(__name__)
 
 
 def _serialize_scheduler_delivery(function):
@@ -77,7 +80,7 @@ def _load_all_employees(db: Session) -> list[Employee]:
 def _load_pending_flow_requests(db: Session) -> list[FlowLaunchRequest]:
     local_now = _local_now_naive()
     utc_now_value = utc_now()
-    return list(
+    requests = list(
         db.query(FlowLaunchRequest)
         .filter(
             FlowLaunchRequest.processed_at.is_(None),
@@ -96,6 +99,13 @@ def _load_pending_flow_requests(db: Session) -> list[FlowLaunchRequest]:
         .order_by(FlowLaunchRequest.requested_at, FlowLaunchRequest.id)
         .all()
     )
+    # Public scheduled dates are local wall time; internal requests are UTC.
+    def due_order(request):
+        due = request.requested_at
+        if request.launch_type in {"scheduled", "adaptation_plan"} and request.skip_step_key is None:
+            due = _get_tz().localize(due).astimezone(UTC).replace(tzinfo=None)
+        return due, request.id
+    return sorted(requests, key=due_order)
 
 
 def _load_pending_mass_scenario_actions(db: Session) -> list[MassScenarioAction]:
@@ -455,6 +465,18 @@ async def schedule_all_employees(scheduler: AsyncIOScheduler, bot) -> None:
                 previous = db.query(ScenarioProgress).filter_by(employee_id=employee.id, scenario_key=scenario.scenario_key).first()
                 if previous and previous.interrupted_at is not None:
                     reset_progress(db, employee.id, scenario.scenario_key)
+                if request.launch_type == "scheduled" and any(
+                    step.response_type in INTERACTIVE_RESPONSE_TYPES
+                    for step in get_scenario_steps(db, scenario.scenario_key)
+                ):
+                    # Do not hand a claimed interactive root to an in-memory job:
+                    # persist its recipient/step before the next request is examined.
+                    try:
+                        await start_scenario(bot, db, employee, scenario.scenario_key, reserve_first_step=True)
+                    except Exception:
+                        db.rollback()
+                        logger.exception("Scheduled scenario delivery uncertain: request_id=%s", request.id)
+                    continue
                 db.commit()
             if request.launch_type == "status_transition":
                 if normalize_candidate_work_stage(scenario.candidate_work_stage_trigger) != normalize_candidate_work_stage(

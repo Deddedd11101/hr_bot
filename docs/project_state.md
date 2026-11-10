@@ -33,6 +33,12 @@ related:
 source_of_truth: true
 ---
 
+10.11 feature/unified-launch-queue, первый ограниченный срез: закрыт разрыв
+claim → in-memory job для отдельных плановых интерактивных root-запусков;
+claim и snapshot progress фиксируются до отправки. Неизвестная доставка
+не повторяется автоматически. Исправлен порядок due FlowLaunchRequest
+с local/UTC timestamps. Пока не выложено; это не глобальная межисточниковая FIFO.
+
 09.11 feature/catalog-groups: по решению пользователя группы общие для HR, одна на объект. People scope сохраняется при смене candidate/staff; scenario scope охватывает сценарии/опросы. Runtime, расписания, роли и документы не меняются. CAS защищает stale move/rename/delete; UI сохраняет search/sort/status при группировке. Зависит от PR188; подготовка к совместной выкладке, пока не выложено.
 
 09.11 feature scrollbars-login-dark: shared scrollbar CSS covers React/login/legacy pages and dark native control color-scheme. Login corners/autofill background scoped to card; no auth/backend/DB semantics changed. Local visual checks light/dark, long Select End, custom ScrollArea without double native bar passed. Saved credential autofill and cross-browser manual checks remain open. Пока не выложено.
