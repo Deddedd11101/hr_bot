@@ -169,6 +169,7 @@ def _format_dt(value: Optional[datetime]) -> str:
 
 
 def _serialize_mass_scenario_action(db: Session, action: MassScenarioAction, scenario_by_key: dict[str, ScenarioTemplate]) -> dict:
+    from ..mass_scenario_delivery import delivery_counts
     scenario = scenario_by_key.get(action.flow_key)
     return {
         "id": action.id,
@@ -181,6 +182,7 @@ def _serialize_mass_scenario_action(db: Session, action: MassScenarioAction, sce
         "processed_at": action.processed_at.isoformat() if action.processed_at else "",
         "processed_at_label": _format_dt(action.processed_at),
         "recipient_count": action.recipient_count,
+        "delivery_counts": delivery_counts(db, action.id),
         "recipient_scope": _recipient_scope_label(
             db,
             action.target_all,

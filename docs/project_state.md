@@ -33,6 +33,13 @@ related:
 source_of_truth: true
 ---
 
+10.11 feature/mass-scenario-recipient-queue поверх PR191: новые плановые массовые
+запуски получают durable snapshot и индивидуальные статусы адресатов. Ожидающие
+не теряются при частичном старте; неопределённая отправка не повторяется.
+Обычные survey XLSX сохраняют прежний launch ID. Старые массовые действия,
+Grade/feedback и немедленные mass APIs не мигрируются. Пока не выложено;
+нужен DB/runtime review, общая межисточниковая FIFO остаётся открытой.
+
 10.11 feature/unified-launch-queue, первый ограниченный срез: закрыт разрыв
 claim → in-memory job для отдельных плановых интерактивных root-запусков;
 claim и snapshot progress фиксируются до отправки. Неизвестная доставка

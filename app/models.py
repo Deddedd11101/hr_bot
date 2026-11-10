@@ -852,6 +852,20 @@ class MassScenarioAction(Base):
     target_employee_ids: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     recipient_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    recipient_queue_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default=text("0"))
+
+
+class MassScenarioRecipient(Base):
+    __tablename__ = "mass_scenario_recipients"
+    __table_args__ = (UniqueConstraint("action_id", "employee_id"),
+        CheckConstraint("status IN ('pending', 'starting', 'started', 'failed', 'cancelled')"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    action_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    employee_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="pending")
+    last_error: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utc_now)
 
 
 class MassMessageAction(Base):

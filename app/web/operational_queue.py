@@ -6,7 +6,7 @@ from collections import Counter
 
 from ..config import settings
 from ..models import (Employee, EmployeeAdaptationPlanItem, EmployeeFeedbackRecipient,
-    EmployeeFeedbackRun, FlowLaunchRequest, FlowStepTemplate, MassScenarioAction, ScenarioProgress, ScenarioTemplate)
+    EmployeeFeedbackRun, FlowLaunchRequest, FlowStepTemplate, MassScenarioAction, MassScenarioRecipient, ScenarioProgress, ScenarioTemplate)
 from ..scenario_engine import resolve_scenario_recipient, INTERACTIVE_RESPONSE_TYPES
 from ..scenario_watchdog import progress_health
 from ..time_utils import utc_now
@@ -99,7 +99,27 @@ def queue_rows(db):
             "blocked" if blocker else "queued", f"Оценивающий занят диалогом №{blocker.id}" if blocker else "Ожидает отправки опрашиваемому",
             run.created_at, "Сбор оценок / обратной связи", recipient.respondent_employee_id, run.scenario_title)
 
+    deliveries = bounded(db.query(MassScenarioRecipient, MassScenarioAction).join(MassScenarioAction,
+        MassScenarioAction.id == MassScenarioRecipient.action_id).filter(MassScenarioRecipient.status.in_(["pending", "starting", "failed"]))
+        .order_by(MassScenarioAction.requested_at, MassScenarioRecipient.id))
+    for delivery, action in deliveries:
+        person, scenario = people.get(delivery.employee_id), scenarios.get(action.flow_key)
+        resolution = resolve_scenario_recipient(db, person, scenario, requires_response=action.flow_key in interactive) if person and scenario else None
+        rid = resolution.employee_id if resolution else None
+        blocker = busy.get(rid)
+        from ..grades.development import owns_scenario
+        grade_reserved = person and owns_scenario(db, person.id, action.flow_key)
+        state = "attention" if delivery.status in {"starting", "failed"} else "blocked" if blocker else "queued"
+        reason = delivery.last_error or (f"Получатель занят диалогом №{blocker.id}" if blocker else "Ожидает обработки планировщиком")
+        if delivery.status == "pending" and grade_reserved:
+            state, reason = "blocked", "Сценарий зарезервирован циклом развития; проверьте назначение во вкладке Грейд"
+        add(f"mass-recipient:{delivery.id}", delivery.employee_id, action.flow_key, state, reason,
+            request_utc(action), "Массовый запуск", rid)
+
+    materialized = {row[0] for row in db.query(MassScenarioRecipient.action_id).distinct()}
     for action in bounded(db.query(MassScenarioAction).filter_by(processed_at=None).order_by(MassScenarioAction.requested_at)):
+        if action.id in materialized:
+            continue
         at = request_utc(action)
         add(f"mass:{action.id}", action.target_employee_id, action.flow_key,
             "scheduled" if at > now else "queued", f"Массовый запуск · получателей: {action.recipient_count}", at,

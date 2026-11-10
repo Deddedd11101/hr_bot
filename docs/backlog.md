@@ -35,6 +35,11 @@ source_of_truth: true
 
 ## Очередь запусков: первый безопасный срез (10.11.2026)
 
+- Следующий dependency-пакет: поадресный ledger новых scheduled mass scenario/survey
+  actions. Busy recipient остаётся pending, свободные стартуют независимо;
+  starting не переигрывается. Старые действия и manual APIs не мигрируются.
+  Новая таблица + additive flag, нужны DB/runtime review и CI. Не выложено.
+
 - Feature: scheduled interactive roots исполняются внутри scheduler scan;
   claim + первый recipient/step сохраняются до I/O. Следующий запрос не
   перезаписывает временное задание; ambiguous send не переигрывается.
