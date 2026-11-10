@@ -33,6 +33,13 @@ related:
 source_of_truth: true
 ---
 
+10.11 delivery update PR196: deployed `c069fdfadcd014aa55559ed854fb14ba1dfc2068`,
+Deploy42804122647 и Diagnostics42804232721 success;655 CI tests, services/HTTP/
+Telegram gates passed, backup verified и scenario fingerprint unchanged.
+Подготовительное «не выложено» для scenario-recipient-admission ниже superseded.
+Реальные сценарии вручную не запускались; живая приёмка остаётся открыта.
+Полная FIFO и прямые legacy step jobs по-прежнему не объявляются завершёнными.
+
 10.11 feature/scenario-recipient-admission от deployed stage dddc1a3: общий
 SQLite transaction gate для start_scenario, snapshot адресата до I/O, отдельный
 pre-I/O busy outcome сохраняет durable запросы pending/blocked. Нет schema

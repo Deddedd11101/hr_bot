@@ -35,6 +35,11 @@ source_of_truth: true
 
 ## Очередь запусков: первый безопасный срез (10.11.2026)
 
+- Выложено PR196, root recipient admission: `c069fdf`, Deploy42804122647 и
+  Diagnostics42804232721 success,655 CI tests. Предварительное «пока не выложено»
+  ниже для этого feature superseded. Личная конфигурация/расписания не менялись.
+  Живая приёмка, direct legacy step jobs и общая FIFO остаются открыты.
+
 - Feature scenario-recipient-admission: транзакционный SQLite допуск root-вызовов
   start_scenario для фактического recipient, durable reservation до I/O и
   безопасное возвращение очередных claims при pre-I/O busy. Schema без изменений.
