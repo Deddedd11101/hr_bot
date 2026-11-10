@@ -14,7 +14,7 @@ from app.grades.corrections import correct, history, view
 from app.feedback_exports import latest_feedback_run
 from app.messaging.identity import set_primary_chat_id
 from app.models import Employee, EmployeeFeedbackRecipient, GradeAssessmentValue, GradeDevelopmentAction, ScenarioProgress, ScenarioTemplate, FlowStepTemplate
-from app.scenario_engine import handle_button_response
+from app.scenario_engine import ScenarioRecipientBusy, handle_button_response
 from app.web import grades
 from app.time_utils import utc_now
 from tests import test_grades_services as fixtures
@@ -44,6 +44,15 @@ class GradeCollectionTests(unittest.TestCase):
     def answer(self, messenger, collection, respondent, skill_id, option):
         person = self.db.get(Employee, respondent)
         self.assertTrue(asyncio.run(handle_button_response(messenger, self.db, person, collection.scenario_key, f"skill_{skill_id}", option)))
+
+    def test_admission_race_keeps_review_recipients_pending(self):
+        self.prepare()
+        row = self.create()
+        with patch.object(collections, "start_scenario", side_effect=ScenarioRecipientBusy()):
+            asyncio.run(collections.process_pending(FakeMessenger(), session_factory=self.sessions))
+        self.db.expire_all()
+        statuses = list(self.db.scalars(select(EmployeeFeedbackRecipient.delivery_status).where(EmployeeFeedbackRecipient.run_id == row.feedback_run_id)))
+        self.assertEqual(statuses, ["pending", "pending"])
 
     def test_individual_reviews_fractional_mean_idempotence_and_feedback_isolation(self):
         # Existing stage SQLite uses INTEGER affinity; it must still retain 1.5.

@@ -33,6 +33,13 @@ related:
 source_of_truth: true
 ---
 
+10.11 feature/scenario-recipient-admission от deployed stage dddc1a3: общий
+SQLite transaction gate для start_scenario, snapshot адресата до I/O, отдельный
+pre-I/O busy outcome сохраняет durable запросы pending/blocked. Нет schema
+миграции и автоистечения/переотправки. Две конкурирующие DB connections и
+неопределённая отправка проверяются изолированно. Пока не выложено; прямые
+send_step jobs и полноценная межисточниковая FIFO остаются открытыми.
+
 10.11 integration review пакета191–193: найден и устранён Grade↔mass deadlock.
 Dispatch больше не трактует future/paused назначение как занятой диалог;
 Grade ждёт только due запросы и собственную pending/starting строку массового

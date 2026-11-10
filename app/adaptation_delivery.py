@@ -5,7 +5,7 @@ import logging
 from sqlalchemy import update
 
 from .models import Employee, EmployeeAdaptationPlanItem, FlowLaunchRequest, ScenarioTemplate
-from .scenario_engine import INTERACTIVE_RESPONSE_TYPES, get_conflicting_progress_for_survey_launch, get_scenario_steps, get_waiting_progress, matches_role_scope, resolve_scenario_recipient, start_scenario
+from .scenario_engine import INTERACTIVE_RESPONSE_TYPES, ScenarioRecipientBusy, get_conflicting_progress_for_survey_launch, get_scenario_steps, get_waiting_progress, matches_role_scope, resolve_scenario_recipient, start_scenario
 from .time_utils import utc_now
 
 logger = logging.getLogger(__name__)
@@ -63,12 +63,19 @@ async def deliver_plan_request(db, bot, request):
     item.last_error = None
     db.commit()
     try:
-        started = await start_scenario(bot, db, employee, scenario.scenario_key, adaptation_plan_item_id=item.id)
+        started = await start_scenario(bot, db, employee, scenario.scenario_key, adaptation_plan_item_id=item.id, defer_if_busy=True)
         db.refresh(item)
         if item.status != "completed":
             item.status = "in_progress" if started else "failed"
             if not started:
                 item.last_error = "Сценарий не запущен. Проверьте получателя и шаги перед повтором."
+        db.commit()
+    except ScenarioRecipientBusy:
+        db.rollback()
+        db.refresh(item)
+        item.status, item.started_at = "blocked", None
+        item.last_error = "Получатель занят другим диалогом. Запуск сохранён в очереди."
+        db.execute(update(FlowLaunchRequest).where(FlowLaunchRequest.id == request.id).values(processed_at=None))
         db.commit()
     except Exception:
         db.rollback()

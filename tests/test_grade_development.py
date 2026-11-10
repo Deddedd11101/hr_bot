@@ -18,6 +18,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app.database import Base
 from app.grades import development as dev
+from app.scenario_engine import ScenarioRecipientBusy
 from app.models import (Employee, FlowLaunchRequest, FlowStepTemplate,
                         GradeAssessment, GradeDevelopmentCycle as Cycle, GradeDevelopmentDelivery as Delivery,
                         GradeDevelopmentMilestone as Milestone, HrSettings, MassScenarioAction, MassScenarioRecipient, ScenarioTemplate)
@@ -419,6 +420,16 @@ class GradeDevelopmentTests(unittest.TestCase):
             self.scan()
         self.assertEqual(self.item().status, "blocked")
         self.started.assert_not_awaited()
+
+    def test_admission_race_preserves_cycle_for_later_dispatch(self):
+        self.enroll()
+        self.started.side_effect = ScenarioRecipientBusy()
+        self.scan()
+        self.assertEqual(self.item().status, "blocked")
+        self.assertIsNone(self.item().claimed_at)
+        self.started.side_effect = None
+        self.scan()
+        self.assertEqual(self.item().status, "started")
 
     def test_targeted_mass_action_blocks_activation(self):
         self.db.add(MassScenarioAction(flow_key="ipr6", scenario_kind="scenario", requested_at=datetime(2035, 1, 1),

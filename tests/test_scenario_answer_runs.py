@@ -8,7 +8,7 @@ from openpyxl import load_workbook
 
 from app.database import SessionLocal
 from app.models import Employee, FlowStepTemplate, ScenarioAnswerRun, ScenarioProgress, ScenarioTemplate, SurveyAnswer
-from app.scenario_engine import handle_text_response, start_scenario
+from app.scenario_engine import handle_text_response, reset_progress, start_scenario
 from app.web.scenario_results import export_scenario_result, scenario_results
 from tests import test_adaptation_pulse_files as fixtures
 from tests.test_scenario_engine_smoke import FakeMessenger
@@ -56,6 +56,10 @@ class ScenarioAnswerRunTests(fixtures.AdaptationPulseFilesTests):
             db.commit()
             self.assertTrue(await start_scenario(FakeMessenger(), db, subject, self.key))
             first_id = db.query(ScenarioProgress).filter_by(employee_id=subject.id, scenario_key=self.key).one().answer_run_id
+            self.assertFalse(await start_scenario(FakeMessenger(), db, subject, self.key))
+            self.assertEqual(db.get(ScenarioAnswerRun, first_id).status, "in_progress")
+            reset_progress(db, subject.id, self.key)
+            db.commit()
             self.assertTrue(await start_scenario(FakeMessenger(), db, subject, self.key))
             self.assertEqual(db.get(ScenarioAnswerRun, first_id).status, "interrupted")
             _reset_employee_bot_linkage(db, subject)

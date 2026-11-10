@@ -6,7 +6,7 @@ from collections import Counter
 from sqlalchemy import update
 
 from .models import Employee, MassScenarioAction, MassScenarioRecipient, ScenarioTemplate
-from .scenario_engine import (INTERACTIVE_RESPONSE_TYPES, get_conflicting_progress_for_survey_launch,
+from .scenario_engine import (INTERACTIVE_RESPONSE_TYPES, ScenarioRecipientBusy, get_conflicting_progress_for_survey_launch,
     get_scenario_steps, matches_role_scope, resolve_scenario_recipient, start_scenario)
 from .time_utils import utc_now
 
@@ -75,11 +75,16 @@ async def deliver_mass_action(db, bot, action_id, recipient_ids):
             continue
         try:
             started = await start_scenario(bot, db, employee, scenario.scenario_key,
-                survey_launch_id=action_id if scenario_kind == "survey" else None, reserve_first_step=True)
+                survey_launch_id=action_id if scenario_kind == "survey" else None, defer_if_busy=True)
             row = db.get(MassScenarioRecipient, row_id, populate_existing=True)
             row.status = "started" if started else "failed"
             row.last_error = None if started else "Не удалось запустить сценарий. Проверьте получателя и шаги"
             row.updated_at = utc_now()
+            db.commit()
+        except ScenarioRecipientBusy:
+            db.rollback()
+            db.execute(update(MassScenarioRecipient).where(MassScenarioRecipient.id == row_id,
+                MassScenarioRecipient.status == "starting").values(status="pending", last_error=None, updated_at=utc_now()))
             db.commit()
         except Exception:
             db.rollback()

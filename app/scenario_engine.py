@@ -14,7 +14,7 @@ from typing import Any, Literal, NamedTuple, Optional
 
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, Message, ReplyKeyboardMarkup
 from pytz import timezone as tz_get
-from sqlalchemy import or_
+from sqlalchemy import or_, update
 from sqlalchemy.orm import Session, object_session
 
 from .config import settings
@@ -31,6 +31,38 @@ from .feedback_exports import feedback_workbook, latest_feedback_run
 
 
 logger = logging.getLogger(__name__)
+
+
+class ScenarioRecipientBusy(RuntimeError):
+    """Admission refused before external I/O; durable callers may keep waiting."""
+
+
+def _admit_scenario_start(db, employee, scenario, *, defer_if_busy):
+    requires_response = any(s.response_type in INTERACTIVE_RESPONSE_TYPES for s in get_scenario_steps(db, scenario.scenario_key))
+    initial = resolve_scenario_recipient(db, employee, scenario, requires_response=requires_response)
+    locked_ids = {employee.id}
+    if initial.employee_id:
+        locked_ids.add(initial.employee_id)
+    db.flush()
+    # SQLite's writer lock covers admission and the durable first-step reservation.
+    for employee_id in sorted(locked_ids):
+        db.execute(update(Employee).where(Employee.id == employee_id).values(id=Employee.id))
+    db.refresh(employee)
+    db.refresh(scenario)
+    resolution = resolve_scenario_recipient(db, employee, scenario, requires_response=requires_response)
+    changed = resolution.employee_id is not None and resolution.employee_id not in locked_ids
+    subject_busy = db.query(ScenarioProgress.id).filter(
+        ScenarioProgress.employee_id == employee.id, ScenarioProgress.scenario_key == scenario.scenario_key,
+        ScenarioProgress.is_completed.is_(False),
+        or_(ScenarioProgress.current_step_key.isnot(None), ScenarioProgress.waiting_for_response.is_(True),
+            ScenarioProgress.feedback_run_id.isnot(None), ScenarioProgress.survey_launch_id.isnot(None)),
+    ).first()
+    recipient_busy = resolution.employee_id and get_conflicting_progress_for_survey_launch(db, resolution.employee_id, scenario.scenario_key)
+    if changed or subject_busy or recipient_busy:
+        if defer_if_busy:
+            raise ScenarioRecipientBusy("Диалог занят или получатель изменился до начала отправки")
+        return None
+    return resolution
 
 
 CALLBACK_PREFIX = "scenario:"
@@ -2209,6 +2241,7 @@ async def send_step(
     step: FlowStepTemplate,
     scheduled_at: Optional[datetime] = None,
     auto_follow: bool = True,
+    _admitted_recipient: ScenarioRecipientResolution | None = None,
 ) -> bool:
     messenger = as_messenger(messenger_or_bot)
     if employee.is_bot_blocked:
@@ -2234,12 +2267,17 @@ async def send_step(
             progress.last_delivery_error = "Сотрудник для опроса не найден."
             db.commit()
             return False
-    resolution = resolve_scenario_recipient(
+    resolution = _admitted_recipient or resolve_scenario_recipient(
         db,
         employee,
         scenario,
         requires_response=step_requires_response(step),
     )
+    if _admitted_recipient and resolution.employee_id:
+        admitted_employee = db.get(Employee, resolution.employee_id, populate_existing=True)
+        if (not admitted_employee or admitted_employee.is_bot_blocked
+                or get_primary_chat_id(admitted_employee, db=db) != resolution.chat_id):
+            resolution = resolution._replace(error="Привязка получателя изменилась до отправки.")
     if resolution.error or not resolution.chat_id:
         _mark_delivery_failure(db, progress, employee, scenario, step, resolution)
         return False
@@ -2881,7 +2919,7 @@ async def start_scenario(
     feedback_run_id: int | None = None,
     survey_launch_id: int | None = None,
     adaptation_plan_item_id: int | None = None,
-    reserve_first_step: bool = False,
+    defer_if_busy: bool = False,
 ) -> bool:
     messenger = as_messenger(messenger_or_bot)
     if employee.is_bot_blocked:
@@ -2895,14 +2933,6 @@ async def start_scenario(
             return False
     if feedback_run_id is not None and survey_launch_id is not None:
         return False
-    if feedback_run_id is None and survey_launch_id is None:
-        active_feedback = db.query(ScenarioProgress).filter(
-            ScenarioProgress.employee_id == employee.id,
-            or_(ScenarioProgress.feedback_run_id.is_not(None), ScenarioProgress.survey_launch_id.is_not(None)),
-            ScenarioProgress.is_completed.is_(False),
-        ).first()
-        if active_feedback is not None:
-            return False
     if feedback_run_id is not None or survey_launch_id is not None:
         if survey_launch_id is not None:
             launch = db.get(MassScenarioAction, survey_launch_id)
@@ -2911,10 +2941,13 @@ async def start_scenario(
         feedback_run = db.get(EmployeeFeedbackRun, feedback_run_id) if feedback_run_id is not None else None
         if feedback_run_id is not None and (not feedback_run or feedback_run.scenario_key != scenario_key or not is_survey(scenario)):
             return False
-        if get_conflicting_progress_for_survey_launch(db, employee.id, scenario_key) is not None:
-            return False
     first_step = get_first_step(db, scenario_key)
     if not first_step:
+        return False
+    resolution = _admit_scenario_start(db, employee, scenario, defer_if_busy=defer_if_busy)
+    if resolution is None:
+        return False
+    if employee.is_bot_blocked or not matches_role_scope(employee, scenario):
         return False
     reset_progress(db, employee.id, scenario_key)
     progress = get_or_create_progress(db, employee.id, scenario_key)
@@ -2922,11 +2955,11 @@ async def start_scenario(
     progress.survey_launch_id = survey_launch_id
     progress.adaptation_plan_item_id = adaptation_plan_item_id
     progress.recipient_mode = _scenario_recipient_mode(scenario)
-    if reserve_first_step:
-        resolution = resolve_scenario_recipient(db, employee, scenario, requires_response=step_requires_response(first_step))
-        if not resolution.error and resolution.chat_id:
-            _store_progress_recipient(progress, resolution)
-            progress.current_step_key = first_step.step_key
-            progress.last_delivery_error = "Результат начатой доставки неизвестен. Перед повтором проверьте сообщения получателя."
+    if resolution.error or not resolution.chat_id:
+        _mark_delivery_failure(db, progress, employee, scenario, first_step, resolution)
+        return False
+    _store_progress_recipient(progress, resolution)
+    progress.current_step_key = first_step.step_key
+    progress.last_delivery_error = "Результат начатой доставки неизвестен. Перед повтором проверьте сообщения получателя."
     db.commit()
-    return await send_step(messenger, db, employee, scenario, first_step)
+    return await send_step(messenger, db, employee, scenario, first_step, _admitted_recipient=resolution)

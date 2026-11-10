@@ -17,7 +17,7 @@ from ..models import (Employee, FlowLaunchRequest, GradeAssessment, GradeDevelop
                       GradeDevelopmentDelivery as Delivery, GradeDevelopmentMilestone as Milestone,
                       HrSettings, MassScenarioAction, MassScenarioRecipient, ScenarioTemplate)
 from ..notifications import _notification_recipients
-from ..scenario_engine import (INTERACTIVE_RESPONSE_TYPES, get_conflicting_progress_for_survey_launch,
+from ..scenario_engine import (INTERACTIVE_RESPONSE_TYPES, ScenarioRecipientBusy, get_conflicting_progress_for_survey_launch,
                                get_scenario_steps, get_waiting_progress, matches_role_scope,
                                resolve_scenario_recipient, start_scenario)
 from ..staff_email_verification import chat_id_allowed
@@ -452,10 +452,16 @@ async def _process_one(bot, item_id):
         if changed.rowcount != 1:
             return
         try:
-            started = await start_scenario(bot, db, employee, scenario.scenario_key)
+            started = await start_scenario(bot, db, employee, scenario.scenario_key, defer_if_busy=True)
             item = db.get(Milestone, item_id)
             item.status = "started" if started else "failed"
             item.last_error = None if started else "Сценарий не запущен. Требуется проверка HR перед повтором"
+            db.commit()
+        except ScenarioRecipientBusy:
+            db.rollback()
+            item = db.get(Milestone, item_id)
+            item.status, item.claimed_at = "blocked", None
+            item.last_error = "Получатель занят другим диалогом. Этап сохранён в очереди"
             db.commit()
         except Exception:
             db.rollback()

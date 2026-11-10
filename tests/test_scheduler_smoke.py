@@ -8,7 +8,7 @@ from app.database import SessionLocal, init_db
 from app.messaging.identity import set_primary_chat_id
 from app.models import Employee, EmployeeMessengerAccount, FlowLaunchRequest, FlowStepTemplate, MassMessageAction, MassScenarioAction, OnboardingEvent, ScenarioProgress, ScenarioTemplate
 from app.scheduler import _load_pending_flow_requests, _load_pending_mass_message_actions, _load_pending_mass_scenario_actions, run_scheduled_step, schedule_all_employees, schedule_employee_scenario
-from app.scenario_engine import SINGLE_STEP_REQUEST_PREFIX, send_step
+from app.scenario_engine import SINGLE_STEP_REQUEST_PREFIX, ScenarioRecipientBusy, send_step
 
 
 class _FakeScheduler:
@@ -234,6 +234,15 @@ class SchedulerSmokeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(messenger.sent_texts, [])
         with SessionLocal() as db:
             self.assertIsNone(db.get(FlowLaunchRequest, ids[1]).processed_at)
+
+    async def test_admission_race_does_not_consume_scheduled_request(self):
+        ids = self._queue_interactive_requests()
+        scheduler, messenger = _FakeScheduler(), _FakeMessenger()
+        with patch("app.scheduler.start_scenario", side_effect=ScenarioRecipientBusy()), patch("app.scheduler._load_all_employees", return_value=[]), patch("app.scheduler._load_scenarios", return_value=[]):
+            await schedule_all_employees(scheduler, messenger)
+        with SessionLocal() as db:
+            self.assertTrue(all(db.get(FlowLaunchRequest, request_id).processed_at is None for request_id in ids))
+        self.assertEqual(messenger.sent_texts, [])
 
     async def test_pending_roots_sort_by_actual_instant_not_wall_clock(self):
         self._create_scenario_with_employee()

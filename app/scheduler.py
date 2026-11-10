@@ -28,6 +28,7 @@ from .messaging.identity import get_primary_chat_id
 from .models import Employee, FlowLaunchRequest, FlowStepTemplate, MassMessageAction, MassScenarioAction, OnboardingEvent, ScenarioTemplate, ScenarioProgress
 from .scenario_engine import (
     INTERACTIVE_RESPONSE_TYPES,
+    ScenarioRecipientBusy,
     SINGLE_STEP_REQUEST_PREFIX,
     add_workdays,
     format_message,
@@ -486,7 +487,9 @@ async def schedule_all_employees(scheduler: AsyncIOScheduler, bot) -> None:
                     # Do not hand a claimed interactive root to an in-memory job:
                     # persist its recipient/step before the next request is examined.
                     try:
-                        await start_scenario(bot, db, employee, scenario.scenario_key, reserve_first_step=True)
+                        await start_scenario(bot, db, employee, scenario.scenario_key, defer_if_busy=True)
+                    except ScenarioRecipientBusy:
+                        db.rollback()
                     except Exception:
                         db.rollback()
                         logger.exception("Scheduled scenario delivery uncertain: request_id=%s", request.id)

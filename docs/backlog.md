@@ -35,6 +35,12 @@ source_of_truth: true
 
 ## Очередь запусков: первый безопасный срез (10.11.2026)
 
+- Feature scenario-recipient-admission: транзакционный SQLite допуск root-вызовов
+  start_scenario для фактического recipient, durable reservation до I/O и
+  безопасное возвращение очередных claims при pre-I/O busy. Schema без изменений.
+  Пока не выложено. Прямые legacy step jobs, общий FIFO и немедленные mass API
+  очереди остаются отдельными незавершёнными частями.
+
 - Integration review follow-up: устранено взаимное ожидание Grade↔mass;
   dispatch Grade учитывает только due запросы и ledger конкретного subject,
   future/paused назначения не подавляют явный scheduled root. Generic automatic
