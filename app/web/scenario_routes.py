@@ -1865,13 +1865,17 @@ def survey_runs_api(request: Request, scenario_id: int, db: Session = Depends(ge
         .group_by(SurveyAnswer.survey_launch_id)
         .all()
     ) if action_ids else {}
+    from ..mass_scenario_delivery import delivery_counts
+    delivery_by_action = {action.id: delivery_counts(db, action.id) for action in actions}
     runs = [
         {
             "id": action.id,
             "kind": "broadcast",
             "source_label": "Рассылка" if action.processed_at else "Рассылка не завершена",
             "created_at": action.created_at.isoformat(),
-            "recipient_count": action.recipient_count,
+            "recipient_count": sum(delivery_by_action[action.id].values()) if delivery_by_action[action.id] else action.recipient_count,
+            "pending_count": delivery_by_action[action.id].get("pending", 0),
+            "starting_count": delivery_by_action[action.id].get("starting", 0),
             "respondent_count": respondents.get(action.id, 0),
             "answer_count": counts.get(action.id, 0),
             "download_url": f"/api/surveys/{scenario.id}/runs/{action.id}/export" if counts.get(action.id) else None,

@@ -12,7 +12,7 @@ from openpyxl import load_workbook
 from app.auth import authenticate_account, create_admin_session_token
 from app.database import SessionLocal, init_db
 from app.main import AUTH_COOKIE_NAME, app
-from app.models import Employee, FlowStepTemplate, ScenarioProgress, ScenarioTemplate, SurveyAnswer
+from app.models import Employee, FlowStepTemplate, MassScenarioAction, ScenarioProgress, ScenarioTemplate, SurveyAnswer
 from app.scenario_engine import handle_button_response, handle_text_response
 
 
@@ -112,6 +112,40 @@ class SurveyLaunchHistoryTests(TestCase):
         self.assertEqual({row[2] for row in self._rows(old_run)[1:]}, {"Первый ответ", "Второй ответ"})
         with SessionLocal() as db:
             self.assertEqual(db.query(SurveyAnswer).filter_by(scenario_key=self.scenario_key).count(), 3)
+
+    def test_busy_manual_recipient_waits_and_resumes_in_same_excel(self):
+        from app.mass_scenario_delivery import deliver_mass_action
+        from app.scheduler import _load_pending_mass_scenario_actions
+        with SessionLocal() as db:
+            db.add(ScenarioProgress(employee_id=self.employee_ids[0], recipient_employee_id=self.employee_ids[0],
+                scenario_key="busy_" + self.scenario_key, current_step_key="busy", waiting_for_response=True,
+                is_completed=False, started_at=datetime.now(UTC).replace(tzinfo=None), updated_at=datetime.now(UTC).replace(tzinfo=None)))
+            db.commit()
+        messenger = FakeMessenger()
+        response = self._launch(self.employee_ids, messenger)
+        self.assertEqual(response.status_code, 200, response.text)
+        run = self.client.get(f"/api/surveys/{self.survey_id}/runs").json()["runs"][0]
+        self.assertEqual(run["recipient_count"], 2)
+        self.assertEqual(run["pending_count"], 1)
+        self._answer(self.employee_ids[1], "First", messenger)
+        with SessionLocal() as db:
+            self.assertIn(run["id"], [row.id for row in _load_pending_mass_scenario_actions(db)])
+            old = db.query(ScenarioProgress).filter_by(scenario_key="busy_" + self.scenario_key).one()
+            old.is_completed, old.waiting_for_response = True, False
+            db.commit()
+            asyncio.run(deliver_mass_action(db, messenger, run["id"], self.employee_ids))
+        self._answer(self.employee_ids[0], "Second", messenger)
+        run = self.client.get(f"/api/surveys/{self.survey_id}/runs").json()["runs"][0]
+        self.assertEqual({row[2] for row in self._rows(run)[1:]}, {"First", "Second"})
+
+    def test_legacy_manual_without_recipient_snapshot_is_not_replayed(self):
+        from app.scheduler import _load_pending_mass_scenario_actions
+        with SessionLocal() as db:
+            action = MassScenarioAction(flow_key=self.scenario_key, scenario_kind="survey", launch_type="manual",
+                requested_at=datetime(2020, 1, 1), created_at=datetime(2020, 1, 1), recipient_queue_enabled=True)
+            db.add(action)
+            db.commit()
+            self.assertNotIn(action.id, [row.id for row in _load_pending_mass_scenario_actions(db)])
 
     def test_branching_survey_saves_choice_and_terminal_branch_answer(self):
         with SessionLocal() as db:

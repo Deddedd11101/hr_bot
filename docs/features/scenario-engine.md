@@ -16,6 +16,44 @@ related:
 source_of_truth: true
 ---
 
+## Сохранённые шаги и немедленные рассылки (10.11.2026)
+
+Classic/JSON «Запустить сейчас» scenario/survey атомарно сохраняет manual
+MassScenarioAction и recipient snapshot перед I/O. Свободные стартуют сразу,
+busy продолжаются scheduler-ом. Старый manual без ledger не переигрывается.
+Payload возвращает полный recipient_count, started_count и delivery_counts;
+manual requested_at нормализуется в TIMEZONE для отображения. Survey action ID
+и общий XLSX запуска не меняются.
+
+Legacy timed jobs теперь имеют durable ScenarioStepDelivery: UTC due_at, batch,
+dedupe fingerprint, progress id/started_at и status/error. APScheduler только
+будит обработчик; pending due продолжаются каждым scan без in-memory jobs после
+restart. Claim и progress snapshot фиксируются до I/O; starting не истекает и
+не повторяется автоматически. Разные manual batches не схлопываются.
+
+Root проходит start_scenario admission. Продолжение использует тот же SQLite
+gate, исключая только собственный progress: ждёт человека/другой диалог/проверку
+ошибки, не делает reset. Заменённый, прерванный или завершённый context отменяет
+старое продолжение. Single-step/follow-up запросы сначала фиксируют durable
+handoff; processed_at больше не означает передачу только в память процесса.
+
+Новые progress/event batch keys связывают auto-follow и ответы человека с
+запуском. Уже отправленный runtime шаг не повторяется таймером. Если timed
+продолжение уже принадлежит ticket, второй FlowLaunchRequest не создаётся;
+его исходная UTC дата, включая будущие рабочие дни, сохраняется. Watchdog
+учитывает pending ticket, но не маскирует неопределённую I/O доставку.
+
+Карточка показывает step_deliveries. Admin может отменить pending root с CAS
+по due_at; pending batch siblings отменяются вместе. Продолжения останавливаются
+прерыванием диалога. Starting/failed не повторяются кнопкой отмены. Удаление
+сценария/карточки отменяет pending и запрещено при starting; unlink/reset отменяет
+pending, не удаляя историю. Старые in-memory jobs не backfill/replay-ятся.
+Старый pending follow-up с исторической отправкой без request/batch attribution
+передаётся в состояние проверки доставки, не переигрывается и не выдаётся
+за доказанно завершённый именно этот запрос.
+Это ещё не общая FIFO между всеми источниками. Rollback требует ledger-aware
+проверки из [[stage-deploy]], а I/O uncertainty — отдельной ручной диагностики.
+
 ## Общий допуск root-запусков через start_scenario (10.11.2026)
 
 Перед reset_progress общий вход берёт SQLite writer lock через no-op UPDATE
@@ -38,10 +76,10 @@ I/O: Flow request rollback-ит claim, mass/feedback возвращают starti
 перед отправкой. Обычное завершение или явное безопасное прерывание освобождает
 progress для следующего root, история/answers не удаляются ради допуска.
 
-Граница среза: все источники, вызывающие start_scenario, используют этот допуск.
-Legacy APScheduler/ручные step sends, вызывающие send_step напрямую, пока не
-переведены на общий root dispatcher. Продолжения и смена адресата внутри старого
-диалога не получают новой общей очереди этим изменением. HR-only сообщения без
+Граница исходного PR196: все источники start_scenario используют этот допуск.
+Плановые scheduler jobs и step/follow-up handoff теперь также защищены durable
+dispatcher из раздела выше; это не превращает произвольные callback/ручные
+продолжения в универсальный FIFO dispatcher. HR-only сообщения без
 карточки recipient не имеют employee-row gate; интерактивный HR без карточки
 по-прежнему запрещён. Не объявлять этот срез полной FIFO всех доставок.
 

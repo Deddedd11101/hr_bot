@@ -6,7 +6,7 @@ from uuid import uuid4
 from app.config import settings
 from app.database import SessionLocal, init_db
 from app.messaging.identity import set_primary_chat_id
-from app.models import Employee, EmployeeMessengerAccount, FlowLaunchRequest, FlowStepTemplate, MassMessageAction, MassScenarioAction, OnboardingEvent, ScenarioProgress, ScenarioTemplate
+from app.models import Employee, EmployeeMessengerAccount, FlowLaunchRequest, FlowStepTemplate, MassMessageAction, MassScenarioAction, OnboardingEvent, ScenarioProgress, ScenarioStepDelivery, ScenarioTemplate
 from app.scheduler import _load_pending_flow_requests, _load_pending_mass_message_actions, _load_pending_mass_scenario_actions, run_scheduled_step, schedule_all_employees, schedule_employee_scenario
 from app.scenario_engine import SINGLE_STEP_REQUEST_PREFIX, ScenarioRecipientBusy, send_step
 
@@ -63,6 +63,7 @@ class SchedulerSmokeTests(unittest.IsolatedAsyncioTestCase):
 
     def tearDown(self) -> None:
         with SessionLocal() as db:
+            db.query(ScenarioStepDelivery).filter_by(scenario_key=self.scenario_key).delete(synchronize_session=False)
             db.query(MassScenarioAction).filter(MassScenarioAction.flow_key == self.scenario_key).delete(synchronize_session=False)
             db.query(MassMessageAction).filter(MassMessageAction.message_text == self.scenario_key).delete(synchronize_session=False)
             if self.employee_id is not None:
@@ -498,8 +499,7 @@ class SchedulerSmokeTests(unittest.IsolatedAsyncioTestCase):
             self.assertIsNotNone(request_row.processed_at)
 
         job = scheduler.get_job(f"employee-{self.employee_id}-{scenario_key}-first_step")
-        self.assertIsNotNone(job)
-        await job["func"](*job["args"])
+        self.assertIsNone(job)
 
         with SessionLocal() as db:
             progress = (

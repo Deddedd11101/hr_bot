@@ -1,9 +1,12 @@
-from datetime import datetime
+from datetime import UTC, datetime
+from zoneinfo import ZoneInfo
 from typing import Optional
 
 from fastapi import HTTPException, Request, status
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
+from sqlalchemy import and_, or_
+from ..config import settings
 
 from ..mass_targeting import (
     MASS_TARGET_NONE,
@@ -16,7 +19,7 @@ from ..mass_targeting import (
     serialize_target_values,
     serialize_target_selection,
 )
-from ..models import Employee, MassMessageAction, MassScenarioAction, ScenarioTemplate
+from ..models import Employee, MassMessageAction, MassScenarioAction, MassScenarioRecipient, ScenarioTemplate
 from ..positions import ROLE_SCOPE_ALL, build_role_scope_labels, parse_role_scopes, resolve_scope_slug
 from ..scenario_engine import format_message, send_tagged_employee_documents
 from .employees import (
@@ -170,19 +173,24 @@ def _format_dt(value: Optional[datetime]) -> str:
 
 def _serialize_mass_scenario_action(db: Session, action: MassScenarioAction, scenario_by_key: dict[str, ScenarioTemplate]) -> dict:
     from ..mass_scenario_delivery import delivery_counts
+    counts = delivery_counts(db, action.id)
     scenario = scenario_by_key.get(action.flow_key)
+    requested_at = action.requested_at
+    if action.launch_type == "manual":
+        requested_at = requested_at.replace(tzinfo=UTC).astimezone(ZoneInfo(settings.TIMEZONE)).replace(tzinfo=None)
     return {
         "id": action.id,
         "flow_key": action.flow_key,
         "title": scenario.title if scenario else action.flow_key,
         "scenario_kind": action.scenario_kind,
         "launch_type": action.launch_type,
-        "requested_at": action.requested_at.isoformat() if action.requested_at else "",
-        "requested_at_label": _format_dt(action.requested_at),
+        "requested_at": requested_at.isoformat() if requested_at else "",
+        "requested_at_label": _format_dt(requested_at),
         "processed_at": action.processed_at.isoformat() if action.processed_at else "",
         "processed_at_label": _format_dt(action.processed_at),
-        "recipient_count": action.recipient_count,
-        "delivery_counts": delivery_counts(db, action.id),
+        "recipient_count": sum(counts.values()) if counts else action.recipient_count,
+        "started_count": action.recipient_count,
+        "delivery_counts": counts,
         "recipient_scope": _recipient_scope_label(
             db,
             action.target_all,
@@ -230,7 +238,8 @@ def _bulk_workspace_payload(db: Session) -> dict:
         db.query(MassScenarioAction)
         .filter(
             MassScenarioAction.scenario_kind == "scenario",
-            MassScenarioAction.launch_type == "scheduled",
+            or_(MassScenarioAction.launch_type == "scheduled", and_(MassScenarioAction.launch_type == "manual",
+                MassScenarioAction.id.in_(db.query(MassScenarioRecipient.action_id)))),
             MassScenarioAction.processed_at.is_(None),
         )
         .order_by(MassScenarioAction.requested_at.asc(), MassScenarioAction.id.asc())
@@ -251,7 +260,8 @@ def _bulk_workspace_payload(db: Session) -> dict:
         db.query(MassScenarioAction)
         .filter(
             MassScenarioAction.scenario_kind == "survey",
-            MassScenarioAction.launch_type == "scheduled",
+            or_(MassScenarioAction.launch_type == "scheduled", and_(MassScenarioAction.launch_type == "manual",
+                MassScenarioAction.id.in_(db.query(MassScenarioRecipient.action_id)))),
             MassScenarioAction.processed_at.is_(None),
         )
         .order_by(MassScenarioAction.requested_at.asc(), MassScenarioAction.id.asc())

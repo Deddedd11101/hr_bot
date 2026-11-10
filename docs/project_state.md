@@ -33,6 +33,14 @@ related:
 source_of_truth: true
 ---
 
+10.11 feature/unified-scheduled-dispatch от c069fdf: закрываются обходные timed
+jobs и немедленные массовые API. Первый путь использует durable step ledger,
+второй — существующий recipient ledger с snapshot до I/O. Watchdog знает о
+сохранённых продолжениях, карточка умеет отменить ещё не начатый root batch.
+Additive runtime table + nullable batch/event fields; старые данные не replay-ятся.
+Пока не выложено. Полная FIFO и ручная обработка неизвестной I/O доставки не
+объявляются автоматически решёнными.
+
 10.11 feature/scenario-recipient-admission от deployed stage dddc1a3: общий
 SQLite transaction gate для start_scenario, snapshot адресата до I/O, отдельный
 pre-I/O busy outcome сохраняет durable запросы pending/blocked. Нет schema

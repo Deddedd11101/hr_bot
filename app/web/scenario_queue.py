@@ -8,8 +8,8 @@ from sqlalchemy.orm import Session
 
 from ..database import get_session
 from ..models import (Employee, EmployeeAdaptationPlanItem, EmployeeFeedbackRecipient,
-                      FlowLaunchRequest, OnboardingEvent, ScenarioAnswerRun,
-                      ScenarioProgress, ScenarioTemplate)
+                      FlowLaunchRequest, FlowStepTemplate, OnboardingEvent, ScenarioAnswerRun,
+                      ScenarioProgress, ScenarioStepDelivery, ScenarioTemplate)
 from ..scenario_engine import (get_conflicting_progress_for_survey_launch,
                                resolve_scenario_recipient, get_scenario_steps,
                                INTERACTIVE_RESPONSE_TYPES)
@@ -71,7 +71,14 @@ def snapshot(db, employee_id):
                         "blocker": _progress_row(db, busy) if busy else None,
                         "recipient_error": recipient.error if recipient else "Сценарий не найден",
                         "can_cancel": row.skip_step_key is None})
-    return {"active": [_progress_row(db, row) for row in active], "pending": pending,
+    step_deliveries = []
+    for row in db.query(ScenarioStepDelivery).filter(or_(ScenarioStepDelivery.employee_id == employee_id,
+            ScenarioStepDelivery.recipient_employee_id == employee_id), ScenarioStepDelivery.status.in_(["pending", "starting", "failed"])).order_by(ScenarioStepDelivery.due_at):
+        step = db.query(FlowStepTemplate).filter_by(flow_key=row.scenario_key, step_key=row.step_key).first()
+        step_deliveries.append({"id": row.id, "title": f"{_title(db, row.scenario_key)} · {step.step_title if step else 'Шаг удалён'}",
+            "due_at": row.due_at.isoformat(), "status": row.status, "reason": row.last_error,
+            "can_cancel": row.status == "pending" and row.is_root})
+    return {"active": [_progress_row(db, row) for row in active], "pending": pending, "step_deliveries": step_deliveries,
             "timezone_note": "Время диалогов — UTC; время плановых запусков — часовой пояс приложения"}
 
 
@@ -119,6 +126,28 @@ def cancel_request(request: Request, employee_id: int, request_id: int,
     return queue_api(request, employee_id, db)
 
 
+@router.post("/api/employees/{employee_id}/scenario-queue/step-deliveries/{delivery_id}/cancel")
+def cancel_step_delivery(request: Request, employee_id: int, delivery_id: int,
+                         payload: dict = Body(...), db: Session = Depends(get_db)):
+    user = require_api_admin(request)
+    _employee(db, employee_id)
+    expected = _expected(payload)
+    changed = db.execute(update(ScenarioStepDelivery).where(ScenarioStepDelivery.id == delivery_id,
+        or_(ScenarioStepDelivery.employee_id == employee_id, ScenarioStepDelivery.recipient_employee_id == employee_id),
+        ScenarioStepDelivery.status == "pending", ScenarioStepDelivery.is_root.is_(True), ScenarioStepDelivery.due_at == expected)
+        .values(status="cancelled", last_error="Запуск отменён администратором"))
+    if changed.rowcount != 1:
+        db.rollback()
+        raise HTTPException(409, "Запуск изменён, уже отправляется или является продолжением диалога. Обновите очередь.")
+    row = db.get(ScenarioStepDelivery, delivery_id, populate_existing=True)
+    db.query(ScenarioStepDelivery).filter_by(employee_id=row.employee_id, scenario_key=row.scenario_key,
+        batch_key=row.batch_key, status="pending").update(
+        {ScenarioStepDelivery.status: "cancelled", ScenarioStepDelivery.last_error: "Корневой запуск отменён"}, synchronize_session=False)
+    _event(db, row.employee_id, f"Администратор {user.id}: отменён корневой плановый запуск #{row.id} без отправки.")
+    db.commit()
+    return queue_api(request, employee_id, db)
+
+
 @router.post("/api/employees/{employee_id}/scenario-queue/progress/{progress_id}/interrupt")
 def interrupt_progress(request: Request, employee_id: int, progress_id: int,
                        payload: dict = Body(...), db: Session = Depends(get_db)):
@@ -139,6 +168,9 @@ def interrupt_progress(request: Request, employee_id: int, progress_id: int,
         db.rollback()
         raise HTTPException(409, "Диалог изменился или находится в доставке. Обновите очередь.")
     progress = db.get(ScenarioProgress, progress_id, populate_existing=True)
+    from ..models import ScenarioStepDelivery
+    db.query(ScenarioStepDelivery).filter_by(progress_id=progress.id, progress_started_at=progress.started_at, status="pending").update(
+        {ScenarioStepDelivery.status: "cancelled", ScenarioStepDelivery.last_error: "Диалог прерван администратором"}, synchronize_session=False)
     if progress.answer_run_id:
         db.query(ScenarioAnswerRun).filter_by(id=progress.answer_run_id, status="in_progress").update(
             {ScenarioAnswerRun.status: "interrupted"}, synchronize_session=False)

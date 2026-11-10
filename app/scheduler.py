@@ -25,7 +25,7 @@ from .mass_targeting import (
 )
 from .messaging import as_messenger
 from .messaging.identity import get_primary_chat_id
-from .models import Employee, FlowLaunchRequest, FlowStepTemplate, MassMessageAction, MassScenarioAction, OnboardingEvent, ScenarioTemplate, ScenarioProgress
+from .models import Employee, FlowLaunchRequest, FlowStepTemplate, MassMessageAction, MassScenarioAction, MassScenarioRecipient, OnboardingEvent, ScenarioTemplate, ScenarioProgress
 from .scenario_engine import (
     INTERACTIVE_RESPONSE_TYPES,
     ScenarioRecipientBusy,
@@ -114,8 +114,9 @@ def _load_pending_mass_scenario_actions(db: Session) -> list[MassScenarioAction]
         db.query(MassScenarioAction)
         .filter(
             MassScenarioAction.processed_at.is_(None),
-            MassScenarioAction.launch_type == "scheduled",
-            MassScenarioAction.requested_at <= _local_now_naive(),
+            or_(and_(MassScenarioAction.launch_type == "scheduled", MassScenarioAction.requested_at <= _local_now_naive()),
+                and_(MassScenarioAction.launch_type == "manual", MassScenarioAction.recipient_queue_enabled.is_(True),
+                    MassScenarioAction.id.in_(db.query(MassScenarioRecipient.action_id)), MassScenarioAction.requested_at <= utc_now())),
         )
         .order_by(MassScenarioAction.requested_at, MassScenarioAction.id)
         .all()
@@ -208,7 +209,7 @@ def _compute_step_run_at(anchor_date, step: FlowStepTemplate, manual: bool) -> O
 
 
 @_serialize_scheduler_delivery
-async def run_scheduled_step(bot, employee_id: int, scenario_key: str, step_key: str, scheduled_at: datetime, explicit: bool = False) -> None:
+async def run_scheduled_step(bot, employee_id: int, scenario_key: str, step_key: str, scheduled_at: datetime, explicit: bool = False, delivery_id: int | None = None) -> None:
     with SessionLocal() as db:
         if not explicit and grade_owns_scenario(db, employee_id, scenario_key):
             return
@@ -232,15 +233,40 @@ async def run_scheduled_step(bot, employee_id: int, scenario_key: str, step_key:
             return
         if not matches_role_scope(employee, scenario):
             return
-        if (
+        if not explicit and (
             scenario.trigger_mode not in IMMEDIATE_TRIGGER_MODES
             and not scenario_anchor_date(employee, scenario)
         ):
             return
-        await send_step(bot, db, employee, scenario, step, scheduled_at=scheduled_at)
+        from .scheduled_step_delivery import enqueue_step, deliver_step
+        if delivery_id is None:
+            delivery = enqueue_step(db, employee_id, scenario_key, step_key, scheduled_at, explicit,
+                f"callback:{scheduled_at.isoformat()}", utc_now())
+            delivery_id = delivery.id
+            db.commit()
+        await deliver_step(db, bot, delivery_id)
 
 
-async def _continue_after_manual_step(bot, db: Session, employee: Employee, scenario: ScenarioTemplate, step_key: str) -> None:
+async def _queue_step_request(bot, db, employee, scenario, step, request):
+    from .scheduled_step_delivery import enqueue_step, deliver_step
+    progress = db.query(ScenarioProgress).filter_by(employee_id=employee.id, scenario_key=scenario.scenario_key).first()
+    row = enqueue_step(db, employee.id, scenario.scenario_key, step.step_key, datetime.now(_get_tz()), True,
+        f"followup:{request.id}", utc_now(), entry_root=progress is None or progress.is_completed)
+    if progress and not row.is_root:
+        row.progress_id, row.progress_started_at = progress.id, progress.started_at
+    ambiguous = db.query(OnboardingEvent.id).filter(OnboardingEvent.employee_id == employee.id,
+        OnboardingEvent.event_key == step.step_key, OnboardingEvent.sent_at >= request.requested_at,
+        OnboardingEvent.delivery_batch_key.is_(None), or_(OnboardingEvent.scenario_key == scenario.scenario_key,
+            (OnboardingEvent.scenario_key.is_(None)) & (OnboardingEvent.scenario_title == scenario.title))).first()
+    if ambiguous:
+        row.status, row.last_error = "starting", "Есть историческая отправка без привязки к запросу. Проверьте доставку; автоматический повтор отключён"
+    request.processed_at = utc_now()
+    db.commit()
+    if not ambiguous:
+        await deliver_step(db, bot, row.id)
+
+
+async def _continue_after_manual_step(bot, db: Session, employee: Employee, scenario: ScenarioTemplate, step_key: str, request: FlowLaunchRequest) -> None:
     current_step = get_step_by_key(db, scenario.scenario_key, step_key)
     if not current_step:
         return
@@ -248,10 +274,10 @@ async def _continue_after_manual_step(bot, db: Session, employee: Employee, scen
     if not next_step:
         return
     if settings.DEMO_MODE or next_step.send_mode == "immediate":
-        await send_step(bot, db, employee, scenario, next_step)
+        await _queue_step_request(bot, db, employee, scenario, next_step, request)
         return
     if not queue_followup_step(db, employee, scenario, next_step):
-        await send_step(bot, db, employee, scenario, next_step)
+        await _queue_step_request(bot, db, employee, scenario, next_step, request)
 
 
 def schedule_employee_scenario(
@@ -264,6 +290,7 @@ def schedule_employee_scenario(
     manual: bool,
     skip_step_key: Optional[str] = None,
     now: Optional[datetime] = None,
+    request_id: Optional[int] = None,
 ) -> None:
     if not manual and grade_owns_scenario(db, employee.id, scenario.scenario_key):
         return
@@ -281,6 +308,9 @@ def schedule_employee_scenario(
         return
 
     now = now or datetime.now(_get_tz())
+    from .scheduled_step_delivery import enqueue_step
+    batch_key = f"request:{request_id}" if request_id else f"manual:{now.isoformat()}" if manual else f"auto:{anchor_date.isoformat()}"
+    batch_created_at = utc_now()
     if settings.DEMO_MODE or manual:
         step_interval = timedelta(minutes=settings.DEMO_STEP_MINUTES if settings.DEMO_MODE else settings.MANUAL_STEP_MINUTES)
         run_at = now if manual else now + step_interval
@@ -296,11 +326,14 @@ def schedule_employee_scenario(
             job_id = f"employee-{employee.id}-{scenario.scenario_key}-{step.step_key}"
             if not manual and scheduler.get_job(job_id):
                 continue
+            delivery = enqueue_step(db, employee.id, scenario.scenario_key, step.step_key, run_at, manual, batch_key, batch_created_at)
+            if delivery.status != "pending":
+                continue
             scheduler.add_job(
                 run_scheduled_step,
                 "date",
                 run_date=run_at,
-                args=[bot, employee.id, scenario.scenario_key, step.step_key, run_at, True] if manual else [bot, employee.id, scenario.scenario_key, step.step_key, run_at],
+                args=[bot, employee.id, scenario.scenario_key, step.step_key, run_at, manual, delivery.id],
                 id=job_id,
                 replace_existing=manual,
             )
@@ -326,13 +359,14 @@ def schedule_employee_scenario(
             run_at = now
             scheduled_same_day_catchup = True
         job_id = f"employee-{employee.id}-{scenario.scenario_key}-{step.step_key}"
-        if scheduler.get_job(job_id):
+        delivery = enqueue_step(db, employee.id, scenario.scenario_key, step.step_key, run_at, False, batch_key, batch_created_at)
+        if delivery.status != "pending" or scheduler.get_job(job_id):
             continue
         scheduler.add_job(
             run_scheduled_step,
             "date",
             run_date=run_at,
-            args=[bot, employee.id, scenario.scenario_key, step.step_key, run_at],
+            args=[bot, employee.id, scenario.scenario_key, step.step_key, run_at, False, delivery.id],
             id=job_id,
             replace_existing=False,
         )
@@ -463,7 +497,10 @@ async def schedule_all_employees(scheduler: AsyncIOScheduler, bot) -> None:
                 step_key = request.skip_step_key[len(SINGLE_STEP_REQUEST_PREFIX):]
                 step = get_step_by_key(db, scenario.scenario_key, step_key)
                 if step:
-                    await send_step(bot, db, employee, scenario, step, scheduled_at=request.requested_at)
+                    await _queue_step_request(bot, db, employee, scenario, step, request)
+                request.processed_at = utc_now()
+                continue
+            if request.launch_type == "status_transition" and normalize_candidate_work_stage(scenario.candidate_work_stage_trigger) != normalize_candidate_work_stage(employee.candidate_work_stage):
                 request.processed_at = utc_now()
                 continue
             if request.skip_step_key is None:
@@ -480,7 +517,7 @@ async def schedule_all_employees(scheduler: AsyncIOScheduler, bot) -> None:
                 previous = db.query(ScenarioProgress).filter_by(employee_id=employee.id, scenario_key=scenario.scenario_key).first()
                 if previous and previous.interrupted_at is not None:
                     reset_progress(db, employee.id, scenario.scenario_key)
-                if request.launch_type == "scheduled" and any(
+                if request.launch_type == "status_transition" or any(
                     step.response_type in INTERACTIVE_RESPONSE_TYPES
                     for step in get_scenario_steps(db, scenario.scenario_key)
                 ):
@@ -494,18 +531,8 @@ async def schedule_all_employees(scheduler: AsyncIOScheduler, bot) -> None:
                         db.rollback()
                         logger.exception("Scheduled scenario delivery uncertain: request_id=%s", request.id)
                     continue
-                db.commit()
-            if request.launch_type == "status_transition":
-                if normalize_candidate_work_stage(scenario.candidate_work_stage_trigger) != normalize_candidate_work_stage(
-                    employee.candidate_work_stage
-                ):
-                    request.processed_at = utc_now()
-                    continue
-                await start_scenario(bot, db, employee, scenario.scenario_key)
-                request.processed_at = utc_now()
-                continue
             if request.launch_type == "manual" and request.skip_step_key:
-                await _continue_after_manual_step(bot, db, employee, scenario, request.skip_step_key)
+                await _continue_after_manual_step(bot, db, employee, scenario, request.skip_step_key, request)
                 request.processed_at = utc_now()
                 continue
             sent_keys = _load_sent_event_keys(db, employee.id)
@@ -518,10 +545,13 @@ async def schedule_all_employees(scheduler: AsyncIOScheduler, bot) -> None:
                 sent_keys,
                 manual=True,
                 skip_step_key=request.skip_step_key,
+                request_id=request.id,
             )
             request.processed_at = utc_now()
 
         if employees or pending_requests:
             db.commit()
+        from .scheduled_step_delivery import deliver_due_steps
+        await deliver_due_steps(db, bot)
         from .scenario_watchdog import check_runtime
         await check_runtime(db, bot, scheduler)

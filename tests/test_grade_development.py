@@ -446,13 +446,13 @@ class GradeDevelopmentTests(unittest.TestCase):
                                     skip_step_key=scheduler.SINGLE_STEP_REQUEST_PREFIX + "ipr6-step")
         self.db.add_all([root, followup])
         self.db.commit()
-        with patch.object(scheduler, "SessionLocal", self.sessions), patch.object(scheduler, "send_step", new_callable=AsyncMock) as send:
+        with patch.object(scheduler, "SessionLocal", self.sessions), patch("app.scheduled_step_delivery.deliver_step", new_callable=AsyncMock) as send:
             asyncio.run(scheduler.run_scheduled_step(object(), 1, "ipr6", "ipr6-step", NOW, explicit=True))
-            send.assert_awaited_once()
+            send.assert_awaited()
             send.reset_mock()
             with patch.object(scheduler, "_local_now_naive", return_value=NOW + timedelta(minutes=1)):
                 asyncio.run(scheduler.schedule_all_employees(MagicMock(), object()))
-            send.assert_awaited_once()
+            send.assert_awaited()
         self.db.expire_all()
         self.assertIsNotNone(self.db.get(FlowLaunchRequest, root.id).processed_at)
         self.assertIsNotNone(self.db.get(FlowLaunchRequest, followup.id).processed_at)

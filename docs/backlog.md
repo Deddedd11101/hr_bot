@@ -35,6 +35,13 @@ source_of_truth: true
 
 ## Очередь запусков: первый безопасный срез (10.11.2026)
 
+- Feature unified-scheduled-dispatch: «Запустить сейчас» scenario/survey использует
+  поадресный ledger; legacy scheduler jobs и step/follow-up запросы сохраняются
+  в новой durable таблице с UTC временем, batch и progress epoch. Карточка показывает
+  состояния/безопасную отмену root. Starting без auto-replay; проверки старой
+  настройки manual-only, ответов/Excel и watchdog сохранены. Пока не выложено;
+  нужны DB/runtime review и CI. Общая FIFO источников остаётся открытой.
+
 - Feature scenario-recipient-admission: транзакционный SQLite допуск root-вызовов
   start_scenario для фактического recipient, durable reservation до I/O и
   безопасное возвращение очередных claims при pre-I/O busy. Schema без изменений.

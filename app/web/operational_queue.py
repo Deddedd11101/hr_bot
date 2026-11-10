@@ -6,7 +6,7 @@ from collections import Counter
 
 from ..config import settings
 from ..models import (Employee, EmployeeAdaptationPlanItem, EmployeeFeedbackRecipient,
-    EmployeeFeedbackRun, FlowLaunchRequest, FlowStepTemplate, MassScenarioAction, MassScenarioRecipient, ScenarioProgress, ScenarioTemplate)
+    EmployeeFeedbackRun, FlowLaunchRequest, FlowStepTemplate, MassScenarioAction, MassScenarioRecipient, ScenarioProgress, ScenarioStepDelivery, ScenarioTemplate)
 from ..scenario_engine import resolve_scenario_recipient, INTERACTIVE_RESPONSE_TYPES
 from ..scenario_watchdog import progress_health
 from ..time_utils import utc_now
@@ -123,6 +123,10 @@ def queue_rows(db):
             "scheduled" if at > now else "queued", f"Массовый запуск · получателей: {action.recipient_count}", at,
             "Массовый запуск")
     priority = {"attention": 0, "blocked": 1, "queued": 2, "active": 3, "waiting": 4, "scheduled": 5}
+    for delivery in bounded(db.query(ScenarioStepDelivery).filter(ScenarioStepDelivery.status.in_(["pending", "starting", "failed"])).order_by(ScenarioStepDelivery.due_at)):
+        state = "attention" if delivery.status in {"starting", "failed"} else "scheduled" if delivery.due_at > now else "blocked" if delivery.last_error else "queued"
+        add(f"step-delivery:{delivery.id}", delivery.employee_id, delivery.scenario_key, state,
+            delivery.last_error or "Ожидает времени отправки шага", delivery.due_at, "Плановый шаг", delivery.recipient_employee_id)
     rows.sort(key=lambda r: (priority[r["state"]], r["at"], r["id"]))
     return rows, truncated
 

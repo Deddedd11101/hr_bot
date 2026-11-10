@@ -106,8 +106,8 @@ class ScenarioBootstrapTests(unittest.TestCase):
             fake = MagicMock()
             fake.get_job.return_value = None
             scheduler.schedule_employee_scenario(db, fake, object(), employee, scenario, set(), manual=True, now=now)
-            self.assertTrue(fake.add_job.call_args.kwargs["args"][-1])
-        with patch.object(scheduler, "SessionLocal", self.sessions), patch.object(scheduler, "send_step", new_callable=AsyncMock) as send:
+            self.assertTrue(fake.add_job.call_args.kwargs["args"][5])
+        with patch.object(scheduler, "SessionLocal", self.sessions), patch("app.scheduled_step_delivery.deliver_step", new_callable=AsyncMock) as send:
             asyncio.run(scheduler.run_scheduled_step(object(), 1, "custom", "one", now))
             send.assert_not_awaited()
             asyncio.run(scheduler.run_scheduled_step(object(), 1, "custom", "one", now, explicit=True))

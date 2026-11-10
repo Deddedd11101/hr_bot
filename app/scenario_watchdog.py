@@ -7,7 +7,7 @@ from datetime import timedelta
 
 from sqlalchemy import update
 
-from .models import FlowLaunchRequest, ScenarioProgress, ScenarioTemplate
+from .models import FlowLaunchRequest, ScenarioProgress, ScenarioStepDelivery, ScenarioTemplate
 from .notifications import notify_hr
 from .time_utils import utc_now
 
@@ -29,6 +29,11 @@ def progress_health(db, progress, *, now=None, future_job=False):
         return {**result, "state": "closed", "reason": "Диалог завершён"}
     if progress.waiting_for_response:
         return {**result, "state": "waiting_human", "reason": "Ожидается ответ получателя; автоматического срока завершения нет"}
+    step_delivery = db.query(ScenarioStepDelivery).filter_by(progress_id=progress.id,
+        progress_started_at=progress.started_at, status="pending").order_by(ScenarioStepDelivery.due_at).first()
+    if step_delivery and not progress.last_delivery_error:
+        return {**result, "state": "scheduled", "reason": "Продолжение сохранено в очереди шагов",
+                "next_at": step_delivery.due_at.isoformat() if step_delivery.due_at > now else None}
     if continuation and continuation.requested_at > now:
         return {**result, "state": "scheduled", "reason": "Продолжение запланировано",
                 "next_at": continuation.requested_at.isoformat()}
