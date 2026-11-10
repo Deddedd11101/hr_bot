@@ -12,7 +12,7 @@ from ..messaging.identity import get_primary_chat_id
 from ..models import (Employee, EmployeeFeedbackRun, EmployeeFeedbackRecipient, EmployeeGradeProfile,
                       FlowStepTemplate, Grade, GradeAssessment, GradeAssessmentValue, GradeReviewCollection,
                       GradeDevelopmentAction, ScenarioTemplate, SurveyAnswer)
-from ..scenario_engine import get_conflicting_progress_for_survey_launch, start_scenario
+from ..scenario_engine import ScenarioRecipientBusy, get_conflicting_progress_for_survey_launch, start_scenario
 from ..time_utils import utc_now
 from .calculations import fractional_category_averages
 from .catalog import integer, require, row as catalog_row
@@ -255,10 +255,15 @@ async def process_pending(bot, *, session_factory=None, run_id=None):
             if claimed != 1:
                 continue
             try:
-                started = await start_scenario(bot, db, employee, run.scenario_key, feedback_run_id=run.id, reserve_first_step=True)
+                started = await start_scenario(bot, db, employee, run.scenario_key, feedback_run_id=run.id, defer_if_busy=True)
                 db.refresh(row)
                 if row.delivery_status != "completed":
                     row.delivery_status = "sent" if started else "failed"
+                db.commit()
+            except ScenarioRecipientBusy:
+                db.rollback()
+                db.execute(update(EmployeeFeedbackRecipient).where(EmployeeFeedbackRecipient.id == recipient_id,
+                    EmployeeFeedbackRecipient.delivery_status == "starting").values(delivery_status="pending"))
                 db.commit()
             except Exception:
                 db.rollback()

@@ -16,6 +16,35 @@ related:
 source_of_truth: true
 ---
 
+## Общий допуск root-запусков через start_scenario (10.11.2026)
+
+Перед reset_progress общий вход берёт SQLite writer lock через no-op UPDATE
+строк subject/фактического recipient (IDs в стабильном порядке). Затем заново
+читает subject/scenario и проверяет реальные активные progress получателя и
+тот же subject/scenario context. Future конфигурация не является занятостью.
+Смена recipient на не заблокированный в этой транзакции ID требует новой попытки.
+Проверка и first-step/recipient snapshot сохраняются до внешней отправки; Python
+mutex не используется как межпроцессная защита. Schema не меняется.
+
+Legacy caller получает false при busy, не сбрасывая ответы. Durable callers
+передают defer_if_busy и получают отдельный ScenarioRecipientBusy только до
+I/O: Flow request rollback-ит claim, mass/feedback возвращают starting→pending,
+адаптация и Grade сохраняют blocked без фиктивного начала доставки. Это не
+автоматический повтор неопределённой отправки: обычная ошибка I/O по-прежнему
+оставляет reservation/starting для проверки HR, без таймаута освобождения.
+
+Первое сообщение использует принятый recipient snapshot, а не повторно выбранного
+руководителя после commit. Привязка/доступ принятого recipient ещё раз проверяются
+перед отправкой. Обычное завершение или явное безопасное прерывание освобождает
+progress для следующего root, история/answers не удаляются ради допуска.
+
+Граница среза: все источники, вызывающие start_scenario, используют этот допуск.
+Legacy APScheduler/ручные step sends, вызывающие send_step напрямую, пока не
+переведены на общий root dispatcher. Продолжения и смена адресата внутри старого
+диалога не получают новой общей очереди этим изменением. HR-only сообщения без
+карточки recipient не имеют employee-row gate; интерактивный HR без карточки
+по-прежнему запрещён. Не объявлять этот срез полной FIFO всех доставок.
+
 ## Dispatch: назначения Grade не являются блокировкой диалога (10.11.2026)
 
 Явные scheduled roots и explicit APScheduler jobs не подавляются лишь потому,

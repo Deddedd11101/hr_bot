@@ -9,6 +9,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app.database import Base
 from app.mass_scenario_delivery import delete_unstarted_action, deliver_mass_action, delivery_counts
+from app.scenario_engine import ScenarioRecipientBusy
 from app.messaging.identity import set_primary_chat_id
 from app.models import (Employee, FlowStepTemplate, MassScenarioAction, MassScenarioRecipient,
                         ScenarioProgress, ScenarioTemplate)
@@ -81,6 +82,13 @@ class MassScenarioDeliveryTests(unittest.IsolatedAsyncioTestCase):
             with self.factory() as db:
                 await deliver_mass_action(db, self.messenger, self.action_id, [self.ids[0]])
                 self.assertEqual(delivery_counts(db, self.action_id), {"started": 1})
+
+    async def test_admission_race_returns_claimed_recipient_to_pending(self):
+        with patch("app.mass_scenario_delivery.start_scenario", side_effect=ScenarioRecipientBusy()):
+            with self.factory() as db:
+                await deliver_mass_action(db, self.messenger, self.action_id, self.ids)
+                self.assertEqual(delivery_counts(db, self.action_id), {"pending": 2})
+                self.assertIsNone(db.get(MassScenarioAction, self.action_id).processed_at)
 
     async def test_shared_manager_only_receives_one_interactive_dialog(self):
         with self.factory() as db:

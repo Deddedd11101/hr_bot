@@ -7,7 +7,7 @@ from sqlalchemy import select, update
 from ..models import (AdminAccount, Employee, EmployeeFeedbackRecipient,
     EmployeeFeedbackRun, GradeDevelopmentAction as Action, GradeDevelopmentMilestone as Milestone,
     FlowLaunchRequest, ScenarioTemplate)
-from ..scenario_engine import (INTERACTIVE_RESPONSE_TYPES, get_scenario_steps, get_waiting_progress,
+from ..scenario_engine import (INTERACTIVE_RESPONSE_TYPES, ScenarioRecipientBusy, get_scenario_steps, get_waiting_progress,
     matches_role_scope, resolve_scenario_recipient, start_scenario)
 from ..time_utils import utc_now
 from . import development as dev
@@ -183,7 +183,7 @@ async def process_actions(db, bot, employee, item, cycle):
                 db.commit()
                 if changed != 1:
                     continue
-                row.status = "started" if await start_scenario(bot, db, employee, row.scenario_key) else "failed"
+                row.status = "started" if await start_scenario(bot, db, employee, row.scenario_key, defer_if_busy=True) else "failed"
                 row.last_error = None if row.status == "started" else "Не удалось запустить сценарий"
             elif row.action_type == "review":
                 actor = db.get(AdminAccount, config["actor_id"])
@@ -204,6 +204,11 @@ async def process_actions(db, bot, employee, item, cycle):
                 for respondent in config["recipient_ids"]:
                     db.add(EmployeeFeedbackRecipient(run_id=run.id, respondent_employee_id=respondent, delivery_status="pending"))
                 row.result_id, row.status, row.last_error = run.id, "started", None
+            db.commit()
+        except ScenarioRecipientBusy:
+            db.rollback()
+            row = db.get(Action, row.id)
+            row.status, row.last_error = "blocked", "Получатель занят другим диалогом. Действие сохранено в очереди"
             db.commit()
         except ValueError as exc:
             db.rollback()
