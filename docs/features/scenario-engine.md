@@ -16,6 +16,34 @@ related:
 source_of_truth: true
 ---
 
+## Поадресная очередь плановых рассылок (10.11.2026)
+
+Новые scheduled MassScenarioAction используют recipient ledger. При первом due
+scan фиксируется состав аудитории; последующая смена фильтра/должности не
+добавляет новых адресатов. Доступность и роль уже выбранного сотрудника
+перепроверяются перед попыткой. Занятость фактического manager/mentor/self
+диалога либо резервирование сценарием Grade оставляет только этого адресата
+pending, не задерживая свободных коллег. Следующие scans продолжают pending,
+не повторяя started/failed/starting. Обычный survey сохраняет прежний action ID
+в progress/ответах, поэтому один запуск остаётся одним XLSX.
+
+Conditional pending→starting claim фиксируется до Telegram I/O; исключение
+оставляет starting с требованием проверки, без timeout/replay. Parent action
+завершается только после всех адресатов без pending/starting; recipient_count
+считает начатые диалоги, не завершённые анкеты. Workspace actions дополнительно
+возвращают `delivery_counts` по статусам. Глобальная очередь показывает pending
+по людям и starting/failed как attention, не дублируя их parent action.
+
+Удалять action с starting/started адресатом нельзя (409), чтобы не потерять
+связь ответов с запуском; незапущенный action и ledger удаляются под одним
+write lock. Удаление карточки отменяет её pending rows; starting запрещает
+удаление до проверки. Snapshot/claim metadata не содержит ответов и chat IDs.
+
+Старые action rows получают `recipient_queue_enabled=false` и не мигрируются
+в новый ledger: их прежняя частичная доставка не доказуема. Manual mass APIs,
+free-text рассылки, Grade/feedback и legacy jobs пока не переведены в единый
+dispatcher. Это не общая FIFO и не межпроцессная блокировка разных источников.
+
 ## Плановые интерактивные запуски (10.11.2026)
 
 Отдельный due `FlowLaunchRequest` типа `scheduled` без `skip_step_key`, если

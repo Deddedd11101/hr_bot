@@ -1480,6 +1480,11 @@ def _delete_employee_record(db: Session, employee: Employee) -> str:
     employee_id = employee.id
     # Serialize with Grade creation/finalization before any filesystem side effects.
     db.execute(update(Employee).where(Employee.id == employee_id).values(id=Employee.id))
+    from ..models import MassScenarioRecipient
+    if db.query(MassScenarioRecipient.id).filter_by(employee_id=employee_id, status="starting").first():
+        raise HTTPException(status_code=409, detail="Для сотрудника начата массовая доставка. Проверьте её перед удалением карточки.")
+    db.query(MassScenarioRecipient).filter_by(employee_id=employee_id, status="pending").update(
+        {MassScenarioRecipient.status: "cancelled", MassScenarioRecipient.last_error: "Карточка удалена"}, synchronize_session=False)
     from ..models import GradeReviewCollection
     if (db.scalar(select(GradeReviewCollection.id).where(GradeReviewCollection.employee_id == employee_id).limit(1))
             or db.scalar(select(GradeReviewCollection.id).join(EmployeeFeedbackRecipient,

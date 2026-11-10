@@ -87,6 +87,7 @@ def _ensure_sqlite_schema() -> None:
     with engine.begin() as conn:
         # Grade is additive: use the same model DDL for startup and compatibility.
         for table_name in (
+            "mass_scenario_recipients",
             "scenario_bootstrap_state",
             "employee_telegram_email_verifications",
             "employee_telegram_verification_messages",
@@ -990,6 +991,8 @@ def _ensure_sqlite_schema() -> None:
             conn.execute(
                 text("ALTER TABLE mass_scenario_actions ADD COLUMN scenario_kind TEXT NOT NULL DEFAULT 'scenario'")
             )
+        if "recipient_queue_enabled" not in {row[1] for row in conn.execute(text("PRAGMA table_info(mass_scenario_actions)"))}:
+            conn.execute(text("ALTER TABLE mass_scenario_actions ADD COLUMN recipient_queue_enabled BOOLEAN NOT NULL DEFAULT 0"))
 
         mass_message_actions_info = conn.execute(text("PRAGMA table_info(mass_message_actions)")).fetchall()
         if not mass_message_actions_info:

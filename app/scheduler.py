@@ -116,6 +116,7 @@ def _load_pending_mass_scenario_actions(db: Session) -> list[MassScenarioAction]
             MassScenarioAction.launch_type == "scheduled",
             MassScenarioAction.requested_at <= _local_now_naive(),
         )
+        .order_by(MassScenarioAction.requested_at, MassScenarioAction.id)
         .all()
     )
 
@@ -363,6 +364,19 @@ async def schedule_all_employees(scheduler: AsyncIOScheduler, bot) -> None:
         pending_mass_scenario_actions = _load_pending_mass_scenario_actions(db)
         for action in pending_mass_scenario_actions:
             scenario = db.query(ScenarioTemplate).filter(ScenarioTemplate.scenario_key == action.flow_key).first()
+            if action.recipient_queue_enabled:
+                from .mass_scenario_delivery import deliver_mass_action
+                recipients = _mass_target_employees(
+                    db, action.target_all,
+                    deserialize_target_values(action.target_employee_stages, kind="employee"),
+                    deserialize_target_values(action.target_candidate_stages, kind="candidate"),
+                    action.target_employee_id, action.target_role_scope,
+                    deserialize_target_values(action.target_statuses, kind="legacy"),
+                    deserialize_target_selection(action.target_role_scopes, kind="role"),
+                    deserialize_target_selection(action.target_employee_ids, kind="employee"),
+                )
+                await deliver_mass_action(db, bot, action.id, [person.id for person in recipients])
+                continue
             if not scenario or getattr(scenario, "scenario_kind", "scenario") != getattr(action, "scenario_kind", "scenario"):
                 action.processed_at = utc_now()
                 continue

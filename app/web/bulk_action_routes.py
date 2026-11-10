@@ -384,7 +384,12 @@ def delete_bulk_scenario_action(
     action = db.get(MassScenarioAction, action_id)
     if not action or action.launch_type != "scheduled" or action.processed_at is not None:
         return _mass_actions_redirect("Запланированный запуск не найден.", "error")
-    db.delete(action)
+    from ..mass_scenario_delivery import delete_unstarted_action
+    try:
+        delete_unstarted_action(db, action_id)
+    except ValueError as exc:
+        db.rollback()
+        return _mass_actions_redirect(str(exc), "error")
     db.commit()
     return _mass_actions_redirect("Запланированный запуск удалён.", "success")
 
@@ -728,7 +733,12 @@ def _delete_scheduled_mass_scenario_action(
         or (expected_kind and action.scenario_kind != expected_kind)
     ):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Запланированный запуск не найден")
-    db.delete(action)
+    from ..mass_scenario_delivery import delete_unstarted_action
+    try:
+        delete_unstarted_action(db, action_id)
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from None
     db.commit()
     return {"message": "Запланированный запуск удален.", "payload": _bulk_workspace_payload(db)}
 
