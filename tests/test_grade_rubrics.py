@@ -112,6 +112,30 @@ class RubricTests(unittest.TestCase):
         self.assertEqual(grades.assessment_payload(self.db, previous["id"]), previous)
         self.assertEqual([s["skillName"] for s in grades.preview_review(self.db, 1, self.spec["id"], None)["scores"]], ["New competency"])
 
+    def test_legacy_intro_updates_for_new_collection_and_names_the_subject(self):
+        from datetime import date
+        from app.grades.review_intro import LEGACY_INTRO, review_intro
+        from app.models import Employee
+        from app.scenario_engine import format_message
+
+        collection_fixtures.GradeCollectionTests.prepare(self)
+        payload = self.payload()
+        payload["catalog"]["specialization"]["assessment_intro"] = LEGACY_INTRO
+        self.apply(payload)
+        subject = self.db.get(Employee, 1)
+        subject.full_name = "Иванов Иван&Пётр Иванович"
+        run = create(self.db, 1, 1, {"request_id": str(uuid4()), "specialization_id": self.spec["id"],
+                                   "recipient_ids": [2], "open_questions": ["Первый", "Второй", "Третий"]})
+        self.db.flush()
+        intro = self.db.scalar(select(FlowStepTemplate).filter_by(flow_key=run.scenario_key, step_key="intro"))
+        rendered = format_message(self.db, intro.default_text, subject, date(2026, 11, 12), None)
+        self.assertIn("Привет! 👋🏼", rendered)
+        self.assertIn("<b>Как проходить опрос:</b>", rendered)
+        self.assertIn("описывает Иван&amp;Пётр.", rendered)
+        self.assertIn("3 уютных открытых вопроса", rendered)
+        self.assertNotIn("открытые вопросы", review_intro(LEGACY_INTRO, 0))
+        self.assertEqual(review_intro("Другой текст <b>", 3), "Другой текст &lt;b&gt;")
+
     def test_rubric_answers_use_actual_levels_and_na_not_zero(self):
         import asyncio
         from app.scenario_engine import handle_button_response
