@@ -17,7 +17,8 @@ source_of_truth: true
 ## Сохранённые задания шагов (10.11.2026)
 
 `GET /api/employees/{employee_id}/scenario-queue` дополнительно возвращает
-`step_deliveries[]`: id, title, UTC due_at, status, reason, can_cancel.
+`step_deliveries[]`: id, title, UTC due_at, status, reason, can_cancel,
+recipient_name, receipt_at (UTC) и can_reconcile.
 `POST /api/employees/{employee_id}/scenario-queue/step-deliveries/{delivery_id}/cancel`
 доступен admin; JSON `{ expected_at: due_at }` (naive UTC snapshot). CAS разрешает
 только pending root в карточке subject или его recipient; отменяет pending siblings
@@ -25,6 +26,13 @@ source_of_truth: true
 continuation или starting возвращают409, не отправляя сообщений. Auth401/403
 соответствует остальным queue actions. Прерывание диалога отменяет только
 связанные с его id/started_at pending continuations, не независимые root batches.
+
+`POST /api/employees/{employee_id}/scenario-queue/step-deliveries/{delivery_id}/reconcile`
+доступен admin с той же областью карточки и `{ expected_at: due_at }`.
+Переводит `starting` в `sent` только если в журнале есть отправка того же шага
+и batch для этой карточки, запись старше трёх часов и в batch нет других
+`pending`/`starting` заданий. Записывает audit event; диалог не меняет,
+сообщения не отправляет. Если условия не выполнены, возвращает 409.
 
 ## Общие группы каталогов
 

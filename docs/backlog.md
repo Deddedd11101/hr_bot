@@ -23,6 +23,10 @@ related:
 source_of_truth: true
 ---
 
+Разбор спорных плановых отправок: подготовлено ручное подтверждение по точной
+записи журнала без повторной отправки. Случаи без подтверждения, связанные
+незавершённые шаги и безопасный повтор остаются открытыми.
+
 - 09.11 feature/catalog-groups поверх PR188: общие одноуровневые группы сценариев/опросов и людей (одна на запись), CRUD, drag/drop и клавиатурный move; группы совместимы с поиском/фильтрами/сортировкой. Queue back → каталог сценариев. Новые additive metadata tables, без миграции runtime/status/audience. Не выложено; пользователь разрешил выкатить вместе с188 после проверок.
 
 - 09.11 feature scrollbar/login audit: source review of React scroll regions and shared primitives; common token stylesheet now covers React/login/legacy shells, dark color-scheme and native arrows, Command scrollbar visibility. Login appearance/autofill corner fix. Local light/dark login, long Select and ScrollArea checked; real saved-password autofill and other browsers not claimed. Не выложено.

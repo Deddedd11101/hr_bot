@@ -6,9 +6,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 type Health = {state: string; reason: string; idle_seconds: number; alert_due: boolean; next_at: string | null};
 type Progress = {id: number; title: string; recipient_name: string; started_at: string; updated_at: string; waiting: boolean; long_wait: boolean; health: Health};
 type Pending = {id: number; title: string; source: string; requested_at: string; blocker: Progress | null; recipient_error: string | null; can_cancel: boolean};
-type StepDelivery = {id: number; title: string; due_at: string; status: string; reason: string | null; can_cancel: boolean};
+type StepDelivery = {id: number; title: string; due_at: string; status: string; reason: string | null; can_cancel: boolean; recipient_name: string | null; receipt_at: string | null; can_reconcile: boolean};
 type Queue = {active: Progress[]; pending: Pending[]; step_deliveries?: StepDelivery[]; can_manage: boolean};
-type Action = {kind: "progress" | "requests" | "step-deliveries"; id: number; title: string; expected: string};
+type Action = {kind: "progress" | "requests" | "step-deliveries"; id: number; title: string; expected: string; reconcile?: boolean};
 const sources: Record<string, string> = {adaptation_plan: "Адаптация", scheduled: "По расписанию", manual: "Ручной запуск", status_transition: "Смена этапа"};
 const healthLabels: Record<string, string> = {waiting_human: "Ожидает ответа", scheduled: "Продолжение запланировано", processing: "В обработке", stale_runtime: "Нужна проверка", delivery_uncertain: "Доставка требует проверки"};
 function idleLabel(seconds: number) {
@@ -43,7 +43,8 @@ export function ScenarioQueue({employeeId, visible}: {employeeId: number; visibl
         if (!action) return;
         setBusy(true); setError("");
         try {
-            const response = await fetch(`${url}/${action.kind}/${action.id}/${action.kind === "progress" ? "interrupt" : "cancel"}`, {
+            const operation = action.reconcile ? "reconcile" : action.kind === "progress" ? "interrupt" : "cancel";
+            const response = await fetch(`${url}/${action.kind}/${action.id}/${operation}`, {
                 method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({expected_at: action.expected}),
             });
             const next = await response.json();
@@ -64,11 +65,16 @@ export function ScenarioQueue({employeeId, visible}: {employeeId: number; visibl
         {data?.step_deliveries?.map(row => <div key={`s${row.id}`} className="flex flex-wrap items-start justify-between gap-3 border-b py-3">
             <div className="min-w-0 space-y-1"><p className="break-words font-medium">{row.title}</p><p className="text-xs text-muted-foreground">Плановый шаг · {new Date(`${row.due_at}Z`).toLocaleString("ru-RU", {timeZone: "Europe/Moscow"})} · МСК</p><Badge variant={row.status === "pending" ? "secondary" : "destructive"}>{row.status === "pending" ? "В очереди" : "Нужна проверка доставки"}</Badge>{row.reason && <p className="max-w-xl text-sm text-muted-foreground">{row.reason}</p>}</div>
             {data.can_manage && row.can_cancel && <Button size="sm" variant="outline" onClick={() => setAction({kind: "step-deliveries", id: row.id, title: row.title, expected: row.due_at})}>Отменить запуск</Button>}
+            {row.status === "starting" && <div className="basis-full space-y-1 text-sm text-muted-foreground">
+                <p>Адресат: {row.recipient_name || "Не зафиксирован"}</p>
+                <p>{row.receipt_at ? `Отправка записана в журнале: ${new Date(`${row.receipt_at}Z`).toLocaleString("ru-RU", {timeZone: "Europe/Moscow"})} · МСК` : "В журнале нет подтверждения отправки."}</p>
+                {data.can_manage && row.can_reconcile && <Button size="sm" variant="outline" onClick={() => setAction({kind: "step-deliveries", id: row.id, title: row.title, expected: row.due_at, reconcile: true})}>Подтвердить по журналу</Button>}
+            </div>}
         </div>)}
         {data?.pending.map(row => <div key={`r${row.id}`} className="flex flex-wrap items-start justify-between gap-3 border-b py-3">
             <div className="min-w-0 space-y-1"><p className="break-words font-medium">{row.title}</p><p className="text-xs text-muted-foreground">{sources[row.source] || row.source} · {row.requested_at.replace("T", " ")} {['scheduled', 'adaptation_plan'].includes(row.source) ? "(время приложения)" : "UTC"}</p><Badge variant="secondary">{row.recipient_error ? "Получатель недоступен" : row.blocker ? "Ожидает диалог" : "В очереди планировщика"}</Badge>{row.recipient_error && <p className="text-sm text-destructive">{row.recipient_error}</p>}{row.blocker && <p className="text-sm text-muted-foreground">Блокирует: {row.blocker.title} · {row.blocker.recipient_name}. Без изменений: {idleLabel(row.blocker.health.idle_seconds)}</p>}</div>
             {data.can_manage && row.can_cancel && <Button size="sm" variant="outline" onClick={() => setAction({kind: "requests", id: row.id, title: row.title, expected: row.requested_at})}>Отменить запуск</Button>}
         </div>)}
-        <Dialog open={!!action} onOpenChange={open => {if (!open && !busy) {setAction(null); setError("");}}}><DialogContent><DialogHeader><DialogTitle>{action?.kind === "progress" ? "Прервать диалог?" : "Отменить запуск?"}</DialogTitle><DialogDescription>{action?.title}</DialogDescription></DialogHeader><p className="text-sm text-muted-foreground">Ответы и история сохранятся. Сообщения из Telegram не удаляются. Уже начавшаяся отправка может завершиться. Другие ожидающие запуски смогут продолжиться при следующей проверке планировщика.</p>{error && <p role="alert" className="text-sm text-destructive">{error}</p>}<div className="flex justify-end gap-2"><Button variant="ghost" disabled={busy} onClick={() => setAction(null)}>Оставить</Button><Button variant="destructive" disabled={busy} onClick={() => void perform()}>{busy ? "Сохранение..." : "Подтвердить"}</Button></div></DialogContent></Dialog>
+        <Dialog open={!!action} onOpenChange={open => {if (!open && !busy) {setAction(null); setError("");}}}><DialogContent><DialogHeader><DialogTitle>{action?.reconcile ? "Подтвердить отправку по журналу?" : action?.kind === "progress" ? "Прервать диалог?" : "Отменить запуск?"}</DialogTitle><DialogDescription>{action?.title}</DialogDescription></DialogHeader><p className="text-sm text-muted-foreground">{action?.reconcile ? "Запись уйдёт из списка спорных отправок. Бот не повторит сообщение, а текущий диалог не изменится." : "Ответы и история сохранятся. Сообщения из Telegram не удаляются. Уже начавшаяся отправка может завершиться. Другие ожидающие запуски смогут продолжиться при следующей проверке планировщика."}</p>{error && <p role="alert" className="text-sm text-destructive">{error}</p>}<div className="flex justify-end gap-2"><Button variant="ghost" disabled={busy} onClick={() => setAction(null)}>Оставить</Button><Button variant={action?.reconcile ? "default" : "destructive"} disabled={busy} onClick={() => void perform()}>{busy ? "Сохранение..." : "Подтвердить"}</Button></div></DialogContent></Dialog>
     </section>;
 }

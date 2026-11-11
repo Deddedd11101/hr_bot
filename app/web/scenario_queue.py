@@ -37,6 +37,28 @@ def _title(db, key):
     return scenario.title if scenario else "Удалённый сценарий"
 
 
+def _delivery_receipt(db, row):
+    return db.query(OnboardingEvent.sent_at).filter(
+        OnboardingEvent.employee_id == row.employee_id,
+        OnboardingEvent.scenario_key == row.scenario_key,
+        OnboardingEvent.event_key == row.step_key,
+        OnboardingEvent.delivery_batch_key == row.batch_key,
+        OnboardingEvent.sent_at >= row.created_at,
+    ).order_by(OnboardingEvent.sent_at.desc()).first()
+
+
+def _can_reconcile_delivery(db, row, receipt):
+    if row.status != "starting" or not receipt or receipt.sent_at > utc_now() - timedelta(hours=3):
+        return False
+    return not db.query(ScenarioStepDelivery.id).filter(
+        ScenarioStepDelivery.id != row.id,
+        ScenarioStepDelivery.employee_id == row.employee_id,
+        ScenarioStepDelivery.scenario_key == row.scenario_key,
+        ScenarioStepDelivery.batch_key == row.batch_key,
+        ScenarioStepDelivery.status.in_(["pending", "starting"]),
+    ).first()
+
+
 def _progress_row(db, progress):
     recipient_id = progress.recipient_employee_id or progress.employee_id
     recipient = db.get(Employee, recipient_id)
@@ -75,8 +97,13 @@ def snapshot(db, employee_id):
     for row in db.query(ScenarioStepDelivery).filter(or_(ScenarioStepDelivery.employee_id == employee_id,
             ScenarioStepDelivery.recipient_employee_id == employee_id), ScenarioStepDelivery.status.in_(["pending", "starting", "failed"])).order_by(ScenarioStepDelivery.due_at):
         step = db.query(FlowStepTemplate).filter_by(flow_key=row.scenario_key, step_key=row.step_key).first()
+        recipient = db.get(Employee, row.recipient_employee_id) if row.recipient_employee_id else None
+        receipt = _delivery_receipt(db, row) if row.status == "starting" else None
         step_deliveries.append({"id": row.id, "title": f"{_title(db, row.scenario_key)} · {step.step_title if step else 'Шаг удалён'}",
             "due_at": row.due_at.isoformat(), "status": row.status, "reason": row.last_error,
+            "recipient_name": recipient.full_name if recipient else None,
+            "receipt_at": receipt.sent_at.isoformat() if receipt else None,
+            "can_reconcile": _can_reconcile_delivery(db, row, receipt),
             "can_cancel": row.status == "pending" and row.is_root})
     return {"active": [_progress_row(db, row) for row in active], "pending": pending, "step_deliveries": step_deliveries,
             "timezone_note": "Время диалогов — UTC; время плановых запусков — часовой пояс приложения"}
@@ -144,6 +171,26 @@ def cancel_step_delivery(request: Request, employee_id: int, delivery_id: int,
         batch_key=row.batch_key, status="pending").update(
         {ScenarioStepDelivery.status: "cancelled", ScenarioStepDelivery.last_error: "Корневой запуск отменён"}, synchronize_session=False)
     _event(db, row.employee_id, f"Администратор {user.id}: отменён корневой плановый запуск #{row.id} без отправки.")
+    db.commit()
+    return queue_api(request, employee_id, db)
+
+
+@router.post("/api/employees/{employee_id}/scenario-queue/step-deliveries/{delivery_id}/reconcile")
+def reconcile_step_delivery(request: Request, employee_id: int, delivery_id: int,
+                            payload: dict = Body(...), db: Session = Depends(get_db)):
+    user = require_api_admin(request)
+    expected = _expected(payload)
+    locked = db.execute(update(ScenarioStepDelivery).where(
+        ScenarioStepDelivery.id == delivery_id, ScenarioStepDelivery.status == "starting",
+        ScenarioStepDelivery.due_at == expected,
+        or_(ScenarioStepDelivery.employee_id == employee_id, ScenarioStepDelivery.recipient_employee_id == employee_id),
+    ).values(status="starting"))
+    row = db.get(ScenarioStepDelivery, delivery_id, populate_existing=True) if locked.rowcount == 1 else None
+    if row is None or not _can_reconcile_delivery(db, row, _delivery_receipt(db, row)):
+        db.rollback()
+        raise HTTPException(409, "Нет подтверждения отправки, есть связанные шаги или запись уже изменилась. Обновите очередь.")
+    row.status, row.last_error = "sent", None
+    _event(db, row.employee_id, f"Администратор {user.id}: подтверждена отправка шага #{row.id} по журналу, без повторной отправки.")
     db.commit()
     return queue_api(request, employee_id, db)
 

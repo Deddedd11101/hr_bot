@@ -217,6 +217,98 @@ class ScheduledStepDeliveryTests(unittest.TestCase):
                 db.rollback()
             self.assertEqual(root.status, "starting")
 
+    def test_admin_reconciles_only_stale_receipt_for_exact_batch(self):
+        from fastapi import HTTPException
+        from app.web.scenario_queue import reconcile_step_delivery, snapshot
+
+        with self.factory() as db:
+            old = utc_now() - timedelta(hours=4)
+            root = enqueue_step(db, 1, "timed", "first", old.replace(tzinfo=UTC), True, "review", old)
+            root.status = "starting"
+            receipt = OnboardingEvent(employee_id=1, scenario_key="timed", event_key="first",
+                delivery_batch_key="different", scheduled_at=old, sent_at=old, message="First")
+            db.add(receipt)
+            db.commit()
+            user = SimpleNamespace(id=1, role="admin")
+            expected = {"expected_at": root.due_at.isoformat()}
+            with self.assertRaises(HTTPException) as forbidden:
+                reconcile_step_delivery(SimpleNamespace(state=SimpleNamespace(current_user=SimpleNamespace(role="viewer"))),
+                    1, root.id, expected, db)
+            self.assertEqual(forbidden.exception.status_code, 403)
+            with patch("app.web.scenario_queue.require_api_admin", return_value=user), patch("app.web.scenario_queue.require_api_auth", return_value=user):
+                def reconcile(owner=1):
+                    return reconcile_step_delivery(SimpleNamespace(), owner, root.id, expected, db)
+
+                with self.assertRaises(HTTPException) as wrong_batch:
+                    reconcile()
+                self.assertEqual(wrong_batch.exception.status_code, 409)
+                receipt.delivery_batch_key, receipt.sent_at = "review", utc_now()
+                db.commit()
+                self.assertFalse(snapshot(db, 1)["step_deliveries"][0]["can_reconcile"])
+                receipt.sent_at = old
+                continuation = enqueue_step(db, 1, "timed", "second", old.replace(tzinfo=UTC), True, "review", old)
+                db.commit()
+                with self.assertRaises(HTTPException):
+                    reconcile()
+                continuation.status = "cancelled"
+                db.commit()
+                with self.assertRaises(HTTPException):
+                    reconcile(2)
+                self.assertTrue(snapshot(db, 1)["step_deliveries"][0]["can_reconcile"])
+                self.assertEqual(reconcile()["step_deliveries"], [])
+                with self.assertRaises(HTTPException):
+                    reconcile()
+            self.assertEqual(root.status, "sent")
+            self.assertEqual(db.query(OnboardingEvent).filter_by(event_key="scenario_queue_action").count(), 1)
+            self.assertEqual(db.query(ScenarioProgress).count(), 0)
+        self.assertEqual(self.messenger.sent_texts, [])
+
+    def test_reconcile_http_contract(self):
+        from fastapi import FastAPI, Request
+        from fastapi.testclient import TestClient
+        from app.web.scenario_queue import get_db, router
+
+        app = FastAPI()
+        app.include_router(router)
+
+        @app.middleware("http")
+        async def authenticate(request: Request, call_next):
+            role = request.headers.get("X-Test-Role")
+            if role:
+                request.state.current_user = SimpleNamespace(id=1, role=role)
+            return await call_next(request)
+
+        def database():
+            with self.factory() as db:
+                yield db
+
+        app.dependency_overrides[get_db] = database
+        old = utc_now() - timedelta(hours=4)
+        with self.factory() as db:
+            row = enqueue_step(db, 1, "timed", "first", old.replace(tzinfo=UTC), True, "http-review", old)
+            row.status, row.recipient_employee_id = "starting", 1
+            db.add(OnboardingEvent(employee_id=1, scenario_key="timed", event_key="first",
+                delivery_batch_key="http-review", scheduled_at=old, sent_at=old, message="First"))
+            db.commit()
+            delivery_id = row.id
+
+        queue = "/api/employees/1/scenario-queue"
+        action = f"{queue}/step-deliveries/{delivery_id}/reconcile"
+        admin = {"X-Test-Role": "admin"}
+        viewer = {"X-Test-Role": "viewer"}
+        with TestClient(app) as client:
+            data = client.get(queue, headers=admin).json()
+            delivery = data["step_deliveries"][0]
+            self.assertTrue(data["can_manage"] and delivery["can_reconcile"])
+            self.assertEqual(delivery["recipient_name"], "Person 1")
+            body = {"expected_at": delivery["due_at"]}
+            self.assertEqual(client.post(action, json=body).status_code, 401)
+            self.assertEqual(client.post(action, json=body, headers=viewer).status_code, 403)
+            response = client.post(action, json=body, headers=admin)
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.json()["step_deliveries"], [])
+            self.assertEqual(client.post(action, json=body, headers=admin).status_code, 409)
+
     def test_independent_manual_batches_are_not_collapsed_by_step_name(self):
         with self.factory() as db:
             self.enqueue(db)
