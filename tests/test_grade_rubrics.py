@@ -116,19 +116,21 @@ class RubricTests(unittest.TestCase):
         import asyncio
         from app.scenario_engine import handle_button_response
         from app.models import Employee
-        from tests.test_scenario_engine_smoke import FakeMessenger
         from app.grades.collections import process_pending
         collection_fixtures.GradeCollectionTests.prepare(self)
         self.apply(self.payload())
         run = create(self.db, 1, 1, {"request_id": str(uuid4()), "specialization_id": self.spec["id"],
                                    "recipient_ids": [2, 3], "open_questions": []})
         self.db.commit()
-        messenger = FakeMessenger()
+        messenger = collection_fixtures.ReviewMessenger()
         asyncio.run(process_pending(messenger, session_factory=self.sessions))
         self.db.expire_all()
         for respondent, option in ((2, 0), (3, 4)):
             self.assertTrue(asyncio.run(handle_button_response(messenger, self.db, self.db.get(Employee, respondent),
                 run.scenario_key, f"skill_{self.skill['id']}", option)))
+            self.assertEqual(report(self.db, run)["completed_count"], respondent - 2)
+            self.assertTrue(asyncio.run(handle_button_response(messenger, self.db, self.db.get(Employee, respondent),
+                run.scenario_key, "review_confirm", 0, message_id=len(messenger.texts))))
         result = report(self.db, run)
         self.assertEqual(result["completed_count"], 2)
         self.assertEqual(result["scores"][0]["currentLevel"], 1)
