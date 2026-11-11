@@ -150,6 +150,19 @@ class ScheduledStepDeliveryTests(unittest.TestCase):
             self.assertEqual(first.due_at, due.replace(tzinfo=None))
         self.assertEqual(self.messenger.sent_texts, [])
 
+    def test_catchup_keeps_original_schedule_identity_across_scans(self):
+        with self.factory() as db:
+            scheduled = self.created.replace(tzinfo=UTC)
+            first_scan = scheduled + timedelta(minutes=5)
+            first = enqueue_step(db, 1, "timed", "first", first_scan, False, "auto:anchor",
+                self.created, scheduled_at=scheduled)
+            db.commit()
+            second = enqueue_step(db, 1, "timed", "first", first_scan + timedelta(minutes=1),
+                False, "auto:anchor", self.created, scheduled_at=scheduled)
+            self.assertEqual(first.id, second.id)
+            self.assertEqual(second.due_at, first_scan.replace(tzinfo=None))
+            self.assertEqual(db.query(ScenarioStepDelivery).count(), 1)
+
     def test_template_delete_cancels_pending_steps(self):
         from app.web.scenarios import _delete_template_entity
         with self.factory() as db:

@@ -23,9 +23,10 @@ def utc_due(value):
     return aware.astimezone(UTC).replace(tzinfo=None)
 
 
-def enqueue_step(db, employee_id, scenario_key, step_key, run_at, explicit, batch_key, created_at, *, entry_root=None):
+def enqueue_step(db, employee_id, scenario_key, step_key, run_at, explicit, batch_key, created_at, *, entry_root=None, scheduled_at=None):
     due = utc_due(run_at)
-    key = hashlib.sha256(json.dumps([employee_id, scenario_key, step_key, due.isoformat(), explicit, batch_key]).encode()).hexdigest()
+    scheduled = utc_due(scheduled_at) if scheduled_at is not None else due
+    key = hashlib.sha256(json.dumps([employee_id, scenario_key, step_key, scheduled.isoformat(), explicit, batch_key]).encode()).hexdigest()
     db.execute(update(Employee).where(Employee.id == employee_id).values(id=Employee.id))
     existing = db.query(Delivery).filter_by(dedupe_key=key).first()
     if existing:

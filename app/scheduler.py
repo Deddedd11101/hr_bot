@@ -348,6 +348,7 @@ def schedule_employee_scenario(
         run_at = _compute_step_run_at(anchor_date, step, manual=False)
         if not run_at:
             continue
+        scheduled_at = run_at
         if run_at < now - timedelta(minutes=1):
             should_send_first_unsent_now = (
                 not scenario_has_sent_steps
@@ -359,7 +360,8 @@ def schedule_employee_scenario(
             run_at = now
             scheduled_same_day_catchup = True
         job_id = f"employee-{employee.id}-{scenario.scenario_key}-{step.step_key}"
-        delivery = enqueue_step(db, employee.id, scenario.scenario_key, step.step_key, run_at, False, batch_key, batch_created_at)
+        delivery = enqueue_step(db, employee.id, scenario.scenario_key, step.step_key, run_at, False, batch_key,
+            batch_created_at, scheduled_at=scheduled_at)
         if delivery.status != "pending" or scheduler.get_job(job_id):
             continue
         scheduler.add_job(
