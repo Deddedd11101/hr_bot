@@ -33,6 +33,10 @@ related:
 source_of_truth: true
 ---
 
+12.11 в feature/grade-review-confirmation подготовлена проверка черновика оценки
+коллегой до публикации в HR и учёта в среднем. Схема не меняется; старые сборы
+сохраняют свои финальные шаги. На стенд не выложено.
+
 10.11 feature/unified-scheduled-dispatch от c069fdf: закрываются обходные timed
 jobs и немедленные массовые API. Первый путь использует durable step ledger,
 второй — существующий recipient ledger с snapshot до I/O. Watchdog знает о

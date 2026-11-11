@@ -2,6 +2,7 @@ import asyncio
 from datetime import datetime
 import json
 import unittest
+from types import SimpleNamespace
 from uuid import uuid4
 from unittest.mock import patch
 
@@ -19,6 +20,12 @@ from app.web import grades
 from app.time_utils import utc_now
 from tests import test_grades_services as fixtures
 from tests.test_scenario_engine_smoke import FakeMessenger
+
+
+class ReviewMessenger(FakeMessenger):
+    async def send_text(self, chat_id, text, reply_markup=None):
+        await super().send_text(chat_id, text, reply_markup)
+        return SimpleNamespace(message_id=len(self.texts))
 
 
 class GradeCollectionTests(unittest.TestCase):
@@ -44,6 +51,70 @@ class GradeCollectionTests(unittest.TestCase):
     def answer(self, messenger, collection, respondent, skill_id, option):
         person = self.db.get(Employee, respondent)
         self.assertTrue(asyncio.run(handle_button_response(messenger, self.db, person, collection.scenario_key, f"skill_{skill_id}", option)))
+        progress = self.db.query(ScenarioProgress).filter_by(employee_id=respondent, scenario_key=collection.scenario_key).one()
+        if progress.current_step_key == "review_confirm":
+            self.assertTrue(self.confirm(messenger, collection, respondent, 0, progress.pending_confirmation_message_id))
+
+    def confirm(self, messenger, collection, respondent, option, message_id):
+        return asyncio.run(handle_button_response(messenger, self.db, self.db.get(Employee, respondent),
+            collection.scenario_key, "review_confirm", option, message_id=message_id))
+
+    def test_review_retry_ignores_old_confirmation_and_only_final_attempt_counts(self):
+        self.prepare()
+        row = self.create()
+        messenger = ReviewMessenger()
+        asyncio.run(collections.process_pending(messenger, session_factory=self.sessions))
+        self.db.expire_all()
+        employee = self.db.get(Employee, 2)
+        progress = self.db.query(ScenarioProgress).filter_by(employee_id=2, scenario_key=row.scenario_key).one()
+        skill = f"skill_{self.skill['id']}"
+        self.assertTrue(asyncio.run(handle_button_response(messenger, self.db, employee, row.scenario_key, skill, 1)))
+        first_message = progress.pending_confirmation_message_id
+        self.assertTrue(any("<pre>Interview: 1</pre>" == msg["text"] for msg in messenger.texts))
+        self.assertEqual(collections.report(self.db, row)["completed_count"], 0)
+        self.assertTrue(self.confirm(messenger, row, 2, 1, first_message))
+        self.assertTrue(asyncio.run(handle_button_response(messenger, self.db, employee, row.scenario_key, skill, 3)))
+        self.assertFalse(self.confirm(messenger, row, 2, 0, first_message))
+        self.assertTrue(self.confirm(messenger, row, 2, 0, progress.pending_confirmation_message_id))
+        self.assertEqual(collections.report(self.db, row)["scores"][0]["currentLevel"], 3)
+
+    def test_review_summary_uses_native_table_with_escaped_answers(self):
+        from unittest.mock import AsyncMock
+        from app.scenario_engine import handle_text_response
+
+        self.prepare()
+        row = collections.create(self.db, 1, 1, dict(request_id=str(uuid4()), specialization_id=self.spec["id"],
+            recipient_ids=[2], open_questions=["<Вопрос>"]))
+        self.db.commit()
+        messenger = ReviewMessenger()
+        messenger.send_rich_text = AsyncMock(return_value=True)
+        asyncio.run(collections.process_pending(messenger, session_factory=self.sessions))
+        self.db.expire_all()
+        self.answer(messenger, row, 2, self.skill["id"], 2)
+        asyncio.run(handle_text_response(messenger, self.db, self.db.get(Employee, 2), SimpleNamespace(text="<Ответ>")))
+        messenger.send_rich_text.assert_awaited_once()
+        chat_id, markup = messenger.send_rich_text.call_args.args
+        self.assertEqual(chat_id, "700001002")
+        self.assertIn("<table>", markup)
+        self.assertIn("<td>&lt;Вопрос&gt;</td><td>&lt;Ответ&gt;</td>", markup)
+        self.assertEqual(collections.report(self.db, row)["completed_count"], 0)
+
+    def test_native_table_transport_falls_back_only_on_definite_rejection(self):
+        from aiogram.exceptions import TelegramNotFound
+        from unittest.mock import AsyncMock
+        from app.messaging.telegram import TelegramMessenger
+
+        bot = AsyncMock()
+        messenger = TelegramMessenger(bot)
+        self.assertTrue(asyncio.run(messenger.send_rich_text("123", "<table></table>")))
+        method = bot.call_args.args[0]
+        self.assertEqual(method.__api_method__, "sendRichMessage")
+        self.assertEqual(method.model_dump()["rich_message"], {"html": "<table></table>", "skip_entity_detection": True})
+        bot.side_effect = TelegramNotFound(method=method, message="unknown method")
+        self.assertFalse(asyncio.run(messenger.send_rich_text("123", "<table></table>")))
+        bot.side_effect = TimeoutError()
+        with self.assertRaises(TimeoutError):
+            asyncio.run(messenger.send_rich_text("123", "<table></table>"))
 
     def test_admission_race_keeps_review_recipients_pending(self):
         self.prepare()
@@ -61,7 +132,7 @@ class GradeCollectionTests(unittest.TestCase):
         self.db.commit()
         self.prepare()
         row = self.create()
-        messenger = FakeMessenger()
+        messenger = ReviewMessenger()
         asyncio.run(collections.process_pending(messenger, session_factory=self.sessions))
         self.db.expire_all()
         self.answer(messenger, row, 2, self.skill["id"], 0)
@@ -93,7 +164,7 @@ class GradeCollectionTests(unittest.TestCase):
         self.db.add(ScenarioTemplate(scenario_key="busy", title="Busy", trigger_mode="manual_only"))
         self.db.add(FlowStepTemplate(flow_key="busy", step_key="question", step_title="Question", response_type="text", default_text="Question"))
         self.db.commit()
-        messenger = FakeMessenger()
+        messenger = ReviewMessenger()
         asyncio.run(collections.process_pending(messenger, session_factory=self.sessions))
         self.db.expire_all()
         statuses = {r.respondent_employee_id: r.delivery_status for r in self.db.scalars(select(EmployeeFeedbackRecipient))}
@@ -130,18 +201,21 @@ class GradeCollectionTests(unittest.TestCase):
         row = collections.create(self.db, 1, 1, dict(request_id=str(uuid4()), specialization_id=self.spec["id"],
             recipient_ids=[2, 3], open_questions=["Что получается хорошо?"]))
         self.db.commit()
-        messenger = FakeMessenger()
+        messenger = ReviewMessenger()
         asyncio.run(collections.process_pending(messenger, session_factory=self.sessions))
         self.db.expire_all()
         self.answer(messenger, row, 2, self.skill["id"], 2)
         self.assertEqual(collections.report(self.db, row)["completed_count"], 0)
         asyncio.run(handle_text_response(messenger, self.db, self.db.get(Employee, 2), SimpleNamespace(text="Хорошо объясняет решения")))
+        self.assertIsNone(collections.report(self.db, row)["reviewers"][0]["comments"][0]["answer"])
+        self.assertTrue(self.confirm(messenger, row, 2, 0, len(messenger.texts)))
         first = collections.report(self.db, row)
         self.assertEqual(first["completed_count"], 1)
         self.assertEqual(first["scores"][0]["currentLevel"], 2)
         self.assertEqual(first["reviewers"][0]["comments"][0]["answer"], "Хорошо объясняет решения")
         self.answer(messenger, row, 3, self.skill["id"], 4)
         asyncio.run(handle_text_response(messenger, self.db, self.db.get(Employee, 3), SimpleNamespace(text="Помогает команде")))
+        self.assertTrue(self.confirm(messenger, row, 3, 0, len(messenger.texts)))
         result = collections.report(self.db, row)
         self.assertEqual(result["scores"][0]["currentLevel"], 3)
         self.assertTrue(result["can_finalize"])
@@ -186,7 +260,7 @@ class GradeCollectionTests(unittest.TestCase):
             target_grade_id=None, target_specialization_id=None, comment="Decision"), actor_id=1)
         self.db.commit()
         self.assertIn(new_grade["id"], [g["id"] for g in collections.report(self.db, row)["grades"]])
-        messenger = FakeMessenger()
+        messenger = ReviewMessenger()
         asyncio.run(collections.process_pending(messenger, session_factory=self.sessions))
         self.db.expire_all()
         self.answer(messenger, row, 2, self.skill["id"], 2)

@@ -6,17 +6,28 @@ from typing import Any
 from aiogram import Bot
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
+from aiogram.exceptions import TelegramBadRequest, TelegramNotFound
+from aiogram.methods.base import TelegramMethod
 from aiogram.types import (
     BufferedInputFile,
     FSInputFile,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
     KeyboardButton,
+    Message,
     ReplyKeyboardMarkup,
     ReplyKeyboardRemove,
 )
 
 from ..menu_urls import is_valid_menu_url
+
+
+class SendRichMessage(TelegramMethod[Message]):
+    __api_method__ = "sendRichMessage"
+    __returning__ = Message
+
+    chat_id: str
+    rich_message: dict
 
 
 class TelegramMessenger:
@@ -25,6 +36,14 @@ class TelegramMessenger:
 
     async def send_text(self, chat_id: str, text: str, reply_markup: Any | None = None) -> Any:
         return await self.bot.send_message(chat_id=chat_id, text=text, reply_markup=reply_markup)
+
+    async def send_rich_text(self, chat_id: str, markup: str) -> bool:
+        try:
+            await self.bot(SendRichMessage(chat_id=chat_id,
+                rich_message={"html": markup, "skip_entity_detection": True}))
+        except (TelegramBadRequest, TelegramNotFound):
+            return False
+        return True
 
     async def edit_text(self, chat_id: str, message_id: int, text: str, reply_markup: Any | None = None) -> None:
         await self.bot.edit_message_text(

@@ -18,6 +18,7 @@ from .calculations import fractional_category_averages
 from .catalog import integer, require, row as catalog_row
 from .history import matrix_version
 from .recommendations import matrix_coverage
+from .review_confirmation import STEP_KEY
 
 logger = logging.getLogger(__name__)
 
@@ -90,8 +91,9 @@ def create(db, employee_id, actor_id, data):
             sort_order=len(view["scores"]) + index,
             default_text="Обратная связь о сотруднике {employee_full_name}.\n\n" + html.escape(question),
             response_type="text", target_field="survey_answer", send_mode="immediate"))
-    db.add(FlowStepTemplate(flow_key=key, step_key="done", step_title="Завершение оценки", sort_order=len(view["scores"]) + len(questions),
-        default_text="Спасибо! Твои оценки сохранены и будут учтены HR.", response_type="none", send_mode="immediate", is_terminal=True))
+    db.add(FlowStepTemplate(flow_key=key, step_key=STEP_KEY, step_title="Проверка оценки", sort_order=len(view["scores"]) + len(questions),
+        default_text="Проверь ответы выше. Утверди оценку или начни заново.", response_type="buttons",
+        button_options="Утвердить\nОценить заново", send_mode="immediate", is_terminal=True))
     run = EmployeeFeedbackRun(subject_employee_id=employee_id, scenario_key=key, scenario_title="Оценка навыков коллегами", created_at=utc_now())
     db.add(run)
     db.flush()
@@ -122,7 +124,7 @@ def report(db, collection):
     for recipient in recipients:
         scores = []
         for source in snapshot["scores"]:
-            value = latest.get((recipient.respondent_employee_id, f"skill_{source['skillId']}"))
+            value = latest.get((recipient.respondent_employee_id, f"skill_{source['skillId']}")) if recipient in completed else None
             level = int(value) if value in {"0", "1", "2", "3", "4"} else None
             scores.append(dict(source, assessed=level is not None, currentLevel=level or 0))
             if recipient in completed and level is not None:
@@ -130,7 +132,7 @@ def report(db, collection):
         employee = db.get(Employee, recipient.respondent_employee_id)
         reviewers.append(dict(employee_id=recipient.respondent_employee_id, name=employee.full_name if employee else f"#{recipient.respondent_employee_id}",
             status=recipient.delivery_status, scores=scores, categories=fractional_category_averages(scores),
-            comments=[dict(question=question, answer=latest.get((recipient.respondent_employee_id, f"open_{index}")))
+            comments=[dict(question=question, answer=latest.get((recipient.respondent_employee_id, f"open_{index}")) if recipient in completed else None)
                       for index, question in enumerate(snapshot.get("open_questions", []))]))
     scores = [dict(s, assessed=bool(totals[s["skillId"]]), currentLevel=sum(totals[s["skillId"]]) / len(totals[s["skillId"]]) if totals[s["skillId"]] else 0,
                    respondent_count=len(totals[s["skillId"]])) for s in snapshot["scores"]]

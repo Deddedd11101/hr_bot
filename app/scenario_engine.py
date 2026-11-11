@@ -2330,12 +2330,18 @@ async def send_step(
     media_can_host_inline_buttons = bool(reply_markup and (attachment_can_host_inline_buttons or send_employee_card))
     needs_fallback_inline_buttons_message = bool(reply_markup and not message_text.strip() and not media_can_host_inline_buttons)
 
+    from .grades.review_confirmation import STEP_KEY as GRADE_REVIEW_CONFIRM_STEP, send_summary
+    review_confirmation = scenario.scenario_kind == "grade_review" and step.step_key == GRADE_REVIEW_CONFIRM_STEP
+    if review_confirmation:
+        await send_summary(messenger, db, progress, chat_id)
     if message_text.strip():
-        await messenger.send_text(
+        sent_message = await messenger.send_text(
             chat_id=chat_id,
             text=message_text,
             reply_markup=None if media_can_host_inline_buttons else (reply_markup or back_keyboard),
         )
+        if review_confirmation:
+            progress.pending_confirmation_message_id = getattr(sent_message, "message_id", None)
     media_reply_markup = reply_markup if media_can_host_inline_buttons else None
     if send_employee_card:
         employee_card_reply_markup = media_reply_markup if not has_attachment else None
@@ -2714,6 +2720,36 @@ async def handle_button_response(
     if option_index < 0 or option_index >= len(options):
         return False
     selected_value = options[option_index]
+    from .grades.review_confirmation import STEP_KEY as GRADE_REVIEW_CONFIRM_STEP, draft_answers
+    if scenario.scenario_kind == "grade_review" and step.step_key == GRADE_REVIEW_CONFIRM_STEP:
+        if not message_id or option_index not in (0, 1) or progress.feedback_run_id is None:
+            return False
+        first = get_first_step(db, scenario_key) if option_index == 1 else None
+        if option_index == 1 and (not first or first.step_key == step_key):
+            return False
+        claimed = db.execute(update(ScenarioProgress).where(
+            ScenarioProgress.id == progress.id, ScenarioProgress.current_step_key == step_key,
+            ScenarioProgress.pending_confirmation_message_id == message_id,
+            ScenarioProgress.waiting_for_response.is_(True), ScenarioProgress.is_completed.is_(False),
+            ScenarioProgress.interrupted_at.is_(None),
+        ).values(waiting_for_response=False, pending_confirmation_message_id=None))
+        if claimed.rowcount != 1:
+            db.rollback()
+            return False
+        if first:
+            run_id, recipient_chat_id = progress.feedback_run_id, progress.recipient_chat_id
+            draft_answers(db, progress).delete(synchronize_session=False)
+            reset_progress(db, context_employee.id, scenario_key)
+            progress.feedback_run_id, progress.recipient_chat_id = run_id, recipient_chat_id
+            progress.current_step_key = first.step_key
+            progress.last_delivery_error = "Начата повторная оценка; результат отправки требует проверки при обрыве."
+            db.commit()
+            return await send_step(messenger, db, context_employee, scenario, first)
+        progress.is_completed = True
+        progress.completed_at = progress.updated_at = utc_now()
+        _complete_feedback_recipient(db, progress)
+        db.commit()
+        return True
     if _step_can_confirm_choice(scenario, step):
         progress.pending_confirmation_value = selected_value
         progress.pending_confirmation_option_index = option_index
