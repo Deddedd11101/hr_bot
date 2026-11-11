@@ -18,7 +18,8 @@ source_of_truth: true
 
 `GET /api/employees/{employee_id}/scenario-queue` дополнительно возвращает
 `step_deliveries[]`: id, title, UTC due_at, status, reason, can_cancel,
-recipient_name, receipt_at (UTC) и can_reconcile.
+recipient_name, receipt_at (UTC), can_reconcile, launch_key, scenario_title и
+step_title. Клиент группирует шаги по `launch_key`, а не по названию сценария.
 `POST /api/employees/{employee_id}/scenario-queue/step-deliveries/{delivery_id}/cancel`
 доступен admin; JSON `{ expected_at: due_at }` (naive UTC snapshot). CAS разрешает
 только pending root в карточке subject или его recipient; отменяет pending siblings

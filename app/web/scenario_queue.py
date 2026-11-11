@@ -1,6 +1,7 @@
 """Employee-scoped visibility and guarded interruption of scenario runtime."""
 
 from datetime import datetime, timedelta
+import json
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from sqlalchemy import or_, update
@@ -95,11 +96,15 @@ def snapshot(db, employee_id):
                         "can_cancel": row.skip_step_key is None})
     step_deliveries = []
     for row in db.query(ScenarioStepDelivery).filter(or_(ScenarioStepDelivery.employee_id == employee_id,
-            ScenarioStepDelivery.recipient_employee_id == employee_id), ScenarioStepDelivery.status.in_(["pending", "starting", "failed"])).order_by(ScenarioStepDelivery.due_at):
+            ScenarioStepDelivery.recipient_employee_id == employee_id), ScenarioStepDelivery.status.in_(["pending", "starting", "failed"])).order_by(ScenarioStepDelivery.due_at, ScenarioStepDelivery.id):
         step = db.query(FlowStepTemplate).filter_by(flow_key=row.scenario_key, step_key=row.step_key).first()
         recipient = db.get(Employee, row.recipient_employee_id) if row.recipient_employee_id else None
         receipt = _delivery_receipt(db, row) if row.status == "starting" else None
-        step_deliveries.append({"id": row.id, "title": f"{_title(db, row.scenario_key)} · {step.step_title if step else 'Шаг удалён'}",
+        scenario_title = _title(db, row.scenario_key)
+        step_title = step.step_title if step else "Шаг удалён"
+        step_deliveries.append({"id": row.id, "title": f"{scenario_title} · {step_title}",
+            "launch_key": json.dumps([row.employee_id, row.scenario_key, row.batch_key]),
+            "scenario_title": scenario_title, "step_title": step_title,
             "due_at": row.due_at.isoformat(), "status": row.status, "reason": row.last_error,
             "recipient_name": recipient.full_name if recipient else None,
             "receipt_at": receipt.sent_at.isoformat() if receipt else None,
