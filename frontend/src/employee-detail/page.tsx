@@ -916,10 +916,10 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
                         <EmployeeOperationsSection {...operationsProps} view="test" />
                     </TabsContent> : null}
                     <TabsContent value="scenarios" keepMounted className="admin-page-stack min-w-0">
-                        <ScenarioQueue employeeId={Number(form.id)} visible={activeTab === "scenarios"} />
                         <EmployeeOperationsSection {...operationsProps} launchItems={launchItems.filter(item => isCandidate || item.purpose !== "adaptation")} manualLaunchItems={manualLaunchItems.filter(item => isCandidate || item.purpose !== "adaptation")} view="scenarios" />
                         <EmployeeScenarioResults employeeId={Number(form.id)} />
                         {!isCandidate ? <EmployeeFeedbackSurveys employeeId={Number(form.id)} legacyUrl={form.adaptation_feedback_url} /> : null}
+                        <ScenarioQueue key={form.id} employeeId={Number(form.id)} visible={activeTab === "scenarios"} />
                     </TabsContent>
                     <TabsContent value="messages" keepMounted className="admin-page-stack min-w-0"><EmployeeOperationsSection {...operationsProps} view="messages" /></TabsContent>
                     <TabsContent value="files" keepMounted className="admin-page-stack min-w-0"><EmployeeFileWorkspace payload={payload} /><EmployeeScenarioResults employeeId={Number(form.id)} />{!isCandidate && <EmployeeFeedbackFiles employeeId={Number(form.id)} active={activeTab === "files"} />}<details className="min-w-0"><summary className="cursor-pointer py-3 text-sm font-medium text-muted-foreground">Загрузка и замена документов</summary><EmployeeOperationsSection {...operationsProps} view="files" /></details></TabsContent>

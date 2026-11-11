@@ -195,6 +195,21 @@ class ScheduledStepDeliveryTests(unittest.TestCase):
             self.assertEqual({r.status for r in db.query(ScenarioStepDelivery)}, {"cancelled"})
         self.assertEqual(self.messenger.sent_texts, [])
 
+    def test_card_queue_groups_only_steps_from_the_same_launch(self):
+        from app.web.scenario_queue import snapshot
+
+        with self.factory() as db:
+            self.enqueue(db)
+            later = enqueue_step(db, 1, "timed", "first", utc_now().replace(tzinfo=UTC),
+                True, "batch:another-launch", self.created)
+            db.commit()
+            rows = snapshot(db, 1)["step_deliveries"]
+            self.assertEqual([row["scenario_title"] for row in rows], ["Timed"] * 3)
+            self.assertEqual([row["step_title"] for row in rows], ["First", "Second", "First"])
+            self.assertEqual(rows[0]["launch_key"], rows[1]["launch_key"])
+            self.assertNotEqual(rows[0]["launch_key"], rows[2]["launch_key"])
+            self.assertEqual([row["id"] for row in rows if row["can_cancel"]], [rows[0]["id"], later.id])
+
     def test_cancel_rejects_wrong_card_continuation_and_started_delivery(self):
         from fastapi import HTTPException
         from app.web.scenario_queue import cancel_step_delivery
