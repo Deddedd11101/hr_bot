@@ -38,8 +38,9 @@ jobs и немедленные массовые API. Первый путь ис�
 второй — существующий recipient ledger с snapshot до I/O. Watchdog знает о
 сохранённых продолжениях, карточка умеет отменить ещё не начатый root batch.
 Additive runtime table + nullable batch/event fields; старые данные не replay-ятся.
-Пока не выложено. Полная FIFO и ручная обработка неизвестной I/O доставки не
-объявляются автоматически решёнными.
+Выложено 11.11 (`55d7f63`, Deploy `43055555740`), см. [[stage-change-log]].
+Живая проверка Telegram, общая FIFO и ручная обработка доставки с неизвестным
+результатом остаются открытыми.
 
 10.11 feature/scenario-recipient-admission от deployed stage dddc1a3: общий
 SQLite transaction gate для start_scenario, snapshot адресата до I/O, отдельный
