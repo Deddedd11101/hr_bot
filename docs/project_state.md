@@ -39,8 +39,8 @@ jobs и немедленные массовые API. Первый путь ис�
 сохранённых продолжениях, карточка умеет отменить ещё не начатый root batch.
 Additive runtime table + nullable batch/event fields; старые данные не replay-ятся.
 Выложено 11.11 (`55d7f63`, Deploy `43055555740`), см. [[stage-change-log]].
-Живая проверка Telegram, общая FIFO и ручная обработка доставки с неизвестным
-результатом остаются открытыми.
+11.11 подтверждено на карточке №70: второй запуск дождался завершения первого,
+пришёл один раз, оба диалога завершены. Общая FIFO остаётся открытой.
 
 10.11 feature/scenario-recipient-admission от deployed stage dddc1a3: общий
 SQLite transaction gate для start_scenario, snapshot адресата до I/O, отдельный
