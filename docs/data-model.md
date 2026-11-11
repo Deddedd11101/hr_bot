@@ -106,7 +106,7 @@ current_grade_id последнего final обновляется профил�
 
 | Таблица | Назначение | Ограничения |
 | --- | --- | --- |
-| `grade_development_actions` | Отдельные действия этапа: milestone_id, action_key UUID, action_type, scenario_key, settings_json (адресаты/шаблон/actor), status, last_error, result_id | UNIQUE milestone_id/action_key; durable claims, без backfill старых циклов |
+| `grade_development_actions` | Отдельные действия этапа: milestone_id, action_key UUID, action_type, scenario_key, settings_json (адресаты/шаблон/actor/необязательный `due_at` по Москве), status, last_error, result_id | UNIQUE milestone_id/action_key; durable claims, без backfill старых циклов |
 | `grade_review_collections` | Запуск оценивания subject employee: request_id/hash, feedback_run_id, scenario_key, frozen snapshot_json, created_by/at, status, assessment_id | UNIQUE employee_id/request_id, UNIQUE feedback_run_id и scenario_key; idempotent create/finalize |
 
 Сбор использует employee_feedback_runs/recipients и survey_answers, но имеет

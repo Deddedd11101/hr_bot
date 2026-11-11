@@ -216,6 +216,8 @@ Final сохраняется без изменений; archived доступе�
   optional due_dates, actions={ipr6:[],ipr12:[],review12:[]}.
   Действие: key UUID, type=scenario/feedback/review, scenario_key либо null,
   recipient_ids для feedback/review, specialization_id для review. До 10 на этап.
+  Необязательный `due_at` — локальный ISO datetime по Москве, не раньше начала
+  этапа. Если не указан, действует дата этапа.
   Нет обязательных действий; пустой этап только напоминает. Stale/запущенный 409,
   invalid 422, отсутствующая сущность 404. GET development включает actions/surveys.
 - `GET /api/employees/{employee_id}/grade/collections`: authenticated список

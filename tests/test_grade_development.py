@@ -130,6 +130,33 @@ class GradeDevelopmentTests(unittest.TestCase):
             validate(self.db, employee, {**choices, "ipr6": [dict(action, type="feedback", scenario_key="pulse-survey", recipient_ids=[2])]})
         self.assertFalse(next(row for row in dev.payload(self.db, 1)["surveys"] if row["key"] == "pulse-survey")["selectable"])
 
+    def test_actions_run_on_independent_dates_and_pending_can_be_moved(self):
+        from uuid import uuid4
+        from app.grades import development_actions as actions
+
+        first = dict(key=str(uuid4()), type="scenario", scenario_key="ipr6")
+        second = dict(key=str(uuid4()), type="scenario", scenario_key="ipr12", due_at="2027-04-28T10:00")
+        plan = dict(expected_revision=0, assessment_id=1, anchor_date="2026-10-27", enabled=True,
+                    actions=dict(ipr6=[first, second], ipr12=[], review12=[]))
+        actions.configure(self.db, 1, 1, plan)
+        self.db.commit()
+        cycle, item = self.db.get(Cycle, 1), self.item()
+        start = AsyncMock(return_value=True)
+        with patch.object(actions, "start_scenario", start), patch.object(actions, "resolve_scenario_recipient",
+                return_value=SimpleNamespace(employee_id=1, chat_id="333", error=None)):
+            with patch.object(dev, "local_now", return_value=datetime(2027, 4, 27, 11)):
+                asyncio.run(actions.process_actions(self.db, object(), self.db.get(Employee, 1), item, cycle))
+                self.assertEqual(item.status, "planned")
+                self.assertEqual(start.await_count, 1)
+                revised = dict(plan, expected_revision=1, actions=dict(ipr6=[first, dict(second, due_at="2027-04-29T10:00")], ipr12=[], review12=[]))
+                actions.configure(self.db, 1, 1, revised)
+                self.db.commit()
+            for day, expected in ((28, 1), (29, 2), (30, 2)):
+                with patch.object(dev, "local_now", return_value=datetime(2027, 4, day, 11)):
+                    asyncio.run(actions.process_actions(self.db, object(), self.db.get(Employee, 1), item, cycle))
+                self.assertEqual(start.await_count, expected)
+        self.assertEqual(item.status, "started")
+
     def test_manual_ipr_templates_are_not_scheduled_from_adaptation_without_cycle(self):
         from app import scheduler
         employee = self.db.get(Employee, 1)

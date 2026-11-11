@@ -326,8 +326,10 @@ def renew_after_finalization(db, assessment):
         previous = next((i for i in old if i.kind == kind and i.assessment_id == previous_assessment_id), None)
         if previous:
             for action in db.scalars(select(Action).where(Action.milestone_id == previous.id)):
+                action_settings = json.loads(action.settings_json)
+                action_settings.pop("due_at", None)
                 db.add(Action(milestone_id=new_item.id, action_key=action.action_key, action_type=action.action_type,
-                    scenario_key=action.scenario_key, settings_json=action.settings_json))
+                    scenario_key=action.scenario_key, settings_json=json.dumps(action_settings)))
     db.flush()
 
 
