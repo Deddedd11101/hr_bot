@@ -19,6 +19,7 @@ from .catalog import integer, require, row as catalog_row
 from .history import matrix_version
 from .recommendations import matrix_coverage
 from .review_confirmation import STEP_KEY
+from .review_intro import review_intro
 
 logger = logging.getLogger(__name__)
 
@@ -75,7 +76,7 @@ def create(db, employee_id, actor_id, data):
     db.add(scenario)
     if view.get("assessment_intro"):
         db.add(FlowStepTemplate(flow_key=key, step_key="intro", step_title="Начало оценки", sort_order=-1,
-            default_text=html.escape(view["assessment_intro"]), response_type="none", send_mode="immediate"))
+            default_text=review_intro(view["assessment_intro"], len(questions)), response_type="none", send_mode="immediate"))
     for index, score in enumerate(view["scores"]):
         prompt = ("Оцени навыки сотрудника {employee_full_name}.\n\n" + html.escape(score["categoryName"]) + ": " + html.escape(score["skillName"]) +
                   "\n\n0 — нет · 1 — понимание · 2 — умение · 3 — экспертиза · 4 — лидерство. Если не можешь оценить, пропусти навык.")
