@@ -24,6 +24,17 @@ scenario/step keys, recipient IDs, flags и timestamps, без ответов, T
 
 # Runbook деплоя на stage
 
+## Rollback сохранённых заданий шагов
+
+После использования scenario_step_deliveries нельзя возвращать worker,
+который не понимает эту таблицу, при наличии pending/starting записей. Старый
+scheduler может заново построить memory jobs или потерять manual продолжения.
+Нужна read-only проверка ledger и backup, затем forward-fix либо отдельно
+согласованное восстановление. Не чистить таблицу и не снимать starting ради
+обхода проверки. Workflow автоматически такую проверку пока не выполняет.
+Три новые nullable batch/event колонки не backfill-ятся; старые memory jobs,
+которые уже были потеряны до обновления, автоматически не восстанавливаются.
+
 ## Rollback поадресных массовых запусков
 
 Пакет recipient ledger нельзя откатывать на старый scheduler при незавершённых

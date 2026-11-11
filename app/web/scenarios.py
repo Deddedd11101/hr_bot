@@ -1336,6 +1336,13 @@ def _copy_template_entity(db: Session, scenario: ScenarioTemplate) -> ScenarioTe
 
 
 def _delete_template_entity(db: Session, scenario: ScenarioTemplate) -> None:
+    from ..models import ScenarioStepDelivery
+    from sqlalchemy import update
+    db.execute(update(ScenarioTemplate).where(ScenarioTemplate.id == scenario.id).values(id=ScenarioTemplate.id))
+    if db.query(ScenarioStepDelivery.id).filter_by(scenario_key=scenario.scenario_key, status="starting").first():
+        raise HTTPException(409, "Есть начатая доставка шага. Проверьте результат перед удалением сценария.")
+    db.query(ScenarioStepDelivery).filter_by(scenario_key=scenario.scenario_key, status="pending").update(
+        {ScenarioStepDelivery.status: "cancelled", ScenarioStepDelivery.last_error: "Сценарий удалён"}, synchronize_session=False)
     feedback_run_ids = [run.id for run in db.query(EmployeeFeedbackRun).filter_by(scenario_key=scenario.scenario_key).all()]
     if feedback_run_ids:
         db.query(EmployeeFeedbackRecipient).filter(

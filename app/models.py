@@ -621,6 +621,8 @@ class OnboardingEvent(Base):
     message: Mapped[str] = mapped_column(String(2048), nullable=False)
     scenario_title: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     step_title: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    scenario_key: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    delivery_batch_key: Mapped[Optional[str]] = mapped_column(String(96), nullable=True)
 
 
 class FlowLaunchRequest(Base):
@@ -866,6 +868,27 @@ class MassScenarioRecipient(Base):
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="pending")
     last_error: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utc_now)
+
+
+class ScenarioStepDelivery(Base):
+    __tablename__ = "scenario_step_deliveries"
+    __table_args__ = (CheckConstraint("status IN ('pending','starting','sent','failed','cancelled')"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    dedupe_key: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    employee_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    scenario_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    step_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    batch_key: Mapped[str] = mapped_column(String(96), nullable=False)
+    due_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    explicit: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    is_root: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    progress_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    progress_started_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    recipient_employee_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="pending")
+    last_error: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
 
 
 class MassMessageAction(Base):
@@ -1162,6 +1185,7 @@ class ScenarioProgress(Base):
     interrupted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
     watchdog_alert_key: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    delivery_batch_key: Mapped[Optional[str]] = mapped_column(String(96), nullable=True)
 
 
 class SurveyAnswer(Base):

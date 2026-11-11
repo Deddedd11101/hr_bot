@@ -87,6 +87,7 @@ def _ensure_sqlite_schema() -> None:
     with engine.begin() as conn:
         # Grade is additive: use the same model DDL for startup and compatibility.
         for table_name in (
+            "scenario_step_deliveries",
             "mass_scenario_recipients",
             "scenario_bootstrap_state",
             "employee_telegram_email_verifications",
@@ -771,6 +772,8 @@ def _ensure_sqlite_schema() -> None:
         progress_columns = {row[1] for row in conn.execute(text("PRAGMA table_info(scenario_progress)"))}
         if "watchdog_alert_key" not in progress_columns:
             conn.execute(text("ALTER TABLE scenario_progress ADD COLUMN watchdog_alert_key TEXT"))
+        if "delivery_batch_key" not in progress_columns:
+            conn.execute(text("ALTER TABLE scenario_progress ADD COLUMN delivery_batch_key TEXT"))
         if "interrupted_at" not in progress_columns:
             conn.execute(text("ALTER TABLE scenario_progress ADD COLUMN interrupted_at DATETIME"))
         if "adaptation_plan_item_id" not in progress_columns:
@@ -810,7 +813,7 @@ def _ensure_sqlite_schema() -> None:
         if flow_launch_columns and "requested_by_account_id" not in flow_launch_columns:
             conn.execute(text("ALTER TABLE flow_launch_requests ADD COLUMN requested_by_account_id INTEGER"))
         event_columns = {row[1] for row in conn.execute(text("PRAGMA table_info(onboarding_events)")).fetchall()}
-        for column in ("scenario_title", "step_title"):
+        for column in ("scenario_title", "step_title", "scenario_key", "delivery_batch_key"):
             if event_columns and column not in event_columns:
                 conn.execute(text(f"ALTER TABLE onboarding_events ADD COLUMN {column} TEXT"))
         if flow_launch_columns and "skip_step_key" not in flow_launch_columns:

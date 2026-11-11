@@ -230,6 +230,7 @@ Rollback на старый runtime после появления средних 
 | `employee_feedback_runs` | Запуски опросов о конкретном сотруднике | `subject_employee_id`, `scenario_key`, `scenario_title`, `created_at`, `queued_delivery` | Снимок названия и связь с карточкой. Additive flag default false сохраняет старые standalone pending без replay; новые API-сборы получают true и используют общий с Grade recipient dispatcher. XLSX linkage не меняется |
 | `employee_feedback_recipients` | Адресаты одного запуска | `run_id`, `respondent_employee_id`, `delivery_status` | Пара `(run_id, respondent_employee_id)` уникальна; отправка/завершение учитываются отдельно по каждому адресату |
 | `onboarding_events` | Исторический лог onboarding sends | `employee_id`, `scheduled_at`, `sent_at`, `event_key`, `message` | Используется scheduled onboarding logic |
+| `scenario_step_deliveries` | Durable задания timed jobs | unique dedupe_key, employee/scenario/step, UTC due_at, batch, is_root, optional progress id/started_at, recipient id, status/error | Pending/starting/sent/failed/cancelled. Claim до I/O; starting не истекает. Strict FK не добавлены: application delete guards отменяют pending и запрещают удаление при starting |
 
 ### HR settings, menus и bulk actions
 
@@ -242,6 +243,12 @@ Rollback на старый runtime после появления средних 
 | `mass_scenario_actions` | Очередь bulk scenario launches | flow key, scenario kind, targeting fields, `target_role_scopes`, `target_employee_ids`, `launch_type`, `recipient_count`, `recipient_queue_enabled` | Для обычного опроса `id` становится ID запуска в progress и ответах; XLSX строится из этих ответов при скачивании. ORM создаёт новые строки с queue enabled; additive SQLite patch оставляет старые строки с false, без replay/backfill |
 | `mass_scenario_recipients` | Поадресные попытки новых scheduled bulk launches | unique `(action_id, employee_id)`, `status`, `last_error`, `updated_at` | Snapshot аудитории при первом due scan. Статусы pending/starting/started/failed/cancelled; starting не истекает. Ссылки проверяются приложением, строгих FK нет. При удалении ещё не начатого action ledger очищается атомарно; частичная доставка запрещает удаление. Удаление карточки отменяет pending и запрещено при starting |
 | `mass_message_actions` | Очередь bulk free-text sends | message text, targeting fields, `target_role_scopes`, `target_employee_ids`, `launch_type`, `recipient_count` | Та же additive-схема аудитории для отложенных и ручных сообщений; старые строки не требуют backfill |
+
+Additive nullable `scenario_progress.delivery_batch_key`,
+`onboarding_events.scenario_key` и `onboarding_events.delivery_batch_key`
+связывают новые отправки с flow/batch, включая runtime auto-follow. Reset очищает
+batch; старые события не backfill-ятся. Timed records pin progress id и started_at:
+замена контекста не даёт старому продолжению войти в новый диалог.
 
 ### Files и documents
 

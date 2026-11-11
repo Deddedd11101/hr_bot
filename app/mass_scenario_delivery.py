@@ -22,6 +22,9 @@ def delete_unstarted_action(db, action_id):
         MassScenarioAction.processed_at.is_(None)).values(recipient_count=MassScenarioAction.recipient_count))
     if changed.rowcount != 1:
         raise ValueError("Запуск уже изменён. Обновите страницу")
+    action = db.get(MassScenarioAction, action_id)
+    if action.launch_type == "manual" and not db.query(MassScenarioRecipient.id).filter_by(action_id=action_id).first():
+        raise ValueError("У старого ручного запуска нет поадресного следа. Нужна отдельная проверка")
     if db.query(MassScenarioRecipient.id).filter(MassScenarioRecipient.action_id == action_id,
             MassScenarioRecipient.status.in_(["starting", "started"])).first():
         raise ValueError("Часть рассылки уже запущена или находится в доставке. Удаление запрещено")

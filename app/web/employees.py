@@ -1425,7 +1425,12 @@ def _incomplete_scenario_progress_filter():
 
 
 def _delete_employee_active_scenario_runtime_state(db: Session, employee_id: int) -> None:
-    from ..models import EmployeeAdaptationPlanItem
+    from ..models import EmployeeAdaptationPlanItem, ScenarioStepDelivery, MassScenarioRecipient
+    db.query(ScenarioStepDelivery).filter(ScenarioStepDelivery.status == "pending", or_(
+        ScenarioStepDelivery.employee_id == employee_id, ScenarioStepDelivery.recipient_employee_id == employee_id)).update(
+        {ScenarioStepDelivery.status: "cancelled", ScenarioStepDelivery.last_error: "Привязка или активный диалог сброшены"}, synchronize_session=False)
+    db.query(MassScenarioRecipient).filter_by(employee_id=employee_id, status="pending").update(
+        {MassScenarioRecipient.status: "cancelled", MassScenarioRecipient.last_error: "Привязка сброшена"}, synchronize_session=False)
     active_item_ids = select(ScenarioProgress.adaptation_plan_item_id).where(
         _incomplete_scenario_progress_filter(),
         or_(ScenarioProgress.employee_id == employee_id, ScenarioProgress.recipient_employee_id == employee_id),
@@ -1480,6 +1485,13 @@ def _delete_employee_record(db: Session, employee: Employee) -> str:
     employee_id = employee.id
     # Serialize with Grade creation/finalization before any filesystem side effects.
     db.execute(update(Employee).where(Employee.id == employee_id).values(id=Employee.id))
+    from ..models import ScenarioStepDelivery
+    if db.query(ScenarioStepDelivery.id).filter(ScenarioStepDelivery.status == "starting",
+            or_(ScenarioStepDelivery.employee_id == employee_id, ScenarioStepDelivery.recipient_employee_id == employee_id)).first():
+        raise HTTPException(409, "Для сотрудника есть начатая доставка шага. Проверьте результат перед удалением.")
+    db.query(ScenarioStepDelivery).filter(ScenarioStepDelivery.status == "pending", or_(
+        ScenarioStepDelivery.employee_id == employee_id, ScenarioStepDelivery.recipient_employee_id == employee_id)).update(
+        {ScenarioStepDelivery.status: "cancelled", ScenarioStepDelivery.last_error: "Карточка удалена"}, synchronize_session=False)
     from ..models import MassScenarioRecipient
     if db.query(MassScenarioRecipient.id).filter_by(employee_id=employee_id, status="starting").first():
         raise HTTPException(status_code=409, detail="Для сотрудника начата массовая доставка. Проверьте её перед удалением карточки.")

@@ -14,6 +14,18 @@ related:
 source_of_truth: true
 ---
 
+## Сохранённые задания шагов (10.11.2026)
+
+`GET /api/employees/{employee_id}/scenario-queue` дополнительно возвращает
+`step_deliveries[]`: id, title, UTC due_at, status, reason, can_cancel.
+`POST /api/employees/{employee_id}/scenario-queue/step-deliveries/{delivery_id}/cancel`
+доступен admin; JSON `{ expected_at: due_at }` (naive UTC snapshot). CAS разрешает
+только pending root в карточке subject или его recipient; отменяет pending siblings
+того же batch, записывает audit event и возвращает queue payload. Несовпадение,
+continuation или starting возвращают409, не отправляя сообщений. Auth401/403
+соответствует остальным queue actions. Прерывание диалога отменяет только
+связанные с его id/started_at pending continuations, не независимые root batches.
+
 ## Общие группы каталогов
 
 - `GET /api/catalog-groups?scope=people|scenarios`: authenticated, groups (id/name/revision) и memberships (object id → group id). People scope общий для кандидатов/сотрудников; scenarios scope общий для сценариев/опросов. GET фильтрует отсутствующие объекты и группы без записи в БД.
@@ -694,16 +706,16 @@ Immediate endpoints требуют `confirmed=true`; без него возвр�
 
 | Method | Path | Назначение | Основные inputs | Response | Side effects | Частые errors |
 | --- | --- | --- | --- | --- | --- | --- |
-| `GET` | `/api/bulk-actions/workspace` | Вернуть сценарии, опросы, target options, scheduled actions и history. | Нет | Bulk actions workspace payload; action содержит additive `delivery_counts` по статусам recipient ledger | Нет | `401` |
+| `GET` | `/api/bulk-actions/workspace` | Вернуть сценарии, опросы, target options, pending actions и history. | Нет | Action: recipient_count полного snapshot, started_count, delivery_counts; pending manual с ledger включены в очередь; manual requested_at отображается в TIMEZONE | Нет | `401` |
 | `POST` | `/api/bulk-actions/preview` | Посчитать получателей для выбранной аудитории. | JSON target fields: `target_role_scopes[]`, `target_employee_ids[]`, `target_employee_stages[]`, `target_candidate_stages[]`; прежние одиночные `target_role_scope`/`target_employee_id` остаются для старых клиентов | `{ recipient_count, recipient_scope }` | Нет | `401`, `400` для неверных списков |
 | `POST` | `/api/bulk-actions/scenarios/schedule` | Запланировать массовый запуск сценария. | JSON: `flow_key`, `requested_at`, target fields | `{ message, payload }` | Создает `mass_scenario_actions` scheduled row | `401`, `400`, `404` |
-| `POST` | `/api/bulk-actions/scenarios/launch` | Немедленно запустить сценарий. | JSON: `flow_key`, target fields, `confirmed=true` | `{ message, payload }` | Отправляет сценарий через Telegram messenger, пишет manual `mass_scenario_actions` row | `401`, `400`, `404` |
+| `POST` | `/api/bulk-actions/scenarios/launch` | Принять немедленную массовую рассылку сценария. | JSON: `flow_key`, target fields, `confirmed=true` | `{ message, payload }` с количествами started/pending/uncertain/failed | Атомарно пишет manual action + snapshot; свободные стартуют сразу, busy продолжаются scheduler-ом. Ответ200 не означает завершение всех доставок | `401`, `400`, `404` |
 | `POST` | `/api/bulk-actions/surveys/schedule` | Запланировать массовый запуск опроса. | JSON: `flow_key`, `requested_at`, target fields | `{ message, payload }` | Создает `mass_scenario_actions` scheduled row с `scenario_kind="survey"` | `401`, `400`, `404` |
-| `POST` | `/api/bulk-actions/surveys/launch` | Немедленно запустить опрос. | JSON: `flow_key`, target fields, `confirmed=true` | `{ message, payload }` | Сначала пишет manual `mass_scenario_actions` row, затем запускает адресатов с `survey_launch_id`; ответы запуска попадают в отдельный XLSX | `401`, `400`, `404` |
+| `POST` | `/api/bulk-actions/surveys/launch` | Принять немедленную рассылку опроса. | JSON: `flow_key`, target fields, `confirmed=true` | `{ message, payload }` с состояниями доставки | Тот же durable dispatcher; survey_launch_id и один XLSX сохраняются. Runs дополнительно показывают pending_count/starting_count и полный размер snapshot | `401`, `400`, `404` |
 | `POST` | `/api/bulk-actions/messages/schedule` | Запланировать массовое сообщение. | JSON: `message_text`, `requested_at`, target fields | `{ message, payload }` | Создает `mass_message_actions` scheduled row | `401`, `400` |
 | `POST` | `/api/bulk-actions/messages/send` | Немедленно отправить массовое сообщение. | JSON: `message_text` в TelegramSafeHTML subset, target fields, `confirmed=true` | `{ message, payload }` | Рендерит/санитизирует сообщение единым TelegramSafeHTML path, отправляет Telegram messages с HTML parse mode и пишет manual `mass_message_actions` row | `401`, `400` |
-| `DELETE` | `/api/bulk-actions/scenarios/{action_id}` | Удалить scheduled scenario/survey action. | Path: `action_id` | `{ message, payload }` | Удаляет pending action и незапущенный recipient snapshot; starting/started ledger запрещает удаление | `401`, `404`, `409` |
-| `DELETE` | `/api/bulk-actions/surveys/{action_id}` | Удалить scheduled survey action. | Path: `action_id` | `{ message, payload }` | Та же защита частичной доставки для survey action | `401`, `404`, `409` |
+| `DELETE` | `/api/bulk-actions/scenarios/{action_id}` | Удалить незапущенный scenario/survey action. | Path: `action_id` | `{ message, payload }` | Pending scheduled либо новый manual с ledger; starting/started запрещают удаление, старый manual без snapshot требует проверки | `401`, `404`, `409` |
+| `DELETE` | `/api/bulk-actions/surveys/{action_id}` | Удалить незапущенный survey action. | Path: `action_id` | `{ message, payload }` | Та же защита partial delivery и manual snapshot | `401`, `404`, `409` |
 | `DELETE` | `/api/bulk-actions/messages/{action_id}` | Удалить scheduled message action. | Path: `action_id` | `{ message, payload }` | Удаляет pending `mass_message_actions` row | `401`, `404` |
 
 Новый выбор допускает несколько должностей или несколько отдельных людей, но не оба списка одновременно: смешанный запрос получает `400`. Выбранные этапы ограничивают группу должностей; если должности не выбраны, но этапы выбраны, группа охватывает людей на этих этапах. Пустые должности, люди и этапы означают всех незаблокированных адресатов. Плановые действия сохраняют выбранный список и при исполнении используют его. Старые записи с одиночными полями и ранее созданные плановые действия со смешанной аудиторией не меняются задним числом.

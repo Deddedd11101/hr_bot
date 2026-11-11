@@ -37,7 +37,7 @@ class ScenarioRecipientBusy(RuntimeError):
     """Admission refused before external I/O; durable callers may keep waiting."""
 
 
-def _admit_scenario_start(db, employee, scenario, *, defer_if_busy):
+def _admit_scenario_start(db, employee, scenario, *, defer_if_busy, continuation_id=None):
     requires_response = any(s.response_type in INTERACTIVE_RESPONSE_TYPES for s in get_scenario_steps(db, scenario.scenario_key))
     initial = resolve_scenario_recipient(db, employee, scenario, requires_response=requires_response)
     locked_ids = {employee.id}
@@ -51,13 +51,17 @@ def _admit_scenario_start(db, employee, scenario, *, defer_if_busy):
     db.refresh(scenario)
     resolution = resolve_scenario_recipient(db, employee, scenario, requires_response=requires_response)
     changed = resolution.employee_id is not None and resolution.employee_id not in locked_ids
-    subject_busy = db.query(ScenarioProgress.id).filter(
+    subject_query = db.query(ScenarioProgress.id).filter(
         ScenarioProgress.employee_id == employee.id, ScenarioProgress.scenario_key == scenario.scenario_key,
         ScenarioProgress.is_completed.is_(False),
         or_(ScenarioProgress.current_step_key.isnot(None), ScenarioProgress.waiting_for_response.is_(True),
             ScenarioProgress.feedback_run_id.isnot(None), ScenarioProgress.survey_launch_id.isnot(None)),
     ).first()
-    recipient_busy = resolution.employee_id and get_conflicting_progress_for_survey_launch(db, resolution.employee_id, scenario.scenario_key)
+    subject_busy = subject_query
+    if continuation_id is not None and subject_busy and subject_busy[0] == continuation_id:
+        subject_busy = None
+    recipient_busy = resolution.employee_id and get_conflicting_progress_for_survey_launch(
+        db, resolution.employee_id, scenario.scenario_key, exclude_progress_id=continuation_id)
     if changed or subject_busy or recipient_busy:
         if defer_if_busy:
             raise ScenarioRecipientBusy("Диалог занят или получатель изменился до начала отправки")
@@ -562,6 +566,7 @@ def reset_progress(db: Session, employee_id: int, scenario_key: str) -> Scenario
         if item and item.status in {"starting", "in_progress"}:
             item.status = "interrupted"
     progress.adaptation_plan_item_id = None
+    progress.delivery_batch_key = None
     if progress.answer_run_id is not None:
         run = db.get(ScenarioAnswerRun, progress.answer_run_id)
         if run and run.status == "in_progress":
@@ -607,7 +612,7 @@ def get_waiting_progress(db: Session, employee_id: int) -> Optional[ScenarioProg
 
 
 def get_conflicting_progress_for_survey_launch(
-    db: Session, employee_id: int, scenario_key: str,
+    db: Session, employee_id: int, scenario_key: str, *, exclude_progress_id: int | None = None,
 ) -> Optional[ScenarioProgress]:
     return (
         db.query(ScenarioProgress)
@@ -618,6 +623,7 @@ def get_conflicting_progress_for_survey_launch(
                 (ScenarioProgress.employee_id == employee_id) & (ScenarioProgress.scenario_key == scenario_key),
             ),
             ScenarioProgress.is_completed.is_(False),
+            ScenarioProgress.id != exclude_progress_id if exclude_progress_id is not None else True,
             or_(
                 ScenarioProgress.current_step_key.is_not(None),
                 ScenarioProgress.waiting_for_response.is_(True),
@@ -2216,6 +2222,14 @@ def _compute_followup_run_at(step: FlowStepTemplate) -> Optional[datetime]:
 
 
 def queue_followup_step(db: Session, employee: Employee, scenario: ScenarioTemplate, step: FlowStepTemplate) -> bool:
+    from .models import ScenarioStepDelivery
+    progress = db.query(ScenarioProgress).filter_by(employee_id=employee.id, scenario_key=scenario.scenario_key).first()
+    if progress and db.query(ScenarioStepDelivery.id).filter(ScenarioStepDelivery.employee_id == employee.id,
+            ScenarioStepDelivery.scenario_key == scenario.scenario_key, ScenarioStepDelivery.step_key == step.step_key,
+            ScenarioStepDelivery.progress_id == progress.id, ScenarioStepDelivery.progress_started_at == progress.started_at,
+            ScenarioStepDelivery.status.in_(["pending", "starting"])).first():
+        db.commit()
+        return True
     run_at = _compute_followup_run_at(step)
     if not run_at:
         return False
@@ -2375,6 +2389,8 @@ async def send_step(
             message=message_text,
             scenario_title=scenario.title,
             step_title=step.step_title,
+            scenario_key=scenario.scenario_key,
+            delivery_batch_key=progress.delivery_batch_key,
         )
     )
     db.commit()
@@ -2920,6 +2936,9 @@ async def start_scenario(
     survey_launch_id: int | None = None,
     adaptation_plan_item_id: int | None = None,
     defer_if_busy: bool = False,
+    scheduled_at: datetime | None = None,
+    entry_step_key: str | None = None,
+    delivery_batch_key: str | None = None,
 ) -> bool:
     messenger = as_messenger(messenger_or_bot)
     if employee.is_bot_blocked:
@@ -2941,7 +2960,7 @@ async def start_scenario(
         feedback_run = db.get(EmployeeFeedbackRun, feedback_run_id) if feedback_run_id is not None else None
         if feedback_run_id is not None and (not feedback_run or feedback_run.scenario_key != scenario_key or not is_survey(scenario)):
             return False
-    first_step = get_first_step(db, scenario_key)
+    first_step = get_step_by_key(db, scenario_key, entry_step_key) if entry_step_key else get_first_step(db, scenario_key)
     if not first_step:
         return False
     resolution = _admit_scenario_start(db, employee, scenario, defer_if_busy=defer_if_busy)
@@ -2954,6 +2973,7 @@ async def start_scenario(
     progress.feedback_run_id = feedback_run_id
     progress.survey_launch_id = survey_launch_id
     progress.adaptation_plan_item_id = adaptation_plan_item_id
+    progress.delivery_batch_key = delivery_batch_key
     progress.recipient_mode = _scenario_recipient_mode(scenario)
     if resolution.error or not resolution.chat_id:
         _mark_delivery_failure(db, progress, employee, scenario, first_step, resolution)
@@ -2962,4 +2982,4 @@ async def start_scenario(
     progress.current_step_key = first_step.step_key
     progress.last_delivery_error = "Результат начатой доставки неизвестен. Перед повтором проверьте сообщения получателя."
     db.commit()
-    return await send_step(messenger, db, employee, scenario, first_step, _admitted_recipient=resolution)
+    return await send_step(messenger, db, employee, scenario, first_step, scheduled_at=scheduled_at, _admitted_recipient=resolution)

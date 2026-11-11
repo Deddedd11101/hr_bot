@@ -9,8 +9,7 @@ from ..config import settings
 from ..database import get_session
 from ..messaging import create_telegram_messenger
 from ..mass_targeting import build_legacy_target_statuses, serialize_target_values
-from ..models import MassMessageAction, MassScenarioAction, ScenarioTemplate
-from ..scenario_engine import start_scenario
+from ..models import MassMessageAction, MassScenarioAction, MassScenarioRecipient, ScenarioTemplate
 from ..time_utils import utc_now
 from .bulk_actions import (
     _bulk_target_recipients,
@@ -43,6 +42,33 @@ async def _parse_classic_mass_action_payload(request: Request) -> dict:
         "target_employee_id": str(form.get("target_employee_id", "") or "").strip(),
         "target_role_scope": str(form.get("target_role_scope", "") or "").strip(),
     }
+
+
+async def _launch_queued_mass(db, scenario, payload, selection):
+    target_all, employee_stages, candidate_stages, employee_id, role_scope, recipients = selection
+    recipients = [person for person in recipients if _scenario_matches_employee_role(scenario, person)]
+    if not recipients:
+        raise HTTPException(400, "Нет получателей, подходящих сценарию.")
+    action = MassScenarioAction(flow_key=scenario.scenario_key, scenario_kind=scenario.scenario_kind,
+        requested_at=utc_now(), created_at=utc_now(), launch_type="manual", target_all=target_all,
+        target_statuses=serialize_target_values(build_legacy_target_statuses(employee_stages, candidate_stages)),
+        target_employee_stages=serialize_target_values(employee_stages), target_candidate_stages=serialize_target_values(candidate_stages),
+        target_employee_id=employee_id, target_role_scope=role_scope, **_target_selection_storage(payload))
+    db.add(action)
+    db.flush()
+    for person in recipients:
+        db.add(MassScenarioRecipient(action_id=action.id, employee_id=person.id))
+    db.commit()
+    from ..mass_scenario_delivery import deliver_mass_action, delivery_counts
+    messenger = create_telegram_messenger(settings.TELEGRAM_BOT_TOKEN)
+    try:
+        await deliver_mass_action(db, messenger, action.id, [person.id for person in recipients])
+    finally:
+        await messenger.close()
+    counts = delivery_counts(db, action.id)
+    return (f"Принято: {len(recipients)}. Начато: {counts.get('started', 0)}; "
+        f"в очереди: {counts.get('pending', 0)}; проверить доставку: {counts.get('starting', 0)}; "
+        f"ошибок: {counts.get('failed', 0)}.")
 
 
 @router.get("/bulk-actions")
@@ -188,39 +214,12 @@ async def bulk_launch_scenario(
         return _mass_actions_redirect("Не найдено ни одного получателя для выбранных статусов.", "error")
     if not settings.TELEGRAM_BOT_TOKEN:
         return _mass_actions_redirect("Не задан TELEGRAM_BOT_TOKEN.", "error")
-    messenger = create_telegram_messenger(settings.TELEGRAM_BOT_TOKEN)
-    started_count = 0
     try:
-        for employee in recipients:
-            if not employee.telegram_user_id:
-                continue
-            if not _scenario_matches_employee_role(scenario, employee):
-                continue
-            if await start_scenario(messenger, db, employee, scenario.scenario_key):
-                started_count += 1
-        db.add(
-            MassScenarioAction(
-                flow_key=scenario.scenario_key,
-                scenario_kind="scenario",
-                requested_at=utc_now(),
-                processed_at=utc_now(),
-                launch_type="manual",
-                target_all=target_all,
-                target_statuses=serialize_target_values(build_legacy_target_statuses(target_employee_stages, target_candidate_stages)),
-                target_employee_stages=serialize_target_values(target_employee_stages),
-                target_candidate_stages=serialize_target_values(target_candidate_stages),
-                target_role_scope=target_role_scope,
-                target_employee_id=target_employee_id,
-                recipient_count=started_count,
-                created_at=utc_now(),
-            )
-        )
-        db.commit()
-    finally:
-        await messenger.close()
-    if not started_count:
-        return _mass_actions_redirect("Не удалось запустить сценарий ни для одного получателя.", "error")
-    return _mass_actions_redirect(f"Сценарий запущен для {started_count} получателей.", "success")
+        message = await _launch_queued_mass(db, scenario, payload, (target_all, target_employee_stages,
+            target_candidate_stages, target_employee_id, target_role_scope, recipients))
+    except HTTPException as exc:
+        return _mass_actions_redirect(exc.detail, "error")
+    return _mass_actions_redirect(message, "success")
 
 
 @router.post("/bulk-actions/surveys/launch")
@@ -248,41 +247,12 @@ async def bulk_launch_survey(
         return _mass_actions_redirect("Не найдено ни одного получателя для выбранных статусов.", "error")
     if not settings.TELEGRAM_BOT_TOKEN:
         return _mass_actions_redirect("Не задан TELEGRAM_BOT_TOKEN.", "error")
-    action = MassScenarioAction(
-        flow_key=scenario.scenario_key,
-        scenario_kind="survey",
-        requested_at=utc_now(),
-        processed_at=None,
-        launch_type="manual",
-        target_all=target_all,
-        target_statuses=serialize_target_values(build_legacy_target_statuses(target_employee_stages, target_candidate_stages)),
-        target_employee_stages=serialize_target_values(target_employee_stages),
-        target_candidate_stages=serialize_target_values(target_candidate_stages),
-        target_role_scope=target_role_scope,
-        target_employee_id=target_employee_id,
-        recipient_count=0,
-        created_at=utc_now(),
-    )
-    db.add(action)
-    db.commit()
-    messenger = create_telegram_messenger(settings.TELEGRAM_BOT_TOKEN)
-    started_count = 0
     try:
-        for employee in recipients:
-            if not employee.telegram_user_id:
-                continue
-            if not _scenario_matches_employee_role(scenario, employee):
-                continue
-            if await start_scenario(messenger, db, employee, scenario.scenario_key, survey_launch_id=action.id):
-                started_count += 1
-        action.recipient_count = started_count
-        action.processed_at = utc_now()
-        db.commit()
-    finally:
-        await messenger.close()
-    if not started_count:
-        return _mass_actions_redirect("Не удалось запустить опрос ни для одного получателя.", "error")
-    return _mass_actions_redirect(f"Опрос запущен для {started_count} получателей.", "success")
+        message = await _launch_queued_mass(db, scenario, payload, (target_all, target_employee_stages,
+            target_candidate_stages, target_employee_id, target_role_scope, recipients))
+    except HTTPException as exc:
+        return _mass_actions_redirect(exc.detail, "error")
+    return _mass_actions_redirect(message, "success")
 
 
 @router.post("/bulk-actions/messages/schedule")
@@ -382,7 +352,7 @@ def delete_bulk_scenario_action(
     if auth_redirect:
         return auth_redirect
     action = db.get(MassScenarioAction, action_id)
-    if not action or action.launch_type != "scheduled" or action.processed_at is not None:
+    if not action or action.launch_type not in {"scheduled", "manual"} or action.processed_at is not None:
         return _mass_actions_redirect("Запланированный запуск не найден.", "error")
     from ..mass_scenario_delivery import delete_unstarted_action
     try:
@@ -577,40 +547,9 @@ async def bulk_launch_scenario_api(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Не найдено ни одного получателя.")
     if not settings.TELEGRAM_BOT_TOKEN:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Не задан TELEGRAM_BOT_TOKEN.")
-    messenger = create_telegram_messenger(settings.TELEGRAM_BOT_TOKEN)
-    started_count = 0
-    try:
-        for employee in recipients:
-            if not employee.telegram_user_id:
-                continue
-            if not _scenario_matches_employee_role(scenario, employee):
-                continue
-            if await start_scenario(messenger, db, employee, scenario.scenario_key):
-                started_count += 1
-        db.add(
-            MassScenarioAction(
-                flow_key=scenario.scenario_key,
-                scenario_kind="scenario",
-                requested_at=utc_now(),
-                processed_at=utc_now(),
-                launch_type="manual",
-                target_all=target_all,
-                target_statuses=serialize_target_values(build_legacy_target_statuses(target_employee_stages, target_candidate_stages)),
-                target_employee_stages=serialize_target_values(target_employee_stages),
-                target_candidate_stages=serialize_target_values(target_candidate_stages),
-                target_role_scope=target_role_scope,
-                target_employee_id=target_employee_id,
-                recipient_count=started_count,
-                **_target_selection_storage(payload),
-                created_at=utc_now(),
-            )
-        )
-        db.commit()
-    finally:
-        await messenger.close()
-    if not started_count:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Не удалось запустить сценарий ни для одного получателя.")
-    return {"message": f"Сценарий запущен для {started_count} получателей.", "payload": _bulk_workspace_payload(db)}
+    message = await _launch_queued_mass(db, scenario, payload, (target_all, target_employee_stages,
+        target_candidate_stages, target_employee_id, target_role_scope, recipients))
+    return {"message": message, "payload": _bulk_workspace_payload(db)}
 
 
 @router.post("/api/bulk-actions/surveys/launch")
@@ -633,42 +572,9 @@ async def bulk_launch_survey_api(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Не найдено ни одного получателя.")
     if not settings.TELEGRAM_BOT_TOKEN:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Не задан TELEGRAM_BOT_TOKEN.")
-    action = MassScenarioAction(
-        flow_key=scenario.scenario_key,
-        scenario_kind="survey",
-        requested_at=utc_now(),
-        processed_at=None,
-        launch_type="manual",
-        target_all=target_all,
-        target_statuses=serialize_target_values(build_legacy_target_statuses(target_employee_stages, target_candidate_stages)),
-        target_employee_stages=serialize_target_values(target_employee_stages),
-        target_candidate_stages=serialize_target_values(target_candidate_stages),
-        target_role_scope=target_role_scope,
-        target_employee_id=target_employee_id,
-        recipient_count=0,
-        **_target_selection_storage(payload),
-        created_at=utc_now(),
-    )
-    db.add(action)
-    db.commit()
-    messenger = create_telegram_messenger(settings.TELEGRAM_BOT_TOKEN)
-    started_count = 0
-    try:
-        for employee in recipients:
-            if not employee.telegram_user_id:
-                continue
-            if not _scenario_matches_employee_role(scenario, employee):
-                continue
-            if await start_scenario(messenger, db, employee, scenario.scenario_key, survey_launch_id=action.id):
-                started_count += 1
-        action.recipient_count = started_count
-        action.processed_at = utc_now()
-        db.commit()
-    finally:
-        await messenger.close()
-    if not started_count:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Не удалось запустить опрос ни для одного получателя.")
-    return {"message": f"Опрос запущен для {started_count} получателей.", "payload": _bulk_workspace_payload(db)}
+    message = await _launch_queued_mass(db, scenario, payload, (target_all, target_employee_stages,
+        target_candidate_stages, target_employee_id, target_role_scope, recipients))
+    return {"message": message, "payload": _bulk_workspace_payload(db)}
 
 
 @router.post("/api/bulk-actions/messages/send")
@@ -728,7 +634,7 @@ def _delete_scheduled_mass_scenario_action(
     action = db.get(MassScenarioAction, action_id)
     if (
         not action
-        or action.launch_type != "scheduled"
+        or action.launch_type not in {"scheduled", "manual"}
         or action.processed_at is not None
         or (expected_kind and action.scenario_kind != expected_kind)
     ):
