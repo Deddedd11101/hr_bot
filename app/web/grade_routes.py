@@ -91,6 +91,12 @@ def configure_grade_development(employee_id: int, payload: dict = Body(...), db:
     return configure(db, employee_id, payload)
 
 
+@router.get("/api/employees/{employee_id}/grade/development/calendar-dates")
+def grade_development_calendar_dates(employee_id: int, anchor_date: str, db: Session = Depends(get_db)):
+    from ..grades.development import calendar_dates
+    return read_payload(calendar_dates, db, employee_id, anchor_date)
+
+
 @router.put("/api/employees/{employee_id}/grade/development/actions")
 def configure_grade_actions(employee_id: int, request: Request, payload: dict = Body(...), db: Session = Depends(get_write_db)):
     from ..grades.development_actions import configure

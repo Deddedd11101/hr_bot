@@ -207,6 +207,10 @@ Final сохраняется без изменений; archived доступе�
 
 ## Grade API
 
+- `GET /api/employees/{employee_id}/grade/development/calendar-dates?anchor_date=YYYY-MM-DD`:
+  read-only defaults for `ipr6`, `ipr12`, `review12` in Moscow time. Dates
+  shift forward to the next workday in the published production calendar;
+  missing calendar coverage returns 422. Existing dates are not changed.
 - `PUT /api/employees/{employee_id}/grade/development/actions`: authenticated
   transactional save, assessment_id/expected_revision/anchor_date/enabled,
   optional due_dates, actions={ipr6:[],ipr12:[],review12:[]}.

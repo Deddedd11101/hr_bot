@@ -38,6 +38,8 @@ def validate(db, employee, data):
             if action_type not in {"scenario", "feedback", "review"}:
                 raise ValueError("Выберите сценарий, сбор ОС или сбор оценок")
             settings, scenario_key = {}, choice.get("scenario_key")
+            if action_type == "scenario" and "recipient_ids" in choice:
+                raise ValueError("Для сценария адресат определяется его настройками")
             if action_type in {"feedback", "review"}:
                 settings["recipient_ids"] = recipient_ids(db, choice.get("recipient_ids"))
                 if employee.id in settings["recipient_ids"]:
@@ -53,6 +55,8 @@ def validate(db, employee, data):
                 scenario = db.scalar(select(ScenarioTemplate).where(ScenarioTemplate.scenario_key == scenario_key))
                 if not scenario or not get_scenario_steps(db, scenario_key):
                     raise ValueError("Сценарий пуст или недоступен")
+                if dev.is_pulse(scenario) and (action_type != "scenario" or scenario.recipient_mode != "self"):
+                    raise ValueError("Выберите «Пульс опрос» как сценарий для самого сотрудника")
                 if action_type == "scenario" and (scenario.scenario_kind != "scenario" or not matches_role_scope(employee, scenario)):
                     raise ValueError("Сценарий не подходит сотруднику")
                 if action_type == "feedback" and (scenario.scenario_kind != "survey" or scenario.recipient_mode != "self"
@@ -160,9 +164,13 @@ async def process_actions(db, bot, employee, item, cycle):
             continue
         config = json.loads(row.settings_json)
         try:
+            scenario = db.scalar(select(ScenarioTemplate).where(ScenarioTemplate.scenario_key == row.scenario_key)) if row.scenario_key else None
+            if dev.is_pulse(scenario) and (row.action_type != "scenario" or scenario.recipient_mode != "self"):
+                row.status, row.last_error = "blocked", "Выберите «Пульс» как сценарий для самого сотрудника"
+                db.commit()
+                continue
             if row.action_type in {"review", "feedback"}:
                 recipient_ids(db, config.get("recipient_ids"))
-            scenario = db.scalar(select(ScenarioTemplate).where(ScenarioTemplate.scenario_key == row.scenario_key)) if row.scenario_key else None
             if row.action_type == "scenario":
                 if not scenario or not matches_role_scope(employee, scenario):
                     raise ValueError("Сценарий недоступен сотруднику")

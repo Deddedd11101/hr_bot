@@ -93,6 +93,43 @@ class GradeDevelopmentTests(unittest.TestCase):
         self.assertEqual(dates["ipr6"], datetime(2027, 4, 30, 10))
         self.assertEqual(dates["review12"] - dates["ipr12"], timedelta(minutes=10))
 
+    def test_calendar_preview_uses_published_calendar_without_saving(self):
+        from app.models import ProductionCalendarVersion, ProductionCalendarYear
+
+        with self.assertRaisesRegex(ValueError, "календарь 2027"):
+            dev.calendar_dates(self.db, 1, "2026-10-31")
+        days = [{"date": day, "is_workday": working} for day, working in [
+            ("2027-04-30", False), ("2027-05-01", True),
+            ("2027-10-31", False), ("2027-11-01", True),
+        ]]
+        self.db.add(ProductionCalendarVersion(id=1, year=2027, digest="test", days_json=json.dumps(days),
+            source_name="test", created_at=NOW, created_by=1))
+        self.db.add(ProductionCalendarYear(year=2027, current_version_id=1))
+        self.db.commit()
+        self.assertEqual(dev.calendar_dates(self.db, 1, "2026-10-31"), {
+            "ipr6": "2027-05-01T10:00", "ipr12": "2027-11-01T10:00", "review12": "2027-11-01T10:10",
+        })
+        self.assertEqual(self.db.query(Milestone).count(), 0)
+
+    def test_pulse_can_only_be_selected_as_a_self_scenario(self):
+        from uuid import uuid4
+        from app.grades.development_actions import validate
+
+        self.db.add_all([ScenarioTemplate(scenario_key="pulse-scenario", title="Пульс-опрос", scenario_kind="scenario", recipient_mode="self"),
+            ScenarioTemplate(scenario_key="pulse-survey", title="Пульс опрос", scenario_kind="survey", recipient_mode="self")])
+        for key in ("pulse-scenario", "pulse-survey"):
+            self.db.add(FlowStepTemplate(flow_key=key, step_key="step", step_title="Step", default_text="Hello"))
+        self.db.commit()
+        employee = self.db.get(Employee, 1)
+        action = {"key": str(uuid4()), "type": "scenario", "scenario_key": "pulse-scenario"}
+        choices = {"ipr6": [action], "ipr12": [], "review12": []}
+        self.assertEqual(validate(self.db, employee, choices)["ipr6"][0]["settings"], {})
+        with self.assertRaisesRegex(ValueError, "адресат определяется"):
+            validate(self.db, employee, {**choices, "ipr6": [dict(action, recipient_ids=[2])]})
+        with patch("app.grades.development_actions.recipient_ids", return_value=[2]), self.assertRaisesRegex(ValueError, "как сценарий"):
+            validate(self.db, employee, {**choices, "ipr6": [dict(action, type="feedback", scenario_key="pulse-survey", recipient_ids=[2])]})
+        self.assertFalse(next(row for row in dev.payload(self.db, 1)["surveys"] if row["key"] == "pulse-survey")["selectable"])
+
     def test_manual_ipr_templates_are_not_scheduled_from_adaptation_without_cycle(self):
         from app import scheduler
         employee = self.db.get(Employee, 1)
