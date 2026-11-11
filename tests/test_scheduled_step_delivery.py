@@ -107,6 +107,25 @@ class ScheduledStepDeliveryTests(unittest.TestCase):
             self.assertEqual(second.status, "cancelled")
         self.assertEqual(len(self.messenger.sent_texts), 1)
 
+    def test_new_root_waits_for_pending_continuation(self):
+        with self.factory() as db:
+            self.enqueue(db)
+            second = db.query(ScenarioStepDelivery).filter_by(is_root=False).one()
+            second.due_at = utc_now() + timedelta(days=1)
+            db.commit()
+            asyncio.run(deliver_due_steps(db, self.messenger))
+            new_root = enqueue_step(db, 1, "timed", "first", utc_now().replace(tzinfo=UTC),
+                True, "batch:new", self.created)
+            db.commit()
+            asyncio.run(deliver_due_steps(db, self.messenger))
+            self.assertEqual(new_root.status, "pending")
+            second.due_at = utc_now() - timedelta(seconds=1)
+            db.commit()
+            asyncio.run(deliver_due_steps(db, self.messenger))
+            self.assertEqual(second.status, "sent")
+            self.assertEqual(new_root.status, "pending")
+        self.assertEqual([text for _, text in self.messenger.sent_texts], ["First", "Second"])
+
     def test_waiting_human_is_not_skipped_and_timing_has_one_owner(self):
         with self.factory() as db:
             db.query(FlowStepTemplate).filter_by(step_key="first").one().response_type = "text"

@@ -91,6 +91,14 @@ async def deliver_step(db, bot, delivery_id):
     if progress and (progress.waiting_for_response or progress.last_delivery_error):
         _finish(db, row, "pending", "Ожидается ответ человека или проверка предыдущей доставки")
         return
+    if row.is_root and progress and not progress.is_completed and not progress.interrupted_at:
+        continuation = db.query(Delivery.id).filter_by(
+            progress_id=progress.id, progress_started_at=progress.started_at,
+            is_root=False, status="pending",
+        ).first()
+        if continuation:
+            _finish(db, row, "pending", "Ожидается запланированный шаг предыдущего запуска")
+            return
     if not row.is_root:
         root = db.query(Delivery).filter_by(employee_id=row.employee_id, scenario_key=row.scenario_key,
             batch_key=row.batch_key, is_root=True).first()
