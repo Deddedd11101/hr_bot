@@ -3,6 +3,7 @@
 import calendar
 import json
 import logging
+import re
 from datetime import date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
@@ -27,6 +28,10 @@ MSK = ZoneInfo("Europe/Moscow")
 KINDS = ("ipr6", "ipr12", "review12")
 EDITABLE = {"planned", "blocked"}
 logger = logging.getLogger(__name__)
+
+
+def is_pulse(scenario):
+    return bool(scenario and re.sub(r"[\s‐‑–—-]+", " ", scenario.title.strip().casefold()) == "пульс опрос")
 
 
 def local_now():
@@ -57,6 +62,22 @@ def default_dates(anchor):
     six = datetime.combine(add_months(anchor, 6), time(10))
     twelve = datetime.combine(add_months(anchor, 12), time(10))
     return dict(ipr6=six, ipr12=twelve, review12=twelve + timedelta(minutes=10))
+
+
+def calendar_dates(db, employee_id, anchor_date):
+    from ..adaptation_planning import CalendarDates
+
+    if not db.get(Employee, employee_id):
+        raise LookupError("Сотрудник не найден")
+    try:
+        anchor = date.fromisoformat(anchor_date)
+    except ValueError:
+        raise ValueError("Укажите исходную дату в формате ГГГГ-ММ-ДД") from None
+    if not 2000 <= anchor.year <= 2098:
+        raise ValueError("Некорректный год исходной даты")
+    calendar_days = CalendarDates(db)
+    return {kind: datetime.combine(calendar_days.shift(due.date(), 0, "calendar"), due.time()).isoformat(timespec="minutes")
+            for kind, due in default_dates(anchor).items()}
 
 
 def _latest(db, employee_id):
@@ -176,9 +197,10 @@ def payload(db, employee_id):
         **{kind + "_scenario_key": getattr(cycle, kind + "_scenario_key") if cycle else None for kind in KINDS},
         milestones=[dict(visible_item(item), actions=[action_payload(a) for a in db.scalars(select(Action).where(Action.milestone_id == item.id).order_by(Action.id))]) for item in current],
         history=[_milestone_payload(item) for item in rows if item not in current], deliveries=deliveries,
-        scenarios=[dict(key=s.scenario_key, title=s.title) for s in db.scalars(select(ScenarioTemplate)
+        scenarios=[dict(key=s.scenario_key, title=s.title, pulse=is_pulse(s), selectable=not is_pulse(s) or s.recipient_mode == "self")
+                   for s in db.scalars(select(ScenarioTemplate)
                    .where(ScenarioTemplate.scenario_kind == "scenario").order_by(ScenarioTemplate.sort_order, ScenarioTemplate.id))],
-        surveys=[dict(key=s.scenario_key, title=s.title) for s in db.scalars(select(ScenarioTemplate).where(ScenarioTemplate.scenario_kind == "survey", ScenarioTemplate.recipient_mode == "self").order_by(ScenarioTemplate.title))],
+        surveys=[dict(key=s.scenario_key, title=s.title, selectable=not is_pulse(s)) for s in db.scalars(select(ScenarioTemplate).where(ScenarioTemplate.scenario_kind == "survey", ScenarioTemplate.recipient_mode == "self").order_by(ScenarioTemplate.title))],
         needs_anchor=bool(latest and not cycle and _unknown_date(latest)))
 
 
@@ -222,6 +244,8 @@ def configure(db, employee_id, data, *, allow_actions=False):
             if not isinstance(key, str) or not key or len(key) > 64:
                 raise ValueError("Некорректный ключ сценария")
             scenario = db.scalar(select(ScenarioTemplate).where(ScenarioTemplate.scenario_key == key, ScenarioTemplate.scenario_kind == "scenario"))
+            if is_pulse(scenario) and scenario.recipient_mode != "self":
+                raise ValueError("Пульс должен быть настроен для самого сотрудника")
             if data["enabled"] and (not scenario or not get_scenario_steps(db, key) or not matches_role_scope(db.get(Employee, employee_id), scenario)):
                 raise ValueError("Сценарий недоступен, пуст или не подходит сотруднику")
         if data["enabled"] and not key:
@@ -302,8 +326,10 @@ def renew_after_finalization(db, assessment):
         previous = next((i for i in old if i.kind == kind and i.assessment_id == previous_assessment_id), None)
         if previous:
             for action in db.scalars(select(Action).where(Action.milestone_id == previous.id)):
+                action_settings = json.loads(action.settings_json)
+                action_settings.pop("due_at", None)
                 db.add(Action(milestone_id=new_item.id, action_key=action.action_key, action_type=action.action_type,
-                    scenario_key=action.scenario_key, settings_json=action.settings_json))
+                    scenario_key=action.scenario_key, settings_json=json.dumps(action_settings)))
     db.flush()
 
 
@@ -421,6 +447,10 @@ async def _process_one(bot, item_id):
         if await process_actions(db, bot, employee, item, cycle):
             return
         scenario = db.scalar(select(ScenarioTemplate).where(ScenarioTemplate.scenario_key == item.scenario_key))
+        if is_pulse(scenario) and scenario.recipient_mode != "self":
+            item.status, item.last_error = "blocked", "Пульс должен быть настроен для самого сотрудника"
+            db.commit()
+            return
         if not scenario or scenario.scenario_kind != "scenario" or employee.is_bot_blocked or not matches_role_scope(employee, scenario):
             item.status, item.last_error = "failed", "Сотрудник или сценарий недоступен. Требуется проверка HR"
             db.commit()

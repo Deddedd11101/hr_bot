@@ -1,5 +1,6 @@
 """Optional, independently claimed actions at each development milestone."""
 import json
+from datetime import datetime
 from uuid import UUID, NAMESPACE_URL, uuid5
 
 from sqlalchemy import select, update
@@ -19,6 +20,10 @@ def action_payload(row):
         **json.loads(row.settings_json), id=row.id, status=row.status, last_error=row.last_error, result_id=row.result_id)
 
 
+def _action_due(config, fallback):
+    return datetime.fromisoformat(config["due_at"]) if config.get("due_at") else fallback
+
+
 def validate(db, employee, data):
     if not isinstance(data, dict) or set(data) != set(dev.KINDS):
         raise ValueError("Нужны списки действий для всех трёх этапов")
@@ -28,7 +33,7 @@ def validate(db, employee, data):
             raise ValueError("В одном этапе допускается до 10 действий")
         rows, keys, scenarios = [], set(), set()
         for choice in choices:
-            if not isinstance(choice, dict) or set(choice) - {"key", "type", "scenario_key", "recipient_ids", "specialization_id"}:
+            if not isinstance(choice, dict) or set(choice) - {"key", "type", "scenario_key", "recipient_ids", "specialization_id", "due_at"}:
                 raise ValueError("Некорректные поля действия")
             key = str(UUID(choice["key"]))
             if key in keys:
@@ -38,6 +43,16 @@ def validate(db, employee, data):
             if action_type not in {"scenario", "feedback", "review"}:
                 raise ValueError("Выберите сценарий, сбор ОС или сбор оценок")
             settings, scenario_key = {}, choice.get("scenario_key")
+            if choice.get("due_at") is not None:
+                try:
+                    due = datetime.fromisoformat(choice["due_at"])
+                    if due.tzinfo is not None or "T" not in choice["due_at"]:
+                        raise ValueError()
+                except (ValueError, TypeError):
+                    raise ValueError("Укажите дату и время действия по Москве") from None
+                settings["due_at"] = due.isoformat()
+            if action_type == "scenario" and "recipient_ids" in choice:
+                raise ValueError("Для сценария адресат определяется его настройками")
             if action_type in {"feedback", "review"}:
                 settings["recipient_ids"] = recipient_ids(db, choice.get("recipient_ids"))
                 if employee.id in settings["recipient_ids"]:
@@ -53,6 +68,8 @@ def validate(db, employee, data):
                 scenario = db.scalar(select(ScenarioTemplate).where(ScenarioTemplate.scenario_key == scenario_key))
                 if not scenario or not get_scenario_steps(db, scenario_key):
                     raise ValueError("Сценарий пуст или недоступен")
+                if dev.is_pulse(scenario) and (action_type != "scenario" or scenario.recipient_mode != "self"):
+                    raise ValueError("Выберите «Пульс опрос» как сценарий для самого сотрудника")
                 if action_type == "scenario" and (scenario.scenario_kind != "scenario" or not matches_role_scope(employee, scenario)):
                     raise ValueError("Сценарий не подходит сотруднику")
                 if action_type == "feedback" and (scenario.scenario_kind != "survey" or scenario.recipient_mode != "self"
@@ -105,8 +122,6 @@ def configure(db, employee_id, actor_id, data):
     for item in db.scalars(select(Milestone).where(Milestone.employee_id == employee_id, Milestone.assessment_id == cycle.assessment_id)):
         if item.status not in dev.EDITABLE:
             continue
-        if enabled and item.due_at <= dev.local_now():
-            raise ValueError("Укажите будущие даты этапов перед включением цикла")
         previous = {row.action_key: row for row in db.scalars(select(Action).where(Action.milestone_id == item.id))}
         choices = clean[item.kind] or [dict(key=str(uuid5(NAMESPACE_URL, f"reminder:{item.id}")), type="reminder", scenario_key=None, settings={})]
         retained = set()
@@ -119,6 +134,11 @@ def configure(db, employee_id, actor_id, data):
                 if row.action_type != choice["type"] or row.scenario_key != choice["scenario_key"] or stored != choice["settings"]:
                     raise GradeConflictError("Запущенное действие нельзя изменить")
                 continue
+            due = _action_due(config, item.due_at)
+            if due < item.due_at:
+                raise ValueError("Дата действия не может быть раньше начала этапа")
+            if enabled and due <= dev.local_now():
+                raise ValueError("Укажите будущую дату для каждого ожидающего действия")
             if not row:
                 row = Action(milestone_id=item.id, action_key=choice["key"])
                 db.add(row)
@@ -141,6 +161,7 @@ async def process_actions(db, bot, employee, item, cycle):
     rows = list(db.scalars(select(Action).where(Action.milestone_id == item.id).order_by(Action.id)))
     if not rows:
         return False
+    rows.sort(key=lambda row: (_action_due(json.loads(row.settings_json), item.due_at), row.id))
     for row in rows:
         dev._lock(db, employee.id)
         db.refresh(cycle)
@@ -159,10 +180,16 @@ async def process_actions(db, bot, employee, item, cycle):
             db.commit()
             continue
         config = json.loads(row.settings_json)
+        if _action_due(config, item.due_at) > dev.local_now():
+            continue
         try:
+            scenario = db.scalar(select(ScenarioTemplate).where(ScenarioTemplate.scenario_key == row.scenario_key)) if row.scenario_key else None
+            if dev.is_pulse(scenario) and (row.action_type != "scenario" or scenario.recipient_mode != "self"):
+                row.status, row.last_error = "blocked", "Выберите «Пульс» как сценарий для самого сотрудника"
+                db.commit()
+                continue
             if row.action_type in {"review", "feedback"}:
                 recipient_ids(db, config.get("recipient_ids"))
-            scenario = db.scalar(select(ScenarioTemplate).where(ScenarioTemplate.scenario_key == row.scenario_key)) if row.scenario_key else None
             if row.action_type == "scenario":
                 if not scenario or not matches_role_scope(employee, scenario):
                     raise ValueError("Сценарий недоступен сотруднику")
@@ -224,7 +251,10 @@ async def process_actions(db, bot, employee, item, cycle):
             db.commit()
     db.expire_all()
     statuses = [r.status for r in db.scalars(select(Action).where(Action.milestone_id == item.id))]
-    item.status = "started" if all(s == "started" for s in statuses) else "blocked" if any(s in dev.EDITABLE for s in statuses) else "failed"
-    item.last_error = None if item.status == "started" else "Проверьте статусы отдельных действий этапа"
+    if any(s in dev.EDITABLE for s in statuses):
+        item.status = "blocked" if "blocked" in statuses else "planned"
+    else:
+        item.status = "started" if all(s == "started" for s in statuses) else "failed"
+    item.last_error = "Проверьте статусы отдельных действий этапа" if item.status in {"blocked", "failed"} else None
     db.commit()
     return True
