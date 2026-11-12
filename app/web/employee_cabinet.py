@@ -1,9 +1,12 @@
 import hashlib
 import hmac
 import json
+import re
 import time
+from datetime import UTC
 from pathlib import Path
 from urllib.parse import parse_qsl
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse
@@ -11,7 +14,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from ..config import settings
 from ..database import get_session
 from ..messaging.identity import find_employees_by_channel_user_id, get_primary_chat_id
-from ..models import Employee, EmployeeFile
+from ..models import Employee, EmployeeAdaptationPlanItem, EmployeeFile, Grade, GradeAssessment, GradeDevelopmentCycle, GradeDevelopmentMilestone
 from ..staff_email_verification import is_verified, verification_required
 
 router = APIRouter(prefix="/employee-cabinet")
@@ -66,6 +69,42 @@ def own_files(db, employee):
     return db.query(EmployeeFile).filter_by(employee_id=employee.id, direction="inbound")
 
 
+def development(db, employee):
+    from .grades import GradeConflictError, assessment_payload
+
+    def local_date(value):
+        return value.replace(tzinfo=UTC).astimezone(ZoneInfo(settings.TIMEZONE)).date().isoformat()
+
+    adaptation = db.query(EmployeeAdaptationPlanItem).filter_by(employee_id=employee.id).filter(
+        EmployeeAdaptationPlanItem.status.not_in(("cancelled", "archived")),
+    ).order_by(EmployeeAdaptationPlanItem.requested_at).all()
+    cycle = db.query(GradeDevelopmentCycle).filter_by(employee_id=employee.id).one_or_none()
+    milestones = db.query(GradeDevelopmentMilestone).filter_by(employee_id=employee.id,
+        assessment_id=cycle.assessment_id).order_by(GradeDevelopmentMilestone.due_at).all() if cycle else []
+    latest = db.query(GradeAssessment).filter_by(employee_id=employee.id, status="final", archived_at=None).order_by(
+        GradeAssessment.finalized_at.desc(), GradeAssessment.id.desc(),
+    ).first()
+    grade = None
+    if latest:
+        level = db.get(Grade, latest.current_grade_id) if latest.current_grade_id else None
+        try:
+            assessment = assessment_payload(db, latest.id)
+        except GradeConflictError:
+            assessment = None
+        if assessment:
+            grade = {"label": level.name if level else None, "date": local_date(latest.finalized_at) if latest.finalized_at else None,
+                     "categories": [{"name": row["categoryName"], "percent": round(25 * row["current"])}
+                                    for row in assessment.get("categories", []) if row.get("assessed_count", 1)]}
+    names = {"ipr6": "Промежуточная встреча", "ipr12": "Итоговая встреча", "review12": "Годовое ревью"}
+    return {
+        "active": "adaptation" if employee.employee_stage == "adaptation" else "development",
+        "adaptation": [{"title": item.title, "date": local_date(item.requested_at), "status": item.status} for item in adaptation],
+        "cycle": [{"title": names[item.kind], "date": local_date(item.due_at), "status": item.status}
+                  for item in milestones if item.kind in names],
+        "grade": grade,
+    }
+
+
 @router.get("", include_in_schema=False)
 def cabinet_page():
     return FileResponse(Path(__file__).resolve().parents[1] / "static" / "employee-cabinet.html", headers=PRIVATE_HEADERS)
@@ -76,16 +115,19 @@ def profile(request: Request):
     with get_session() as db:
         employee = authorize(db, request)
 
-        def name(employee_id):
+        def contact(employee_id):
             related = db.get(Employee, employee_id) if employee_id else None
-            return related.full_name if related else None
+            if not related:
+                return None
+            username = (related.telegram_username or "").strip().lstrip("@")
+            return {"name": related.full_name, "username": username if re.fullmatch(r"[A-Za-z0-9_]{5,32}", username) else None}
 
         return JSONResponse({
             "name": employee.full_name, "position": employee.desired_position,
             "email": employee.work_email, "hours": employee.work_hours,
             "first_workday": employee.first_workday.isoformat() if employee.first_workday else None,
-            "manager": name(employee.manager_employee_id), "adaptation_mentor": name(employee.mentor_adaptation_employee_id),
-            "development_mentor": name(employee.mentor_ipr_employee_id),
+            "manager": contact(employee.manager_employee_id), "adaptation_mentor": contact(employee.mentor_adaptation_employee_id),
+            "development_mentor": contact(employee.mentor_ipr_employee_id), "development": development(db, employee),
             "files": [{"id": item.id, "name": item.original_filename, "size": item.file_size}
                       for item in own_files(db, employee).order_by(EmployeeFile.id.desc())],
         }, headers=PRIVATE_HEADERS)
