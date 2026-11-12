@@ -131,7 +131,12 @@ class RubricTests(unittest.TestCase):
         rendered = format_message(self.db, intro.default_text, subject, date(2026, 11, 12), None)
         self.assertIn("Привет! 👋🏼", rendered)
         self.assertIn("<b>Как проходить опрос:</b>", rendered)
-        self.assertIn("описывает Иван&amp;Пётр.", rendered)
+        self.assertIn("Выбирай вариант, который лучше всего описывает работу коллеги.", rendered)
+        self.assertNotIn("Иван&amp;Пётр", rendered)
+        self.assertEqual(
+            review_intro("Логика простая: выбирай тот вариант, который точнее всего описывает [ИМЯ].", 3),
+            "Выбирай вариант, который лучше всего описывает работу коллеги.",
+        )
         self.assertIn("3 уютных открытых вопроса", rendered)
         self.assertNotIn("открытые вопросы", review_intro(LEGACY_INTRO, 0))
         self.assertEqual(review_intro("Другой текст <b>", 3), "Другой текст &lt;b&gt;")

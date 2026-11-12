@@ -92,7 +92,7 @@ def get_answers(collection_id: int, request: Request):
         values = {row.step_key: row.answer_value for row in answer_rows(db, reviewer, collection).order_by(SurveyAnswer.id)}
         return JSONResponse(dict(subject=subject.full_name, questions=list(questions(snapshot)), answers=values,
                                  revision=revision(values), completed=recipient.delivery_status == "completed",
-                                 editable=collection.status == "open"), headers=PRIVATE_HEADERS)
+                                 editable=collection.status == "open" and recipient.delivery_status == "sent"), headers=PRIVATE_HEADERS)
 
 
 @router.put("/{collection_id}/answers")
@@ -111,6 +111,10 @@ def save_answers(collection_id: int, request: Request, payload: dict):
         rows = answer_rows(db, reviewer, collection)
         existing = {row.step_key: row for row in rows.order_by(SurveyAnswer.id)}
         previous = {key: row.answer_value for key, row in existing.items()}
+        if recipient.delivery_status == "completed":
+            if values == previous:
+                return JSONResponse({"revision": revision(previous)}, headers=PRIVATE_HEADERS)
+            raise HTTPException(409, "Оценка уже отправлена. Ответы нельзя изменить.", headers=PRIVATE_HEADERS)
         if revision(previous) != payload.get("revision") and values != previous:
             raise HTTPException(409, "Ответы изменились. Открой опрос заново.", headers=PRIVATE_HEADERS)
         for key, value in values.items():

@@ -8,8 +8,10 @@
 :root{color-scheme:light dark;--bg:#fafaf9;--fg:#1a1916;--panel:#fff;--line:#e8e6e1;--muted:#6b6963;--hover:#f5f4f2;--accent:#BADA1E;--ease:cubic-bezier(.22,1,.36,1)}
 @media(prefers-color-scheme:dark){:root{--bg:#141412;--fg:#f5f3ef;--panel:#1c1b18;--line:#2e2c28;--muted:#a9a59d;--hover:#252420}}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.5 Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
-main{max-width:680px;margin:auto;padding:20px 16px 32px}h1,h2,p{margin:0 0 12px}h1{font-size:24px}h2{font-size:20px;overflow-wrap:anywhere}
-.track{height:6px;border-radius:999px;background:var(--line);overflow:hidden;margin:0 0 20px}
+main{height:100vh;height:min(100dvh,var(--tg-viewport-stable-height,100dvh));display:grid;grid-template-rows:auto minmax(0,1fr) auto;max-width:960px;margin:auto}
+header{padding:12px 16px 8px}h1,h2,p{margin:0 0 8px}h1{font-size:19px}h2{font-size:18px;overflow-wrap:anywhere}
+.scroll{min-height:0;overflow:auto;overscroll-behavior:contain;padding:0 16px 12px}
+.track{height:5px;border-radius:999px;background:var(--line);overflow:hidden;margin:0}
 .fill{width:100%;height:100%;background:var(--accent);transform:scaleX(0);transform-origin:left;transition:transform .28s var(--ease)}
 .muted{color:var(--muted);font-size:14px}
 button,textarea{font:inherit;color:inherit;border:1px solid var(--line);border-radius:8px;background:var(--panel);padding:10px 12px}
@@ -17,21 +19,40 @@ button{cursor:pointer;min-height:44px;transition:background-color .16s,border-co
 button:enabled:not(.primary):hover{background:var(--hover)}button:enabled:active{transform:scale(.985)}
 button:disabled{opacity:.5;cursor:default}button[aria-pressed=true]{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
 button:focus-visible,textarea:focus-visible{outline:2px solid var(--fg);outline-offset:2px}
-.option{width:100%;text-align:left;margin-bottom:8px;overflow-wrap:anywhere}.primary{background:var(--accent);color:#171717;border-color:var(--accent);font-weight:650}
-.actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px}.row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,35%);gap:8px;width:100%;text-align:left;align-items:center;margin-bottom:6px;overflow-wrap:anywhere}
-textarea{width:100%;resize:vertical;min-height:120px}#status:not(:empty){margin-top:12px}
+.options{display:grid;gap:6px}.option{width:100%;text-align:left;padding:8px 10px;font-size:13px;font-weight:400;line-height:1.4;overflow-wrap:anywhere}
+.primary{background:var(--accent);color:#171717;border-color:var(--accent);font-weight:650}
+footer{padding:8px 16px calc(8px + env(safe-area-inset-bottom,0px));border-top:1px solid var(--line);background:var(--bg)}
+.actions{display:flex;flex-wrap:wrap;gap:6px}.actions button{font-size:13px;padding:6px 10px}.actions .primary{margin-inline-start:auto}
+.row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,35%);gap:8px;width:100%;text-align:left;align-items:center;margin-bottom:6px;overflow-wrap:anywhere}
+textarea{width:100%;resize:vertical;min-height:100px}#status:empty{display:none}#status{font-size:13px}
+dialog{width:min(420px,calc(100% - 32px));padding:16px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--fg)}
+dialog::backdrop{background:#0008}
+@media(min-width:680px){header,.scroll,footer{padding-inline:24px}.options{grid-template-columns:repeat(2,minmax(0,1fr))}.option{font-size:14px}}
 #view[data-motion="forward"]{animation:enter .23s var(--ease) both}
 #view[data-motion="back"]{--enter-x:-8px;animation:enter .23s var(--ease) both}
 @keyframes enter{from{opacity:0;transform:translateX(var(--enter-x,8px))}to{opacity:1;transform:translateX(0)}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
 </style>
 <main>
-  <h1>Оценка компетенций</h1>
-  <p id="subject" class="muted"></p>
-  <div id="progress" class="track" hidden role="progressbar" aria-label="Вопросы с ответами" aria-valuemin="0" aria-valuenow="0"><div id="progress-fill" class="fill"></div></div>
-  <section id="view"></section>
-  <p id="status" role="status">Загружаем опрос…</p>
+  <header>
+    <h1>Оценка компетенций</h1>
+    <p id="subject" class="muted"></p>
+    <div id="progress" class="track" hidden role="progressbar" aria-label="Вопросы с ответами" aria-valuemin="0" aria-valuenow="0"><div id="progress-fill" class="fill"></div></div>
+  </header>
+  <div id="scroll" class="scroll"><section id="view"></section></div>
+  <footer>
+    <p id="status" role="status">Загружаем опрос…</p>
+    <div id="actions" class="actions"></div>
+  </footer>
 </main>
+<dialog id="confirm-submit" aria-labelledby="confirm-title" aria-describedby="confirm-description">
+  <h2 id="confirm-title">Отправить оценку?</h2>
+  <p id="confirm-description">После отправки ответы нельзя будет изменить.</p>
+  <form method="dialog" class="actions">
+    <button value="cancel" autofocus>Отмена</button>
+    <button value="send" class="primary">Отправить оценку</button>
+  </form>
+</dialog>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
-<script src="/static/grade-review.js" defer></script>
+<script src="/static/grade-review.js?v=2" defer></script>
 </html>

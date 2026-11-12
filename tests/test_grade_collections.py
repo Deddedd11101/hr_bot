@@ -60,7 +60,7 @@ class GradeCollectionTests(unittest.TestCase):
         return asyncio.run(handle_button_response(messenger, self.db, self.db.get(Employee, respondent),
             collection.scenario_key, "review_confirm", option, message_id=message_id))
 
-    def test_mini_app_invites_and_edits_only_own_review_until_finalization(self):
+    def test_mini_app_invites_and_locks_own_review_on_submission(self):
         import time
 
         from fastapi import FastAPI
@@ -91,16 +91,19 @@ class GradeCollectionTests(unittest.TestCase):
             self.assertEqual(client.get(path, headers=headers(1)).status_code, 403)
             initial = client.get(path, headers=headers(2)).json()
             skill = initial["questions"][0]["key"]
-            self.assertEqual(client.put(path, headers=headers(2), json={"answers": {skill: "2"},
-                "revision": initial["revision"]}).status_code, 200)
+            submission = {"answers": {skill: "2"}, "revision": initial["revision"]}
+            self.assertTrue(initial["editable"])
+            self.assertEqual(client.put(path, headers=headers(2), json=submission).status_code, 200)
             self.assertEqual(client.get(path, headers=headers(3)).json()["answers"], {})
             saved = client.get(path, headers=headers(2)).json()
             self.assertTrue(saved["completed"])
+            self.assertFalse(saved["editable"])
+            self.assertEqual(saved["answers"], {skill: "2"})
             update = {"answers": {skill: "4"}, "revision": saved["revision"]}
-            self.assertEqual(client.put(path, headers=headers(2), json=update).status_code, 200)
-            self.assertEqual(client.put(path, headers=headers(2), json=update).status_code, 200)
+            self.assertEqual(client.put(path, headers=headers(2), json=update).status_code, 409)
+            self.assertEqual(client.put(path, headers=headers(2), json=submission).status_code, 200)
             self.db.expire_all()
-            self.assertEqual(collections.report(self.db, row)["scores"][0]["currentLevel"], 4)
+            self.assertEqual(collections.report(self.db, row)["scores"][0]["currentLevel"], 2)
             row.status = "finalized"
             self.db.commit()
             self.assertEqual(client.put(path, headers=headers(2), json=update).status_code, 409)
