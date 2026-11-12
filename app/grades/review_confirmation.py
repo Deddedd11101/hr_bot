@@ -5,6 +5,7 @@ import json
 from textwrap import wrap
 
 from ..models import GradeReviewCollection, SurveyAnswer
+from .review_widgets import enabled_for, summary_markup
 
 STEP_KEY = "review_confirm"
 
@@ -24,8 +25,14 @@ async def send_summary(messenger, db, progress, chat_id):
     rows += [(question, values.get(f"open_{i}") or "Нет ответа")
              for i, question in enumerate(snapshot.get("open_questions", []))]
     rich_send = getattr(messenger, "send_rich_text", None)
-    for offset in range(0, len(rows), 8):
-        page = rows[offset:offset + 8]
+    widget_send = getattr(messenger, "send_widget", None) if enabled_for(progress.employee_id) else None
+    page_size = 4 if widget_send else 8
+    for offset in range(0, len(rows), page_size):
+        page = rows[offset:offset + page_size]
+        if widget_send:
+            widget = summary_markup(page, offset // page_size + 1, (len(rows) + page_size - 1) // page_size)
+            if widget and await widget_send(chat_id, widget):
+                continue
         table = "<table><tr><th>Навык / вопрос</th><th>Ответ</th></tr>" + "".join(
             f"<tr><td>{escape(label)}</td><td>{escape(answer).replace(chr(10), '<br>')}</td></tr>"
             for label, answer in page) + "</table>"

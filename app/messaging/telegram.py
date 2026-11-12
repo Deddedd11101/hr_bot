@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
+from zlib import compress
 
 from aiogram import Bot
 from aiogram.client.default import DefaultBotProperties
@@ -30,6 +31,16 @@ class SendRichMessage(TelegramMethod[Message]):
     rich_message: dict
 
 
+class SendWidget(TelegramMethod[Message]):
+    __api_method__ = "sendWidget"
+    __returning__ = Message
+
+    chat_id: str
+    html: str
+    reply_markup: InlineKeyboardMarkup | None = None
+    protect_content: bool = True
+
+
 class TelegramMessenger:
     def __init__(self, bot: Any) -> None:
         self.bot = bot
@@ -44,6 +55,15 @@ class TelegramMessenger:
         except (TelegramBadRequest, TelegramNotFound):
             return False
         return True
+
+    async def send_widget(self, chat_id: str, markup: str, reply_markup: InlineKeyboardMarkup | None = None) -> Message | None:
+        encoded = markup.encode("utf-8")
+        if b"\0" in encoded or len(encoded) > 32768 or len(compress(encoded, 9)) > 4096:
+            return None
+        try:
+            return await self.bot(SendWidget(chat_id=chat_id, html=markup, reply_markup=reply_markup))
+        except (TelegramBadRequest, TelegramNotFound):
+            return None
 
     async def edit_text(self, chat_id: str, message_id: int, text: str, reply_markup: Any | None = None) -> None:
         await self.bot.edit_message_text(

@@ -2335,11 +2335,20 @@ async def send_step(
     if review_confirmation:
         await send_summary(messenger, db, progress, chat_id)
     if message_text.strip():
-        sent_message = await messenger.send_text(
-            chat_id=chat_id,
-            text=message_text,
-            reply_markup=None if media_can_host_inline_buttons else (reply_markup or back_keyboard),
-        )
+        sent_message = None
+        if scenario.scenario_kind == "grade_review" and step.step_key.startswith("skill_") and reply_markup:
+            from .grades.review_widgets import enabled_for, question_markup
+            widget_send = getattr(messenger, "send_widget", None)
+            if widget_send and resolution.employee_id and enabled_for(resolution.employee_id):
+                widget = question_markup(step.step_title, progress.feedback_question_text or "")
+                if widget:
+                    sent_message = await widget_send(chat_id, widget, reply_markup=reply_markup)
+        if sent_message is None:
+            sent_message = await messenger.send_text(
+                chat_id=chat_id,
+                text=message_text,
+                reply_markup=None if media_can_host_inline_buttons else (reply_markup or back_keyboard),
+            )
         if review_confirmation:
             progress.pending_confirmation_message_id = getattr(sent_message, "message_id", None)
     media_reply_markup = reply_markup if media_can_host_inline_buttons else None
