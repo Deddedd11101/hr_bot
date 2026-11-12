@@ -6,6 +6,8 @@ const status = byId('status');
 const confirmation = byId('confirm-submit');
 let model, answers, busy = false, index = 0;
 let reviewing = false;
+let summaryPage = 0;
+let editingFromSummary = false;
 
 function add(tag, text, parent = view, className = '') {
   const node = document.createElement(tag);
@@ -56,6 +58,62 @@ function updateProgress() {
   byId('progress-fill').style.transform = `scaleX(${count / total})`;
 }
 
+function renderSummary(items) {
+  const groups = new Map();
+  items.forEach((item, index) => {
+    const group = item.group || (item.options ? 'Навыки' : 'Открытые вопросы');
+    if (!groups.has(group)) groups.set(group, []);
+    groups.get(group).push({item, index});
+  });
+  const pages = [];
+  for (const [group, rows] of groups) {
+    for (let offset = 0; offset < rows.length; offset += 6) {
+      pages.push({group, rows: rows.slice(offset, offset + 6)});
+    }
+  }
+  const page = pages[summaryPage];
+  if (!page) return;
+  add('h3', page.group, view, 'summary-group');
+  const table = add('div', '', view, 'summary-table');
+  const heading = add('div', '', table, 'summary-line summary-heading');
+  add('span', 'Навык / вопрос', heading);
+  add('span', 'Ответ', heading);
+  for (const {item, index} of page.rows) {
+    const value = answers[item.key];
+    const label = value === undefined ? 'Без ответа' : value === null ? 'Пропущен'
+      : item.options ? `Уровень ${value}` : 'Комментарий';
+    const description = value === undefined ? 'Ответ ещё не выбран.' : value === null
+      ? (item.skip || 'Вопрос пропущен.') : item.options ? (item.options[value] ?? label) : value;
+    const details = add('details', '', table, 'summary-item');
+    const row = add('summary', '', details, 'summary-line');
+    add('span', item.title, row);
+    add('span', label, row, 'summary-badge');
+    add('p', description, details, 'summary-text');
+    if (model.editable) {
+      button('Изменить ответ', () => {
+        editingFromSummary = true;
+        go(index);
+      }, details, 'summary-edit');
+    }
+  }
+  if (pages.length > 1) {
+    const navigation = add('nav', '', actions, 'summary-pages');
+    navigation.setAttribute('aria-label', 'Страницы ответов');
+    const move = (label, offset) => button(label, () => {
+      summaryPage += offset;
+      go(index, true);
+      actions.querySelector('.summary-pages')?.focus();
+    }, navigation);
+    navigation.tabIndex = -1;
+    move('←', -1).disabled = summaryPage === 0 || busy;
+    navigation.firstElementChild.setAttribute('aria-label', 'Предыдущая страница');
+    add('span', `${summaryPage + 1} / ${pages.length}`, navigation, 'muted');
+    const next = move('→', 1);
+    next.disabled = summaryPage === pages.length - 1 || busy;
+    next.setAttribute('aria-label', 'Следующая страница');
+  }
+}
+
 function render() {
   const items = model.questions;
   const count = Object.keys(answers).length;
@@ -64,14 +122,7 @@ function render() {
   actions.replaceChildren();
   if (reviewing) {
     add('h2', model.editable ? 'Проверь ответы' : model.completed ? 'Оценка отправлена' : 'Опрос закрыт');
-    items.forEach((item, i) => {
-      const value = answers[item.key];
-      const label = value === undefined ? 'Без ответа' : value === null ? 'Пропущен'
-        : item.options ? value : value.length > 100 && model.editable ? value.slice(0, 100) + '…' : value;
-      const row = model.editable ? button('', () => go(i), view, 'row') : add('div', '', view, 'row');
-      add('span', item.title, row);
-      add('span', label, row, 'muted');
-    });
+    renderSummary(items);
     if (model.editable) {
       button('Отправить оценку', () => {
         confirmation.returnValue = '';
@@ -112,14 +163,17 @@ function render() {
       updateProgress();
     };
   }
-  if (index > 0) button('Назад', () => go(index - 1), actions);
-  if (count || model.completed) button('Все ответы', () => go(index, true), actions);
-  const next = button(index + 1 === items.length ? 'Проверить ответы' : 'Далее', () => {
+  if (!editingFromSummary && index > 0) button('Назад', () => go(index - 1), actions);
+  if (!editingFromSummary && (count || model.completed)) button('Все ответы', () => go(index, true), actions);
+  const next = button(editingFromSummary ? 'К ответам' : index + 1 === items.length ? 'Проверить ответы' : 'Далее', () => {
     if (field) answers[item.key] = field.value.trim() || null;
-    if (index + 1 === items.length) go(index, true);
+    if (editingFromSummary || index + 1 === items.length) {
+      editingFromSummary = false;
+      go(index, true);
+    }
     else go(index + 1);
   }, actions, 'primary');
-  next.disabled = Boolean(item.options && selected === undefined);
+  next.disabled = Boolean(!editingFromSummary && item.options && selected === undefined);
 }
 
 async function save() {
