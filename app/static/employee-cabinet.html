@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="ru">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>Личный кабинет</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+:root{color-scheme:light dark;--bg:#f8f8f7;--ink:#181817;--muted:#5f615e;--line:#dedfdb;--accent:#147343}
+@media(prefers-color-scheme:dark){:root{--bg:#171717;--ink:#f0f0ef;--muted:#b7b8b4;--line:#393a37;--accent:#73c99a}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,sans-serif}
+main{max-width:590px;margin:auto;padding:24px 18px max(24px,env(safe-area-inset-bottom));overflow-wrap:anywhere}
+h1{font-size:26px;margin:4px 0 0}h2{font-size:17px;margin:0 0 8px}p,dl,dd{margin:0}header p,dt,small,#status{color:var(--muted)}
+section{margin-top:22px;border-top:1px solid var(--line);padding-top:14px}dl>div,li{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px;padding:8px 0;border-bottom:1px solid var(--line)}
+ul{list-style:none;padding:0;margin:0}li{grid-template-columns:minmax(0,1fr) auto;align-items:center}small{display:block}
+button{border:1px solid var(--line);border-radius:6px;color:var(--accent);background:transparent;padding:8px;font:inherit;cursor:pointer}button:disabled{opacity:.6}#status{margin-top:12px}
+</style>
+<main>
+ <header><p>Личный кабинет</p><h1 id="name"></h1><p id="position"></p></header>
+ <p id="status" role="status"></p>
+ <div id="content" hidden>
+  <section><h2>Профиль</h2><dl id="profile"></dl></section>
+  <section><h2>Команда</h2><dl id="team"></dl></section>
+  <section><h2>Мои файлы</h2><ul id="files"></ul></section>
+ </div>
+</main>
+<script src="/static/employee-cabinet.js" defer></script>
+</html>

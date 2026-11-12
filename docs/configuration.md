@@ -38,6 +38,7 @@ source_of_truth: true
 | `DOTENV_OVERRIDE`        | `false`                          | Разрешить `.env` перекрывать runtime env          | Нормально только для локального демо                  |
 | `TELEGRAM_BOT_TOKEN`     | пусто                            | Telegram bot token                                | Обязателен для bot worker и любых отправок в Telegram |
 | `GRADE_WIDGET_REVIEWER_IDS` | пусто | Пилот виджетов оценки, внутренние ID карточек оценивающих через запятую | Пустой список выключает пилот; применять к worker и web, если он отправляет шаги |
+| `EMPLOYEE_CABINET_URL` | пусто | HTTPS URL страницы `/employee-cabinet` для пилота №70 | Задать одинаково для web и worker; пустое значение отключает доступ. Требуется проверенная рабочая почта |
 | `TELEGRAM_BOT_USERNAME`  | пусто                            | Username бота без `@` для HR deep-link             | Нужен, чтобы settings API сформировал готовую ссылку подключения HR |
 | `TELEGRAM_PROXY_URL`     | пусто                            | HTTP/SOCKS proxy для Telegram API                  | Использовать, если stage-сеть не имеет прямого доступа к `api.telegram.org:443` |
 | `STAFF_EMAIL_OTP_ENABLED` | `false` | Требовать код с рабочей почты для сотрудников | Задать одинаково в web и worker после SMTP-проверки; кандидатский вход не меняется |
