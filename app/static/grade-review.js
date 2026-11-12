@@ -3,6 +3,7 @@ const byId = id => document.getElementById(id);
 const view = byId('view');
 const actions = byId('actions');
 const status = byId('status');
+const confirmation = byId('confirm-submit');
 let model, answers, busy = false, index = 0;
 let reviewing = false;
 
@@ -62,7 +63,7 @@ function render() {
   view.replaceChildren();
   actions.replaceChildren();
   if (reviewing) {
-    add('h2', model.editable ? 'Проверь ответы' : 'Ответы сохранены');
+    add('h2', model.editable ? 'Проверь ответы' : model.completed ? 'Оценка отправлена' : 'Опрос закрыт');
     items.forEach((item, i) => {
       const value = answers[item.key];
       const label = value === undefined ? 'Без ответа' : value === null ? 'Пропущен'
@@ -72,7 +73,10 @@ function render() {
       add('span', label, row, 'muted');
     });
     if (model.editable) {
-      button(model.completed ? 'Сохранить изменения' : 'Подтвердить ответы', save, actions, 'primary').disabled =
+      button('Отправить оценку', () => {
+        confirmation.returnValue = '';
+        confirmation.showModal();
+      }, actions, 'primary').disabled =
         busy || count !== items.length;
     }
     return;
@@ -127,7 +131,8 @@ async function save() {
     const result = await request('PUT', {answers, revision: model.revision});
     model.revision = result.revision;
     model.completed = true;
-    status.textContent = 'Ответы сохранены.';
+    model.editable = false;
+    status.textContent = '';
   } catch (error) {
     status.textContent = error.message;
   } finally {
@@ -158,4 +163,7 @@ async function start() {
   }
 }
 
+confirmation.addEventListener('close', () => {
+  if (confirmation.returnValue === 'send') void save();
+});
 start();

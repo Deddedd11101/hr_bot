@@ -25,6 +25,8 @@ footer{padding:8px 16px calc(8px + env(safe-area-inset-bottom,0px));border-top:1
 .actions{display:flex;flex-wrap:wrap;gap:6px}.actions button{font-size:13px;padding:6px 10px}.actions .primary{margin-inline-start:auto}
 .row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,35%);gap:8px;width:100%;text-align:left;align-items:center;margin-bottom:6px;overflow-wrap:anywhere}
 textarea{width:100%;resize:vertical;min-height:100px}#status:empty{display:none}#status{font-size:13px}
+dialog{width:min(420px,calc(100% - 32px));padding:16px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--fg)}
+dialog::backdrop{background:#0008}
 @media(min-width:680px){header,.scroll,footer{padding-inline:24px}.options{grid-template-columns:repeat(2,minmax(0,1fr))}.option{font-size:14px}}
 #view[data-motion="forward"]{animation:enter .23s var(--ease) both}
 #view[data-motion="back"]{--enter-x:-8px;animation:enter .23s var(--ease) both}
@@ -43,6 +45,14 @@ textarea{width:100%;resize:vertical;min-height:100px}#status:empty{display:none}
     <div id="actions" class="actions"></div>
   </footer>
 </main>
+<dialog id="confirm-submit" aria-labelledby="confirm-title" aria-describedby="confirm-description">
+  <h2 id="confirm-title">Отправить оценку?</h2>
+  <p id="confirm-description">После отправки ответы нельзя будет изменить.</p>
+  <form method="dialog" class="actions">
+    <button value="cancel" autofocus>Отмена</button>
+    <button value="send" class="primary">Отправить оценку</button>
+  </form>
+</dialog>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
-<script src="/static/grade-review.js" defer></script>
+<script src="/static/grade-review.js?v=2" defer></script>
 </html>
