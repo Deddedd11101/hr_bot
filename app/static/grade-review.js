@@ -1,6 +1,7 @@
 const tg = window.Telegram?.WebApp;
 const byId = id => document.getElementById(id);
 const view = byId('view');
+const actions = byId('actions');
 const status = byId('status');
 let model, answers, busy = false, index = 0;
 let reviewing = false;
@@ -41,7 +42,7 @@ function go(i, review = false) {
   delete view.dataset.motion;
   void view.offsetWidth;
   view.dataset.motion = direction;
-  window.scrollTo(0, 0);
+  byId('scroll').scrollTop = 0;
 }
 
 function updateProgress() {
@@ -59,6 +60,7 @@ function render() {
   const count = Object.keys(answers).length;
   updateProgress();
   view.replaceChildren();
+  actions.replaceChildren();
   if (reviewing) {
     add('h2', model.editable ? 'Проверь ответы' : 'Ответы сохранены');
     items.forEach((item, i) => {
@@ -70,7 +72,7 @@ function render() {
       add('span', label, row, 'muted');
     });
     if (model.editable) {
-      button(model.completed ? 'Сохранить изменения' : 'Подтвердить ответы', save, view, 'primary').disabled =
+      button(model.completed ? 'Сохранить изменения' : 'Подтвердить ответы', save, actions, 'primary').disabled =
         busy || count !== items.length;
     }
     return;
@@ -82,6 +84,7 @@ function render() {
   let selected = answers[item.key];
   let field;
   if (item.options) {
+    const grid = add('div', '', view, 'options');
     const controls = [];
     const options = [...Object.entries(item.options), [null, item.skip]];
     for (const [value, title] of options) {
@@ -91,7 +94,7 @@ function render() {
         updateProgress();
         for (const [node, choice] of controls) node.setAttribute('aria-pressed', String(choice === value));
         next.disabled = false;
-      }, view, 'option');
+      }, grid, 'option');
       control.setAttribute('aria-pressed', String(selected === value));
       controls.push([control, value]);
     }
@@ -105,7 +108,6 @@ function render() {
       updateProgress();
     };
   }
-  const actions = add('div', '', view, 'actions');
   if (index > 0) button('Назад', () => go(index - 1), actions);
   if (count || model.completed) button('Все ответы', () => go(index, true), actions);
   const next = button(index + 1 === items.length ? 'Проверить ответы' : 'Далее', () => {
@@ -141,6 +143,8 @@ async function start() {
     return;
   }
   tg.expand();
+  if (tg.isVersionAtLeast?.('6.9')) tg.setHeaderColor?.('#BADA1E');
+  if (tg.isVersionAtLeast?.('7.10')) tg.setBottomBarColor?.('#FFFFFF');
   try {
     model = await request();
     answers = {...model.answers};
