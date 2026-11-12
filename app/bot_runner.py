@@ -35,7 +35,7 @@ from .messaging.service import (
     save_incoming_file,
 )
 from .models import FlowStepTemplate
-from .scenario_engine import CALLBACK_PREFIX, CHOICE_CONFIRM_CALLBACK_PREFIX, get_waiting_progress, grade_widget_skill_page
+from .scenario_engine import CALLBACK_PREFIX, CHOICE_CONFIRM_CALLBACK_PREFIX, get_waiting_progress, grade_widget_skill_page, handle_back_response
 from .scheduler import schedule_all_employees
 
 
@@ -282,7 +282,7 @@ async def on_widget_update(handler, update, data):
     if query is None:
         return await handler(update, data)
     result = "error"
-    match = re.fullmatch(r"g:([rak]):([0-9]{1,12}):([0-9]{1,6})", query.get("data") or "")
+    match = re.fullmatch(r"g:([rakphb]):([0-9]{1,12}):([0-9]{1,6})", query.get("data") or "")
     sender, chat = query.get("from") or {}, query.get("chat") or {}
     message_id = query.get("message_id")
     if match and message_id and chat.get("type") == "private" and sender.get("id") == chat.get("id"):
@@ -297,6 +297,23 @@ async def on_widget_update(handler, update, data):
                 if screen and screen[0]:
                     if action == "r":
                         result = screen[0]
+                    elif action in {"p", "h"}:
+                        if (action, index) in {("p", 1), ("h", 0)}:
+                            try:
+                                await data["bot"].edit_message_reply_markup(chat_id=chat_id, message_id=message_id, reply_markup=None)
+                            except TelegramBadRequest:
+                                pass
+                        if action == "p":
+                            following = grade_widget_skill_page(db, access.employee, step, message_id, index,
+                                chat_id=chat_id, prefetch=True)
+                            if following and following[0]:
+                                result = following[0]
+                        else:
+                            result = "ok"
+                    elif action == "b" and index == 0:
+                        if await handle_back_response(TelegramMessenger(data["bot"]), db, access.employee,
+                                                      widget_step=step, widget_message_id=message_id):
+                            result = "ok"
                     elif action == "k" and index == 0:
                         buttons = [InlineKeyboardButton(text="Обычные кнопки", callback_data=f"scenario:grade_keys:{step_id}")]
                         buttons.extend(button for row in screen[1].inline_keyboard for button in row
@@ -309,7 +326,7 @@ async def on_widget_update(handler, update, data):
                                 result = "ok"
                         else:
                             result = "ok"
-                    elif index <= 4 and (step.button_options or "").splitlines()[:4] == ["1", "2", "3", "4"]:
+                    elif action == "a" and index <= 4 and (step.button_options or "").splitlines()[:4] == ["1", "2", "3", "4"]:
                         status = await handle_button_event(TelegramMessenger(data["bot"]),
                             db, chat_id, sender.get("username"), step_id, index, message_id)
                         if status == "handled":
