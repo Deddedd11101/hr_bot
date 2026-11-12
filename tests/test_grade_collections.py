@@ -125,8 +125,9 @@ class GradeCollectionTests(unittest.TestCase):
         self.prepare()
         row = collections.create(self.db, 1, 1, dict(request_id=str(uuid4()), specialization_id=self.spec["id"],
             recipient_ids=[2, 3], open_questions=["Что улучшить?", "Комментарий"]))
+        long_question = "\n\n".join(f"{n}. " + "Длинное описание критерия. " * 7 for n in range(1, 5))
         self.db.add(FlowStepTemplate(flow_key=row.scenario_key, step_key="skill_999", step_title="Second skill",
-            sort_order=0, default_text="Second question", response_type="buttons", button_options="0\n1\n2",
+            sort_order=0, default_text=long_question, response_type="buttons", button_options="0\n1\n2",
             target_field="survey_answer", send_mode="immediate"))
         self.db.commit()
         messenger = ReviewMessenger()
@@ -140,9 +141,22 @@ class GradeCollectionTests(unittest.TestCase):
             self.assertEqual(widget.args[0], "700001002")
             self.assertIn("Interview", widget.kwargs["chat_data"])
             self.assertTrue(widget.kwargs["reply_markup"].inline_keyboard[0][0].callback_data.startswith("scenario:"))
+            text_count = len(messenger.texts)
             self.answer(messenger, row, 2, self.skill["id"], 2)
             self.assertEqual(messenger.update_widget.call_args.args[1], 42)
             self.assertIn("Second skill", messenger.update_widget.call_args.args[2])
+            pages = []
+            while True:
+                _, _, packed, markup = messenger.update_widget.call_args.args
+                self.assertLessEqual(len(packed.encode("utf-8")), 1024)
+                pages.append(json.loads(packed)["prompt"])
+                next_button = next((button for button in markup.inline_keyboard[0] if button.text == "Критерии →"), None)
+                if not next_button:
+                    break
+                self.assertTrue(asyncio.run(handle_button_response(messenger, self.db, self.db.get(Employee, 2),
+                    row.scenario_key, "skill_999", int(next_button.callback_data.rsplit(":", 1)[1]), message_id=42)))
+            self.assertEqual("".join(pages), long_question.strip())
+            self.assertEqual(len(messenger.texts), text_count)
             self.answer(messenger, row, 2, 999, 2)
             self.assertIn("Что улучшить?", messenger.texts[-1]["text"])
             asyncio.run(handle_text_response(messenger, self.db, self.db.get(Employee, 2), SimpleNamespace(text="<Ответ>")))
