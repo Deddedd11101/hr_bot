@@ -5,6 +5,7 @@ import json
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from ..config import settings
+from ..models import GradeReviewCollection
 
 STYLE = """<style>
 body{margin:0;color:var(--tg-theme-text-color);font-size:14px}
@@ -49,8 +50,21 @@ def widget_state(label, title, prompt="", *, current=0, total=1, rows=None):
     return packed if len(packed.encode("utf-8")) <= 1024 else None
 
 
-def skill_screen(step, prompt, current, total, markup, page=0):
-    label = f"Оценка навыков · {current}/{total}"
+def skill_content(db, progress, step, employee):
+    prompt = progress.feedback_question_text or ""
+    collection = db.query(GradeReviewCollection).filter_by(
+        feedback_run_id=progress.feedback_run_id, scenario_key=progress.scenario_key,
+    ).one_or_none()
+    if collection:
+        for skill in json.loads(collection.snapshot_json)["scores"]:
+            if step.step_key == f"skill_{skill['skillId']}" and skill.get("rubric"):
+                levels = skill["rubric"]["levels"]
+                return "\n\n".join(f"{level}. {levels[level]}" for level in sorted(levels)), employee.full_name
+    return prompt, None
+
+
+def skill_screen(step, prompt, current, total, markup, page=0, *, subject=None):
+    label = f"{(subject or 'Оценка навыков')[:80]} · {current}/{total}"
     title = step.step_title[:100]
     state = widget_state(label, title, prompt, current=current, total=total)
     if state:

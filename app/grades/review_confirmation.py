@@ -16,21 +16,22 @@ def draft_answers(db, progress):
         scenario_key=progress.scenario_key, feedback_run_id=progress.feedback_run_id)
 
 
-def summary_rows(db, progress):
+def summary_rows(db, progress, *, include_open=True):
     collection = db.query(GradeReviewCollection).filter_by(feedback_run_id=progress.feedback_run_id,
         scenario_key=progress.scenario_key).one()
     snapshot = json.loads(collection.snapshot_json)
     values = {row.step_key: row.answer_value for row in draft_answers(db, progress).order_by(SurveyAnswer.id)}
     rows = [(item["skillName"], values.get(f"skill_{item['skillId']}") or "Нет ответа")
             for item in snapshot["scores"]]
-    rows += [(question, values.get(f"open_{i}") or "Нет ответа")
-             for i, question in enumerate(snapshot.get("open_questions", []))]
+    if include_open:
+        rows += [(question, values.get(f"open_{i}") or "Нет ответа")
+                 for i, question in enumerate(snapshot.get("open_questions", []))]
     return rows
 
 
 def summary_screen(db, progress, step, page=0):
     pages = [[]]
-    for label, answer in summary_rows(db, progress):
+    for label, answer in summary_rows(db, progress, include_open=False):
         labels = [label[i:i + 100] for i in range(0, len(label), 100)] or [""]
         answers = [answer[i:i + 110] for i in range(0, len(answer), 110)]
         for i in range(max(len(labels), len(answers))):
