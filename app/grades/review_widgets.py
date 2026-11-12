@@ -28,70 +28,85 @@ button[aria-pressed=true],#next{border-color:#52aa79}#next{margin-left:6px;backg
 <h3 id="title"></h3><p id="prompt"></p><div id="choices"></div><table id="result" style="display:none"></table></main><script>
 const W=window.TelegramWidget;
 const el=id=>document.getElementById(id);
-let revision=0, nextRead=0;
+let revision=0, nextRead=0, prefetched=null, reading=null;
 const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+async function background(data, version){
+ if(reading)await reading.catch(()=>{});
+ await pause(Math.max(0,nextRead-Date.now()));
+ if(version!==revision)return null;
+ nextRead=Date.now()+5200;
+ reading=W.request(data);
+ try{return await reading}finally{reading=null}
+}
 async function criteria(d, version){
- const box=el('choices'), parts=[];parts[d.page||0]=d.prompt;
- let selected=null, busy=false, pending=null;
+ const parts=prefetched&&prefetched.step===d.step?prefetched.parts:[];
+ parts[d.page||0]=d.prompt;
+ el('prompt').textContent='Загружаем критерии…';
+ try{
+  for(let i=0;i<(d.pages||1);i++){
+   if(parts[i]!==undefined)continue;
+   const reply=await background('g:r:'+d.step+':'+i,version);
+   if(version!==revision)return;
+   const page=JSON.parse(reply.result);
+   if(page.step!==d.step||page.page!==i)throw Error();
+   parts[i]=page.prompt;
+  }
+ }catch(e){if(version===revision){show(d);el('prompt').textContent=d.prompt||''}return}
+ if(version!==revision)return;
+ const items=parts.join('').split(/(?:^|\\n\\n)[1-4]\\. /).slice(1);
+ if(items.length!==4){show(d);return}
+ show(d);el('prompt').textContent='';
+ const box=el('choices');
+ let selected=null, busy=false;
  const buttons=[];
  function add(parent,label,click){const b=document.createElement('button');b.textContent=label;b.onclick=click;parent.appendChild(b);return b}
  async function submit(index){
-  if(busy||pending)return;busy=true;controls();
+  if(busy||version!==revision)return;
+  if(reading){el('prompt').textContent='Подождите, идёт загрузка…';return}
+  busy=true;controls();
   try{
-   if((await W.request('g:a:'+d.step+':'+index)).result!=='ok')throw Error();
+   const command=index===-1?'g:b:'+d.step+':0':'g:a:'+d.step+':'+index;
+   if((await W.request(command)).result!=='ok')throw Error();
   }catch(e){if(version===revision){busy=false;controls();el('prompt').textContent='Не удалось отправить. Попробуй ещё раз.'}}
  }
  for(let i=0;i<4;i++){
-  const b=add(box,'',()=>{if(busy||b.disabled)return;selected=i;controls();
+  const b=add(box,(i+1)+'. '+items[i],()=>{if(busy||version!==revision)return;selected=i;controls();
    buttons.forEach((item,j)=>item.setAttribute('aria-pressed',String(i===j)))});
   b.className='criterion';b.setAttribute('aria-pressed','false');buttons.push(b);
  }
  const actions=document.createElement('div');actions.className='actions';box.appendChild(actions);
+ const back=d.back?add(actions,'Назад',()=>submit(-1)):null;
  const skip=add(actions,'Пропустить',()=>submit(4));
  const next=add(actions,'Далее',()=>submit(selected));next.id='next';next.disabled=true;
- function controls(){skip.disabled=Boolean(busy||pending);next.disabled=skip.disabled||selected===null}
- async function request(data){
-  pending=W.request(data);controls();
-  try{return await pending}finally{pending=null;if(version===revision)controls()}
- }
- function paint(){
-  let prefix='', count=0;
-  while(parts[count]!==undefined){prefix+=parts[count];count++}
-  const items=prefix.split(/(?:^|\\n\\n)[1-4]\\. /).slice(1);
-  const complete=count===(d.pages||1)&&items.length===4;
-  buttons.forEach((b,i)=>{
-   const loaded=i<items.length&&(complete||i<items.length-1);
-   b.textContent=(i+1)+'. '+(loaded?items[i]:'Загрузка…');b.disabled=!loaded;
-  });
-  return complete;
- }
- el('prompt').textContent='';paint();
+ function controls(){skip.disabled=busy;next.disabled=busy||selected===null;if(back)back.disabled=busy}
  try{
-  for(let i=0;i<(d.pages||1);i++){
-   if(parts[i]!==undefined)continue;
+  let count=d.prefetch?2:1, target=null;
+  for(let i=d.prefetch?1:0;i<count;i++){
    await pause(Math.max(0,nextRead-Date.now()));
    if(version!==revision||busy)return;
-   nextRead=Date.now()+5200;
-   const reply=await request('g:r:'+d.step+':'+i);
+   const reply=await background((d.prefetch?'g:p:':'g:h:')+d.step+':'+i,version);
+   if(version!==revision||!d.prefetch)return;
    const page=JSON.parse(reply.result);
-   if(page.step!==d.step||page.page!==i)throw Error();
-   parts[i]=page.prompt;if(version===revision)paint();
+   if(!page.step||page.page!==i||(target&&target.step!==page.step))return;
+   if(!target){target={step:page.step,parts:[]};prefetched=target;count=page.pages||1}
+   target.parts[i]=page.prompt;
   }
-  if(version!==revision||!paint())return;
-  await pause(Math.max(0,nextRead-Date.now()));
-  if(version===revision&&!busy){nextRead=Date.now()+5200;await request('g:k:'+d.step+':0')}
- }catch(e){if(version===revision&&!busy)el('prompt').textContent='Если критерии не загрузились, используй кнопки под сообщением.'}
+ }catch(e){/* The next question can still load on demand. */}
 }
-function render(){
- let d;try{d=JSON.parse(W.chatData)}catch(e){return}if(!d)return;
- const version=++revision;el('choices').textContent='';
+function show(d){
+ el('choices').textContent='';
  el('label').textContent=d.label;el('title').textContent=d.title;el('prompt').textContent=d.prompt||'';
  el('meter').style.width=(100*(d.current||0)/(d.total||1))+'%';
  const t=el('result');t.textContent='';t.style.display=d.rows?'table':'none';
  if(d.rows)for(const values of [['Навык','Оценка'],...d.rows]){
    const row=document.createElement('tr');for(const value of values){const cell=document.createElement('td');cell.textContent=value;row.appendChild(cell)}t.appendChild(row)
  }
+}
+function render(){
+ let d;try{d=JSON.parse(W.chatData)}catch(e){return}if(!d)return;
+ const version=++revision;
  if(d.step&&W.viewer&&typeof W.request==='function')criteria(d,version);
+ else show(d);
 }
 W.onEvent('chatDataChanged',render);render();
 </script>"""
@@ -123,17 +138,17 @@ def skill_content(db, progress, step, employee):
     return prompt, None
 
 
-def skill_screen(step, prompt, current, total, markup, page=0, *, subject=None):
+def skill_screen(step, prompt, current, total, markup, page=0, *, subject=None, prefetch=False, back=False):
     label = f"{(subject or 'Оценка навыков')[:80]} · {current}/{total}"
     title = step.step_title[:100]
     interactive = subject is not None and (step.button_options or "").splitlines()[:4] == ["1", "2", "3", "4"]
-    meta = {"step": step.id, "page": 0, "pages": 1} if interactive else {}
+    meta = {"step": step.id, "page": 0, "pages": 1, "prefetch": prefetch, "back": back} if interactive else {}
     state = widget_state(label, title, prompt, current=current, total=total, **meta)
     if state:
         return (state, markup) if page == 0 else None
 
     def pack(text, suffix, page_index=999999, page_count=999999):
-        extra = {"step": step.id, "page": page_index, "pages": page_count} if interactive else {}
+        extra = {**meta, "page": page_index, "pages": page_count} if interactive else {}
         return widget_state(label if interactive else f"{label} · {suffix}", title, text, current=current, total=total, **extra)
 
     pages = []
