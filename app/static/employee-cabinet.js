@@ -130,6 +130,9 @@ function fileRow(file) {
 }
 
 async function start() {
+  if (tg?.isVersionAtLeast?.('6.9')) {
+    tg.setHeaderColor?.('#BADA1E');
+  }
   tg?.ready();
   if (!tg?.initData) {
     status.textContent = 'Открой кабинет из Telegram командой /cabinet.';
