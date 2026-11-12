@@ -12,7 +12,13 @@ on:
         required: false
         default: "keep"
       employee_cabinet_pilot:
-        description: "Employee cabinet on stage (card 70 only)"
+        description: "Employee cabinet on stage (cards 70 and 80 only)"
+        type: choice
+        options: ["keep", "on", "off"]
+        default: "keep"
+
+      grade_review_webapp:
+        description: "Mini App for new grade reviews on stage"
         type: choice
         options: ["keep", "on", "off"]
         default: "keep"
@@ -79,6 +85,7 @@ jobs:
       STAGE_DB_PATH: ${{ secrets.STAGE_DB_PATH }}
       GRADE_WIDGET_PILOT: ${{ inputs.grade_widget_pilot }}
       EMPLOYEE_CABINET_PILOT: ${{ inputs.employee_cabinet_pilot }}
+      GRADE_REVIEW_WEBAPP: ${{ inputs.grade_review_webapp }}
 
     steps:
       - name: Deploy over SSH
@@ -88,11 +95,13 @@ jobs:
           username: ${{ secrets.STAGE_USERNAME }}
           password: ${{ secrets.STAGE_PASSWORD }}
           port: ${{ secrets.STAGE_PORT }}
-          envs: DEPLOY_REF,STAGE_DB_PATH,GRADE_WIDGET_PILOT,EMPLOYEE_CABINET_PILOT
+          envs: DEPLOY_REF,STAGE_DB_PATH,GRADE_WIDGET_PILOT,EMPLOYEE_CABINET_PILOT,GRADE_REVIEW_WEBAPP
           script: |
             set -euo pipefail
             pilot="${GRADE_WIDGET_PILOT:-keep}"
             cabinet="${EMPLOYEE_CABINET_PILOT:-keep}"
+            review="${GRADE_REVIEW_WEBAPP:-keep}"
+            case "$review" in keep|on|off) ;; *) exit 1 ;; esac
             case "$cabinet" in keep|on|off) ;; *) exit 1 ;; esac
             if [[ "$pilot" != keep && "$pilot" != off && ! "$pilot" =~ ^[1-9][0-9]{0,17}$ ]]; then
               echo "Invalid grade widget pilot setting."
@@ -162,7 +171,7 @@ jobs:
             fi
             git checkout -B stage-deploy "${target_ref}"
             .venv/bin/python -m pip install -r requirements.txt
-            if [[ "$pilot" != keep || "$cabinet" != keep ]]; then
+            if [[ "$pilot" != keep || "$cabinet" != keep || "$review" != keep ]]; then
               restore_config_on_error() {
                 local rc=$?
                 if [[ "$rc" != 0 ]]; then
@@ -209,12 +218,36 @@ jobs:
               done
               systemctl daemon-reload
             fi
+            if [[ "$review" != keep ]]; then
+              review_url=""
+              if [[ "$review" == on ]]; then review_url="https://hr.zephyrlab.ru/grade-review"; fi
+              for service in hr-bot-web hr-bot-worker; do
+                review_dir="/etc/systemd/system/$service.service.d"
+                review_conf="$review_dir/90-grade-review-webapp.conf"
+                review_backup="${backup_path}.${service}.grade-review.conf"
+                install -d -m 0755 "$review_dir"
+                if [[ -f "$review_conf" ]]; then cp -p -- "$review_conf" "$review_backup"; fi
+                config_backups["$review_conf"]="$review_backup"
+                review_temp="$(mktemp "$review_dir/.grade-review.XXXXXX")"
+                printf '[Service]\nEnvironment="GRADE_REVIEW_WEBAPP_URL=%s"\n' "$review_url" > "$review_temp"
+                chmod 0644 "$review_temp"
+                mv -f -- "$review_temp" "$review_conf"
+              done
+              systemctl daemon-reload
+            fi
             restart_since="$(date --iso-8601=seconds)"
             systemctl restart hr-bot-web
             systemctl restart hr-bot-worker
             systemctl is-active --quiet hr-bot-web
             systemctl is-active --quiet hr-bot-worker
             systemctl is-active --quiet wg-quick@redshield
+            if [[ "$review" != keep ]]; then
+              for service in hr-bot-web hr-bot-worker; do
+                pid="$(systemctl show "$service" --property=MainPID --value)"
+                grep -zFxq -- "GRADE_REVIEW_WEBAPP_URL=$review_url" "/proc/$pid/environ"
+              done
+              echo "Grade review Mini App verified in web and worker environments."
+            fi
             if [[ "$cabinet" != keep ]]; then
               for service in hr-bot-web hr-bot-worker; do
                 pid="$(systemctl show "$service" --property=MainPID --value)"
@@ -315,6 +348,10 @@ jobs:
             }
             wait_http_status "/app/employees" "200 303"
             wait_http_status "/app/flows/workspace-v2" "200 303"
+            if [[ "$review" == on ]]; then
+              wait_http_status "/grade-review/1" "200"
+              wait_http_status "/grade-review/1/answers" "403"
+            fi
             if [[ "$cabinet" == on ]]; then
               wait_http_status "/employee-cabinet" "200"
               wait_http_status "/employee-cabinet/profile" "403"
