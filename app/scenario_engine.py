@@ -568,6 +568,7 @@ def reset_progress(db: Session, employee_id: int, scenario_key: str) -> Scenario
     progress.adaptation_plan_item_id = None
     progress.delivery_batch_key = None
     progress.grade_widget_message_id = None
+    progress.grade_widget_internal_controls = None
     if progress.answer_run_id is not None:
         run = db.get(ScenarioAnswerRun, progress.answer_run_id)
         if run and run.status == "in_progress":
@@ -2355,12 +2356,16 @@ async def send_step(
                 following = resolve_followup_step(db, scenario.scenario_key, step)
                 state, widget_markup = skill_screen(step, prompt, current, len(skills), reply_markup, subject=subject,
                     prefetch=bool(following and following.step_key.startswith("skill_")), back=include_back)
+                internal_controls = bool(json.loads(state).get("step"))
+                if internal_controls and (not widget_id or progress.grade_widget_internal_controls):
+                    widget_markup = None
                 if widget_id and await widget_update(chat_id, widget_id, state, widget_markup):
                     widget_handled = True
                 elif not widget_id:
                     message = await widget_send(chat_id, SINGLE_WIDGET, reply_markup=widget_markup, chat_data=state)
                     progress.grade_widget_message_id = getattr(message, "message_id", None)
                     widget_handled = bool(progress.grade_widget_message_id)
+                    progress.grade_widget_internal_controls = widget_handled
                 if not widget_handled:
                     progress.grade_widget_message_id = None
             elif widget_id and step.step_key.startswith("open_"):
@@ -2757,6 +2762,8 @@ async def handle_button_response(
     if (scenario.scenario_kind == "grade_review" and step.step_key.startswith("skill_") and option_index < 0
             and message_id and message_id == progress.grade_widget_message_id and progress.recipient_chat_id):
         screen = grade_widget_skill_page(db, employee, step, message_id, -option_index - 1)
+        if screen and progress.grade_widget_internal_controls and json.loads(screen[0]).get("step"):
+            return False
         return bool(screen and hasattr(messenger, "update_widget") and
                     await messenger.update_widget(progress.recipient_chat_id, message_id, *screen))
     if (scenario.scenario_kind == "grade_review" and step.step_key == "review_confirm" and option_index < 0
