@@ -40,6 +40,15 @@ class SendWidget(TelegramMethod[Message]):
     chat_data: str | None = None
     reply_markup: InlineKeyboardMarkup | None = None
     protect_content: bool = True
+    allow_queries: bool = True
+
+
+class AnswerWidgetQuery(TelegramMethod[bool]):
+    __api_method__ = "answerWidgetQuery"
+    __returning__ = bool
+
+    widget_query_id: str
+    data: str
 
 
 class EditMessageWidgetData(TelegramMethod[bool]):

@@ -119,6 +119,8 @@ class GradeCollectionTests(unittest.TestCase):
 
     def test_widget_pilot_keeps_native_callbacks_and_open_questions(self):
         from unittest.mock import AsyncMock
+        from aiogram.types import Update
+        from app.bot_runner import on_widget_update
         from app.config import settings
         from app.scenario_engine import handle_text_response
 
@@ -126,8 +128,12 @@ class GradeCollectionTests(unittest.TestCase):
         row = collections.create(self.db, 1, 1, dict(request_id=str(uuid4()), specialization_id=self.spec["id"],
             recipient_ids=[2, 3], open_questions=["Что улучшить?", "Комментарий"]))
         snapshot = json.loads(row.snapshot_json)
-        snapshot["scores"][0]["rubric"] = {"levels": {str(n): f"Критерий {n}" for n in range(1, 5)}, "na": "Нет информации"}
+        levels = {str(n): f"Критерий {n}. " * 12 + "Конец." for n in range(1, 5)}
+        snapshot["scores"][0]["rubric"] = {"levels": levels, "na": "Нет информации"}
         row.snapshot_json = json.dumps(snapshot)
+        first_step = self.db.query(FlowStepTemplate).filter_by(flow_key=row.scenario_key,
+            step_key=f"skill_{self.skill['id']}").one()
+        first_step.button_options = "1\n2\n3\n4\nНе могу оценить"
         long_question = "\n\n".join(f"{n}. " + "Длинное описание критерия. " * 7 for n in range(1, 5))
         self.db.add(FlowStepTemplate(flow_key=row.scenario_key, step_key="skill_999", step_title="Second skill",
             sort_order=0, default_text=long_question, response_type="buttons", button_options="0\n1\n2",
@@ -145,10 +151,25 @@ class GradeCollectionTests(unittest.TestCase):
             self.assertIn("Interview", widget.kwargs["chat_data"])
             first = json.loads(widget.kwargs["chat_data"])
             self.assertIn(self.db.get(Employee, 1).full_name, first["label"])
-            self.assertEqual(first["prompt"], "\n\n".join(f"{n}. Критерий {n}" for n in range(1, 5)))
+            self.assertGreater(first["pages"], 1)
             self.assertTrue(widget.kwargs["reply_markup"].inline_keyboard[0][0].callback_data.startswith("scenario:"))
             text_count = len(messenger.texts)
-            self.answer(messenger, row, 2, self.skill["id"], 2)
+            bot = AsyncMock()
+            def query(action, index, message_id=42):
+                update = Update.model_validate({"update_id": 1, "widget_query": {"id": "query",
+                    "from": {"id": 700001002}, "chat": {"type": "private", "id": 700001002},
+                    "message_id": message_id, "data": f"g:{action}:{first_step.id}:{index}"}})
+                asyncio.run(on_widget_update(AsyncMock(), update, {"bot": bot}))
+                return bot.call_args.args[0].data
+
+            with patch("app.bot_runner.SessionLocal", self.sessions), patch("app.bot_runner.TelegramMessenger", return_value=messenger):
+                self.assertEqual(query("r", 0, message_id=41), "error")
+                self.assertEqual(json.loads(query("r", 0)), first)
+                self.assertEqual("".join(json.loads(query("r", i))["prompt"] for i in range(first["pages"])),
+                    "\n\n".join(f"{level}. {description}" for level, description in levels.items()))
+                self.assertEqual(query("a", 1), "ok")
+                self.assertEqual(query("a", 3), "error")
+            self.db.expire_all()
             self.assertEqual(messenger.update_widget.call_args.args[1], 42)
             self.assertIn("Second skill", messenger.update_widget.call_args.args[2])
             pages = []
