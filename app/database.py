@@ -774,6 +774,8 @@ def _ensure_sqlite_schema() -> None:
             conn.execute(text("ALTER TABLE scenario_progress ADD COLUMN watchdog_alert_key TEXT"))
         if "delivery_batch_key" not in progress_columns:
             conn.execute(text("ALTER TABLE scenario_progress ADD COLUMN delivery_batch_key TEXT"))
+        if "grade_widget_message_id" not in progress_columns:
+            conn.execute(text("ALTER TABLE scenario_progress ADD COLUMN grade_widget_message_id INTEGER"))
         if "interrupted_at" not in progress_columns:
             conn.execute(text("ALTER TABLE scenario_progress ADD COLUMN interrupted_at DATETIME"))
         if "adaptation_plan_item_id" not in progress_columns:

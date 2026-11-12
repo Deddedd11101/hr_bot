@@ -1,6 +1,6 @@
 """Small, network-free Telegram layouts for the grade-review pilot."""
 
-from html import escape
+import json
 
 from ..config import settings
 
@@ -15,20 +15,33 @@ th,td{padding:6px 4px;border-bottom:1px solid #32a66355;vertical-align:top;overf
 th:last-child,td:last-child{width:35%}
 </style>"""
 
+SINGLE_WIDGET = STYLE + """<style>
+.track{height:5px;margin:8px 0 12px;background:#32a66333;border-radius:4px}
+.bar{height:5px;background:#32a663;border-radius:4px}
+</style><main><header id="label">Оценка навыков</header><div class="track"><div id="meter" class="bar"></div></div>
+<h3 id="title"></h3><p id="prompt"></p><table id="result" style="display:none"></table></main><script>
+const W=window.TelegramWidget;
+const el=id=>document.getElementById(id);
+function render(){
+ let d;try{d=JSON.parse(W.chatData)}catch(e){return}if(!d)return;
+ el('label').textContent=d.label;el('title').textContent=d.title;el('prompt').textContent=d.prompt||'';
+ el('meter').style.width=(100*(d.current||0)/(d.total||1))+'%';
+ const t=el('result');t.textContent='';t.style.display=d.rows?'table':'none';
+ if(d.rows)for(const values of [['Навык / вопрос','Ответ'],...d.rows]){
+   const row=document.createElement('tr');for(const value of values){const cell=document.createElement('td');cell.textContent=value;row.appendChild(cell)}t.appendChild(row)
+ }
+}
+W.onEvent('chatDataChanged',render);render();
+</script>"""
+
 
 def enabled_for(employee_id: int) -> bool:
     return str(employee_id) in {part.strip() for part in settings.GRADE_WIDGET_REVIEWER_IDS.split(",")}
 
 
-def question_markup(title: str, prompt: str) -> str | None:
-    if not prompt or len(prompt) > 650:
-        return None
-    return f"{STYLE}<main><header>Оценка навыков</header><h3>{escape(title)}</h3><p>{escape(prompt)}</p></main>"
-
-
-def summary_markup(rows: list[tuple[str, str]], page: int, pages: int) -> str | None:
-    if any(len(label) + len(answer) > 180 for label, answer in rows) or sum(len(a) + len(b) for a, b in rows) > 520:
-        return None
-    cells = "".join(f"<tr><td>{escape(label)}</td><td>{escape(answer)}</td></tr>" for label, answer in rows)
-    return (f"{STYLE}<main><header>Итоги оценки · {page}/{pages}</header>"
-            f"<table><tr><th>Навык / вопрос</th><th>Ответ</th></tr>{cells}</table></main>")
+def widget_state(label, title, prompt="", *, current=0, total=1, rows=None):
+    state = dict(label=label, title=title, prompt=prompt, current=current, total=total)
+    if rows is not None:
+        state["rows"] = rows
+    packed = json.dumps(state, ensure_ascii=False, separators=(",", ":"))
+    return packed if len(packed.encode("utf-8")) <= 1024 else None

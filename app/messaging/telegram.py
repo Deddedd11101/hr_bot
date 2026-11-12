@@ -37,8 +37,18 @@ class SendWidget(TelegramMethod[Message]):
 
     chat_id: str
     html: str
+    chat_data: str | None = None
     reply_markup: InlineKeyboardMarkup | None = None
     protect_content: bool = True
+
+
+class EditMessageWidgetData(TelegramMethod[bool]):
+    __api_method__ = "editMessageWidgetData"
+    __returning__ = bool
+
+    chat_id: str
+    message_id: int
+    chat_data: str
 
 
 class TelegramMessenger:
@@ -56,14 +66,27 @@ class TelegramMessenger:
             return False
         return True
 
-    async def send_widget(self, chat_id: str, markup: str, reply_markup: InlineKeyboardMarkup | None = None) -> Message | None:
+    async def send_widget(self, chat_id: str, markup: str, reply_markup: InlineKeyboardMarkup | None = None, *, chat_data: str | None = None) -> Message | None:
         encoded = markup.encode("utf-8")
         if b"\0" in encoded or len(encoded) > 32768 or len(compress(encoded, 9)) > 4096:
             return None
         try:
-            return await self.bot(SendWidget(chat_id=chat_id, html=markup, reply_markup=reply_markup))
+            return await self.bot(SendWidget(chat_id=chat_id, html=markup, reply_markup=reply_markup, chat_data=chat_data))
         except (TelegramBadRequest, TelegramNotFound):
             return None
+
+    async def update_widget(self, chat_id: str, message_id: int, chat_data: str, reply_markup: InlineKeyboardMarkup | None) -> bool:
+        try:
+            await self.bot(EditMessageWidgetData(chat_id=chat_id, message_id=message_id, chat_data=chat_data))
+        except (TelegramBadRequest, TelegramNotFound) as exc:
+            if "not modified" not in str(exc).casefold():
+                return False
+        try:
+            await self.bot.edit_message_reply_markup(chat_id=chat_id, message_id=message_id, reply_markup=reply_markup)
+        except (TelegramBadRequest, TelegramNotFound) as exc:
+            if "not modified" not in str(exc).casefold():
+                return False
+        return True
 
     async def edit_text(self, chat_id: str, message_id: int, text: str, reply_markup: Any | None = None) -> None:
         await self.bot.edit_message_text(

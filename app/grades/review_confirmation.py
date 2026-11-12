@@ -5,7 +5,8 @@ import json
 from textwrap import wrap
 
 from ..models import GradeReviewCollection, SurveyAnswer
-from .review_widgets import enabled_for, summary_markup
+from .review_widgets import widget_state
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 STEP_KEY = "review_confirm"
 
@@ -15,7 +16,7 @@ def draft_answers(db, progress):
         scenario_key=progress.scenario_key, feedback_run_id=progress.feedback_run_id)
 
 
-async def send_summary(messenger, db, progress, chat_id):
+def summary_rows(db, progress):
     collection = db.query(GradeReviewCollection).filter_by(feedback_run_id=progress.feedback_run_id,
         scenario_key=progress.scenario_key).one()
     snapshot = json.loads(collection.snapshot_json)
@@ -24,15 +25,40 @@ async def send_summary(messenger, db, progress, chat_id):
             for item in snapshot["scores"]]
     rows += [(question, values.get(f"open_{i}") or "Нет ответа")
              for i, question in enumerate(snapshot.get("open_questions", []))]
+    return rows
+
+
+def summary_screen(db, progress, step, page=0):
+    pages = [[]]
+    for label, answer in summary_rows(db, progress):
+        labels = [label[i:i + 100] for i in range(0, len(label), 100)] or [""]
+        answers = [answer[i:i + 110] for i in range(0, len(answer), 110)]
+        for i in range(max(len(labels), len(answers))):
+            part = (labels[i] if i < len(labels) else "Продолжение", answers[i] if i < len(answers) else "")
+            proposed = [*pages[-1], part]
+            if len(proposed) > 4 or not widget_state("Итоги оценки · 999999/999999", "Проверь свои ответы", current=1, rows=proposed):
+                pages.append([part])
+            else:
+                pages[-1] = proposed
+    if not 0 <= page < len(pages):
+        return None
+    label = f"Итоги оценки · {page + 1}/{len(pages)}"
+    state = widget_state(label, "Проверь свои ответы", current=1, rows=pages[page])
+    buttons = []
+    if page:
+        buttons.append(InlineKeyboardButton(text="←", callback_data=f"scenario:{step.id}:{-page}"))
+    if page + 1 < len(pages):
+        buttons.append(InlineKeyboardButton(text="→", callback_data=f"scenario:{step.id}:{-page - 2}"))
+    decisions = [InlineKeyboardButton(text=label, callback_data=f"scenario:{step.id}:{i}")
+                 for i, label in enumerate(("Утвердить", "Оценить заново"))]
+    return state, InlineKeyboardMarkup(inline_keyboard=([buttons] if buttons else []) + [decisions])
+
+
+async def send_summary(messenger, db, progress, chat_id):
+    rows = summary_rows(db, progress)
     rich_send = getattr(messenger, "send_rich_text", None)
-    widget_send = getattr(messenger, "send_widget", None) if enabled_for(progress.employee_id) else None
-    page_size = 4 if widget_send else 8
-    for offset in range(0, len(rows), page_size):
-        page = rows[offset:offset + page_size]
-        if widget_send:
-            widget = summary_markup(page, offset // page_size + 1, (len(rows) + page_size - 1) // page_size)
-            if widget and await widget_send(chat_id, widget):
-                continue
+    for offset in range(0, len(rows), 8):
+        page = rows[offset:offset + 8]
         table = "<table><tr><th>Навык / вопрос</th><th>Ответ</th></tr>" + "".join(
             f"<tr><td>{escape(label)}</td><td>{escape(answer).replace(chr(10), '<br>')}</td></tr>"
             for label, answer in page) + "</table>"
