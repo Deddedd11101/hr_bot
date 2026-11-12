@@ -130,14 +130,16 @@ class GradeCollectionTests(unittest.TestCase):
         snapshot = json.loads(row.snapshot_json)
         levels = {str(n): f"Критерий {n}. " * 12 + "Конец." for n in range(1, 5)}
         snapshot["scores"][0]["rubric"] = {"levels": levels, "na": "Нет информации"}
+        snapshot["scores"].append({**snapshot["scores"][0], "skillId": 999, "skillName": "Second skill"})
         row.snapshot_json = json.dumps(snapshot)
         first_step = self.db.query(FlowStepTemplate).filter_by(flow_key=row.scenario_key,
             step_key=f"skill_{self.skill['id']}").one()
         first_step.button_options = "1\n2\n3\n4\nНе могу оценить"
-        long_question = "\n\n".join(f"{n}. " + "Длинное описание критерия. " * 7 for n in range(1, 5))
-        self.db.add(FlowStepTemplate(flow_key=row.scenario_key, step_key="skill_999", step_title="Second skill",
-            sort_order=0, default_text=long_question, response_type="buttons", button_options="0\n1\n2",
-            target_field="survey_answer", send_mode="immediate"))
+        long_question = "\n\n".join(f"{n}. {description}" for n, description in levels.items())
+        second_step = FlowStepTemplate(flow_key=row.scenario_key, step_key="skill_999", step_title="Second skill",
+            sort_order=0, default_text=long_question, response_type="buttons", button_options=first_step.button_options,
+            target_field="survey_answer", send_mode="immediate")
+        self.db.add(second_step)
         self.db.commit()
         messenger = ReviewMessenger()
         messenger.send_widget = AsyncMock(return_value=SimpleNamespace(message_id=42))
@@ -155,10 +157,10 @@ class GradeCollectionTests(unittest.TestCase):
             self.assertTrue(widget.kwargs["reply_markup"].inline_keyboard[0][0].callback_data.startswith("scenario:"))
             text_count = len(messenger.texts)
             bot = AsyncMock()
-            def query(action, index, message_id=42):
+            def query(action, index, message_id=42, step=None):
                 update = Update.model_validate({"update_id": 1, "widget_query": {"id": "query",
                     "from": {"id": 700001002}, "chat": {"type": "private", "id": 700001002},
-                    "message_id": message_id, "data": f"g:{action}:{first_step.id}:{index}"}})
+                    "message_id": message_id, "data": f"g:{action}:{(step or first_step).id}:{index}"}})
                 asyncio.run(on_widget_update(AsyncMock(), update, {"bot": bot}))
                 return bot.call_args.args[0].data
 
@@ -172,8 +174,16 @@ class GradeCollectionTests(unittest.TestCase):
                 self.assertEqual(query("k", 0), "ok")
                 keyboard = bot.edit_message_reply_markup.call_args.kwargs["reply_markup"].inline_keyboard
                 self.assertEqual([[button.text for button in row] for row in keyboard], [["Обычные кнопки"]])
+                self.assertEqual(query("p", 1, message_id=41), "error")
+                self.assertEqual(query("a", 1, step=second_step), "error")
+                prefetched = json.loads(query("p", 1))
+                self.assertEqual(prefetched["step"], second_step.id)
+                self.assertIsNone(bot.edit_message_reply_markup.call_args.kwargs["reply_markup"])
                 self.assertEqual(query("a", 1), "ok")
                 self.assertEqual(query("a", 3), "error")
+                self.assertEqual(json.loads(query("r", 1, step=second_step))["prompt"], prefetched["prompt"])
+                self.assertEqual(query("b", 0, step=second_step), "ok")
+                self.assertEqual(query("a", 1), "ok")
             self.db.expire_all()
             self.assertEqual(messenger.update_widget.call_args.args[1], 42)
             self.assertIn("Second skill", messenger.update_widget.call_args.args[2])
@@ -195,7 +205,7 @@ class GradeCollectionTests(unittest.TestCase):
             asyncio.run(handle_text_response(messenger, self.db, self.db.get(Employee, 2), SimpleNamespace(text="Я" * 450 + " Конец")))
             messenger.send_widget.assert_awaited_once()
             self.assertEqual(messenger.update_widget.call_args.args[1], 42)
-            self.assertEqual(json.loads(messenger.update_widget.call_args.args[2])["rows"], [["Interview", "2"]])
+            self.assertEqual(json.loads(messenger.update_widget.call_args.args[2])["rows"], [["Interview", "2"], ["Second skill", "3"]])
             self.assertFalse(self.confirm(messenger, row, 2, -2, 42))
             self.assertFalse(self.confirm(messenger, row, 2, -2, 41))
             self.assertEqual(collections.report(self.db, row)["completed_count"], 0)

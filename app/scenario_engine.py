@@ -2352,7 +2352,9 @@ async def send_step(
                 skills = [item.step_key for item in get_scenario_steps(db, scenario.scenario_key) if item.step_key.startswith("skill_")]
                 current = skills.index(step.step_key) + 1
                 prompt, subject = skill_content(db, progress, step, template_employee)
-                state, widget_markup = skill_screen(step, prompt, current, len(skills), reply_markup, subject=subject)
+                following = resolve_followup_step(db, scenario.scenario_key, step)
+                state, widget_markup = skill_screen(step, prompt, current, len(skills), reply_markup, subject=subject,
+                    prefetch=bool(following and following.step_key.startswith("skill_")), back=include_back)
                 if widget_id and await widget_update(chat_id, widget_id, state, widget_markup):
                     widget_handled = True
                 elif not widget_id:
@@ -2847,7 +2849,7 @@ async def handle_button_response(
     )
 
 
-def grade_widget_skill_page(db, employee, step, message_id, page, *, chat_id=None):
+def grade_widget_skill_page(db, employee, step, message_id, page, *, chat_id=None, prefetch=False):
     from .grades.review_widgets import enabled_for, skill_content, skill_screen
 
     if not step or not step.step_key.startswith("skill_") or not enabled_for(employee.id):
@@ -2862,12 +2864,22 @@ def grade_widget_skill_page(db, employee, step, message_id, page, *, chat_id=Non
         return None
     run = db.get(EmployeeFeedbackRun, progress.feedback_run_id) if progress.feedback_run_id else None
     subject = db.get(Employee, run.subject_employee_id) if run else None
-    markup = step_reply_markup(step, include_back=progress_has_back_step(progress))
+    following = resolve_followup_step(db, step.flow_key, step)
+    if prefetch:
+        if not following or not following.step_key.startswith("skill_"):
+            return None
+        step = following
+        following = resolve_followup_step(db, step.flow_key, step)
+    back = progress_has_back_step(progress)
+    markup = step_reply_markup(step, include_back=back)
     if not subject or not markup:
         return None
     skills = [item.step_key for item in get_scenario_steps(db, step.flow_key) if item.step_key.startswith("skill_")]
     prompt, name = skill_content(db, progress, step, subject)
-    return skill_screen(step, prompt, skills.index(step.step_key) + 1, len(skills), markup, page, subject=name)
+    if prefetch and name is None:
+        return None
+    return skill_screen(step, prompt, skills.index(step.step_key) + 1, len(skills), markup, page, subject=name,
+        prefetch=bool(following and following.step_key.startswith("skill_")), back=back)
 
 
 async def handle_choice_confirmation_response_by_step_id(
@@ -2997,12 +3009,16 @@ async def handle_file_response(
     return True
 
 
-async def handle_back_response(messenger_or_bot: Any, db: Session, employee: Employee) -> bool:
+async def handle_back_response(messenger_or_bot: Any, db: Session, employee: Employee, *,
+                               widget_step=None, widget_message_id=None) -> bool:
     if employee.is_bot_blocked:
         return False
     messenger = as_messenger(messenger_or_bot)
     progress = get_waiting_progress(db, employee.id)
     if not progress or not progress.current_step_key:
+        return False
+    if widget_step and (progress.scenario_key != widget_step.flow_key or progress.current_step_key != widget_step.step_key
+                        or progress.grade_widget_message_id != widget_message_id or not progress_has_back_step(progress)):
         return False
     context_employee = _load_progress_context_employee(db, progress)
     if not context_employee:
