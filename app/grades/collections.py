@@ -5,9 +5,11 @@ import logging
 from copy import deepcopy
 from uuid import UUID, uuid4
 
-from sqlalchemy import and_, or_, select, update
+from sqlalchemy import and_, func, or_, select, update
 
 from ..database import SessionLocal
+from ..config import settings
+from ..messaging import as_messenger
 from ..messaging.identity import get_primary_chat_id
 from ..models import (Employee, EmployeeFeedbackRun, EmployeeFeedbackRecipient, EmployeeGradeProfile,
                       FlowStepTemplate, Grade, GradeAssessment, GradeAssessmentValue, GradeReviewCollection,
@@ -69,6 +71,8 @@ def create(db, employee_id, actor_id, data):
     profile = db.scalar(select(EmployeeGradeProfile).where(EmployeeGradeProfile.employee_id == employee_id))
     view = grades.preview_review(db, employee_id, specialization_id, profile.current_grade_id if profile else None)
     view["open_questions"] = questions
+    if settings.GRADE_REVIEW_WEBAPP_URL:
+        view["delivery"] = "mini_app"
     if not view["scores"]:
         raise ValueError("В выбранном шаблоне нет навыков")
     key = "grade_review_" + uuid4().hex
@@ -213,7 +217,8 @@ async def process_pending(bot, *, session_factory=None, run_id=None):
                 and_(EmployeeFeedbackRun.queued_delivery.is_(True), GradeReviewCollection.id.is_(None), GradeDevelopmentAction.id.is_(None))),
                 EmployeeFeedbackRecipient.delivery_status == "pending")
             .order_by(EmployeeFeedbackRun.created_at, EmployeeFeedbackRun.id, EmployeeFeedbackRecipient.id))
-        eligible_query = query
+        legacy_delivery = func.coalesce(func.json_extract(GradeReviewCollection.snapshot_json, "$.delivery"), "") != "mini_app"
+        eligible_query = query.where(legacy_delivery)
         if run_id is not None:
             query = query.where(EmployeeFeedbackRun.id == run_id)
         pairs = list(db.execute(query))
@@ -227,16 +232,24 @@ async def process_pending(bot, *, session_factory=None, run_id=None):
             db.refresh(row)
             if row.delivery_status != "pending":
                 continue
-            reserved = db.scalar(select(EmployeeFeedbackRecipient.id).where(
-                EmployeeFeedbackRecipient.respondent_employee_id == row.respondent_employee_id,
-                EmployeeFeedbackRecipient.id != row.id,
-                EmployeeFeedbackRecipient.delivery_status == "starting"))
-            if reserved:
+            collection = db.scalar(select(GradeReviewCollection).where(GradeReviewCollection.feedback_run_id == run.id))
+            snapshot = json.loads(collection.snapshot_json) if collection else {}
+            mini_app = snapshot.get("delivery") == "mini_app"
+            if mini_app and not settings.GRADE_REVIEW_WEBAPP_URL:
                 continue
-            earliest = db.execute(eligible_query.where(
-                EmployeeFeedbackRecipient.respondent_employee_id == row.respondent_employee_id).limit(1)).first()
-            if earliest is None or earliest[0] != row.id:
-                continue
+            if not mini_app:
+                reserved = db.scalar(select(EmployeeFeedbackRecipient.id).outerjoin(
+                    GradeReviewCollection, GradeReviewCollection.feedback_run_id == EmployeeFeedbackRecipient.run_id,
+                ).where(legacy_delivery,
+                    EmployeeFeedbackRecipient.respondent_employee_id == row.respondent_employee_id,
+                    EmployeeFeedbackRecipient.id != row.id,
+                    EmployeeFeedbackRecipient.delivery_status == "starting"))
+                if reserved:
+                    continue
+                earliest = db.execute(eligible_query.where(
+                    EmployeeFeedbackRecipient.respondent_employee_id == row.respondent_employee_id).limit(1)).first()
+                if earliest is None or earliest[0] != row.id:
+                    continue
             employee = db.get(Employee, row.respondent_employee_id)
             subject = db.get(Employee, run.subject_employee_id)
             if not subject or subject.is_bot_blocked or subject.employee_stage not in {"staff", "adaptation", "ipr"} or not employee or employee.employee_stage not in {"staff", "adaptation", "ipr"} or employee.is_bot_blocked or not get_primary_chat_id(employee, db=db):
@@ -250,7 +263,7 @@ async def process_pending(bot, *, session_factory=None, run_id=None):
                 row.delivery_status = "failed"
                 db.commit()
                 continue
-            if get_conflicting_progress_for_survey_launch(db, employee.id, run.scenario_key):
+            if not mini_app and get_conflicting_progress_for_survey_launch(db, employee.id, run.scenario_key):
                 continue
             claimed = db.execute(update(EmployeeFeedbackRecipient).where(EmployeeFeedbackRecipient.id == row.id,
                 EmployeeFeedbackRecipient.delivery_status == "pending").values(delivery_status="starting")).rowcount
@@ -258,7 +271,25 @@ async def process_pending(bot, *, session_factory=None, run_id=None):
             if claimed != 1:
                 continue
             try:
-                started = await start_scenario(bot, db, employee, run.scenario_key, feedback_run_id=run.id, defer_if_busy=True)
+                if mini_app:
+                    from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
+                    url = f"{settings.GRADE_REVIEW_WEBAPP_URL.rstrip('/')}/{collection.id}"
+                    intro = snapshot.get("assessment_intro")
+                    invitation = f"Оцени навыки коллеги: {html.escape(subject.full_name)}."
+                    if intro:
+                        invitation += "\n\n" + review_intro(intro, len(json.loads(collection.snapshot_json)["open_questions"])).replace(
+                            "{name}", html.escape(subject.full_name),
+                        )
+                    await as_messenger(bot).send_text(
+                        chat_id=get_primary_chat_id(employee, db=db),
+                        text=invitation,
+                        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(
+                            text="Открыть опрос", web_app=WebAppInfo(url=url),
+                        )]]),
+                    )
+                    started = True
+                else:
+                    started = await start_scenario(bot, db, employee, run.scenario_key, feedback_run_id=run.id, defer_if_busy=True)
                 db.refresh(row)
                 if row.delivery_status != "completed":
                     row.delivery_status = "sent" if started else "failed"

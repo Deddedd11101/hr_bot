@@ -44,6 +44,8 @@ class EmployeeCabinetTests(unittest.TestCase):
                 patch.object(cabinet, "get_primary_chat_id", return_value="123"):
             self.assertIs(cabinet.pilot_employee(None, "123"), employee)
             self.assertIsNone(cabinet.pilot_employee(None, "456"))
+            employee.id = 80
+            self.assertIs(cabinet.pilot_employee(None, "123"), employee)
             employee.id = 71
             self.assertIsNone(cabinet.pilot_employee(None, "123"))
             employee.id = 70

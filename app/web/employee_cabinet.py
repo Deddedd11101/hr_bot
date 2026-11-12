@@ -18,11 +18,11 @@ from ..models import Employee, EmployeeAdaptationPlanItem, EmployeeFile, Grade, 
 from ..staff_email_verification import is_verified, verification_required
 
 router = APIRouter(prefix="/employee-cabinet")
-PILOT_EMPLOYEE_ID = 70
+PILOT_EMPLOYEE_IDS = {70, 80}
 PRIVATE_HEADERS = {"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"}
 
 
-def signed_telegram_id(raw, token, now):
+def signed_telegram_id(raw, token, now, *, max_age=1800):
     if not raw or len(raw) > 8192 or not token:
         return None
     try:
@@ -35,7 +35,7 @@ def signed_telegram_id(raw, token, now):
         check = "\n".join(f"{key}={value}" for key, value in sorted(fields.items()))
         if not hmac.compare_digest(hmac.new(secret, check.encode(), hashlib.sha256).hexdigest(), signature):
             return None
-        if not -30 <= now - int(fields["auth_date"]) <= 1800:
+        if not -30 <= now - int(fields["auth_date"]) <= max_age:
             return None
         user_id = json.loads(fields["user"])["id"]
         return str(user_id) if type(user_id) is int and 0 < user_id < 2**52 else None
@@ -50,7 +50,7 @@ def pilot_employee(db, telegram_id):
     if len(matches) != 1:
         return None
     person = matches[0]
-    if (person.id == PILOT_EMPLOYEE_ID and person.employee_stage in {"staff", "adaptation", "ipr"}
+    if (person.id in PILOT_EMPLOYEE_IDS and person.employee_stage in {"staff", "adaptation", "ipr"}
             and not person.is_bot_blocked and verification_required(person)
             and is_verified(db, person, telegram_id) and get_primary_chat_id(person, db=db) == telegram_id):
         return person

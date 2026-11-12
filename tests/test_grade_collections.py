@@ -60,6 +60,51 @@ class GradeCollectionTests(unittest.TestCase):
         return asyncio.run(handle_button_response(messenger, self.db, self.db.get(Employee, respondent),
             collection.scenario_key, "review_confirm", option, message_id=message_id))
 
+    def test_mini_app_invites_and_edits_only_own_review_until_finalization(self):
+        import time
+
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+
+        from app.web import grade_review_mini_app as mini
+        from tests import test_employee_cabinet as cabinet_fixtures
+
+        self.prepare()
+        with patch.object(collections.settings, "GRADE_REVIEW_WEBAPP_URL", "https://example.test/grade-review"):
+            row = self.create()
+            messenger = ReviewMessenger()
+            asyncio.run(collections.process_pending(messenger, session_factory=self.sessions))
+        self.db.expire_all()
+        self.assertEqual(len(messenger.texts), 2)
+        self.assertEqual(self.db.query(ScenarioProgress).count(), 0)
+        app = FastAPI()
+        app.include_router(mini.router)
+        path = f"/grade-review/{row.id}/answers"
+
+        def headers(employee_id):
+            signed = cabinet_fixtures.EmployeeCabinetTests.signed(int(time.time()), 700001000 + employee_id)
+            return {"X-Telegram-Init-Data": signed}
+
+        with patch.object(mini, "get_session", self.sessions), patch.object(mini.settings, "TELEGRAM_BOT_TOKEN", "test-token"), \
+                patch.object(mini.settings, "STAFF_EMAIL_OTP_ENABLED", False), TestClient(app) as client:
+            self.assertEqual(client.get(path).status_code, 403)
+            self.assertEqual(client.get(path, headers=headers(1)).status_code, 403)
+            initial = client.get(path, headers=headers(2)).json()
+            skill = initial["questions"][0]["key"]
+            self.assertEqual(client.put(path, headers=headers(2), json={"answers": {skill: "2"},
+                "revision": initial["revision"]}).status_code, 200)
+            self.assertEqual(client.get(path, headers=headers(3)).json()["answers"], {})
+            saved = client.get(path, headers=headers(2)).json()
+            self.assertTrue(saved["completed"])
+            update = {"answers": {skill: "4"}, "revision": saved["revision"]}
+            self.assertEqual(client.put(path, headers=headers(2), json=update).status_code, 200)
+            self.assertEqual(client.put(path, headers=headers(2), json=update).status_code, 200)
+            self.db.expire_all()
+            self.assertEqual(collections.report(self.db, row)["scores"][0]["currentLevel"], 4)
+            row.status = "finalized"
+            self.db.commit()
+            self.assertEqual(client.put(path, headers=headers(2), json=update).status_code, 409)
+
     def test_review_retry_ignores_old_confirmation_and_only_final_attempt_counts(self):
         self.prepare()
         row = self.create()
