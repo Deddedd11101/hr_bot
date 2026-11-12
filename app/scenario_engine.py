@@ -2862,7 +2862,7 @@ def grade_widget_skill_page(db, employee, step, message_id, page, *, chat_id=Non
         return None
     run = db.get(EmployeeFeedbackRun, progress.feedback_run_id) if progress.feedback_run_id else None
     subject = db.get(Employee, run.subject_employee_id) if run else None
-    markup = step_reply_markup(step, include_back=False)
+    markup = step_reply_markup(step, include_back=progress_has_back_step(progress))
     if not subject or not markup:
         return None
     skills = [item.step_key for item in get_scenario_steps(db, step.flow_key) if item.step_key.startswith("skill_")]

@@ -9,7 +9,7 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.exceptions import TelegramBadRequest, TelegramNetworkError
 from aiogram.filters import CommandStart
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from .config import settings
@@ -282,7 +282,7 @@ async def on_widget_update(handler, update, data):
     if query is None:
         return await handler(update, data)
     result = "error"
-    match = re.fullmatch(r"g:([ra]):([0-9]{1,12}):([0-9]{1,6})", query.get("data") or "")
+    match = re.fullmatch(r"g:([rak]):([0-9]{1,12}):([0-9]{1,6})", query.get("data") or "")
     sender, chat = query.get("from") or {}, query.get("chat") or {}
     message_id = query.get("message_id")
     if match and message_id and chat.get("type") == "private" and sender.get("id") == chat.get("id"):
@@ -297,6 +297,18 @@ async def on_widget_update(handler, update, data):
                 if screen and screen[0]:
                     if action == "r":
                         result = screen[0]
+                    elif action == "k" and index == 0:
+                        buttons = [InlineKeyboardButton(text="Обычные кнопки", callback_data=f"scenario:grade_keys:{step_id}")]
+                        buttons.extend(button for row in screen[1].inline_keyboard for button in row
+                                       if button.callback_data == f"{CALLBACK_PREFIX}back")
+                        try:
+                            await data["bot"].edit_message_reply_markup(chat_id=chat_id, message_id=message_id,
+                                reply_markup=InlineKeyboardMarkup(inline_keyboard=[buttons]))
+                        except TelegramBadRequest as exc:
+                            if "not modified" in str(exc).casefold():
+                                result = "ok"
+                        else:
+                            result = "ok"
                     elif index <= 4 and (step.button_options or "").splitlines()[:4] == ["1", "2", "3", "4"]:
                         status = await handle_button_event(TelegramMessenger(data["bot"]),
                             db, chat_id, sender.get("username"), step_id, index, message_id)
@@ -338,6 +350,17 @@ async def on_scenario_button(callback: CallbackQuery) -> None:
                 callback.message.message_id if callback.message else None,
             )
             date_result = None
+        elif callback.data.startswith(f"{CALLBACK_PREFIX}grade_keys:"):
+            handled, date_result = "ignored", None
+            match = re.fullmatch(r"scenario:grade_keys:([0-9]{1,12})", callback.data)
+            if match and callback.message and callback.message.chat.id == user.id:
+                access = resolve_inbound_access(db, str(user.id), _telegram_username(user))
+                if access.state == "ok" and access.employee:
+                    screen = grade_widget_skill_page(db, access.employee, db.get(FlowStepTemplate, int(match[1])),
+                        callback.message.message_id, 0, chat_id=str(user.id))
+                    if screen:
+                        await callback.message.edit_reply_markup(reply_markup=screen[1])
+                        handled = "handled"
         else:
             _, step_id, option_index = callback.data.split(":", 2)
             handled = await handle_button_event(
