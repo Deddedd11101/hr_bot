@@ -11,6 +11,16 @@ related:
 source_of_truth: true
 ---
 
+## 12.11.2026 — длинные критерии в виджете оценки
+
+- PR #213, deployed `54ac1f162f14029a4cb4310cb38b498cbefdc4e9`.
+  CI `43184910319` и Deploy Stage `43185174184` прошли.
+- Backup `backups/hr_bot.before-deploy.20261112-084450.db` проверен;
+  снимок `backups/scenarios.before-deploy.20261112-084450.json` сохранён.
+  Fingerprint сценариев не изменился; HTTP smoke и доступность Telegram API проверены.
+- Настройка пилота сохранена. Длинные критерии листаются в том же сообщении;
+  пользовательская проверка в Telegram ещё не проведена.
+
 ## 12.11.2026 — единый виджет оценки навыков
 
 - PR #211, deployed `b142968d683dec24ee58cc1259827078608ed141`.
