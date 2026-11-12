@@ -116,6 +116,53 @@ class GradeCollectionTests(unittest.TestCase):
         with self.assertRaises(TimeoutError):
             asyncio.run(messenger.send_rich_text("123", "<table></table>"))
 
+    def test_widget_pilot_keeps_native_callbacks_and_open_questions(self):
+        from unittest.mock import AsyncMock
+        from app.config import settings
+        from app.scenario_engine import handle_text_response
+
+        self.prepare()
+        row = collections.create(self.db, 1, 1, dict(request_id=str(uuid4()), specialization_id=self.spec["id"],
+            recipient_ids=[2, 3], open_questions=["Что улучшить?"]))
+        self.db.commit()
+        messenger = ReviewMessenger()
+        messenger.send_widget = AsyncMock(return_value=SimpleNamespace(message_id=42))
+        with patch.object(settings, "GRADE_WIDGET_REVIEWER_IDS", "2"):
+            asyncio.run(collections.process_pending(messenger, session_factory=self.sessions))
+            self.db.expire_all()
+            messenger.send_widget.assert_awaited_once()
+            widget = messenger.send_widget.call_args
+            self.assertEqual(widget.args[0], "700001002")
+            self.assertIn("Interview", widget.args[1])
+            self.assertTrue(widget.kwargs["reply_markup"].inline_keyboard[0][0].callback_data.startswith("scenario:"))
+            self.answer(messenger, row, 2, self.skill["id"], 2)
+            self.assertIn("Что улучшить?", messenger.texts[-1]["text"])
+            asyncio.run(handle_text_response(messenger, self.db, self.db.get(Employee, 2), SimpleNamespace(text="<Ответ>")))
+            self.assertIn("<table>", messenger.send_widget.call_args.args[1])
+            self.assertIn("&lt;Ответ&gt;", messenger.send_widget.call_args.args[1])
+            self.assertEqual(collections.report(self.db, row)["completed_count"], 0)
+            self.assertTrue(self.confirm(messenger, row, 2, 0, len(messenger.texts)))
+            self.assertEqual(collections.report(self.db, row)["completed_count"], 1)
+
+    def test_widget_transport_rejects_oversize_and_does_not_retry_timeout(self):
+        from aiogram.exceptions import TelegramNotFound
+        from unittest.mock import AsyncMock
+        from app.messaging.telegram import TelegramMessenger
+
+        bot = AsyncMock(return_value=SimpleNamespace(message_id=42))
+        messenger = TelegramMessenger(bot)
+        self.assertIsNone(asyncio.run(messenger.send_widget("123", "x" * 32769)))
+        bot.assert_not_awaited()
+        self.assertEqual(asyncio.run(messenger.send_widget("123", "<p>QA</p>")).message_id, 42)
+        method = bot.call_args.args[0]
+        self.assertEqual(method.__api_method__, "sendWidget")
+        self.assertTrue(method.protect_content)
+        bot.side_effect = TelegramNotFound(method=method, message="unknown method")
+        self.assertIsNone(asyncio.run(messenger.send_widget("123", "<p>QA</p>")))
+        bot.side_effect = TimeoutError()
+        with self.assertRaises(TimeoutError):
+            asyncio.run(messenger.send_widget("123", "<p>QA</p>"))
+
     def test_admission_race_keeps_review_recipients_pending(self):
         self.prepare()
         row = self.create()

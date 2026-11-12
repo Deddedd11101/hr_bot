@@ -7,6 +7,10 @@ on:
         description: "Git ref to deploy to stage: usually stage; branch, tag, or commit SHA"
         required: true
         default: "stage"
+      grade_widget_pilot:
+        description: "Grade widgets on stage: keep, off, or one reviewer card ID"
+        required: false
+        default: "keep"
 
 concurrency:
   group: deploy-stage
@@ -68,6 +72,7 @@ jobs:
     env:
       DEPLOY_REF: ${{ inputs.ref }}
       STAGE_DB_PATH: ${{ secrets.STAGE_DB_PATH }}
+      GRADE_WIDGET_PILOT: ${{ inputs.grade_widget_pilot }}
 
     steps:
       - name: Deploy over SSH
@@ -77,9 +82,14 @@ jobs:
           username: ${{ secrets.STAGE_USERNAME }}
           password: ${{ secrets.STAGE_PASSWORD }}
           port: ${{ secrets.STAGE_PORT }}
-          envs: DEPLOY_REF,STAGE_DB_PATH
+          envs: DEPLOY_REF,STAGE_DB_PATH,GRADE_WIDGET_PILOT
           script: |
             set -euo pipefail
+            pilot="${GRADE_WIDGET_PILOT:-keep}"
+            if [[ "$pilot" != keep && "$pilot" != off && ! "$pilot" =~ ^[1-9][0-9]{0,17}$ ]]; then
+              echo "Invalid grade widget pilot setting."
+              exit 1
+            fi
             cd "${{ secrets.STAGE_APP_DIR }}"
             if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
               echo "Stage worktree is dirty; refusing deploy."
@@ -144,12 +154,43 @@ jobs:
             fi
             git checkout -B stage-deploy "${target_ref}"
             .venv/bin/python -m pip install -r requirements.txt
+            if [[ "$pilot" != keep ]]; then
+              pilot_dir=/etc/systemd/system/hr-bot-worker.service.d
+              pilot_conf="$pilot_dir/90-grade-widget-pilot.conf"
+              pilot_backup="${backup_path}.widget-pilot.conf"
+              install -d -m 0755 "$pilot_dir"
+              if [[ -f "$pilot_conf" ]]; then cp -p -- "$pilot_conf" "$pilot_backup"; fi
+              restore_pilot_on_error() {
+                local rc=$?
+                if [[ "$rc" != 0 ]]; then
+                  if [[ -f "$pilot_backup" ]]; then cp -p -- "$pilot_backup" "$pilot_conf"; else rm -f -- "$pilot_conf"; fi
+                  systemctl daemon-reload && systemctl restart hr-bot-worker || true
+                fi
+              }
+              trap restore_pilot_on_error EXIT
+              pilot_value="$pilot"
+              if [[ "$pilot" == off ]]; then pilot_value=""; fi
+              pilot_temp="$(mktemp "$pilot_dir/.grade-widget-pilot.XXXXXX")"
+              printf '[Service]\nEnvironment="GRADE_WIDGET_REVIEWER_IDS=%s"\n' "$pilot_value" > "$pilot_temp"
+              chmod 0644 "$pilot_temp"
+              mv -f -- "$pilot_temp" "$pilot_conf"
+              systemctl daemon-reload
+              echo "Grade widget pilot setting applied."
+            fi
             restart_since="$(date --iso-8601=seconds)"
             systemctl restart hr-bot-web
             systemctl restart hr-bot-worker
             systemctl is-active --quiet hr-bot-web
             systemctl is-active --quiet hr-bot-worker
             systemctl is-active --quiet wg-quick@redshield
+            if [[ "$pilot" != keep ]]; then
+              worker_pid="$(systemctl show hr-bot-worker --property=MainPID --value)"
+              if ! grep -zFxq -- "GRADE_WIDGET_REVIEWER_IDS=$pilot_value" "/proc/$worker_pid/environ"; then
+                echo "Grade widget pilot is not present in the worker environment."
+                exit 1
+              fi
+              echo "Grade widget pilot verified in the worker environment."
+            fi
             .venv/bin/python - "${db_path}" "${scenario_snapshot}" <<'PY'
             import json
             import sqlite3
