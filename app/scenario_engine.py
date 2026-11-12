@@ -2335,7 +2335,7 @@ async def send_step(
     review_confirmation = scenario.scenario_kind == "grade_review" and step.step_key == GRADE_REVIEW_CONFIRM_STEP
     widget_handled = False
     if scenario.scenario_kind == "grade_review":
-        from .grades.review_widgets import SINGLE_WIDGET, enabled_for, skill_screen, widget_state
+        from .grades.review_widgets import SINGLE_WIDGET, enabled_for, skill_content, skill_screen, widget_state
 
         widget_send = getattr(messenger, "send_widget", None)
         widget_update = getattr(messenger, "update_widget", None)
@@ -2351,7 +2351,8 @@ async def send_step(
             elif step.step_key.startswith("skill_") and reply_markup:
                 skills = [item.step_key for item in get_scenario_steps(db, scenario.scenario_key) if item.step_key.startswith("skill_")]
                 current = skills.index(step.step_key) + 1
-                state, widget_markup = skill_screen(step, progress.feedback_question_text or "", current, len(skills), reply_markup)
+                prompt, subject = skill_content(db, progress, step, template_employee)
+                state, widget_markup = skill_screen(step, prompt, current, len(skills), reply_markup, subject=subject)
                 if widget_id and await widget_update(chat_id, widget_id, state, widget_markup):
                     widget_handled = True
                 elif not widget_id:
@@ -2753,15 +2754,9 @@ async def handle_button_response(
         return False
     if (scenario.scenario_kind == "grade_review" and step.step_key.startswith("skill_") and option_index < 0
             and message_id and message_id == progress.grade_widget_message_id and progress.recipient_chat_id):
-        from .grades.review_widgets import enabled_for, skill_screen
-
-        markup = step_reply_markup(step, include_back=False)
-        if not markup or not enabled_for(employee.id) or not hasattr(messenger, "update_widget"):
-            return False
-        skills = [item.step_key for item in get_scenario_steps(db, scenario_key) if item.step_key.startswith("skill_")]
-        screen = skill_screen(step, progress.feedback_question_text or "", skills.index(step_key) + 1,
-                              len(skills), markup, -option_index - 1)
-        return bool(screen and await messenger.update_widget(progress.recipient_chat_id, message_id, *screen))
+        screen = grade_widget_skill_page(db, employee, step, message_id, -option_index - 1)
+        return bool(screen and hasattr(messenger, "update_widget") and
+                    await messenger.update_widget(progress.recipient_chat_id, message_id, *screen))
     if (scenario.scenario_kind == "grade_review" and step.step_key == "review_confirm" and option_index < 0
             and message_id and message_id == progress.grade_widget_message_id == progress.pending_confirmation_message_id
             and progress.recipient_chat_id):
@@ -2830,6 +2825,16 @@ async def handle_button_response(
                 choice_confirmation_markup(step),
             )
         return True
+    if scenario.scenario_kind == "grade_review" and progress.grade_widget_message_id:
+        claimed = db.execute(update(ScenarioProgress).where(
+            ScenarioProgress.id == progress.id, ScenarioProgress.current_step_key == step_key,
+            ScenarioProgress.grade_widget_message_id == message_id,
+            ScenarioProgress.waiting_for_response.is_(True), ScenarioProgress.is_completed.is_(False),
+            ScenarioProgress.interrupted_at.is_(None),
+        ).values(waiting_for_response=False))
+        if claimed.rowcount != 1:
+            db.rollback()
+            return False
     return await _apply_confirmed_button_choice(
         messenger,
         db,
@@ -2840,6 +2845,29 @@ async def handle_button_response(
         option_index,
         progress,
     )
+
+
+def grade_widget_skill_page(db, employee, step, message_id, page, *, chat_id=None):
+    from .grades.review_widgets import enabled_for, skill_content, skill_screen
+
+    if not step or not step.step_key.startswith("skill_") or not enabled_for(employee.id):
+        return None
+    scenario = db.query(ScenarioTemplate).filter_by(scenario_key=step.flow_key, scenario_kind="grade_review").first()
+    if not scenario:
+        return None
+    progress = get_waiting_progress_for_step(db, employee.id, step.flow_key, step.step_key)
+    if not progress or progress.grade_widget_message_id != message_id or progress.interrupted_at is not None:
+        return None
+    if chat_id is not None and progress.recipient_chat_id != chat_id:
+        return None
+    run = db.get(EmployeeFeedbackRun, progress.feedback_run_id) if progress.feedback_run_id else None
+    subject = db.get(Employee, run.subject_employee_id) if run else None
+    markup = step_reply_markup(step, include_back=False)
+    if not subject or not markup:
+        return None
+    skills = [item.step_key for item in get_scenario_steps(db, step.flow_key) if item.step_key.startswith("skill_")]
+    prompt, name = skill_content(db, progress, step, subject)
+    return skill_screen(step, prompt, skills.index(step.step_key) + 1, len(skills), markup, page, subject=name)
 
 
 async def handle_choice_confirmation_response_by_step_id(

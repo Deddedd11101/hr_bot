@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import re
 from typing import Optional
 
 from aiohttp import ClientError
@@ -15,6 +16,7 @@ from .config import settings
 from .database import SessionLocal, init_db
 from .file_storage import build_employee_file_path
 from .messaging import create_telegram_messenger
+from .messaging.telegram import AnswerWidgetQuery, TelegramMessenger
 from .messaging.service import (
     BLOCKED_USER_TEXT,
     DATE_CALLBACK_PREFIX,
@@ -32,7 +34,8 @@ from .messaging.service import (
     resolve_inbound_access,
     save_incoming_file,
 )
-from .scenario_engine import CALLBACK_PREFIX, CHOICE_CONFIRM_CALLBACK_PREFIX, get_waiting_progress
+from .models import FlowStepTemplate
+from .scenario_engine import CALLBACK_PREFIX, CHOICE_CONFIRM_CALLBACK_PREFIX, get_waiting_progress, grade_widget_skill_page
 from .scheduler import schedule_all_employees
 
 
@@ -273,6 +276,35 @@ async def on_candidate_text(message: Message) -> None:
             return
 
 
+async def on_widget_update(handler, update, data):
+    # aiogram 3.13 preserves new update types as extras before event routing.
+    query = (update.model_extra or {}).get("widget_query")
+    if query is None:
+        return await handler(update, data)
+    result = "error"
+    match = re.fullmatch(r"g:([ra]):([0-9]{1,12}):([0-9]{1,6})", query.get("data") or "")
+    sender, chat = query.get("from") or {}, query.get("chat") or {}
+    message_id = query.get("message_id")
+    if match and message_id and chat.get("type") == "private" and sender.get("id") == chat.get("id"):
+        action, step_id, index = match.groups()
+        step_id, index = int(step_id), int(index)
+        chat_id = str(chat["id"])
+        with SessionLocal() as db:
+            access = resolve_inbound_access(db, chat_id, sender.get("username"))
+            if access.state == "ok" and access.employee:
+                step = db.get(FlowStepTemplate, step_id)
+                screen = grade_widget_skill_page(db, access.employee, step, message_id, index if action == "r" else 0, chat_id=chat_id)
+                if screen and screen[0]:
+                    if action == "r":
+                        result = screen[0]
+                    elif index <= 4 and (step.button_options or "").splitlines()[:4] == ["1", "2", "3", "4"]:
+                        status = await handle_button_event(TelegramMessenger(data["bot"]),
+                            db, chat_id, sender.get("username"), step_id, index, message_id)
+                        if status == "handled":
+                            result = "ok"
+    await data["bot"](AnswerWidgetQuery(widget_query_id=query["id"], data=result))
+
+
 async def on_scenario_button(callback: CallbackQuery) -> None:
     user = callback.from_user
     if not user or not callback.data or not callback.data.startswith(CALLBACK_PREFIX):
@@ -377,6 +409,7 @@ async def main() -> None:
         default=DefaultBotProperties(parse_mode=ParseMode.HTML),
     )
     dp = Dispatcher()
+    dp.update.outer_middleware(on_widget_update)
 
     dp.message.register(on_start, CommandStart())
     dp.callback_query.register(
@@ -415,7 +448,7 @@ async def main() -> None:
         reconnect_delay_seconds = 5
         while True:
             try:
-                await dp.start_polling(bot)
+                await dp.start_polling(bot, allowed_updates=[*dp.resolve_used_update_types(), "widget_query"])
                 break
             except (TelegramNetworkError, ClientError, asyncio.TimeoutError, OSError) as exc:
                 print(
