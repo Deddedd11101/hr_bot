@@ -282,7 +282,7 @@ async def on_widget_update(handler, update, data):
     if query is None:
         return await handler(update, data)
     result = "error"
-    match = re.fullmatch(r"g:([rakphb]):([0-9]{1,12}):([0-9]{1,6})", query.get("data") or "")
+    match = re.fullmatch(r"g:([rakpqhb]):([0-9]{1,12}):([0-9]{1,6})", query.get("data") or "")
     sender, chat = query.get("from") or {}, query.get("chat") or {}
     message_id = query.get("message_id")
     if match and message_id and chat.get("type") == "private" and sender.get("id") == chat.get("id"):
@@ -297,13 +297,13 @@ async def on_widget_update(handler, update, data):
                 if screen and screen[0]:
                     if action == "r":
                         result = screen[0]
-                    elif action in {"p", "h"}:
+                    elif action in {"p", "q", "h"}:
                         if (action, index) in {("p", 1), ("h", 0)}:
                             try:
                                 await data["bot"].edit_message_reply_markup(chat_id=chat_id, message_id=message_id, reply_markup=None)
                             except TelegramBadRequest:
                                 pass
-                        if action == "p":
+                        if action in {"p", "q"}:
                             following = grade_widget_skill_page(db, access.employee, step, message_id, index,
                                 chat_id=chat_id, prefetch=True)
                             if following and following[0]:

@@ -22,10 +22,14 @@ SINGLE_WIDGET = STYLE + """<style>
 .bar{height:5px;background:#32a663;border-radius:4px}
 .criterion{display:block;width:100%;text-align:left;margin:6px 0;white-space:normal;overflow-wrap:anywhere}
 .actions{display:flex;justify-content:space-between;margin-top:10px}
+#loader{min-height:26px;padding:4px 0;text-align:center}
+#loader span{display:inline-block;width:16px;height:16px;border:2px solid #505050;border-top-color:#52aa79;border-radius:50%;animation:spin .85s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){#loader span{animation:none}}
 button{color:#f2f2f2;background:#2d2d2d;border:1px solid #404040;border-radius:7px;padding:8px}
 button[aria-pressed=true],#next{border-color:#52aa79}#next{margin-left:6px;background:#52aa79;color:#1d1d1d}button:disabled{opacity:.5}
 </style><main><header id="label">Оценка навыков</header><div class="track"><div id="meter" class="bar"></div></div>
-<h3 id="title"></h3><p id="prompt"></p><div id="choices"></div><table id="result" style="display:none"></table></main><script>
+<h3 id="title"></h3><p id="prompt"></p><div id="loader" role="status" aria-label="Загрузка критериев" style="display:none"><span></span></div><div id="choices"></div><table id="result" style="display:none"></table></main><script>
 const W=window.TelegramWidget;
 const el=id=>document.getElementById(id);
 let revision=0, nextRead=0, prefetched=null, reading=null;
@@ -41,7 +45,7 @@ async function background(data, version){
 async function criteria(d, version){
  const parts=prefetched&&prefetched.step===d.step?prefetched.parts:[];
  parts[d.page||0]=d.prompt;
- el('prompt').textContent='Загружаем критерии…';
+ if(parts.filter(part=>part!==undefined).length<(d.pages||1))el('loader').style.display='block';
  try{
   for(let i=0;i<(d.pages||1);i++){
    if(parts[i]!==undefined)continue;
@@ -51,7 +55,11 @@ async function criteria(d, version){
    if(page.step!==d.step||page.page!==i)throw Error();
    parts[i]=page.prompt;
   }
- }catch(e){if(version===revision){show(d);el('prompt').textContent=d.prompt||''}return}
+ }catch(e){if(version===revision){
+  show(d);el('prompt').textContent='Не удалось загрузить критерии.';
+  const retry=document.createElement('button');retry.textContent='Повторить';
+  retry.onclick=()=>{retry.disabled=true;criteria(d,++revision)};el('choices').appendChild(retry);
+ }return}
  if(version!==revision)return;
  const items=parts.join('').split(/(?:^|\\n\\n)[1-4]\\. /).slice(1);
  if(items.length!==4){show(d);return}
@@ -80,12 +88,13 @@ async function criteria(d, version){
  const next=add(actions,'Далее',()=>submit(selected));next.id='next';next.disabled=true;
  function controls(){skip.disabled=busy;next.disabled=busy||selected===null;if(back)back.disabled=busy}
  try{
-  let count=d.prefetch?2:1, target=null;
-  for(let i=d.prefetch?1:0;i<count;i++){
+  if(!d.prefetch)return;
+  let count=2, target=null;
+  for(let i=1;i<count;i++){
    await pause(Math.max(0,nextRead-Date.now()));
    if(version!==revision||busy)return;
-   const reply=await background((d.prefetch?'g:p:':'g:h:')+d.step+':'+i,version);
-   if(version!==revision||!d.prefetch)return;
+   const reply=await background('g:q:'+d.step+':'+i,version);
+   if(version!==revision)return;
    const page=JSON.parse(reply.result);
    if(!page.step||page.page!==i||(target&&target.step!==page.step))return;
    if(!target){target={step:page.step,parts:[]};prefetched=target;count=page.pages||1}
@@ -94,6 +103,7 @@ async function criteria(d, version){
  }catch(e){/* The next question can still load on demand. */}
 }
 function show(d){
+ el('loader').style.display='none';
  el('choices').textContent='';
  el('label').textContent=d.label;el('title').textContent=d.title;el('prompt').textContent=d.prompt||'';
  el('meter').style.width=(100*(d.current||0)/(d.total||1))+'%';
