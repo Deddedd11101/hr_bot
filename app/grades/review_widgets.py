@@ -2,6 +2,8 @@
 
 import json
 
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+
 from ..config import settings
 
 STYLE = """<style>
@@ -45,3 +47,42 @@ def widget_state(label, title, prompt="", *, current=0, total=1, rows=None):
         state["rows"] = rows
     packed = json.dumps(state, ensure_ascii=False, separators=(",", ":"))
     return packed if len(packed.encode("utf-8")) <= 1024 else None
+
+
+def skill_screen(step, prompt, current, total, markup, page=0):
+    label = f"Оценка навыков · {current}/{total}"
+    title = step.step_title[:100]
+    state = widget_state(label, title, prompt, current=current, total=total)
+    if state:
+        return (state, markup) if page == 0 else None
+
+    def pack(text, suffix):
+        return widget_state(f"{label} · {suffix}", title, text, current=current, total=total)
+
+    pages = []
+    remaining = prompt
+    while remaining:
+        low, high = 1, min(1024, len(remaining))
+        while low < high:
+            mid = (low + high + 1) // 2
+            if pack(remaining[:mid], "999999/999999"):
+                low = mid
+            else:
+                high = mid - 1
+        end = low
+        if end < len(remaining):
+            boundary = remaining.rfind("\n", end // 2, end)
+            if boundary < 0:
+                boundary = remaining.rfind(" ", end // 2, end)
+            if boundary > end // 2:
+                end = boundary + 1
+        pages.append(remaining[:end])
+        remaining = remaining[end:]
+    if not 0 <= page < len(pages):
+        return None
+    buttons = []
+    if page:
+        buttons.append(InlineKeyboardButton(text="← Критерии", callback_data=f"scenario:{step.id}:{-page}"))
+    if page + 1 < len(pages):
+        buttons.append(InlineKeyboardButton(text="Критерии →", callback_data=f"scenario:{step.id}:{-page - 2}"))
+    return pack(pages[page], f"{page + 1}/{len(pages)}"), InlineKeyboardMarkup(inline_keyboard=[buttons, *markup.inline_keyboard])
