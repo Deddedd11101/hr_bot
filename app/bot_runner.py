@@ -8,8 +8,8 @@ from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.exceptions import TelegramBadRequest, TelegramNetworkError
-from aiogram.filters import CommandStart
-from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
+from aiogram.filters import Command, CommandStart
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message, WebAppInfo
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from .config import settings
@@ -37,6 +37,7 @@ from .messaging.service import (
 from .models import FlowStepTemplate
 from .scenario_engine import CALLBACK_PREFIX, CHOICE_CONFIRM_CALLBACK_PREFIX, get_waiting_progress, grade_widget_skill_page, handle_back_response
 from .scheduler import schedule_all_employees
+from .web.employee_cabinet import pilot_employee
 
 
 logger = logging.getLogger(__name__)
@@ -276,6 +277,17 @@ async def on_candidate_text(message: Message) -> None:
             return
 
 
+async def on_employee_cabinet(message: Message) -> None:
+    if not message.from_user or message.chat.type != "private":
+        return
+    with SessionLocal() as db:
+        if not pilot_employee(db, str(message.from_user.id)):
+            return
+    await message.answer("Личный кабинет", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="Открыть кабинет", web_app=WebAppInfo(url=settings.EMPLOYEE_CABINET_URL)),
+    ]]))
+
+
 async def on_widget_update(handler, update, data):
     # aiogram 3.13 preserves new update types as extras before event routing.
     query = (update.model_extra or {}).get("widget_query")
@@ -452,6 +464,7 @@ async def main() -> None:
     dp.update.outer_middleware(on_widget_update)
 
     dp.message.register(on_start, CommandStart())
+    dp.message.register(on_employee_cabinet, Command("cabinet"))
     dp.callback_query.register(
         on_scenario_button,
         lambda callback: callback.data is not None and callback.data.startswith(CALLBACK_PREFIX),

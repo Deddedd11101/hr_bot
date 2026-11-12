@@ -13,6 +13,11 @@ related:
 source_of_truth: true
 ---
 
+Параметр `employee_cabinet_pilot` в Deploy Stage: `keep` не меняет состояние,
+`on` включает `/cabinet` только для карточки №70, `off` отключает. Включение
+проверяет настройку в web и worker, открытие оболочки и отказ без Telegram-подписи.
+При сбое применённые systemd-настройки восстанавливаются из резервной копии.
+
 Read-only Stage Diagnostics поддерживает optional `employee_runtime_id`:
 positive numeric ID, SQLite mode=ro; выводит только active progress IDs,
 scenario/step keys, recipient IDs, flags и timestamps, без ответов, Telegram ID,
