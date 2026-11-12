@@ -18,7 +18,7 @@ from ..models import Employee, EmployeeAdaptationPlanItem, EmployeeFile, Grade, 
 from ..staff_email_verification import is_verified, verification_required
 
 router = APIRouter(prefix="/employee-cabinet")
-PILOT_EMPLOYEE_IDS = {70, 80}
+PILOT_EMPLOYEE_IDS = {70, 80, 84}
 PRIVATE_HEADERS = {"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"}
 
 

@@ -12,7 +12,7 @@ on:
         required: false
         default: "keep"
       employee_cabinet_pilot:
-        description: "Employee cabinet on stage (cards 70 and 80 only)"
+        description: "Employee cabinet on stage (allowlisted cards only)"
         type: choice
         options: ["keep", "on", "off"]
         default: "keep"
