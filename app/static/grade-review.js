@@ -33,20 +33,31 @@ async function request(method = 'GET', data) {
 }
 
 function go(i, review = false) {
+  const direction = i < index ? 'back' : 'forward';
   index = i;
   reviewing = review;
   status.textContent = '';
   render();
+  delete view.dataset.motion;
+  void view.offsetWidth;
+  view.dataset.motion = direction;
   window.scrollTo(0, 0);
+}
+
+function updateProgress() {
+  const progress = byId('progress');
+  const count = Object.keys(answers).length;
+  const total = model.questions.length;
+  progress.hidden = false;
+  progress.setAttribute('aria-valuemax', total);
+  progress.setAttribute('aria-valuenow', count);
+  byId('progress-fill').style.transform = `scaleX(${count / total})`;
 }
 
 function render() {
   const items = model.questions;
   const count = Object.keys(answers).length;
-  const progress = byId('progress');
-  progress.hidden = false;
-  progress.max = items.length;
-  progress.value = count;
+  updateProgress();
   view.replaceChildren();
   if (reviewing) {
     add('h2', model.editable ? 'Проверь ответы' : 'Ответы сохранены');
@@ -77,7 +88,7 @@ function render() {
       const control = button(value === null ? title : `${value}. ${title}`, () => {
         selected = value;
         answers[item.key] = value;
-        progress.value = Object.keys(answers).length;
+        updateProgress();
         for (const [node, choice] of controls) node.setAttribute('aria-pressed', String(choice === value));
         next.disabled = false;
       }, view, 'option');
@@ -89,7 +100,10 @@ function render() {
     field.maxLength = 4096;
     field.setAttribute('aria-label', item.title);
     field.value = selected ?? '';
-    field.oninput = () => { answers[item.key] = field.value.trim() || null; };
+    field.oninput = () => {
+      answers[item.key] = field.value.trim() || null;
+      updateProgress();
+    };
   }
   const actions = add('div', '', view, 'actions');
   if (index > 0) button('Назад', () => go(index - 1), actions);
