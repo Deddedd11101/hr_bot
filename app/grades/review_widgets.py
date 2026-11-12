@@ -21,7 +21,8 @@ SINGLE_WIDGET = STYLE + """<style>
 .track{height:5px;margin:8px 0 12px;background:#32a66333;border-radius:4px}
 .bar{height:5px;background:#32a663;border-radius:4px}
 .criterion{display:block;width:100%;text-align:left;margin:6px 0;white-space:normal;overflow-wrap:anywhere}
-button{color:#f2f2f2;background:#303030;border:1px solid #555;border-radius:7px;padding:7px}
+.actions{display:flex;justify-content:space-between;margin-top:10px}
+button{color:#f2f2f2;background:#2d2d2d;border:1px solid #404040;border-radius:7px;padding:8px}
 button[aria-pressed=true],#next{border-color:#52aa79}#next{margin-left:6px;background:#52aa79;color:#1d1d1d}button:disabled{opacity:.5}
 </style><main><header id="label">Оценка навыков</header><div class="track"><div id="meter" class="bar"></div></div>
 <h3 id="title"></h3><p id="prompt"></p><div id="choices"></div><table id="result" style="display:none"></table></main><script>
@@ -31,37 +32,55 @@ let revision=0, nextRead=0;
 const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 async function criteria(d, version){
  const box=el('choices'), parts=[];parts[d.page||0]=d.prompt;
+ let selected=null, busy=false, pending=null;
+ const buttons=[];
+ function add(parent,label,click){const b=document.createElement('button');b.textContent=label;b.onclick=click;parent.appendChild(b);return b}
+ async function submit(index){
+  if(busy||pending)return;busy=true;controls();
+  try{
+   if((await W.request('g:a:'+d.step+':'+index)).result!=='ok')throw Error();
+  }catch(e){if(version===revision){busy=false;controls();el('prompt').textContent='Не удалось отправить. Попробуй ещё раз.'}}
+ }
+ for(let i=0;i<4;i++){
+  const b=add(box,'',()=>{if(busy||b.disabled)return;selected=i;controls();
+   buttons.forEach((item,j)=>item.setAttribute('aria-pressed',String(i===j)))});
+  b.className='criterion';b.setAttribute('aria-pressed','false');buttons.push(b);
+ }
+ const actions=document.createElement('div');actions.className='actions';box.appendChild(actions);
+ const skip=add(actions,'Пропустить',()=>submit(4));
+ const next=add(actions,'Далее',()=>submit(selected));next.id='next';next.disabled=true;
+ function controls(){skip.disabled=Boolean(busy||pending);next.disabled=skip.disabled||selected===null}
+ async function request(data){
+  pending=W.request(data);controls();
+  try{return await pending}finally{pending=null;if(version===revision)controls()}
+ }
+ function paint(){
+  let prefix='', count=0;
+  while(parts[count]!==undefined){prefix+=parts[count];count++}
+  const items=prefix.split(/(?:^|\\n\\n)[1-4]\\. /).slice(1);
+  const complete=count===(d.pages||1)&&items.length===4;
+  buttons.forEach((b,i)=>{
+   const loaded=i<items.length&&(complete||i<items.length-1);
+   b.textContent=(i+1)+'. '+(loaded?items[i]:'Загрузка…');b.disabled=!loaded;
+  });
+  return complete;
+ }
+ el('prompt').textContent='';paint();
  try{
   for(let i=0;i<(d.pages||1);i++){
    if(parts[i]!==undefined)continue;
    await pause(Math.max(0,nextRead-Date.now()));
-   if(version!==revision)return;
+   if(version!==revision||busy)return;
    nextRead=Date.now()+5200;
-   const reply=await W.request('g:r:'+d.step+':'+i);
-   nextRead=Date.now()+5200;
+   const reply=await request('g:r:'+d.step+':'+i);
    const page=JSON.parse(reply.result);
    if(page.step!==d.step||page.page!==i)throw Error();
-   parts[i]=page.prompt;
+   parts[i]=page.prompt;if(version===revision)paint();
   }
-  if(version!==revision)return;
-  const items=parts.join('').split(/(?:^|\\n\\n)[1-4]\\. /).slice(1);
-  if(items.length!==4)throw Error();
-  el('prompt').textContent='';
-  if(d.pages>1)el('label').textContent=d.label.slice(0,d.label.lastIndexOf(' · '));
-  let selected=null, busy=false;
-  const buttons=[];
-  function add(label,click){const b=document.createElement('button');b.textContent=label;b.onclick=click;box.appendChild(b);return b}
-  async function submit(index){
-   if(busy)return;busy=true;next.disabled=true;skip.disabled=true;
-   try{if((await W.request('g:a:'+d.step+':'+index)).result!=='ok')throw Error()}
-   catch(e){if(version===revision){busy=false;next.disabled=selected===null;skip.disabled=false;el('prompt').textContent='Не удалось отправить. Попробуй ещё раз.'}}
-  }
-  items.forEach((text,i)=>{const b=add((i+1)+'. '+text,()=>{
-    if(busy)return;selected=i;next.disabled=false;buttons.forEach((item,j)=>item.setAttribute('aria-pressed',String(i===j)))
-   });b.className='criterion';b.setAttribute('aria-pressed','false');buttons.push(b)});
-  const skip=add('Пропустить',()=>submit(4));
-  const next=add('Далее',()=>submit(selected));next.id='next';next.disabled=true;
- }catch(e){if(version===revision)el('prompt').textContent=d.prompt||''}
+  if(version!==revision||!paint())return;
+  await pause(Math.max(0,nextRead-Date.now()));
+  if(version===revision&&!busy){nextRead=Date.now()+5200;await request('g:k:'+d.step+':0')}
+ }catch(e){if(version===revision&&!busy)el('prompt').textContent='Если критерии не загрузились, используй кнопки под сообщением.'}
 }
 function render(){
  let d;try{d=JSON.parse(W.chatData)}catch(e){return}if(!d)return;
@@ -115,7 +134,7 @@ def skill_screen(step, prompt, current, total, markup, page=0, *, subject=None):
 
     def pack(text, suffix, page_index=999999, page_count=999999):
         extra = {"step": step.id, "page": page_index, "pages": page_count} if interactive else {}
-        return widget_state(f"{label} · {suffix}", title, text, current=current, total=total, **extra)
+        return widget_state(label if interactive else f"{label} · {suffix}", title, text, current=current, total=total, **extra)
 
     pages = []
     remaining = prompt

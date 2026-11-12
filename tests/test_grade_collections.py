@@ -164,9 +164,14 @@ class GradeCollectionTests(unittest.TestCase):
 
             with patch("app.bot_runner.SessionLocal", self.sessions), patch("app.bot_runner.TelegramMessenger", return_value=messenger):
                 self.assertEqual(query("r", 0, message_id=41), "error")
+                self.assertEqual(query("k", 0, message_id=41), "error")
+                bot.edit_message_reply_markup.assert_not_awaited()
                 self.assertEqual(json.loads(query("r", 0)), first)
                 self.assertEqual("".join(json.loads(query("r", i))["prompt"] for i in range(first["pages"])),
                     "\n\n".join(f"{level}. {description}" for level, description in levels.items()))
+                self.assertEqual(query("k", 0), "ok")
+                keyboard = bot.edit_message_reply_markup.call_args.kwargs["reply_markup"].inline_keyboard
+                self.assertEqual([[button.text for button in row] for row in keyboard], [["Обычные кнопки"]])
                 self.assertEqual(query("a", 1), "ok")
                 self.assertEqual(query("a", 3), "error")
             self.db.expire_all()
