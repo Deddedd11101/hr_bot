@@ -154,7 +154,7 @@ class GradeCollectionTests(unittest.TestCase):
             first = json.loads(widget.kwargs["chat_data"])
             self.assertIn(self.db.get(Employee, 1).full_name, first["label"])
             self.assertGreater(first["pages"], 1)
-            self.assertTrue(widget.kwargs["reply_markup"].inline_keyboard[0][0].callback_data.startswith("scenario:"))
+            self.assertIsNone(widget.kwargs["reply_markup"])
             text_count = len(messenger.texts)
             bot = AsyncMock()
             def query(action, index, message_id=42, step=None):
@@ -176,28 +176,23 @@ class GradeCollectionTests(unittest.TestCase):
                 self.assertEqual([[button.text for button in row] for row in keyboard], [["Обычные кнопки"]])
                 self.assertEqual(query("p", 1, message_id=41), "error")
                 self.assertEqual(query("a", 1, step=second_step), "error")
-                prefetched = json.loads(query("p", 1))
+                bot.edit_message_reply_markup.reset_mock()
+                prefetched = json.loads(query("q", 1))
                 self.assertEqual(prefetched["step"], second_step.id)
-                self.assertIsNone(bot.edit_message_reply_markup.call_args.kwargs["reply_markup"])
+                bot.edit_message_reply_markup.assert_not_awaited()
                 self.assertEqual(query("a", 1), "ok")
                 self.assertEqual(query("a", 3), "error")
                 self.assertEqual(json.loads(query("r", 1, step=second_step))["prompt"], prefetched["prompt"])
+                self.assertEqual("".join(json.loads(query("r", i, step=second_step))["prompt"]
+                    for i in range(prefetched["pages"])), long_question)
                 self.assertEqual(query("b", 0, step=second_step), "ok")
                 self.assertEqual(query("a", 1), "ok")
             self.db.expire_all()
             self.assertEqual(messenger.update_widget.call_args.args[1], 42)
             self.assertIn("Second skill", messenger.update_widget.call_args.args[2])
-            pages = []
-            while True:
-                _, _, packed, markup = messenger.update_widget.call_args.args
-                self.assertLessEqual(len(packed.encode("utf-8")), 1024)
-                pages.append(json.loads(packed)["prompt"])
-                next_button = next((button for button in markup.inline_keyboard[0] if button.text == "Критерии →"), None)
-                if not next_button:
-                    break
-                self.assertTrue(asyncio.run(handle_button_response(messenger, self.db, self.db.get(Employee, 2),
-                    row.scenario_key, "skill_999", int(next_button.callback_data.rsplit(":", 1)[1]), message_id=42)))
-            self.assertEqual("".join(pages), long_question.strip())
+            self.assertIsNone(messenger.update_widget.call_args.args[3])
+            self.assertFalse(asyncio.run(handle_button_response(messenger, self.db, self.db.get(Employee, 2),
+                row.scenario_key, "skill_999", -2, message_id=42)))
             self.assertEqual(len(messenger.texts), text_count)
             self.answer(messenger, row, 2, 999, 2)
             self.assertIn("Что улучшить?", messenger.texts[-1]["text"])

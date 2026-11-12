@@ -1167,6 +1167,7 @@ class ScenarioProgress(Base):
         doc="Telegram message_id сообщения, которое runtime пытался отредактировать для подтверждения.",
     )
     grade_widget_message_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    grade_widget_internal_controls: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
     waiting_for_response: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     is_completed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     last_delivery_error: Mapped[Optional[str]] = mapped_column(
