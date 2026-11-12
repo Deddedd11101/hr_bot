@@ -50,8 +50,9 @@ class GradeCollectionTests(unittest.TestCase):
 
     def answer(self, messenger, collection, respondent, skill_id, option):
         person = self.db.get(Employee, respondent)
-        self.assertTrue(asyncio.run(handle_button_response(messenger, self.db, person, collection.scenario_key, f"skill_{skill_id}", option)))
         progress = self.db.query(ScenarioProgress).filter_by(employee_id=respondent, scenario_key=collection.scenario_key).one()
+        self.assertTrue(asyncio.run(handle_button_response(messenger, self.db, person, collection.scenario_key, f"skill_{skill_id}", option,
+            message_id=progress.grade_widget_message_id)))
         if progress.current_step_key == "review_confirm":
             self.assertTrue(self.confirm(messenger, collection, respondent, 0, progress.pending_confirmation_message_id))
 
@@ -123,25 +124,38 @@ class GradeCollectionTests(unittest.TestCase):
 
         self.prepare()
         row = collections.create(self.db, 1, 1, dict(request_id=str(uuid4()), specialization_id=self.spec["id"],
-            recipient_ids=[2, 3], open_questions=["Что улучшить?"]))
+            recipient_ids=[2, 3], open_questions=["Что улучшить?", "Комментарий"]))
+        self.db.add(FlowStepTemplate(flow_key=row.scenario_key, step_key="skill_999", step_title="Second skill",
+            sort_order=0, default_text="Second question", response_type="buttons", button_options="0\n1\n2",
+            target_field="survey_answer", send_mode="immediate"))
         self.db.commit()
         messenger = ReviewMessenger()
         messenger.send_widget = AsyncMock(return_value=SimpleNamespace(message_id=42))
+        messenger.update_widget = AsyncMock(return_value=True)
         with patch.object(settings, "GRADE_WIDGET_REVIEWER_IDS", "2"):
             asyncio.run(collections.process_pending(messenger, session_factory=self.sessions))
             self.db.expire_all()
             messenger.send_widget.assert_awaited_once()
             widget = messenger.send_widget.call_args
             self.assertEqual(widget.args[0], "700001002")
-            self.assertIn("Interview", widget.args[1])
+            self.assertIn("Interview", widget.kwargs["chat_data"])
             self.assertTrue(widget.kwargs["reply_markup"].inline_keyboard[0][0].callback_data.startswith("scenario:"))
             self.answer(messenger, row, 2, self.skill["id"], 2)
+            self.assertEqual(messenger.update_widget.call_args.args[1], 42)
+            self.assertIn("Second skill", messenger.update_widget.call_args.args[2])
+            self.answer(messenger, row, 2, 999, 2)
             self.assertIn("Что улучшить?", messenger.texts[-1]["text"])
             asyncio.run(handle_text_response(messenger, self.db, self.db.get(Employee, 2), SimpleNamespace(text="<Ответ>")))
-            self.assertIn("<table>", messenger.send_widget.call_args.args[1])
-            self.assertIn("&lt;Ответ&gt;", messenger.send_widget.call_args.args[1])
+            asyncio.run(handle_text_response(messenger, self.db, self.db.get(Employee, 2), SimpleNamespace(text="Я" * 450 + " Конец")))
+            messenger.send_widget.assert_awaited_once()
+            self.assertEqual(messenger.update_widget.call_args.args[1], 42)
+            self.assertIn(["Что улучшить?", "<Ответ>"], json.loads(messenger.update_widget.call_args.args[2])["rows"])
+            self.assertTrue(self.confirm(messenger, row, 2, -2, 42))
+            self.assertIn("2/", json.loads(messenger.update_widget.call_args.args[2])["label"])
+            self.assertFalse(self.confirm(messenger, row, 2, -2, 41))
             self.assertEqual(collections.report(self.db, row)["completed_count"], 0)
-            self.assertTrue(self.confirm(messenger, row, 2, 0, len(messenger.texts)))
+            self.assertTrue(self.confirm(messenger, row, 2, 0, 42))
+            self.assertIn("Ответы утверждены", messenger.update_widget.call_args.args[2])
             self.assertEqual(collections.report(self.db, row)["completed_count"], 1)
 
     def test_widget_transport_rejects_oversize_and_does_not_retry_timeout(self):
