@@ -76,6 +76,9 @@ same-origin. Drift/изменение role-аудиторий — 409, не-admi
 ## Грейды
 
 - `GET /grades`: authenticated legacy redirect 303 на `/app/grades`.
+- `GET /grade-review/{id}`: публичная оболочка опроса без данных.
+  Чтение и сохранение `/{id}/answers` требуют подписанный Telegram initData и
+  действующее приглашение именно этому оценивающему.
 - `GET /app/grades`: authenticated React каталог, матрица ожиданий и JSON-импорт
   грейдов. Вход без сессии ведёт на `/login`; пункт «Грейды» есть в боковом меню.
 - Данные оценки сотрудника читаются отдельным API из [[features/grades]], не через

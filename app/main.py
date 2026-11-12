@@ -50,6 +50,7 @@ from .scenario_engine import format_message, get_first_step, get_scenario_steps,
 from .web.bulk_action_routes import router as bulk_action_router
 from .web.document_routes import router as document_router
 from .web.employee_cabinet import router as employee_cabinet_router
+from .web.grade_review_mini_app import router as grade_review_mini_app_router
 from .web.grade_routes import router as grade_router
 from .web.integration_routes import router as integration_router
 from .web.bulk_actions import (
@@ -183,6 +184,7 @@ app.include_router(dashboard_router)
 app.include_router(catalog_groups_router)
 app.include_router(document_router)
 app.include_router(employee_cabinet_router)
+app.include_router(grade_review_mini_app_router)
 app.include_router(grade_router)
 app.include_router(integration_router)
 app.include_router(employee_router)

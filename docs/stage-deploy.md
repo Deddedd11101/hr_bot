@@ -14,9 +14,16 @@ source_of_truth: true
 ---
 
 Параметр `employee_cabinet_pilot` в Deploy Stage: `keep` не меняет состояние,
-`on` включает `/cabinet` только для карточки №70, `off` отключает. Включение
+`on` включает `/cabinet` только для карточек №70 и №80, `off` отключает. Включение
 проверяет настройку в web и worker, открытие оболочки и отказ без Telegram-подписи.
 При сбое применённые systemd-настройки восстанавливаются из резервной копии.
+
+Mini App опроса включается отдельно параметром `grade_review_webapp=on` в Deploy Stage:
+workflow задаёт `GRADE_REVIEW_WEBAPP_URL` для web и worker и проверяет отказ без подписи.
+Перед массовой рассылкой
+проверить приглашение и сохранение ответа одним тестовым адресатом. Удаление
+настройки через `grade_review_webapp=off` возвращает старую доставку для новых сборов,
+но не переключает уже созданные.
 
 Read-only Stage Diagnostics поддерживает optional `employee_runtime_id`:
 positive numeric ID, SQLite mode=ro; выводит только active progress IDs,

@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="ru">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Оценка компетенций</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap">
+<style>
+:root{color-scheme:light dark;--bg:#fafaf9;--fg:#1a1916;--panel:#fff;--line:#e8e6e1;--muted:#6b6963;--hover:#f5f4f2;--accent:#BADA1E;--ease:cubic-bezier(.22,1,.36,1)}
+@media(prefers-color-scheme:dark){:root{--bg:#141412;--fg:#f5f3ef;--panel:#1c1b18;--line:#2e2c28;--muted:#a9a59d;--hover:#252420}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.5 Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+main{max-width:680px;margin:auto;padding:20px 16px 32px}h1,h2,p{margin:0 0 12px}h1{font-size:24px}h2{font-size:20px;overflow-wrap:anywhere}
+.track{height:6px;border-radius:999px;background:var(--line);overflow:hidden;margin:0 0 20px}
+.fill{width:100%;height:100%;background:var(--accent);transform:scaleX(0);transform-origin:left;transition:transform .28s var(--ease)}
+.muted{color:var(--muted);font-size:14px}
+button,textarea{font:inherit;color:inherit;border:1px solid var(--line);border-radius:8px;background:var(--panel);padding:10px 12px}
+button{cursor:pointer;min-height:44px;transition:background-color .16s,border-color .16s,opacity .16s,transform .16s var(--ease)}
+button:enabled:not(.primary):hover{background:var(--hover)}button:enabled:active{transform:scale(.985)}
+button:disabled{opacity:.5;cursor:default}button[aria-pressed=true]{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+button:focus-visible,textarea:focus-visible{outline:2px solid var(--fg);outline-offset:2px}
+.option{width:100%;text-align:left;margin-bottom:8px;overflow-wrap:anywhere}.primary{background:var(--accent);color:#171717;border-color:var(--accent);font-weight:650}
+.actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px}.row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,35%);gap:8px;width:100%;text-align:left;align-items:center;margin-bottom:6px;overflow-wrap:anywhere}
+textarea{width:100%;resize:vertical;min-height:120px}#status:not(:empty){margin-top:12px}
+#view[data-motion="forward"]{animation:enter .23s var(--ease) both}
+#view[data-motion="back"]{--enter-x:-8px;animation:enter .23s var(--ease) both}
+@keyframes enter{from{opacity:0;transform:translateX(var(--enter-x,8px))}to{opacity:1;transform:translateX(0)}}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
+</style>
+<main>
+  <h1>Оценка компетенций</h1>
+  <p id="subject" class="muted"></p>
+  <div id="progress" class="track" hidden role="progressbar" aria-label="Вопросы с ответами" aria-valuemin="0" aria-valuenow="0"><div id="progress-fill" class="fill"></div></div>
+  <section id="view"></section>
+  <p id="status" role="status">Загружаем опрос…</p>
+</main>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<script src="/static/grade-review.js" defer></script>
+</html>
