@@ -18,6 +18,7 @@ class Settings:
     # Telegram
     TELEGRAM_BOT_TOKEN: str = os.getenv("TELEGRAM_BOT_TOKEN", "")
     GRADE_WIDGET_REVIEWER_IDS: str = os.getenv("GRADE_WIDGET_REVIEWER_IDS", "")
+    EMPLOYEE_CABINET_URL: str = os.getenv("EMPLOYEE_CABINET_URL", "").strip()
     TELEGRAM_BOT_USERNAME: str = os.getenv("TELEGRAM_BOT_USERNAME", "")
     TELEGRAM_PROXY_URL: str = os.getenv("TELEGRAM_PROXY_URL", "")
 

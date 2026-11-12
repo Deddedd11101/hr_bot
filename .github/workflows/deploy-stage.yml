@@ -11,6 +11,11 @@ on:
         description: "Grade widgets on stage: keep, off, or one reviewer card ID"
         required: false
         default: "keep"
+      employee_cabinet_pilot:
+        description: "Employee cabinet on stage (card 70 only)"
+        type: choice
+        options: ["keep", "on", "off"]
+        default: "keep"
 
 concurrency:
   group: deploy-stage
@@ -73,6 +78,7 @@ jobs:
       DEPLOY_REF: ${{ inputs.ref }}
       STAGE_DB_PATH: ${{ secrets.STAGE_DB_PATH }}
       GRADE_WIDGET_PILOT: ${{ inputs.grade_widget_pilot }}
+      EMPLOYEE_CABINET_PILOT: ${{ inputs.employee_cabinet_pilot }}
 
     steps:
       - name: Deploy over SSH
@@ -82,10 +88,12 @@ jobs:
           username: ${{ secrets.STAGE_USERNAME }}
           password: ${{ secrets.STAGE_PASSWORD }}
           port: ${{ secrets.STAGE_PORT }}
-          envs: DEPLOY_REF,STAGE_DB_PATH,GRADE_WIDGET_PILOT
+          envs: DEPLOY_REF,STAGE_DB_PATH,GRADE_WIDGET_PILOT,EMPLOYEE_CABINET_PILOT
           script: |
             set -euo pipefail
             pilot="${GRADE_WIDGET_PILOT:-keep}"
+            cabinet="${EMPLOYEE_CABINET_PILOT:-keep}"
+            case "$cabinet" in keep|on|off) ;; *) exit 1 ;; esac
             if [[ "$pilot" != keep && "$pilot" != off && ! "$pilot" =~ ^[1-9][0-9]{0,17}$ ]]; then
               echo "Invalid grade widget pilot setting."
               exit 1
@@ -154,20 +162,27 @@ jobs:
             fi
             git checkout -B stage-deploy "${target_ref}"
             .venv/bin/python -m pip install -r requirements.txt
+            if [[ "$pilot" != keep || "$cabinet" != keep ]]; then
+              restore_config_on_error() {
+                local rc=$?
+                if [[ "$rc" != 0 ]]; then
+                  for target in "${!config_backups[@]}"; do
+                    backup="${config_backups[$target]}"
+                    if [[ -f "$backup" ]]; then cp -p -- "$backup" "$target"; else rm -f -- "$target"; fi
+                  done
+                  systemctl daemon-reload && systemctl restart hr-bot-web hr-bot-worker || true
+                fi
+              }
+              declare -A config_backups=()
+              trap restore_config_on_error EXIT
+            fi
             if [[ "$pilot" != keep ]]; then
               pilot_dir=/etc/systemd/system/hr-bot-worker.service.d
               pilot_conf="$pilot_dir/90-grade-widget-pilot.conf"
               pilot_backup="${backup_path}.widget-pilot.conf"
               install -d -m 0755 "$pilot_dir"
               if [[ -f "$pilot_conf" ]]; then cp -p -- "$pilot_conf" "$pilot_backup"; fi
-              restore_pilot_on_error() {
-                local rc=$?
-                if [[ "$rc" != 0 ]]; then
-                  if [[ -f "$pilot_backup" ]]; then cp -p -- "$pilot_backup" "$pilot_conf"; else rm -f -- "$pilot_conf"; fi
-                  systemctl daemon-reload && systemctl restart hr-bot-worker || true
-                fi
-              }
-              trap restore_pilot_on_error EXIT
+              config_backups["$pilot_conf"]="$pilot_backup"
               pilot_value="$pilot"
               if [[ "$pilot" == off ]]; then pilot_value=""; fi
               pilot_temp="$(mktemp "$pilot_dir/.grade-widget-pilot.XXXXXX")"
@@ -177,12 +192,36 @@ jobs:
               systemctl daemon-reload
               echo "Grade widget pilot setting applied."
             fi
+            if [[ "$cabinet" != keep ]]; then
+              cabinet_url=""
+              if [[ "$cabinet" == on ]]; then cabinet_url="https://hr.zephyrlab.ru/employee-cabinet"; fi
+              for service in hr-bot-web hr-bot-worker; do
+                cabinet_dir="/etc/systemd/system/$service.service.d"
+                cabinet_conf="$cabinet_dir/90-employee-cabinet-pilot.conf"
+                cabinet_backup="${backup_path}.${service}.cabinet.conf"
+                install -d -m 0755 "$cabinet_dir"
+                if [[ -f "$cabinet_conf" ]]; then cp -p -- "$cabinet_conf" "$cabinet_backup"; fi
+                config_backups["$cabinet_conf"]="$cabinet_backup"
+                cabinet_temp="$(mktemp "$cabinet_dir/.cabinet.XXXXXX")"
+                printf '[Service]\nEnvironment="EMPLOYEE_CABINET_URL=%s"\n' "$cabinet_url" > "$cabinet_temp"
+                chmod 0644 "$cabinet_temp"
+                mv -f -- "$cabinet_temp" "$cabinet_conf"
+              done
+              systemctl daemon-reload
+            fi
             restart_since="$(date --iso-8601=seconds)"
             systemctl restart hr-bot-web
             systemctl restart hr-bot-worker
             systemctl is-active --quiet hr-bot-web
             systemctl is-active --quiet hr-bot-worker
             systemctl is-active --quiet wg-quick@redshield
+            if [[ "$cabinet" != keep ]]; then
+              for service in hr-bot-web hr-bot-worker; do
+                pid="$(systemctl show "$service" --property=MainPID --value)"
+                grep -zFxq -- "EMPLOYEE_CABINET_URL=$cabinet_url" "/proc/$pid/environ"
+              done
+              echo "Employee cabinet pilot verified in web and worker environments."
+            fi
             if [[ "$pilot" != keep ]]; then
               worker_pid="$(systemctl show hr-bot-worker --property=MainPID --value)"
               if ! grep -zFxq -- "GRADE_WIDGET_REVIEWER_IDS=$pilot_value" "/proc/$worker_pid/environ"; then
@@ -276,6 +315,11 @@ jobs:
             }
             wait_http_status "/app/employees" "200 303"
             wait_http_status "/app/flows/workspace-v2" "200 303"
+            if [[ "$cabinet" == on ]]; then
+              wait_http_status "/employee-cabinet" "200"
+              wait_http_status "/employee-cabinet/profile" "403"
+              wait_http_status "/employee-cabinet/files/1" "403"
+            fi
             curl -4 -I --connect-timeout 10 https://api.telegram.org/
             journalctl -u hr-bot-worker --since "${restart_since}" --no-pager -n 100 | \
               grep -E "TelegramNetworkError|Request timeout|Traceback|Unclosed client session" && exit 1 || true
