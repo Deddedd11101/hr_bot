@@ -39,7 +39,7 @@ def recipient_ids(db, raw):
     return ids
 
 
-def create(db, employee_id, actor_id, data):
+def create(db, employee_id, actor_id, data, *, include_self=False, manager_id=None):
     from ..web import grades
     grades._lock_employee(db, employee_id)
     subject = require(db, Employee, employee_id)
@@ -59,18 +59,24 @@ def create(db, employee_id, actor_id, data):
         raise ValueError("Нужно не более 20 открытых вопросов, каждый от 1 до 2000 символов")
     questions = [q.strip() for q in questions]
     request_id = str(UUID(data["request_id"]))
-    digest = matrix_version(data)
+    digest = matrix_version({**data, "include_self": True} if include_self else data)
     previous = db.scalar(select(GradeReviewCollection).where(GradeReviewCollection.employee_id == employee_id, GradeReviewCollection.request_id == request_id))
     if previous:
         if previous.request_hash != digest:
             raise grades.GradeConflictError("Запрос уже использован с другими настройками")
         return previous
     ids = recipient_ids(db, data.get("recipient_ids"))
-    if employee_id in ids:
+    if include_self and not settings.GRADE_REVIEW_WEBAPP_URL:
+        raise ValueError("Для самооценки необходимо включить Mini App сбора оценок")
+    if (employee_id in ids) != include_self:
         raise ValueError("Выберите коллег; самооценку можно сохранить отдельным ревью")
     profile = db.scalar(select(EmployeeGradeProfile).where(EmployeeGradeProfile.employee_id == employee_id))
     view = grades.preview_review(db, employee_id, specialization_id, profile.current_grade_id if profile else None)
     view["open_questions"] = questions
+    if include_self:
+        view["self_assessment"] = True
+    if manager_id is not None:
+        view["review_360"] = {"manager_id": manager_id, "team_selected": False}
     if settings.GRADE_REVIEW_WEBAPP_URL:
         view["delivery"] = "mini_app"
     if not view["scores"]:
@@ -111,6 +117,29 @@ def create(db, employee_id, actor_id, data):
     return collection
 
 
+def select_review_team(db, employee_id, collection_id, raw):
+    from ..web.grades import _lock_employee
+
+    _lock_employee(db, employee_id)
+    collection = db.get(GradeReviewCollection, collection_id, populate_existing=True)
+    if not collection or collection.employee_id != employee_id:
+        raise LookupError("Сбор оценок не найден")
+    snapshot = json.loads(collection.snapshot_json)
+    review = snapshot.get("review_360")
+    if not review or review["team_selected"] or collection.status != "open":
+        raise ValueError("Выбор команды для этого сбора закрыт")
+    ids = recipient_ids(db, raw) if raw != [] else []
+    if {employee_id, review["manager_id"]}.intersection(ids):
+        raise ValueError("Сотрудник и руководитель уже участвуют в оценке")
+    for reviewer_id in ids:
+        db.add(EmployeeFeedbackRecipient(run_id=collection.feedback_run_id, respondent_employee_id=reviewer_id,
+                                         delivery_status="pending"))
+    review["team_selected"] = True
+    collection.snapshot_json = json.dumps(snapshot, ensure_ascii=False)
+    db.flush()
+    return report(db, collection)
+
+
 def report(db, collection):
     snapshot = json.loads(collection.snapshot_json)
     final_assessment = db.get(GradeAssessment, collection.assessment_id) if collection.assessment_id else None
@@ -127,16 +156,17 @@ def report(db, collection):
     reviewers = []
     totals = {s["skillId"]: [] for s in snapshot["scores"]}
     for recipient in recipients:
+        is_self = bool(snapshot.get("self_assessment")) and recipient.respondent_employee_id == collection.employee_id
         scores = []
         for source in snapshot["scores"]:
             value = latest.get((recipient.respondent_employee_id, f"skill_{source['skillId']}")) if recipient in completed else None
             level = int(value) if value in {"0", "1", "2", "3", "4"} else None
             scores.append(dict(source, assessed=level is not None, currentLevel=level or 0))
-            if recipient in completed and level is not None:
+            if recipient in completed and level is not None and not is_self:
                 totals[source["skillId"]].append(level)
         employee = db.get(Employee, recipient.respondent_employee_id)
         reviewers.append(dict(employee_id=recipient.respondent_employee_id, name=employee.full_name if employee else f"#{recipient.respondent_employee_id}",
-            status=recipient.delivery_status, scores=scores, categories=fractional_category_averages(scores),
+            status=recipient.delivery_status, is_self_assessment=is_self, scores=scores, categories=fractional_category_averages(scores),
             comments=[dict(question=question, answer=latest.get((recipient.respondent_employee_id, f"open_{index}")) if recipient in completed else None)
                       for index, question in enumerate(snapshot.get("open_questions", []))]))
     scores = [dict(s, assessed=bool(totals[s["skillId"]]), currentLevel=sum(totals[s["skillId"]]) / len(totals[s["skillId"]]) if totals[s["skillId"]] else 0,
@@ -145,7 +175,10 @@ def report(db, collection):
         current_grade_id=final_assessment.current_grade_id if final_assessment else profile.current_grade_id if profile else None,
         grades=grade_options, recommendation=matrix_coverage(snapshot["catalog"], snapshot["specialization_id"], scores),
         template=snapshot["catalog"]["specializations"], reviewers=reviewers, scores=scores, categories=fractional_category_averages(scores),
-        completed_count=len(completed), recipient_count=len(recipients), can_finalize=collection.status == "open" and len(completed) == len(recipients) and any(s["assessed"] for s in scores))
+        review_360=snapshot.get("review_360"),
+        completed_count=len(completed), recipient_count=len(recipients), can_finalize=collection.status == "open"
+        and snapshot.get("review_360", {}).get("team_selected", True)
+        and len(completed) == len(recipients) and any(s["assessed"] for s in scores))
 
 
 def list_reports(db, employee_id):
@@ -200,6 +233,8 @@ def finalize(db, employee_id, collection_id, actor_id, data=None):
         aggregation=dict(method="mean_per_skill", respondent_count=result["completed_count"], frozen_template=True))
     assessment.catalog_snapshot = json.dumps(snapshot, ensure_ascii=False, allow_nan=False)
     collection.assessment_id, collection.status = assessment.id, "final"
+    from .development_kickoff import schedule_followup
+    schedule_followup(db, collection, actor_id, now)
     from .development import renew_after_finalization
     renew_after_finalization(db, assessment)
     db.flush()
@@ -276,7 +311,9 @@ async def process_pending(bot, *, session_factory=None, run_id=None):
                     url = f"{settings.GRADE_REVIEW_WEBAPP_URL.rstrip('/')}/{collection.id}"
                     intro = snapshot.get("assessment_intro")
                     invitation = f"Оцени навыки коллеги: {html.escape(subject.full_name)}."
-                    if intro:
+                    if employee.id == subject.id and snapshot.get("self_assessment"):
+                        invitation = "Пройди самооценку навыков. Выбирай вариант, который лучше всего описывает твою работу."
+                    elif intro:
                         invitation += "\n\n" + review_intro(intro, len(json.loads(collection.snapshot_json)["open_questions"])).replace(
                             "{name}", html.escape(subject.full_name),
                         )

@@ -108,6 +108,29 @@ class GradeCollectionTests(unittest.TestCase):
             self.db.commit()
             self.assertEqual(client.put(path, headers=headers(2), json=update).status_code, 409)
 
+    def test_self_assessment_is_visible_but_excluded_from_average(self):
+        from app.models import SurveyAnswer
+
+        self.prepare()
+        set_primary_chat_id(self.db.get(Employee, 1), "700001001", db=self.db)
+        data = dict(request_id=str(uuid4()), specialization_id=self.spec["id"], recipient_ids=[1, 2])
+        with patch.object(collections.settings, "GRADE_REVIEW_WEBAPP_URL", "https://example.test/grade-review"):
+            with self.assertRaisesRegex(ValueError, "самооценку"):
+                collections.create(self.db, 1, 1, data)
+            row = collections.create(self.db, 1, 1, data, include_self=True)
+        for recipient in self.db.query(EmployeeFeedbackRecipient).filter_by(run_id=row.feedback_run_id):
+            recipient.delivery_status = "completed"
+            reviewer_id = recipient.respondent_employee_id
+            self.db.add(SurveyAnswer(employee_id=reviewer_id, scenario_key=row.scenario_key,
+                feedback_run_id=row.feedback_run_id, step_key=f"skill_{self.skill['id']}",
+                answer_value="4" if reviewer_id == 1 else "2", answered_at=utc_now()))
+        self.db.flush()
+        result = collections.report(self.db, row)
+        self.assertTrue(result["reviewers"][0]["is_self_assessment"])
+        self.assertEqual(result["reviewers"][0]["scores"][0]["currentLevel"], 4)
+        self.assertEqual(result["scores"][0]["currentLevel"], 2)
+        self.assertEqual(result["scores"][0]["respondent_count"], 1)
+
     def test_review_retry_ignores_old_confirmation_and_only_final_attempt_counts(self):
         self.prepare()
         row = self.create()
@@ -448,14 +471,14 @@ class GradeCollectionTests(unittest.TestCase):
         self.db.commit()
         from app.grades.development import payload
         configured = development_actions.configure(self.db, 1, 1, dict(expected_revision=0, assessment_id=first["id"], anchor_date="2026-11-03", enabled=True,
-            actions=dict(ipr6=[dict(key=str(uuid4()), type="review", specialization_id=self.spec["id"], recipient_ids=[2, 3]), dict(key=str(uuid4()), type="review", specialization_id=self.spec["id"], recipient_ids=[2])], ipr12=[], review12=[])))
+            actions=dict(ipr6=[], ipr12=[dict(key=str(uuid4()), type="review", specialization_id=self.spec["id"], recipient_ids=[2, 3]), dict(key=str(uuid4()), type="review", specialization_id=self.spec["id"], recipient_ids=[2])], review12=[])))
         self.db.commit()
-        self.assertEqual(len(configured["milestones"][0]["actions"]), 2)
+        self.assertEqual(len(next(m for m in configured["milestones"] if m["kind"] == "ipr12")["actions"]), 2)
         self.assertEqual(len(list(self.db.scalars(select(GradeDevelopmentAction)))), 4)
         self.assertTrue(payload(self.db, 1)["enabled"])
         from app.grades import development
-        stage = self.db.scalar(select(development.Milestone).where(development.Milestone.kind == "ipr6"))
-        with patch.object(development, "local_now", return_value=datetime(2027, 5, 4)), patch.object(development, "SessionLocal", self.sessions):
+        stage = self.db.scalar(select(development.Milestone).where(development.Milestone.kind == "ipr12"))
+        with patch.object(development, "local_now", return_value=datetime(2027, 11, 4)), patch.object(development, "SessionLocal", self.sessions):
             asyncio.run(development._process_one(FakeMessenger(), stage.id))
         self.db.expire_all()
         self.assertEqual(len(collections.list_reports(self.db, 1)), 2)
@@ -463,7 +486,87 @@ class GradeCollectionTests(unittest.TestCase):
         self.db.commit()
         renewed = payload(self.db, 1)
         self.assertEqual(renewed["assessment_id"], next_review["id"])
-        self.assertEqual(len(renewed["milestones"][0]["actions"]), 2)
+        self.assertEqual(len(next(m for m in renewed["milestones"] if m["kind"] == "ipr12")["actions"]), 2)
+
+    def test_new_midyear_review_is_rejected(self):
+        self.prepare()
+        choice = dict(key=str(uuid4()), type="review", specialization_id=self.spec["id"], recipient_ids=[2])
+        with self.assertRaisesRegex(ValueError, "6 месяцев"):
+            development_actions.validate(self.db, self.db.get(Employee, 1), dict(ipr6=[choice], ipr12=[], review12=[]))
+
+    def test_annual_360_launch_is_idempotent_and_hr_selects_team(self):
+        from app.grades import development
+        from app.models import AdminAccount
+
+        self.prepare()
+        employee = self.db.get(Employee, 1)
+        employee.manager_employee_id = 2
+        set_primary_chat_id(employee, "700001001", db=self.db)
+        first = grades.save_review(self.db, 1, 1, self.review_request())
+        if not self.db.get(AdminAccount, 1):
+            self.db.add(AdminAccount(id=1, login="test-hr", password_hash="unused", role="hr", is_active=True,
+                                     created_at=utc_now(), updated_at=utc_now()))
+        self.db.commit()
+        choice = dict(key=str(uuid4()), type="review360", specialization_id=self.spec["id"])
+        development_actions.configure(self.db, 1, 1, dict(expected_revision=0, assessment_id=first["id"],
+            anchor_date="2026-11-03", enabled=True, actions=dict(ipr6=[], ipr12=[], review12=[choice])))
+        self.db.commit()
+        stage = self.db.scalar(select(development.Milestone).where(development.Milestone.kind == "review12"))
+        with patch.object(collections.settings, "GRADE_REVIEW_WEBAPP_URL", "https://example.test/grade-review"), \
+                patch.object(development, "local_now", return_value=datetime(2027, 11, 4)), \
+                patch.object(development, "SessionLocal", self.sessions):
+            asyncio.run(development._process_one(FakeMessenger(), stage.id))
+            asyncio.run(development._process_one(FakeMessenger(), stage.id))
+        self.db.expire_all()
+        run, = collections.list_reports(self.db, 1)
+        self.assertEqual([r["employee_id"] for r in run["reviewers"]], [1, 2])
+        self.assertFalse(run["can_finalize"])
+        with self.assertRaises(ValueError):
+            collections.select_review_team(self.db, 1, run["id"], [2])
+        result = collections.select_review_team(self.db, 1, run["id"], [3])
+        self.assertTrue(result["review_360"]["team_selected"])
+        self.assertEqual([r["employee_id"] for r in result["reviewers"]], [1, 2, 3])
+
+    def test_kickoff_launches_once_and_followup_uses_moscow_wall_time(self):
+        from datetime import date
+        from app.grades import development_kickoff as kickoff
+        from app.models import AdminAccount, FlowLaunchRequest
+
+        self.prepare()
+        employee = self.db.get(Employee, 1)
+        employee.manager_employee_id = 2
+        set_primary_chat_id(employee, "700001001", db=self.db)
+        if not self.db.get(AdminAccount, 1):
+            self.db.add(AdminAccount(id=1, login="test-hr", password_hash="unused", role="hr", is_active=True,
+                                     created_at=utc_now(), updated_at=utc_now()))
+        employee.adaptation_end = date(2027, 1, 8)
+        for key in ("organize", "intro", "plan"):
+            self.db.add(ScenarioTemplate(scenario_key=key, scenario_kind="scenario", title=key, role_scope="all", employee_scope="employees"))
+            self.db.add(FlowStepTemplate(flow_key=key, step_key="first", step_title="First", default_text="First", response_type="none"))
+        self.db.commit()
+        with patch.object(kickoff, "proposal", return_value=datetime(2027, 1, 11, 10)), \
+                patch.object(kickoff.CalendarDates, "shift", side_effect=lambda day, offset, unit: day + kickoff.timedelta(days=offset)), \
+                patch.object(kickoff.dev, "local_now", return_value=datetime(2027, 1, 10)), \
+                patch.object(collections.settings, "GRADE_REVIEW_WEBAPP_URL", "https://example.test/grade-review"):
+            config = dict(due_at="2027-01-11T10:00", specialization_id=self.spec["id"], scenario_key="organize",
+                          intro_scenario_key="intro", plan_scenario_key="plan")
+            kickoff.configure(self.db, 1, 1, config)
+            kickoff.configure(self.db, 1, 1, config)
+            scheduled = {r.flow_key: r.requested_at for r in self.db.scalars(select(FlowLaunchRequest))}
+            self.assertEqual(scheduled, {"intro": datetime(2027, 1, 22, 10), "plan": datetime(2027, 1, 27, 10)})
+            self.assertEqual(self.db.query(FlowLaunchRequest).count(), 2)
+            with patch.object(kickoff.dev, "local_now", return_value=datetime(2027, 1, 11, 10)):
+                kickoff.launch(self.db, 1)
+                kickoff.launch(self.db, 1)
+        run, = collections.list_reports(self.db, 1)
+        self.assertEqual([r["employee_id"] for r in run["reviewers"]], [1, 2])
+        collection = self.db.get(collections.GradeReviewCollection, run["id"])
+        with patch.object(kickoff.CalendarDates, "shift", return_value=date(2027, 1, 18)) as shift:
+            kickoff.schedule_followup(self.db, collection, 1, datetime(2027, 1, 11, 7))
+            kickoff.schedule_followup(self.db, collection, 1, datetime(2027, 1, 11, 7))
+        shift.assert_called_once_with(date(2027, 1, 18), 0, "calendar")
+        request, = self.db.scalars(select(FlowLaunchRequest).where(FlowLaunchRequest.flow_key == "organize"))
+        self.assertEqual(request.requested_at, datetime(2027, 1, 18, 10))
 
     def test_uncertain_delivery_reserves_respondent_across_collections(self):
         self.prepare()
@@ -490,14 +593,14 @@ class GradeCollectionTests(unittest.TestCase):
             self.db.add(ScenarioTemplate(scenario_key=key, scenario_kind=kind, title=key, trigger_mode="manual_only", role_scope="all", employee_scope="employees", recipient_mode="self"))
             self.db.add(FlowStepTemplate(flow_key=key, step_key="q", step_title="Question", default_text="Question", response_type="text" if kind == "survey" else "none", target_field="survey_answer" if kind == "survey" else None, send_mode="immediate", is_terminal=True))
         self.db.commit()
-        actions = dict(ipr6=[dict(key=str(uuid4()), type="scenario", scenario_key="plain"), dict(key=str(uuid4()), type="feedback", scenario_key="feedback", recipient_ids=[2]), dict(key=str(uuid4()), type="review", specialization_id=self.spec["id"], recipient_ids=[3])], ipr12=[], review12=[])
+        actions = dict(ipr6=[], ipr12=[dict(key=str(uuid4()), type="scenario", scenario_key="plain"), dict(key=str(uuid4()), type="feedback", scenario_key="feedback", recipient_ids=[2]), dict(key=str(uuid4()), type="review", specialization_id=self.spec["id"], recipient_ids=[3])], review12=[])
         development_actions.configure(self.db, 1, 1, dict(expected_revision=0, assessment_id=first["id"], anchor_date="2026-11-03", enabled=True, actions=actions))
         self.db.commit()
         from app.grades import development
         self.assertTrue(development.owns_scenario(self.db, 1, "plain"))
-        stage = self.db.scalar(select(development.Milestone).where(development.Milestone.kind == "ipr6"))
+        stage = self.db.scalar(select(development.Milestone).where(development.Milestone.kind == "ipr12"))
         messenger = FakeMessenger()
-        with patch.object(development, "local_now", return_value=datetime(2027, 5, 4)), patch.object(development, "SessionLocal", self.sessions):
+        with patch.object(development, "local_now", return_value=datetime(2027, 11, 4)), patch.object(development, "SessionLocal", self.sessions):
             asyncio.run(development._process_one(messenger, stage.id))
             asyncio.run(collections.process_pending(messenger, session_factory=self.sessions))
             calls = len(messenger.texts)

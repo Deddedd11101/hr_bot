@@ -24,7 +24,7 @@ def _action_due(config, fallback):
     return datetime.fromisoformat(config["due_at"]) if config.get("due_at") else fallback
 
 
-def validate(db, employee, data):
+def validate(db, employee, data, *, existing_midyear_reviews=()):
     if not isinstance(data, dict) or set(data) != set(dev.KINDS):
         raise ValueError("Нужны списки действий для всех трёх этапов")
     clean = {}
@@ -40,8 +40,14 @@ def validate(db, employee, data):
                 raise ValueError("Действие повторяется")
             keys.add(key)
             action_type = choice.get("type")
-            if action_type not in {"scenario", "feedback", "review"}:
+            if kind == "ipr6" and action_type == "review" and key not in existing_midyear_reviews:
+                raise ValueError("На этапе через 6 месяцев оценка 360 не планируется")
+            if action_type not in {"scenario", "feedback", "review", "review360"}:
                 raise ValueError("Выберите сценарий, сбор ОС или сбор оценок")
+            if action_type == "review360" and (kind != "review12" or "recipient_ids" in choice):
+                raise ValueError("Оценка 360 планируется на годовом ревью; команду выбирает HR после запуска")
+            if action_type == "review360" and any(row["type"] == "review360" for row in rows):
+                raise ValueError("На годовом ревью можно запланировать только одну оценку 360")
             settings, scenario_key = {}, choice.get("scenario_key")
             if choice.get("due_at") is not None:
                 try:
@@ -57,7 +63,7 @@ def validate(db, employee, data):
                 settings["recipient_ids"] = recipient_ids(db, choice.get("recipient_ids"))
                 if employee.id in settings["recipient_ids"]:
                     raise ValueError("Выберите коллег, а не оцениваемого сотрудника")
-            if action_type == "review":
+            if action_type in {"review", "review360"}:
                 from ..web.grades import preview_review
                 view = preview_review(db, employee.id, choice.get("specialization_id"), None)
                 if not view["scores"]:
@@ -89,7 +95,11 @@ def configure(db, employee_id, actor_id, data):
     employee = db.get(Employee, employee_id)
     if not employee:
         raise LookupError("Сотрудник не найден")
-    clean = validate(db, employee, data.get("actions"))
+    existing_midyear_reviews = set(db.scalars(select(Action.action_key).join(Milestone, Milestone.id == Action.milestone_id).where(
+        Milestone.employee_id == employee_id, Milestone.assessment_id == data.get("assessment_id"),
+        Milestone.kind == "ipr6", Action.action_type == "review",
+    )))
+    clean = validate(db, employee, data.get("actions"), existing_midyear_reviews=existing_midyear_reviews)
     base = {k: v for k, v in data.items() if k != "actions"}
     enabled = base.get("enabled")
     if type(enabled) is not bool:
@@ -212,13 +222,23 @@ async def process_actions(db, bot, employee, item, cycle):
                     continue
                 row.status = "started" if await start_scenario(bot, db, employee, row.scenario_key, defer_if_busy=True) else "failed"
                 row.last_error = None if row.status == "started" else "Не удалось запустить сценарий"
-            elif row.action_type == "review":
+            elif row.action_type in {"review", "review360"}:
                 actor = db.get(AdminAccount, config["actor_id"])
                 if not actor or not actor.is_active:
                     raise ValueError("Автор настройки недоступен")
                 from .collections import create
+                automatic = row.action_type == "review360"
+                manager_id = employee.manager_employee_id if automatic else None
+                if automatic:
+                    if not manager_id or manager_id == employee.id:
+                        raise ValueError("Для оценки 360 назначьте руководителя в карточке сотрудника")
+                    try:
+                        recipient_ids(db, [manager_id])
+                    except (ValueError, LookupError):
+                        raise ValueError("Руководитель недоступен или не привязан к боту") from None
                 collection = create(db, employee.id, actor.id, dict(request_id=str(uuid5(NAMESPACE_URL, f"review:{item.id}:{row.action_key}")),
-                    specialization_id=config["specialization_id"], recipient_ids=config["recipient_ids"]))
+                    specialization_id=config["specialization_id"], recipient_ids=[employee.id, manager_id] if automatic else config["recipient_ids"]),
+                    include_self=automatic, manager_id=manager_id)
                 row.result_id, row.status, row.last_error = collection.id, "started", None
             elif row.action_type == "feedback":
                 if not scenario or scenario.scenario_kind != "survey" or scenario.recipient_mode != "self":

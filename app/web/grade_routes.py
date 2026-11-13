@@ -103,6 +103,12 @@ def configure_grade_actions(employee_id: int, request: Request, payload: dict = 
     return configure(db, employee_id, require_api_auth(request).id, payload)
 
 
+@router.put("/api/employees/{employee_id}/grade/development/kickoff")
+def configure_grade_kickoff(employee_id: int, request: Request, payload: dict = Body(...), db: Session = Depends(get_write_db)):
+    from ..grades.development_kickoff import configure
+    return configure(db, employee_id, require_api_auth(request).id, payload)
+
+
 @router.get("/api/employees/{employee_id}/grade/collections")
 def grade_collections(employee_id: int, db: Session = Depends(get_db)):
     from ..grades.collections import list_reports
@@ -119,6 +125,13 @@ def create_grade_collection(employee_id: int, request: Request, payload: dict = 
 def finalize_grade_collection(employee_id: int, collection_id: int, request: Request, payload: dict | None = Body(default=None), db: Session = Depends(get_write_db)):
     from ..grades.collections import finalize
     return finalize(db, employee_id, collection_id, require_api_auth(request).id, payload)
+
+
+@router.post("/api/employees/{employee_id}/grade/collections/{collection_id}/team")
+def select_grade_review_team(employee_id: int, collection_id: int, request: Request, payload: dict = Body(...), db: Session = Depends(get_write_db)):
+    from ..grades.collections import select_review_team
+    require_api_auth(request)
+    return select_review_team(db, employee_id, collection_id, payload.get("recipient_ids"))
 
 
 def register_catalog_routes(kind: str):

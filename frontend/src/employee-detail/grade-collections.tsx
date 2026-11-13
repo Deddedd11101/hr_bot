@@ -107,6 +107,7 @@ type Collection = {
   scores: Score[];
   categories: Assessment["categories"];
   reviewers: ColleagueReview[];
+  review_360?: {manager_id: number; team_selected: boolean} | null;
 };
 const statuses: Record<string, string> = {
   pending: "В очереди",
@@ -139,6 +140,7 @@ export function GradeCollections({
     [requestId, setRequestId] = useState(() => crypto.randomUUID());
   const [selected, setSelected] = useState<Record<number, string>>({});
   const [questions, setQuestions] = useState("");
+  const [team, setTeam] = useState<Record<number, number[]>>({});
   function selectTemplate(value: string) {
     const key = value === "none" ? "" : value;
     setSpec(key);
@@ -287,10 +289,25 @@ export function GradeCollections({
         return (
           <details key={run.id} className="border-b pb-4">
             <summary className="cursor-pointer text-sm">
-              {dateLabel(run.created_at)} · {run.completed_count} из{" "}
+              {run.review_360 ? "Оценка 360 · " : ""}{dateLabel(run.created_at)} · {run.completed_count} из{" "}
               {run.recipient_count} ответили
               {run.status === "final" ? " · Итог зафиксирован" : " · Сбор идёт"}
             </summary>
+            {run.review_360 && !run.review_360.team_selected && run.status === "open" && <div className="mt-3 space-y-2">
+              <ReviewerPicker items={people.filter(p => p.id !== employeeId && p.id !== run.review_360?.manager_id)}
+                value={team[run.id] ?? []} onChange={ids => setTeam(old => ({...old, [run.id]: ids}))} disabled={action.busy} />
+              <Button type="button" disabled={action.busy || !(team[run.id]?.length)} onClick={() => void action.run(async () => {
+                await request(`${endpoint}/${run.id}/team`, "POST", {recipient_ids: team[run.id]});
+                await load();
+              }, "Команда добавлена")}>Пригласить команду</Button>
+              <Button type="button" variant="outline" disabled={action.busy} onClick={() => {
+                if (!window.confirm("Продолжить без оценки команды?")) return;
+                void action.run(async () => {
+                  await request(`${endpoint}/${run.id}/team`, "POST", {recipient_ids: []});
+                  await load();
+                }, "Оценка команды пропущена");
+              }}>Без команды</Button>
+            </div>}
             <div className="mt-5 grid min-w-0 gap-6 lg:grid-cols-[minmax(200px,260px)_minmax(0,1fr)]">
               <nav
                 aria-label={`Оценки сбора №${run.id}`}
@@ -326,7 +343,7 @@ export function GradeCollections({
                         }
                       >
                         <span className="min-w-0 break-words">
-                          {r.name}
+                          {r.name}{r.is_self_assessment ? " · Самооценка" : r.employee_id === run.review_360?.manager_id ? " · Руководитель" : ""}
                           <span className="block text-xs text-muted-foreground">
                             {statuses[r.status] || r.status}
                           </span>

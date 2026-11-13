@@ -15,7 +15,7 @@ export type EntityKind = "grades" | "specializations" | "categories" | "skills";
 export type Profile = { specialization_id: number | null; current_grade_id: number | null; target_grade_id: number | null; target_specialization_id: number | null };
 export type SkillRubric = {levels: Record<string, string>; na: string};
 export type Score = { skillId: number; skillName: string; categoryId: number; categoryName: string; importance: number; currentLevel: number; targetLevel: number; assessed?: boolean; rubric?: SkillRubric | null };
-export type ColleagueReview = {employee_id: number; name: string; status: string; scores: Score[]; categories: Assessment["categories"]; comments?: {question: string; answer: string | null}[]};
+export type ColleagueReview = {employee_id: number; name: string; status: string; is_self_assessment?: boolean; scores: Score[]; categories: Assessment["categories"]; comments?: {question: string; answer: string | null}[]};
 export type Assessment = Profile & {
   id: number; employee_id: number; status: "draft" | "final" | "archived"; created_at: string; finalized_at: string | null;
   catalog: Catalog;

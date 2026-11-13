@@ -96,6 +96,15 @@ current_grade_id и recommendation: method, grade_id/name либо null, levels 
 coverage_percent, fully_met, missing_requirements, unassessed, unmet.
 Это auth-protected HR-данные, не публичный endpoint.
 
+`PUT /api/employees/{employee_id}/grade/development/kickoff` сохраняет явный
+разовый старт: `due_at` (МСК), `specialization_id`, `scenario_key` для
+организации ИПР, `intro_scenario_key` и `plan_scenario_key`.
+Запущенный старт повторно не настраивается. GET development возвращает `kickoff`.
+
+`POST /api/employees/{employee_id}/grade/collections/{collection_id}/team`
+принимает `recipient_ids` для открытого сбора 360. Пустой массив явно
+пропускает оценку команды. Решение принимается один раз.
+
 `POST /api/employees/{employee_id}/grade/collections/{collection_id}/finalize`
 поддерживает optional JSON {current_grade_id: id|null, comment: string<=4000,
 expected_current_grade_id: id|null}. UI передаёт expected grade; изменение профиля
