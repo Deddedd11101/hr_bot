@@ -103,6 +103,12 @@ def configure_grade_actions(employee_id: int, request: Request, payload: dict = 
     return configure(db, employee_id, require_api_auth(request).id, payload)
 
 
+@router.put("/api/employees/{employee_id}/grade/development/kickoff")
+def configure_grade_kickoff(employee_id: int, request: Request, payload: dict = Body(...), db: Session = Depends(get_write_db)):
+    from ..grades.development_kickoff import configure
+    return configure(db, employee_id, require_api_auth(request).id, payload)
+
+
 @router.get("/api/employees/{employee_id}/grade/collections")
 def grade_collections(employee_id: int, db: Session = Depends(get_db)):
     from ..grades.collections import list_reports

@@ -17,7 +17,8 @@ type StageAction = {key: string; type: "scenario" | "feedback" | "review" | "rev
 type Milestone = {id: number; kind: Kind; due_at: string; status: string; last_error: string | null; actions: StageAction[]};
 type Delivery = {id: number; milestone_id: number; role: string; status: string; last_error: string | null};
 type Template = {key: string; title: string; selectable?: boolean; pulse?: boolean};
-type Development = {revision: number; assessment_id: number | null; anchor_date: string | null; enabled: boolean; milestones: Milestone[]; scenarios: Template[]; surveys: Template[]; needs_anchor: boolean; history: Milestone[]; deliveries: Delivery[]; ipr6_scenario_key: string | null; ipr12_scenario_key: string | null; review12_scenario_key: string | null};
+type Kickoff = {suggested_at?: string | null; due_at?: string; specialization_id?: number; scenario_key?: string; collection_id?: number; finalized?: boolean; last_error?: string | null; followup_at?: string; followup_processed?: boolean};
+type Development = {kickoff?: Kickoff; revision: number; assessment_id: number | null; anchor_date: string | null; enabled: boolean; milestones: Milestone[]; scenarios: Template[]; surveys: Template[]; needs_anchor: boolean; history: Milestone[]; deliveries: Delivery[]; ipr6_scenario_key: string | null; ipr12_scenario_key: string | null; review12_scenario_key: string | null};
 const titles: Record<Kind, string> = {ipr6: "Проверка ИПР · 6 месяцев", ipr12: "Проверка ИПР · 12 месяцев", review12: "Новая оценка · 12 месяцев"};
 const statuses: Record<string, string> = {planned: "Запланировано", blocked: "Ожидает запуска", starting: "Проверить доставку", started: "Запущено", failed: "Ошибка", cancelled: "Отменено"};
 const types = [{value: "scenario", label: "Сценарий сотруднику"}, {value: "feedback", label: "Сбор обратной связи"}, {value: "review", label: "Сбор оценок навыков"}, {value: "review360", label: "Оценка 360 · сотрудник и руководитель"}];
@@ -26,6 +27,7 @@ function labelDate(v: string) {return new Intl.DateTimeFormat("ru-RU", {day: "nu
 const recurring = ["Пульс-опрос", "Сбор обратной связи от команды"];
 
 function roadmap(data: Development) {
+  const kickoff = data.kickoff;
   const rows = (kind: Kind) => {
     const m = data.milestones.find(item => item.kind === kind);
     if (!m) return [];
@@ -42,7 +44,12 @@ function roadmap(data: Development) {
   return [
     {title: "Старт развития", timing: "Один раз после адаптации", expected: [
       "Оценка 360", "Организация ИПР", "Знакомство с процессом развития", "Знакомство с планом ИПР",
-    ], scheduled: [], emptyLabel: "Разовый старт пока не планируется из этой вкладки."},
+    ], scheduled: kickoff?.due_at ? [
+      {key: "kickoff", title: "Оценка 360 · сотрудник и руководитель", date: labelDate(kickoff.due_at),
+        status: kickoff.last_error ? "Ошибка" : kickoff.finalized ? "Итог зафиксирован" : kickoff.collection_id ? "Сбор идёт" : "Запланировано", error: kickoff.last_error},
+      {key: "organization", title: "Организация ИПР", date: kickoff.followup_at ? labelDate(kickoff.followup_at) : undefined,
+        status: kickoff.followup_processed ? "Запрос обработан" : kickoff.followup_at ? "Запланировано" : "После фиксации 360"},
+    ] : []},
     {title: "Промежуточная встреча", timing: "Через 6 месяцев", expected: [
       ...recurring, "Рассмотрение результатов ИПР", "Изменение ИПР",
     ], scheduled: rows("ipr6")},
@@ -57,6 +64,7 @@ export function GradeDevelopment({employeeId, visible = true}: {employeeId: numb
   const [actions, setActions] = useState<Record<Kind, StageAction[]>>({ipr6: [], ipr12: [], review12: []}), [dates, setDates] = useState<Record<string, string>>({});
   const [people, setPeople] = useState<Reviewer[]>([]), [specs, setSpecs] = useState<CatalogItem[]>([]), [error, setError] = useState("");
   const action = useAction(); useUnsaved(form);
+  const [kickoffForm, setKickoffForm] = useState<Kickoff | null>(null);
   async function load(signal?: AbortSignal) {try {const [c, f, g] = await Promise.all([request<Development>(endpoint, "GET", undefined, signal), request<{recipients: Reviewer[]}>(`/api/employees/${employeeId}/feedback-surveys`, "GET", undefined, signal), request<{specializations: CatalogItem[]}>(`/api/employees/${employeeId}/grade`, "GET", undefined, signal)]); if (!signal?.aborted) {setData(c); setPeople(f.recipients); setSpecs(g.specializations); setError("");}} catch(e) {if (!signal?.aborted) setError(errorMessage(e));}}
   useEffect(() => {if (!visible) return; const c = new AbortController(); void load(c.signal); const timer = window.setInterval(() => {if (!document.hidden && !form) void load(c.signal);}, 60000); return () => {c.abort(); window.clearInterval(timer);};}, [endpoint, form, visible]);
   function edit() {if (!data) return; setAnchor(data.anchor_date || ""); setEnabled(data.enabled); setDates({}); setActions(Object.fromEntries(kinds.map(k => {const saved = data.milestones.find(m => m.kind === k)?.actions || [], legacy = data[`${k}_scenario_key`]; return [k, saved.length ? saved.filter(a => a.type !== "reminder") : legacy ? [{key: crypto.randomUUID(), type: "scenario", scenario_key: legacy}] : []];})) as Record<Kind, StageAction[]>); setForm(true);}
@@ -82,6 +90,24 @@ export function GradeDevelopment({employeeId, visible = true}: {employeeId: numb
   return <section className="space-y-4 border-t pt-5" aria-label="Цикл развития"><header className="flex flex-wrap items-center justify-between gap-3"><h3 className="font-medium">Цикл развития</h3>{data && !form && <Button variant="outline" size="sm" onClick={edit}>{data.revision ? "Настроить" : "Запланировать цикл"}</Button>}</header><Feedback error={error || action.error} message={action.message} />
     {!data && !error && <p role="status">Загрузка цикла…</p>}
     {data && <GradeDevelopmentRoadmap phases={roadmap(data)} />}
+    {data && !form && !kickoffForm && !data.kickoff?.collection_id && <Button variant="outline" size="sm" onClick={() => setKickoffForm({
+      ...data.kickoff, due_at: data.kickoff?.due_at ?? data.kickoff?.suggested_at ?? "",
+    })}>{data.kickoff?.due_at ? "Изменить разовый старт" : "Запланировать старт после адаптации"}</Button>}
+    {data && kickoffForm && <form className="max-w-lg space-y-3 border-t pt-4" onSubmit={event => {
+      event.preventDefault();
+      void action.run(async () => {
+        await request(`${endpoint}/kickoff`, "PUT", {
+          due_at: kickoffForm.due_at, specialization_id: kickoffForm.specialization_id, scenario_key: kickoffForm.scenario_key,
+        });
+        setKickoffForm(null);
+        await load();
+      }, "Разовый старт запланирован");
+    }}>
+      <label className="block text-sm">Дата 360 · МСК<Input type="datetime-local" value={kickoffForm.due_at?.slice(0, 16) || ""} onChange={e => setKickoffForm({...kickoffForm, due_at: e.target.value})} required /></label>
+      <Choice label="Шаблон оценки" value={String(kickoffForm.specialization_id || "none")} options={[{value: "none", label: "Выберите"}, ...specs.filter(s => s.active).map(s => ({value: String(s.id), label: s.name}))]} onChange={v => setKickoffForm({...kickoffForm, specialization_id: Number(v) || undefined})} />
+      <Choice label="Сценарий организации ИПР" value={kickoffForm.scenario_key || "none"} options={[{value: "none", label: "Выберите"}, ...data.scenarios.filter(s => s.selectable !== false && !s.pulse).map(s => ({value: s.key, label: s.title}))]} onChange={v => setKickoffForm({...kickoffForm, scenario_key: v === "none" ? undefined : v})} />
+      <div className="flex gap-2"><Button type="submit" disabled={action.busy || !kickoffForm.due_at || !kickoffForm.specialization_id || !kickoffForm.scenario_key}>Запланировать</Button><Button type="button" variant="ghost" onClick={() => setKickoffForm(null)}>Отмена</Button></div>
+    </form>}
     {data && !form && <><p className="text-sm text-muted-foreground">{data.revision ? data.enabled ? "Напоминания и автозапуск включены" : "Цикл на паузе" : "Цикл не настроен"}</p>{data.enabled && upcoming && <p className="text-sm">Следующий этап: {labelDate(upcoming.due_at)} МСК · осталось {Math.max(0, Math.ceil((new Date(`${upcoming.due_at}+03:00`).getTime() - Date.now()) / 86400000))} дн.</p>}{!!data.history.length && <details><summary className="cursor-pointer text-sm text-muted-foreground">Прошлые циклы</summary>{data.history.map(m => <p key={m.id} className="py-2 text-sm">{titles[m.kind]} · {labelDate(m.due_at)} · {statuses[m.status] || m.status}</p>)}</details>}</>}
     {form && data && <form className="space-y-5" onSubmit={e => {e.preventDefault(); void action.run(async () => {setData(await request<Development>(`${endpoint}/actions`, "PUT", {assessment_id: data.assessment_id, expected_revision: data.revision, anchor_date: anchor, enabled, due_dates: dates, actions: Object.fromEntries(kinds.map(k => [k, actions[k].map(a => ({key: a.key, type: a.type, scenario_key: a.scenario_key, ...(a.due_at ? {due_at: a.due_at} : {}), ...((a.type === "feedback" || a.type === "review") ? {recipient_ids: a.recipient_ids} : {}), ...((a.type === "review" || a.type === "review360") ? {specialization_id: a.specialization_id} : {})}))]))})); setForm(false);}, "План цикла сохранён");}}>
       <label className="block max-w-sm space-y-1 text-sm">Дата исходной оценки<DatePicker value={anchor} onValueChange={v => {setAnchor(v || ""); setDates({});}} disabled={action.busy} /></label>{!data.assessment_id && <p className="text-sm text-muted-foreground">Сначала сохраните исходную оценку навыков.</p>}

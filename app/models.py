@@ -222,6 +222,18 @@ class GradeDevelopmentAction(Base):
     result_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 
 
+class GradeDevelopmentKickoff(Base):
+    __tablename__ = "grade_development_kickoffs"
+    employee_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    due_at: Mapped[datetime] = mapped_column(DateTime, index=True)
+    specialization_id: Mapped[int] = mapped_column(Integer)
+    scenario_key: Mapped[str] = mapped_column(String(64))
+    actor_id: Mapped[int] = mapped_column(Integer)
+    collection_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    followup_request_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    last_error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+
 class GradeReviewCollection(Base):
     __tablename__ = "grade_review_collections"
     __table_args__ = (UniqueConstraint("employee_id", "request_id"),)

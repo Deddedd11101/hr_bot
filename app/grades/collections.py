@@ -233,6 +233,8 @@ def finalize(db, employee_id, collection_id, actor_id, data=None):
         aggregation=dict(method="mean_per_skill", respondent_count=result["completed_count"], frozen_template=True))
     assessment.catalog_snapshot = json.dumps(snapshot, ensure_ascii=False, allow_nan=False)
     collection.assessment_id, collection.status = assessment.id, "final"
+    from .development_kickoff import schedule_followup
+    schedule_followup(db, collection, actor_id, now)
     from .development import renew_after_finalization
     renew_after_finalization(db, assessment)
     db.flush()

@@ -172,7 +172,9 @@ def _milestone_payload(item):
 
 def payload(db, employee_id):
     from .development_actions import action_payload
-    if not db.get(Employee, employee_id):
+    from .development_kickoff import payload as kickoff_payload
+    employee = db.get(Employee, employee_id)
+    if not employee:
         raise LookupError("Сотрудник не найден")
     cycle = db.scalar(select(Cycle).where(Cycle.employee_id == employee_id))
     latest = _latest(db, employee_id)
@@ -189,7 +191,7 @@ def payload(db, employee_id):
                 FlowLaunchRequest.processed_at.is_(None), FlowLaunchRequest.launch_type != "adaptation_plan").limit(1)):
             result["last_error"] = None
         return result
-    return dict(revision=cycle.revision if cycle else 0,
+    return dict(kickoff=kickoff_payload(db, employee), revision=cycle.revision if cycle else 0,
         assessment_id=cycle.assessment_id if cycle else (latest.id if latest else None),
         latest_final_assessment_id=latest.id if latest else None,
         anchor_date=cycle.anchor_date.isoformat() if cycle else (_assessment_anchor(latest).isoformat() if latest and not _unknown_date(latest) else None),
@@ -399,6 +401,8 @@ async def _deliver_reminders(db, bot, item):
 async def process_due(bot):
     """Called inside scheduler serialization. DB claims additionally guard other workers."""
     from .collections import process_pending
+    from .development_kickoff import process_due as process_kickoffs
+    process_kickoffs(SessionLocal)
     await process_pending(bot, session_factory=SessionLocal)
     with SessionLocal() as db:
         ids = list(db.scalars(select(Milestone.id).join(Cycle, Cycle.employee_id == Milestone.employee_id).where(

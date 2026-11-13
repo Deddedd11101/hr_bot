@@ -527,6 +527,38 @@ class GradeCollectionTests(unittest.TestCase):
         self.assertTrue(result["review_360"]["team_selected"])
         self.assertEqual([r["employee_id"] for r in result["reviewers"]], [1, 2, 3])
 
+    def test_kickoff_launches_once_and_followup_uses_moscow_wall_time(self):
+        from datetime import date
+        from app.grades import development_kickoff as kickoff
+        from app.models import AdminAccount, FlowLaunchRequest
+
+        self.prepare()
+        employee = self.db.get(Employee, 1)
+        employee.manager_employee_id = 2
+        set_primary_chat_id(employee, "700001001", db=self.db)
+        if not self.db.get(AdminAccount, 1):
+            self.db.add(AdminAccount(id=1, login="test-hr", password_hash="unused", role="hr", is_active=True,
+                                     created_at=utc_now(), updated_at=utc_now()))
+        self.db.add(ScenarioTemplate(scenario_key="organize", scenario_kind="scenario", title="Organize", role_scope="all", employee_scope="employees"))
+        self.db.add(FlowStepTemplate(flow_key="organize", step_key="first", step_title="First", default_text="First", response_type="none"))
+        self.db.commit()
+        with patch.object(kickoff, "proposal", return_value=datetime(2027, 1, 11, 10)), \
+                patch.object(kickoff.dev, "local_now", return_value=datetime(2027, 1, 10)), \
+                patch.object(collections.settings, "GRADE_REVIEW_WEBAPP_URL", "https://example.test/grade-review"):
+            kickoff.configure(self.db, 1, 1, dict(due_at="2027-01-11T10:00", specialization_id=self.spec["id"], scenario_key="organize"))
+            with patch.object(kickoff.dev, "local_now", return_value=datetime(2027, 1, 11, 10)):
+                kickoff.launch(self.db, 1)
+                kickoff.launch(self.db, 1)
+        run, = collections.list_reports(self.db, 1)
+        self.assertEqual([r["employee_id"] for r in run["reviewers"]], [1, 2])
+        collection = self.db.get(collections.GradeReviewCollection, run["id"])
+        with patch.object(kickoff.CalendarDates, "shift", return_value=date(2027, 1, 18)) as shift:
+            kickoff.schedule_followup(self.db, collection, 1, datetime(2027, 1, 11, 7))
+            kickoff.schedule_followup(self.db, collection, 1, datetime(2027, 1, 11, 7))
+        shift.assert_called_once_with(date(2027, 1, 18), 0, "calendar")
+        request, = self.db.scalars(select(FlowLaunchRequest).where(FlowLaunchRequest.flow_key == "organize"))
+        self.assertEqual(request.requested_at, datetime(2027, 1, 18, 10))
+
     def test_uncertain_delivery_reserves_respondent_across_collections(self):
         self.prepare()
         first = self.create()
