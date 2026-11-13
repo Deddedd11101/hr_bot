@@ -108,6 +108,29 @@ class GradeCollectionTests(unittest.TestCase):
             self.db.commit()
             self.assertEqual(client.put(path, headers=headers(2), json=update).status_code, 409)
 
+    def test_self_assessment_is_visible_but_excluded_from_average(self):
+        from app.models import SurveyAnswer
+
+        self.prepare()
+        set_primary_chat_id(self.db.get(Employee, 1), "700001001", db=self.db)
+        data = dict(request_id=str(uuid4()), specialization_id=self.spec["id"], recipient_ids=[1, 2])
+        with patch.object(collections.settings, "GRADE_REVIEW_WEBAPP_URL", "https://example.test/grade-review"):
+            with self.assertRaisesRegex(ValueError, "самооценку"):
+                collections.create(self.db, 1, 1, data)
+            row = collections.create(self.db, 1, 1, data, include_self=True)
+        for recipient in self.db.query(EmployeeFeedbackRecipient).filter_by(run_id=row.feedback_run_id):
+            recipient.delivery_status = "completed"
+            reviewer_id = recipient.respondent_employee_id
+            self.db.add(SurveyAnswer(employee_id=reviewer_id, scenario_key=row.scenario_key,
+                feedback_run_id=row.feedback_run_id, step_key=f"skill_{self.skill['id']}",
+                answer_value="4" if reviewer_id == 1 else "2", answered_at=utc_now()))
+        self.db.flush()
+        result = collections.report(self.db, row)
+        self.assertTrue(result["reviewers"][0]["is_self_assessment"])
+        self.assertEqual(result["reviewers"][0]["scores"][0]["currentLevel"], 4)
+        self.assertEqual(result["scores"][0]["currentLevel"], 2)
+        self.assertEqual(result["scores"][0]["respondent_count"], 1)
+
     def test_review_retry_ignores_old_confirmation_and_only_final_attempt_counts(self):
         self.prepare()
         row = self.create()

@@ -326,7 +326,7 @@ export function GradeCollections({
                         }
                       >
                         <span className="min-w-0 break-words">
-                          {r.name}
+                          {r.name}{r.is_self_assessment ? " · Самооценка" : ""}
                           <span className="block text-xs text-muted-foreground">
                             {statuses[r.status] || r.status}
                           </span>

@@ -39,7 +39,7 @@ def recipient_ids(db, raw):
     return ids
 
 
-def create(db, employee_id, actor_id, data):
+def create(db, employee_id, actor_id, data, *, include_self=False):
     from ..web import grades
     grades._lock_employee(db, employee_id)
     subject = require(db, Employee, employee_id)
@@ -59,18 +59,22 @@ def create(db, employee_id, actor_id, data):
         raise ValueError("Нужно не более 20 открытых вопросов, каждый от 1 до 2000 символов")
     questions = [q.strip() for q in questions]
     request_id = str(UUID(data["request_id"]))
-    digest = matrix_version(data)
+    digest = matrix_version({**data, "include_self": True} if include_self else data)
     previous = db.scalar(select(GradeReviewCollection).where(GradeReviewCollection.employee_id == employee_id, GradeReviewCollection.request_id == request_id))
     if previous:
         if previous.request_hash != digest:
             raise grades.GradeConflictError("Запрос уже использован с другими настройками")
         return previous
     ids = recipient_ids(db, data.get("recipient_ids"))
-    if employee_id in ids:
+    if include_self and not settings.GRADE_REVIEW_WEBAPP_URL:
+        raise ValueError("Для самооценки необходимо включить Mini App сбора оценок")
+    if (employee_id in ids) != include_self:
         raise ValueError("Выберите коллег; самооценку можно сохранить отдельным ревью")
     profile = db.scalar(select(EmployeeGradeProfile).where(EmployeeGradeProfile.employee_id == employee_id))
     view = grades.preview_review(db, employee_id, specialization_id, profile.current_grade_id if profile else None)
     view["open_questions"] = questions
+    if include_self:
+        view["self_assessment"] = True
     if settings.GRADE_REVIEW_WEBAPP_URL:
         view["delivery"] = "mini_app"
     if not view["scores"]:
@@ -127,16 +131,17 @@ def report(db, collection):
     reviewers = []
     totals = {s["skillId"]: [] for s in snapshot["scores"]}
     for recipient in recipients:
+        is_self = bool(snapshot.get("self_assessment")) and recipient.respondent_employee_id == collection.employee_id
         scores = []
         for source in snapshot["scores"]:
             value = latest.get((recipient.respondent_employee_id, f"skill_{source['skillId']}")) if recipient in completed else None
             level = int(value) if value in {"0", "1", "2", "3", "4"} else None
             scores.append(dict(source, assessed=level is not None, currentLevel=level or 0))
-            if recipient in completed and level is not None:
+            if recipient in completed and level is not None and not is_self:
                 totals[source["skillId"]].append(level)
         employee = db.get(Employee, recipient.respondent_employee_id)
         reviewers.append(dict(employee_id=recipient.respondent_employee_id, name=employee.full_name if employee else f"#{recipient.respondent_employee_id}",
-            status=recipient.delivery_status, scores=scores, categories=fractional_category_averages(scores),
+            status=recipient.delivery_status, is_self_assessment=is_self, scores=scores, categories=fractional_category_averages(scores),
             comments=[dict(question=question, answer=latest.get((recipient.respondent_employee_id, f"open_{index}")) if recipient in completed else None)
                       for index, question in enumerate(snapshot.get("open_questions", []))]))
     scores = [dict(s, assessed=bool(totals[s["skillId"]]), currentLevel=sum(totals[s["skillId"]]) / len(totals[s["skillId"]]) if totals[s["skillId"]] else 0,
@@ -276,7 +281,9 @@ async def process_pending(bot, *, session_factory=None, run_id=None):
                     url = f"{settings.GRADE_REVIEW_WEBAPP_URL.rstrip('/')}/{collection.id}"
                     intro = snapshot.get("assessment_intro")
                     invitation = f"Оцени навыки коллеги: {html.escape(subject.full_name)}."
-                    if intro:
+                    if employee.id == subject.id and snapshot.get("self_assessment"):
+                        invitation = "Пройди самооценку навыков. Выбирай вариант, который лучше всего описывает твою работу."
+                    elif intro:
                         invitation += "\n\n" + review_intro(intro, len(json.loads(collection.snapshot_json)["open_questions"])).replace(
                             "{name}", html.escape(subject.full_name),
                         )
