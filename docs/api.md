@@ -97,7 +97,8 @@ coverage_percent, fully_met, missing_requirements, unassessed, unmet.
 Это auth-protected HR-данные, не публичный endpoint.
 
 `PUT /api/employees/{employee_id}/grade/development/kickoff` сохраняет явный
-разовый старт: `due_at` (МСК), `specialization_id`, `scenario_key`.
+разовый старт: `due_at` (МСК), `specialization_id`, `scenario_key` для
+организации ИПР, `intro_scenario_key` и `plan_scenario_key`.
 Запущенный старт повторно не настраивается. GET development возвращает `kickoff`.
 
 `POST /api/employees/{employee_id}/grade/collections/{collection_id}/team`

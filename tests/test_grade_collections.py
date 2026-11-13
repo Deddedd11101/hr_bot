@@ -539,13 +539,22 @@ class GradeCollectionTests(unittest.TestCase):
         if not self.db.get(AdminAccount, 1):
             self.db.add(AdminAccount(id=1, login="test-hr", password_hash="unused", role="hr", is_active=True,
                                      created_at=utc_now(), updated_at=utc_now()))
-        self.db.add(ScenarioTemplate(scenario_key="organize", scenario_kind="scenario", title="Organize", role_scope="all", employee_scope="employees"))
-        self.db.add(FlowStepTemplate(flow_key="organize", step_key="first", step_title="First", default_text="First", response_type="none"))
+        employee.adaptation_end = date(2027, 1, 8)
+        for key in ("organize", "intro", "plan"):
+            self.db.add(ScenarioTemplate(scenario_key=key, scenario_kind="scenario", title=key, role_scope="all", employee_scope="employees"))
+            self.db.add(FlowStepTemplate(flow_key=key, step_key="first", step_title="First", default_text="First", response_type="none"))
         self.db.commit()
         with patch.object(kickoff, "proposal", return_value=datetime(2027, 1, 11, 10)), \
+                patch.object(kickoff.CalendarDates, "shift", side_effect=lambda day, offset, unit: day + kickoff.timedelta(days=offset)), \
                 patch.object(kickoff.dev, "local_now", return_value=datetime(2027, 1, 10)), \
                 patch.object(collections.settings, "GRADE_REVIEW_WEBAPP_URL", "https://example.test/grade-review"):
-            kickoff.configure(self.db, 1, 1, dict(due_at="2027-01-11T10:00", specialization_id=self.spec["id"], scenario_key="organize"))
+            config = dict(due_at="2027-01-11T10:00", specialization_id=self.spec["id"], scenario_key="organize",
+                          intro_scenario_key="intro", plan_scenario_key="plan")
+            kickoff.configure(self.db, 1, 1, config)
+            kickoff.configure(self.db, 1, 1, config)
+            scheduled = {r.flow_key: r.requested_at for r in self.db.scalars(select(FlowLaunchRequest))}
+            self.assertEqual(scheduled, {"intro": datetime(2027, 1, 22, 10), "plan": datetime(2027, 1, 27, 10)})
+            self.assertEqual(self.db.query(FlowLaunchRequest).count(), 2)
             with patch.object(kickoff.dev, "local_now", return_value=datetime(2027, 1, 11, 10)):
                 kickoff.launch(self.db, 1)
                 kickoff.launch(self.db, 1)

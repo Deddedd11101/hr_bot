@@ -402,7 +402,7 @@ async def process_due(bot):
     """Called inside scheduler serialization. DB claims additionally guard other workers."""
     from .collections import process_pending
     from .development_kickoff import process_due as process_kickoffs
-    process_kickoffs(SessionLocal)
+    await process_kickoffs(SessionLocal, bot)
     await process_pending(bot, session_factory=SessionLocal)
     with SessionLocal() as db:
         ids = list(db.scalars(select(Milestone.id).join(Cycle, Cycle.employee_id == Milestone.employee_id).where(

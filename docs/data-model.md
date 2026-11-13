@@ -37,7 +37,7 @@ GradeReviewCollection.snapshot_json дополнительно хранит froz
 
 `grade_development_kickoffs` хранит один явный разовый старт на сотрудника:
 локальную дату запуска, шаблон оценки, сценарий организации ИПР, инициатора,
-ID сбора, ID запроса запуска и последнюю ошибку.
+ID сбора, ID трёх запросов запуска, статус уведомления HR и последнюю ошибку.
 SurveyAnswer ключи open_<index> относятся к текстовым вопросам этой коллекции,
 employee_id остаётся respondent ID. Числовые skill_<id> агрегируются отдельно.
 GradeAssessment.catalog_snapshot после finalize содержит colleague_reviews

@@ -231,6 +231,9 @@ class GradeDevelopmentKickoff(Base):
     actor_id: Mapped[int] = mapped_column(Integer)
     collection_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     followup_request_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    intro_request_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    plan_request_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    hr_reminder_status: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
     last_error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
 
