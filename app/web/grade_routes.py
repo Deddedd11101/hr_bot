@@ -121,6 +121,13 @@ def finalize_grade_collection(employee_id: int, collection_id: int, request: Req
     return finalize(db, employee_id, collection_id, require_api_auth(request).id, payload)
 
 
+@router.post("/api/employees/{employee_id}/grade/collections/{collection_id}/team")
+def select_grade_review_team(employee_id: int, collection_id: int, request: Request, payload: dict = Body(...), db: Session = Depends(get_write_db)):
+    from ..grades.collections import select_review_team
+    require_api_auth(request)
+    return select_review_team(db, employee_id, collection_id, payload.get("recipient_ids"))
+
+
 def register_catalog_routes(kind: str):
     def create(payload: dict = Body(...), db: Session = Depends(get_write_db)):
         grades.save_catalog_item(db, kind, payload)

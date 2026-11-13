@@ -383,6 +383,8 @@ async def _deliver_reminders(db, bot, item):
             employee = db.get(Employee, item.employee_id)
             label = {"ipr6": "ИПР через 6 месяцев", "ipr12": "ИПР через 12 месяцев", "review12": "Годовое ревью"}[item.kind]
             text = f"Развитие сотрудника: {employee.full_name or 'ФИО не указано'} (№{employee.id}). {label}: {item.due_at:%d.%m.%Y %H:%M} МСК."
+            if delivery.role == "hr" and db.scalar(select(Action.id).where(Action.milestone_id == item.id, Action.action_type == "review360")):
+                text += " Для оценки 360 откройте карточку → Грейд → Оценки и выберите команду после запуска. Если сбор не появился, проверьте статус в цикле развития."
             db.commit()
             await as_messenger(bot).send_text(chat_id=delivery.chat_id, text=text)
             delivery.status, delivery.last_error = "sent", None

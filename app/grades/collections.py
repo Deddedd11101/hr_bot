@@ -39,7 +39,7 @@ def recipient_ids(db, raw):
     return ids
 
 
-def create(db, employee_id, actor_id, data, *, include_self=False):
+def create(db, employee_id, actor_id, data, *, include_self=False, manager_id=None):
     from ..web import grades
     grades._lock_employee(db, employee_id)
     subject = require(db, Employee, employee_id)
@@ -75,6 +75,8 @@ def create(db, employee_id, actor_id, data, *, include_self=False):
     view["open_questions"] = questions
     if include_self:
         view["self_assessment"] = True
+    if manager_id is not None:
+        view["review_360"] = {"manager_id": manager_id, "team_selected": False}
     if settings.GRADE_REVIEW_WEBAPP_URL:
         view["delivery"] = "mini_app"
     if not view["scores"]:
@@ -115,6 +117,29 @@ def create(db, employee_id, actor_id, data, *, include_self=False):
     return collection
 
 
+def select_review_team(db, employee_id, collection_id, raw):
+    from ..web.grades import _lock_employee
+
+    _lock_employee(db, employee_id)
+    collection = db.get(GradeReviewCollection, collection_id, populate_existing=True)
+    if not collection or collection.employee_id != employee_id:
+        raise LookupError("Сбор оценок не найден")
+    snapshot = json.loads(collection.snapshot_json)
+    review = snapshot.get("review_360")
+    if not review or review["team_selected"] or collection.status != "open":
+        raise ValueError("Выбор команды для этого сбора закрыт")
+    ids = recipient_ids(db, raw) if raw != [] else []
+    if {employee_id, review["manager_id"]}.intersection(ids):
+        raise ValueError("Сотрудник и руководитель уже участвуют в оценке")
+    for reviewer_id in ids:
+        db.add(EmployeeFeedbackRecipient(run_id=collection.feedback_run_id, respondent_employee_id=reviewer_id,
+                                         delivery_status="pending"))
+    review["team_selected"] = True
+    collection.snapshot_json = json.dumps(snapshot, ensure_ascii=False)
+    db.flush()
+    return report(db, collection)
+
+
 def report(db, collection):
     snapshot = json.loads(collection.snapshot_json)
     final_assessment = db.get(GradeAssessment, collection.assessment_id) if collection.assessment_id else None
@@ -150,7 +175,10 @@ def report(db, collection):
         current_grade_id=final_assessment.current_grade_id if final_assessment else profile.current_grade_id if profile else None,
         grades=grade_options, recommendation=matrix_coverage(snapshot["catalog"], snapshot["specialization_id"], scores),
         template=snapshot["catalog"]["specializations"], reviewers=reviewers, scores=scores, categories=fractional_category_averages(scores),
-        completed_count=len(completed), recipient_count=len(recipients), can_finalize=collection.status == "open" and len(completed) == len(recipients) and any(s["assessed"] for s in scores))
+        review_360=snapshot.get("review_360"),
+        completed_count=len(completed), recipient_count=len(recipients), can_finalize=collection.status == "open"
+        and snapshot.get("review_360", {}).get("team_selected", True)
+        and len(completed) == len(recipients) and any(s["assessed"] for s in scores))
 
 
 def list_reports(db, employee_id):

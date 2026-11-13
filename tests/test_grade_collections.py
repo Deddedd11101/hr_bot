@@ -494,6 +494,39 @@ class GradeCollectionTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "6 месяцев"):
             development_actions.validate(self.db, self.db.get(Employee, 1), dict(ipr6=[choice], ipr12=[], review12=[]))
 
+    def test_annual_360_launch_is_idempotent_and_hr_selects_team(self):
+        from app.grades import development
+        from app.models import AdminAccount
+
+        self.prepare()
+        employee = self.db.get(Employee, 1)
+        employee.manager_employee_id = 2
+        set_primary_chat_id(employee, "700001001", db=self.db)
+        first = grades.save_review(self.db, 1, 1, self.review_request())
+        if not self.db.get(AdminAccount, 1):
+            self.db.add(AdminAccount(id=1, login="test-hr", password_hash="unused", role="hr", is_active=True,
+                                     created_at=utc_now(), updated_at=utc_now()))
+        self.db.commit()
+        choice = dict(key=str(uuid4()), type="review360", specialization_id=self.spec["id"])
+        development_actions.configure(self.db, 1, 1, dict(expected_revision=0, assessment_id=first["id"],
+            anchor_date="2026-11-03", enabled=True, actions=dict(ipr6=[], ipr12=[], review12=[choice])))
+        self.db.commit()
+        stage = self.db.scalar(select(development.Milestone).where(development.Milestone.kind == "review12"))
+        with patch.object(collections.settings, "GRADE_REVIEW_WEBAPP_URL", "https://example.test/grade-review"), \
+                patch.object(development, "local_now", return_value=datetime(2027, 11, 4)), \
+                patch.object(development, "SessionLocal", self.sessions):
+            asyncio.run(development._process_one(FakeMessenger(), stage.id))
+            asyncio.run(development._process_one(FakeMessenger(), stage.id))
+        self.db.expire_all()
+        run, = collections.list_reports(self.db, 1)
+        self.assertEqual([r["employee_id"] for r in run["reviewers"]], [1, 2])
+        self.assertFalse(run["can_finalize"])
+        with self.assertRaises(ValueError):
+            collections.select_review_team(self.db, 1, run["id"], [2])
+        result = collections.select_review_team(self.db, 1, run["id"], [3])
+        self.assertTrue(result["review_360"]["team_selected"])
+        self.assertEqual([r["employee_id"] for r in result["reviewers"]], [1, 2, 3])
+
     def test_uncertain_delivery_reserves_respondent_across_collections(self):
         self.prepare()
         first = self.create()
