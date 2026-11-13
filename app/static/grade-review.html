@@ -23,7 +23,20 @@ button:focus-visible,textarea:focus-visible{outline:2px solid var(--fg);outline-
 .primary{background:var(--accent);color:#171717;border-color:var(--accent);font-weight:650}
 footer{padding:8px 16px calc(8px + env(safe-area-inset-bottom,0px));border-top:1px solid var(--line);background:var(--bg)}
 .actions{display:flex;flex-wrap:wrap;gap:6px}.actions button{font-size:13px;padding:6px 10px}.actions .primary{margin-inline-start:auto}
-.row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,35%);gap:8px;width:100%;text-align:left;align-items:center;margin-bottom:6px;overflow-wrap:anywhere}
+.summary-group{margin:10px 0 6px;font-size:14px}
+.summary-table{border:1px solid var(--line);border-radius:8px;background:var(--panel);overflow:hidden}
+.summary-line{display:grid;grid-template-columns:minmax(0,1fr) minmax(84px,auto);gap:8px;align-items:center;padding:8px 10px;overflow-wrap:anywhere;font-size:13px}
+.summary-heading{background:var(--hover);color:var(--muted);font-size:12px;font-weight:600}
+.summary-item{border-top:1px solid var(--line)}
+.summary-item summary{cursor:pointer;min-height:44px;list-style:none}
+.summary-item summary::-webkit-details-marker{display:none}
+.summary-item summary:hover{background:var(--hover)}
+.summary-badge{display:flex;justify-content:space-between;align-items:center;gap:6px;color:var(--muted);font-size:12px}
+.summary-badge::after{content:"";width:6px;height:6px;border-right:1px solid;border-bottom:1px solid;transform:rotate(45deg)}
+.summary-item[open] .summary-badge::after{transform:rotate(225deg)}
+.summary-text{padding:0 10px;margin:0 0 10px;color:var(--muted);white-space:pre-wrap;overflow-wrap:anywhere;font-size:13px}
+.summary-edit{margin:0 10px 8px;font-size:13px}
+.summary-pages{display:flex;align-items:center;gap:8px}
 textarea{width:100%;resize:vertical;min-height:100px}#status:empty{display:none}#status{font-size:13px}
 dialog{width:min(420px,calc(100% - 32px));padding:16px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--fg)}
 dialog::backdrop{background:#0008}
@@ -54,5 +67,5 @@ dialog::backdrop{background:#0008}
   </form>
 </dialog>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
-<script src="/static/grade-review.js?v=2" defer></script>
+<script src="/static/grade-review.js?v=3" defer></script>
 </html>
