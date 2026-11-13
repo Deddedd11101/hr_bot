@@ -24,7 +24,7 @@ def _action_due(config, fallback):
     return datetime.fromisoformat(config["due_at"]) if config.get("due_at") else fallback
 
 
-def validate(db, employee, data):
+def validate(db, employee, data, *, existing_midyear_reviews=()):
     if not isinstance(data, dict) or set(data) != set(dev.KINDS):
         raise ValueError("Нужны списки действий для всех трёх этапов")
     clean = {}
@@ -40,6 +40,8 @@ def validate(db, employee, data):
                 raise ValueError("Действие повторяется")
             keys.add(key)
             action_type = choice.get("type")
+            if kind == "ipr6" and action_type == "review" and key not in existing_midyear_reviews:
+                raise ValueError("На этапе через 6 месяцев оценка 360 не планируется")
             if action_type not in {"scenario", "feedback", "review"}:
                 raise ValueError("Выберите сценарий, сбор ОС или сбор оценок")
             settings, scenario_key = {}, choice.get("scenario_key")
@@ -89,7 +91,11 @@ def configure(db, employee_id, actor_id, data):
     employee = db.get(Employee, employee_id)
     if not employee:
         raise LookupError("Сотрудник не найден")
-    clean = validate(db, employee, data.get("actions"))
+    existing_midyear_reviews = set(db.scalars(select(Action.action_key).join(Milestone, Milestone.id == Action.milestone_id).where(
+        Milestone.employee_id == employee_id, Milestone.assessment_id == data.get("assessment_id"),
+        Milestone.kind == "ipr6", Action.action_type == "review",
+    )))
+    clean = validate(db, employee, data.get("actions"), existing_midyear_reviews=existing_midyear_reviews)
     base = {k: v for k, v in data.items() if k != "actions"}
     enabled = base.get("enabled")
     if type(enabled) is not bool:

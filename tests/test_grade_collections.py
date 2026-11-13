@@ -448,14 +448,14 @@ class GradeCollectionTests(unittest.TestCase):
         self.db.commit()
         from app.grades.development import payload
         configured = development_actions.configure(self.db, 1, 1, dict(expected_revision=0, assessment_id=first["id"], anchor_date="2026-11-03", enabled=True,
-            actions=dict(ipr6=[dict(key=str(uuid4()), type="review", specialization_id=self.spec["id"], recipient_ids=[2, 3]), dict(key=str(uuid4()), type="review", specialization_id=self.spec["id"], recipient_ids=[2])], ipr12=[], review12=[])))
+            actions=dict(ipr6=[], ipr12=[dict(key=str(uuid4()), type="review", specialization_id=self.spec["id"], recipient_ids=[2, 3]), dict(key=str(uuid4()), type="review", specialization_id=self.spec["id"], recipient_ids=[2])], review12=[])))
         self.db.commit()
-        self.assertEqual(len(configured["milestones"][0]["actions"]), 2)
+        self.assertEqual(len(next(m for m in configured["milestones"] if m["kind"] == "ipr12")["actions"]), 2)
         self.assertEqual(len(list(self.db.scalars(select(GradeDevelopmentAction)))), 4)
         self.assertTrue(payload(self.db, 1)["enabled"])
         from app.grades import development
-        stage = self.db.scalar(select(development.Milestone).where(development.Milestone.kind == "ipr6"))
-        with patch.object(development, "local_now", return_value=datetime(2027, 5, 4)), patch.object(development, "SessionLocal", self.sessions):
+        stage = self.db.scalar(select(development.Milestone).where(development.Milestone.kind == "ipr12"))
+        with patch.object(development, "local_now", return_value=datetime(2027, 11, 4)), patch.object(development, "SessionLocal", self.sessions):
             asyncio.run(development._process_one(FakeMessenger(), stage.id))
         self.db.expire_all()
         self.assertEqual(len(collections.list_reports(self.db, 1)), 2)
@@ -463,7 +463,13 @@ class GradeCollectionTests(unittest.TestCase):
         self.db.commit()
         renewed = payload(self.db, 1)
         self.assertEqual(renewed["assessment_id"], next_review["id"])
-        self.assertEqual(len(renewed["milestones"][0]["actions"]), 2)
+        self.assertEqual(len(next(m for m in renewed["milestones"] if m["kind"] == "ipr12")["actions"]), 2)
+
+    def test_new_midyear_review_is_rejected(self):
+        self.prepare()
+        choice = dict(key=str(uuid4()), type="review", specialization_id=self.spec["id"], recipient_ids=[2])
+        with self.assertRaisesRegex(ValueError, "6 месяцев"):
+            development_actions.validate(self.db, self.db.get(Employee, 1), dict(ipr6=[choice], ipr12=[], review12=[]))
 
     def test_uncertain_delivery_reserves_respondent_across_collections(self):
         self.prepare()
@@ -490,14 +496,14 @@ class GradeCollectionTests(unittest.TestCase):
             self.db.add(ScenarioTemplate(scenario_key=key, scenario_kind=kind, title=key, trigger_mode="manual_only", role_scope="all", employee_scope="employees", recipient_mode="self"))
             self.db.add(FlowStepTemplate(flow_key=key, step_key="q", step_title="Question", default_text="Question", response_type="text" if kind == "survey" else "none", target_field="survey_answer" if kind == "survey" else None, send_mode="immediate", is_terminal=True))
         self.db.commit()
-        actions = dict(ipr6=[dict(key=str(uuid4()), type="scenario", scenario_key="plain"), dict(key=str(uuid4()), type="feedback", scenario_key="feedback", recipient_ids=[2]), dict(key=str(uuid4()), type="review", specialization_id=self.spec["id"], recipient_ids=[3])], ipr12=[], review12=[])
+        actions = dict(ipr6=[], ipr12=[dict(key=str(uuid4()), type="scenario", scenario_key="plain"), dict(key=str(uuid4()), type="feedback", scenario_key="feedback", recipient_ids=[2]), dict(key=str(uuid4()), type="review", specialization_id=self.spec["id"], recipient_ids=[3])], review12=[])
         development_actions.configure(self.db, 1, 1, dict(expected_revision=0, assessment_id=first["id"], anchor_date="2026-11-03", enabled=True, actions=actions))
         self.db.commit()
         from app.grades import development
         self.assertTrue(development.owns_scenario(self.db, 1, "plain"))
-        stage = self.db.scalar(select(development.Milestone).where(development.Milestone.kind == "ipr6"))
+        stage = self.db.scalar(select(development.Milestone).where(development.Milestone.kind == "ipr12"))
         messenger = FakeMessenger()
-        with patch.object(development, "local_now", return_value=datetime(2027, 5, 4)), patch.object(development, "SessionLocal", self.sessions):
+        with patch.object(development, "local_now", return_value=datetime(2027, 11, 4)), patch.object(development, "SessionLocal", self.sessions):
             asyncio.run(development._process_one(messenger, stage.id))
             asyncio.run(collections.process_pending(messenger, session_factory=self.sessions))
             calls = len(messenger.texts)

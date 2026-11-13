@@ -326,6 +326,8 @@ def renew_after_finalization(db, assessment):
         previous = next((i for i in old if i.kind == kind and i.assessment_id == previous_assessment_id), None)
         if previous:
             for action in db.scalars(select(Action).where(Action.milestone_id == previous.id)):
+                if kind == "ipr6" and action.action_type == "review":
+                    continue
                 action_settings = json.loads(action.settings_json)
                 action_settings.pop("due_at", None)
                 db.add(Action(milestone_id=new_item.id, action_key=action.action_key, action_type=action.action_type,
