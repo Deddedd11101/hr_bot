@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 type PlanRow = {key: string; title: string; date?: string; status: string; error?: string | null};
 type Phase = {title: string; timing: string; expected: string[]; scheduled: PlanRow[]; emptyLabel?: string};
 
-export function GradeDevelopmentRoadmap({phases}: {phases: Phase[]}) {
+export function GradeDevelopmentRoadmap({phases, fromMeeting}: {phases: Phase[]; fromMeeting?: boolean}) {
   const count = phases.reduce((total, phase) => total + phase.scheduled.length, 0);
   return <div className="overflow-hidden rounded-lg border">
     <div className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3">
@@ -39,7 +39,7 @@ export function GradeDevelopmentRoadmap({phases}: {phases: Phase[]}) {
     </ol>
     <div className="flex items-start gap-2 border-t px-4 py-3 text-sm text-muted-foreground">
       <Repeat2 className="mt-0.5 size-4 shrink-0" aria-hidden />
-      <p>Разовый старт не повторяется. После фиксации новой итоговой оценки цикл обновляется: даты промежуточной и итоговой встреч считаются заново от этой оценки.</p>
+      <p>{fromMeeting ? "Даты считаются от встречи по ИПР. Новая оценка не меняет расписание." : "Разовый старт не повторяется. После фиксации новой итоговой оценки цикл обновляется: даты промежуточной и итоговой встреч считаются заново от этой оценки."}</p>
     </div>
   </div>;
 }

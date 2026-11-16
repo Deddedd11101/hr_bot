@@ -28,6 +28,18 @@ NOW = datetime(2026, 10, 27, 9)
 
 
 class GradeDevelopmentTests(unittest.TestCase):
+    def test_meeting_anchor_preserves_dates_after_new_assessment(self):
+        proposed = {"ipr6": "2027-05-04T10:00", "ipr12": "2027-11-04T10:00", "review12": "2027-11-04T10:10"}
+        with patch.object(dev, "calendar_dates", return_value=proposed) as calendar:
+            cycle = dev.configure(self.db, 1, dict(assessment_id=1, expected_revision=0,
+                anchor_date="2026-11-04", anchor_source="meeting", enabled=False))
+        calendar.assert_called_once_with(self.db, 1, "2026-11-04")
+        self.assertEqual(cycle["anchor_source"], "meeting")
+        self.assertEqual(self.db.query(FlowLaunchRequest).count(), 0)
+        self.assertEqual(self.db.get(Cycle, 1).anchor_date, date(2026, 11, 4))
+        dev.renew_after_finalization(self.db, SimpleNamespace(employee_id=1, id=2, finalized_at=NOW))
+        self.assertEqual(dev.payload(self.db, 1)["milestones"], cycle["milestones"])
+
     def setUp(self):
         self.temp = TemporaryDirectory(prefix="grade-development-")
         self.engine = create_engine("sqlite:///" + str(Path(self.temp.name) / "isolated.db"),

@@ -90,7 +90,7 @@ SQLite BEGIN IMMEDIATE для сериализации. Marker не являет
 
 Grade development добавляет три таблицы без изменения существующих оценок:
 `grade_development_cycles` (UNIQUE employee_id, assessment_id, revision,
-anchor_date, enabled, три scenario key), `grade_development_milestones`
+anchor_date, anchor_source: assessment / meeting, enabled, три scenario key), `grade_development_milestones`
 (UNIQUE employee_id/assessment_id/kind, scenario_key, due_at в МСК naive,
 status, last_error, claimed_at UTC), `grade_development_deliveries`
 (UNIQUE milestone_id/role/chat_id, status, last_error). Startup/SQLite compatibility

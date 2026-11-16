@@ -177,6 +177,7 @@ class GradeDevelopmentCycle(Base):
     assessment_id: Mapped[int] = mapped_column(Integer)
     revision: Mapped[int] = mapped_column(Integer, default=1)
     anchor_date: Mapped[date] = mapped_column(Date)
+    anchor_source: Mapped[str] = mapped_column(String(16), default="assessment", server_default="assessment")
     enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     ipr6_scenario_key: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     ipr12_scenario_key: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)

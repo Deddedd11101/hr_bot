@@ -104,6 +104,7 @@ def _ensure_sqlite_schema() -> None:
             ("grade_specializations", "skill_ids_json", "TEXT"),
             ("grade_specializations", "assessment_guidance_json", "TEXT"),
             ("grade_assessments", "archived_at", "DATETIME"),
+            ("grade_development_cycles", "anchor_source", "TEXT NOT NULL DEFAULT 'assessment'"),
         ):
             known = {row[1] for row in conn.execute(text(f"PRAGMA table_info({table})"))}
             if column not in known:

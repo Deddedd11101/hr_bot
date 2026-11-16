@@ -233,6 +233,7 @@ Final сохраняется без изменений; archived доступе�
   missing calendar coverage returns 422. Existing dates are not changed.
 - `PUT /api/employees/{employee_id}/grade/development/actions`: authenticated
   transactional save, assessment_id/expected_revision/anchor_date/enabled,
+  optional `anchor_source` (`assessment` or `meeting`; GET returns the stored mode),
   optional due_dates, actions={ipr6:[],ipr12:[],review12:[]}.
   Действие: key UUID, type=scenario/feedback/review, scenario_key либо null,
   recipient_ids для feedback/review, specialization_id для review. До 10 на этап.
