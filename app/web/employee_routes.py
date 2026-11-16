@@ -49,9 +49,11 @@ from .employees import (
     _serialize_hr_notes_history,
     _serialize_manual_bot_message_history,
 )
+from ..vacation import BalanceInput, balance, current_year, save_balance
 from .support import render_template, require_api_auth, require_auth
 
 router = APIRouter()
+
 templates = Jinja2Templates(directory="app/templates")
 
 
@@ -594,6 +596,24 @@ def _maintenance_employee(db: Session, employee_id: int) -> Employee:
     if not employee:
         raise HTTPException(status_code=404, detail="Сотрудник не найден")
     return employee
+
+
+@router.get("/api/employees/{employee_id}/vacation")
+def employee_vacation(request: Request, employee_id: int, db: Session = Depends(get_db)):
+    require_api_auth(request)
+    _maintenance_employee(db, employee_id)
+    return balance(db, employee_id)
+
+
+@router.put("/api/employees/{employee_id}/vacation")
+def update_employee_vacation(request: Request, employee_id: int, values: BalanceInput, db: Session = Depends(get_db)):
+    account = require_api_auth(request)
+    _maintenance_employee(db, employee_id)
+    if values.year != current_year():
+        raise HTTPException(409, "Год изменился, обновите вкладку")
+    save_balance(db, employee_id, account.id, values)
+    db.commit()
+    return balance(db, employee_id)
 
 
 @router.get("/api/employees/{employee_id}/hr-notes")

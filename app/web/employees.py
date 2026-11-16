@@ -34,6 +34,7 @@ from ..models import (
     EmployeeGradeProfile,
     EmployeeGradeDecision,
     EmployeeHrNote,
+    EmployeeVacationBalance,
     EmployeeManualBotMessage,
     EmployeeMessengerAccount,
     EmployeeTelegramEmailVerification,
@@ -1563,6 +1564,7 @@ def _delete_employee_record(db: Session, employee: Employee) -> str:
 
     from ..models import CatalogMembership
     db.query(CatalogMembership).filter_by(scope="people", object_id=employee.id).delete()
+    db.query(EmployeeVacationBalance).filter_by(employee_id=employee.id).delete()
     db.delete(employee)
     db.commit()
     return redirect_url

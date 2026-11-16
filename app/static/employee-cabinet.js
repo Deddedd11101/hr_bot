@@ -150,6 +150,12 @@ async function start() {
     fields('profile', [['Рабочая почта', data.email], ['Рабочие часы', data.hours], ['День рождения', data.birthday], ['Первый рабочий день', data.first_workday?.split('-').reverse().join('.')]]);
     fields('team', [['Руководитель', data.manager], ['Наставник по адаптации', data.adaptation_mentor], ['Наставник по ИПР', data.development_mentor]]);
     showDevelopment(data.development, data.files);
+    if (data.vacation) {
+      byId('vacation-year').textContent = data.vacation.year;
+      for (const [id, days] of [['vacation-used', data.vacation.used_days], ['vacation-remaining', data.vacation.remaining_days]]) {
+        byId(id).textContent = days == null ? 'Не указано' : new Intl.NumberFormat('ru', {style:'unit', unit:'day'}).format(days);
+      }
+    }
     tabs();
     if (data.files.length) data.files.forEach(file => byId('files').append(fileRow(file)));
     else byId('files').append(make('li', 'Файлов пока нет'));

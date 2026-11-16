@@ -96,6 +96,11 @@ current_grade_id и recommendation: method, grade_id/name либо null, levels 
 coverage_percent, fully_met, missing_requirements, unassessed, unmet.
 Это auth-protected HR-данные, не публичный endpoint.
 
+`GET/PUT /api/employees/{employee_id}/vacation` требует HR/admin-сессию.
+Баланс текущего года передаётся как `year`, `used_days`, `remaining_days`.
+Дни — целые неотрицательные числа или null; смена года при сохранении даёт 409.
+Собственный баланс доступен через подписанный профиль Mini App.
+
 `PUT /api/employees/{employee_id}/grade/development/kickoff` сохраняет явный
 разовый старт: `due_at` (МСК), `specialization_id`, `scenario_key` для
 организации ИПР, `intro_scenario_key` и `plan_scenario_key`.

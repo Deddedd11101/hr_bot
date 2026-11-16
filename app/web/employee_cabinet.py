@@ -122,6 +122,8 @@ def cabinet_page():
 
 @router.get("/profile")
 def profile(request: Request):
+    from ..vacation import balance
+
     with get_session() as db:
         employee = authorize(db, request)
 
@@ -136,6 +138,7 @@ def profile(request: Request):
             "name": employee.full_name, "position": employee.desired_position,
             "email": employee.work_email, "hours": employee.work_hours,
             "birthday": employee.birth_date.strftime("%d.%m") if employee.birth_date else None,
+            "vacation": balance(db, employee.id),
             "first_workday": employee.first_workday.isoformat() if employee.first_workday else None,
             "manager": contact(employee.manager_employee_id), "adaptation_mentor": contact(employee.mentor_adaptation_employee_id),
             "development_mentor": contact(employee.mentor_ipr_employee_id), "development": development(db, employee),

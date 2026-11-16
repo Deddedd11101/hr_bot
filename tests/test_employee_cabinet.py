@@ -19,6 +19,26 @@ from app.web import employee_cabinet as cabinet
 
 
 class EmployeeCabinetTests(unittest.TestCase):
+    def test_vacation_balance_preserves_zero_and_is_scoped_by_employee_and_year(self):
+        from app.models import EmployeeVacationBalance
+        from app.vacation import BalanceInput, balance, save_balance
+        from app import vacation
+
+        engine = create_engine("sqlite://")
+        cabinet.Employee.__table__.create(engine)
+        EmployeeVacationBalance.__table__.create(engine)
+        with sessionmaker(bind=engine)() as db:
+            db.add(cabinet.Employee(id=70, full_name="Employee", created_at=datetime.now()))
+            db.commit()
+            with patch.object(vacation, "current_year", return_value=2026):
+                self.assertIsNone(balance(db, 70)["used_days"])
+                save_balance(db, 70, 1, BalanceInput(year=2026, used_days=0, remaining_days=12))
+                self.assertEqual(balance(db, 70), dict(year=2026, used_days=0, remaining_days=12))
+                self.assertIsNone(balance(db, 80)["remaining_days"])
+            with patch.object(vacation, "current_year", return_value=2027):
+                self.assertIsNone(balance(db, 70)["remaining_days"])
+        engine.dispose()
+
     @staticmethod
     def signed(now, user_id=123):
         fields = {"auth_date": str(now), "user": json.dumps({"id": user_id}), "signature": "opaque"}

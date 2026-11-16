@@ -45,6 +45,16 @@ class AdaptationPlanTemplate(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
 
 
+class EmployeeVacationBalance(Base):
+    __tablename__ = "employee_vacation_balances"
+    employee_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    year: Mapped[int] = mapped_column(Integer, primary_key=True)
+    used_days: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    remaining_days: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    updated_by_account_id: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
 class EmployeeAdaptationPlanItem(Base):
     __tablename__ = "employee_adaptation_plan_items"
     __table_args__ = (UniqueConstraint("employee_id", "entry_key"),)
