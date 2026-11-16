@@ -41,19 +41,22 @@ function disclosure(title, open = false) {
 
 function dateLabel(value) { return value?.split('-').reverse().join('.') || 'Дата не указана'; }
 
-function showDevelopment(data) {
+function showDevelopment(data, files) {
   const root = byId('development');
   root.append(make('h2', 'Развитие'));
-  for (const [key, title, rows] of [['adaptation', 'Адаптация', data.adaptation], ['development', 'Цикл развития', data.cycle]]) {
-    const [block, body] = disclosure(title, data.active === key);
+  const adapting = data.active === 'adaptation';
+  root.append(make('h3', adapting ? 'Адаптация' : 'ИПР'));
+  const plan = make('dl', '');
+  plan.id = 'development-stages';
+  root.append(plan);
+  const describe = item => item && [item.title, dateLabel(item.date), item.status === 'paused' ? 'На паузе' : null].filter(Boolean).join(' · ');
+  fields(plan.id, [[adapting ? 'Текущий этап' : 'Последний запуск', describe(data.current)], ['Следующий этап', describe(data.upcoming)]]);
+  const materials = files.filter(file => file.material);
+  if (materials.length) {
+    const [block, body] = disclosure('Материалы адаптации и ИПР');
     const list = make('ul', '');
-    for (const item of rows) {
-      const line = make('li', ''), name = make('div', item.title);
-      name.append(make('small', dateLabel(item.date)));
-      const state = {planned:'Запланировано', started:'Начато', completed:'Завершено', done:'Завершено', failed:'Требует внимания', paused:'На паузе'};
-      line.append(name, make('small', state[item.status] || ''));list.append(line);
-    }
-    body.append(rows.length ? list : make('p', 'Этапы пока не запланированы.'));
+    for (const file of materials) list.append(fileRow(file));
+    body.append(list);
     root.append(block);
   }
   if (!data.grade) return;
@@ -144,9 +147,9 @@ async function start() {
     const data = await (await request('profile')).json();
     byId('name').textContent = data.name || 'Профиль сотрудника';
     byId('position').textContent = data.position || '';
-    fields('profile', [['Рабочая почта', data.email], ['Рабочие часы', data.hours], ['Первый рабочий день', data.first_workday?.split('-').reverse().join('.')]]);
+    fields('profile', [['Рабочая почта', data.email], ['Рабочие часы', data.hours], ['День рождения', data.birthday], ['Первый рабочий день', data.first_workday?.split('-').reverse().join('.')]]);
     fields('team', [['Руководитель', data.manager], ['Наставник по адаптации', data.adaptation_mentor], ['Наставник по ИПР', data.development_mentor]]);
-    showDevelopment(data.development);
+    showDevelopment(data.development, data.files);
     tabs();
     if (data.files.length) data.files.forEach(file => byId('files').append(fileRow(file)));
     else byId('files').append(make('li', 'Файлов пока нет'));

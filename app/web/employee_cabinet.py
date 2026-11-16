@@ -96,11 +96,21 @@ def development(db, employee):
                      "categories": [{"name": row["categoryName"], "percent": round(25 * row["current"])}
                                     for row in assessment.get("categories", []) if row.get("assessed_count", 1)]}
     names = {"ipr6": "Промежуточная встреча", "ipr12": "Итоговая встреча", "review12": "Годовое ревью"}
+    adapting = employee.employee_stage == "adaptation"
+    rows = (
+        [{"title": item.title, "date": local_date(item.requested_at), "status": item.status} for item in adaptation]
+        if adapting else
+        [{"title": names[item.kind], "date": item.due_at.date().isoformat(),
+          "status": "paused" if not cycle.enabled and item.status in {"planned", "blocked"} else item.status}
+         for item in milestones if item.kind in names and item.status != "cancelled"]
+    )
+    active_states = {"starting", "started", "in_progress", "running"}
+    current = next((row for row in reversed(rows) if row["status"] in active_states), None)
+    upcoming = next((row for row in rows if row["status"] in {"planned", "scheduled", "blocked", "paused"}), None)
     return {
-        "active": "adaptation" if employee.employee_stage == "adaptation" else "development",
-        "adaptation": [{"title": item.title, "date": local_date(item.requested_at), "status": item.status} for item in adaptation],
-        "cycle": [{"title": names[item.kind], "date": local_date(item.due_at), "status": item.status}
-                  for item in milestones if item.kind in names],
+        "active": "adaptation" if adapting else "development",
+        "current": current,
+        "upcoming": upcoming,
         "grade": grade,
     }
 
@@ -125,10 +135,12 @@ def profile(request: Request):
         return JSONResponse({
             "name": employee.full_name, "position": employee.desired_position,
             "email": employee.work_email, "hours": employee.work_hours,
+            "birthday": employee.birth_date.strftime("%d.%m") if employee.birth_date else None,
             "first_workday": employee.first_workday.isoformat() if employee.first_workday else None,
             "manager": contact(employee.manager_employee_id), "adaptation_mentor": contact(employee.mentor_adaptation_employee_id),
             "development_mentor": contact(employee.mentor_ipr_employee_id), "development": development(db, employee),
-            "files": [{"id": item.id, "name": item.original_filename, "size": item.file_size}
+            "files": [{"id": item.id, "name": item.original_filename, "size": item.file_size,
+                       "material": {"ipr": "ipr", "probation_plan": "adaptation"}.get(item.category)}
                       for item in own_files(db, employee).order_by(EmployeeFile.id.desc())],
         }, headers=PRIVATE_HEADERS)
 

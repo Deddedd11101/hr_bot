@@ -59,6 +59,7 @@ class EmployeeCabinetTests(unittest.TestCase):
         app.include_router(cabinet.router)
         with TestClient(app) as client:
             self.assertEqual(client.get("/employee-cabinet").status_code, 200)
+            self.assertIn("Использовано в этом году", client.get("/employee-cabinet").text)
             for path in ("profile", "files/1"):
                 response = client.get(f"/employee-cabinet/{path}")
                 self.assertEqual(response.status_code, 403)
