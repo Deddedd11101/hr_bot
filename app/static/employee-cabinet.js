@@ -48,6 +48,86 @@ function setupVacation() {
   const notice = byId('vacation-status');
   const list = byId('vacation-requests');
   let checked = null;
+  let busy = false;
+  const picker = byId('vacation-picker');
+  const grid = byId('calendar-grid');
+  const calendarStatus = byId('calendar-status');
+  const start = form.elements.starts_on;
+  const end = form.elements.ends_on;
+  const buttons = [[byId('vacation-start'), start], [byId('vacation-end'), end]];
+  const months = new Map();
+  const monthFormat = new Intl.DateTimeFormat('ru', {month:'long', year:'numeric', timeZone:'UTC'});
+  let month = new Date().toISOString().slice(0, 7);
+  let selecting = start;
+  let loadVersion = 0;
+
+  function updateDates() {
+    for (const [control, field] of buttons) {
+      const label = field === start ? 'Начало' : 'Последний день';
+      control.textContent = field.value ? `${label}: ${dateLabel(field.value)}` : label;
+      control.setAttribute('aria-expanded', String(!picker.hidden && selecting === field));
+    }
+    button.disabled = busy || !start.value || !end.value;
+  }
+  async function showMonth(nextMonth) {
+    month = nextMonth;
+    const version = ++loadVersion;
+    const first = new Date(`${month}-01T00:00:00Z`);
+    byId('calendar-month').textContent = monthFormat.format(first);
+    grid.replaceChildren();
+    calendarStatus.textContent = 'Загрузка календаря…';
+    try {
+      if (!months.has(month)) {
+        const loaded = await (await request(`vacation/calendar?month=${encodeURIComponent(nextMonth)}`)).json();
+        months.set(nextMonth, loaded);
+      }
+      if (version !== loadVersion) return;
+      const data = months.get(nextMonth);
+      for (const name of ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс']) grid.append(make('small', name));
+      for (let i = 0; i < (first.getUTCDay() + 6) % 7; i++) grid.append(make('span', ''));
+      for (const day of data.days) {
+        const cell = make('button', String(Number(day.date.slice(-2))));
+        cell.type = 'button';
+        cell.disabled = day.date < data.today || (selecting === end && !!start.value && day.date < start.value);
+        cell.classList.toggle('is-off', !day.workday);
+        cell.classList.toggle('is-range', !!end.value && day.date > start.value && day.date < end.value);
+        cell.setAttribute('aria-pressed', String(day.date === start.value || day.date === end.value));
+        cell.setAttribute('aria-label', `${dateLabel(day.date)}, ${day.workday ? 'рабочий день' : 'нерабочий день'}`);
+        cell.onclick = () => {
+          selecting.value = day.date;
+          if (start.value && end.value && start.value > end.value) end.value = '';
+          if (selecting === start && !end.value) {
+            selecting = end;
+            void showMonth(month);
+          } else {
+            picker.hidden = true;
+            buttons.find(([, field]) => field === selecting)[0].focus();
+          }
+          checked = null;
+          notice.textContent = '';
+          button.textContent = 'Проверить даты';
+          updateDates();
+        };
+        grid.append(cell);
+      }
+      calendarStatus.textContent = 'Серый фон — нерабочий день';
+    } catch (error) {
+      if (version === loadVersion) calendarStatus.textContent = error.message;
+    }
+  }
+  for (const [control, field] of buttons) control.onclick = () => {
+    const wasOpen = !picker.hidden && selecting === field;
+    selecting = field;
+    picker.hidden = wasOpen;
+    if (!wasOpen) void showMonth((field.value || start.value).slice(0, 7) || month);
+    updateDates();
+  };
+  for (const [id, delta] of [['month-prev', -1], ['month-next', 1]]) byId(id).onclick = () => {
+    const target = new Date(`${month}-01T00:00:00Z`);
+    target.setUTCMonth(target.getUTCMonth() + delta);
+    const next = target.toISOString().slice(0, 7);
+    if (/^\d{4}-\d{2}$/.test(next)) void showMonth(next);
+  };
   async function refresh() {
     const rows = await (await request('vacation/requests')).json();
     list.replaceChildren(...rows.map(row => {
@@ -58,18 +138,16 @@ function setupVacation() {
     }));
     if (!rows.length) list.append(make('li', 'Заявок пока нет'));
   }
-  form.oninput = () => {
-    checked = null;
-    notice.textContent = '';
-    button.textContent = 'Проверить даты';
-  };
+  updateDates();
   form.onsubmit = async event => {
     event.preventDefault();
+    if (busy || !start.value || !end.value) return;
     const period = Object.fromEntries(new FormData(form));
     const key = JSON.stringify(period);
-    const inputs = [...form.querySelectorAll('input')];
-    button.disabled = true;
-    inputs.forEach(input => { input.disabled = true; });
+    busy = true;
+    picker.hidden = true;
+    buttons.forEach(([control]) => { control.disabled = true; });
+    updateDates();
     try {
       if (checked === key) {
         await request('vacation/requests', period);
@@ -87,8 +165,9 @@ function setupVacation() {
     } catch (error) {
       notice.textContent = error.message;
     } finally {
-      button.disabled = false;
-      inputs.forEach(input => { input.disabled = false; });
+      busy = false;
+      buttons.forEach(([control]) => { control.disabled = false; });
+      updateDates();
     }
   };
   void refresh().catch(error => { list.replaceChildren(make('li', error.message)); });
@@ -113,7 +192,11 @@ function showDevelopment(data, files) {
   plan.id = 'development-stages';
   root.append(plan);
   const describe = item => item && [item.title, dateLabel(item.date), item.status === 'paused' ? 'На паузе' : null].filter(Boolean).join(' · ');
-  fields(plan.id, [[adapting ? 'Текущий этап' : 'Последний запуск', describe(data.current)], ['Следующий этап', describe(data.upcoming)]]);
+  const stages = [];
+  if (data.current) stages.push(['Текущий этап', describe(data.current)]);
+  if (data.upcoming) stages.push(['Следующий этап', describe(data.upcoming)]);
+  if (stages.length) fields(plan.id, stages);
+  else plan.remove();
   const materials = files.filter(file => file.material);
   if (materials.length) {
     const [block, body] = disclosure('Материалы адаптации и ИПР');
@@ -232,6 +315,7 @@ function tabs() {
   buttons.forEach((button, index) => {button.onclick = () => {
     const direction = Math.sign(index - current);current = index;
     sections.forEach((section, i) => {section.hidden = (i < 2 ? 0 : i - 1) !== index;});
+    byId('name').closest('header').hidden = index !== 0;
     buttons.forEach((item, i) => item.setAttribute('aria-selected', String(i === index)));
     byId('marker').style.transform = `translateX(${index * 100}%)`;
     if (!byId('colleagues').hidden) void loadColleagues();
@@ -285,7 +369,7 @@ async function start() {
     const data = await (await request('profile')).json();
     byId('name').textContent = data.name || 'Профиль сотрудника';
     byId('position').textContent = data.position || '';
-    fields('profile', [['Рабочая почта', data.email], ['Рабочие часы', data.hours], ['День рождения', data.birthday], ['Первый рабочий день', data.first_workday?.split('-').reverse().join('.')]]);
+    fields('profile', [['Рабочая почта', data.email], ['Рабочие часы', data.hours], ['День рождения', data.birthday]]);
     fields('team', [['Руководитель', data.manager], ['Наставник по адаптации', data.adaptation_mentor], ['Наставник по ИПР', data.development_mentor]]);
     showDevelopment(data.development, data.files);
     if (data.vacation) {

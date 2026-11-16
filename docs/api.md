@@ -109,6 +109,9 @@ coverage_percent, fully_met, missing_requirements, unassessed, unmet.
 проверяет `starts_on` и `ends_on` по опубликованному календарю; `GET/POST
 /employee-cabinet/vacation/requests` читает и сохраняет собственные заявки.
 Точный повтор активной заявки не создаёт дубль, пересечение отклоняется.
+`GET /employee-cabinet/vacation/calendar?month=YYYY-MM` возвращает текущую дату
+в часовом поясе системы и рабочие/нерабочие дни месяца из опубликованного
+производственного календаря. Отсутствие данных календаря даёт 422.
 `GET /api/employees/{employee_id}/vacation/requests` требует HR/admin-сессию.
 `POST /api/employees/{employee_id}/vacation/requests/{request_id}/decision`
 принимает строгий boolean `approved` от HR/admin: согласование возможно после

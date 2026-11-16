@@ -56,7 +56,7 @@ class EmployeeCabinetTests(unittest.TestCase):
     def test_vacation_request_preview_duplicate_and_owner(self):
         from app.adaptation_planning import CalendarDates
         from app.models import EmployeeVacationRequest
-        from app.vacation import VacationPeriod, decide, preview, requests_for, route_to_current_manager, submit
+        from app.vacation import VacationPeriod, calendar_month, decide, preview, requests_for, route_to_current_manager, submit
 
         engine = create_engine("sqlite://")
         cabinet.Employee.__table__.create(engine)
@@ -66,6 +66,9 @@ class EmployeeCabinetTests(unittest.TestCase):
             db.add(cabinet.Employee(id=70, full_name="Employee", created_at=datetime.now()))
             db.commit()
             with patch.object(CalendarDates, "working", side_effect=lambda day: day.day != 2):
+                month = calendar_month(db, "2090-01")
+                self.assertEqual(month["days"][1], {"date": "2090-01-02", "workday": False})
+                self.assertEqual(len(month["days"]), 31)
                 self.assertEqual(preview(db, period), dict(calendar_days=3, workdays=2, non_workdays=1))
                 first = submit(db, 70, period)
                 self.assertEqual(submit(db, 70, period), first)
@@ -160,7 +163,7 @@ class EmployeeCabinetTests(unittest.TestCase):
         with TestClient(app) as client:
             self.assertEqual(client.get("/employee-cabinet").status_code, 200)
             self.assertIn("Использовано в этом году", client.get("/employee-cabinet").text)
-            for path in ("profile", "files/1", "vacation/requests", "colleagues"):
+            for path in ("profile", "files/1", "vacation/requests", "vacation/calendar", "colleagues"):
                 response = client.get(f"/employee-cabinet/{path}")
                 self.assertEqual(response.status_code, 403)
                 self.assertEqual(response.headers["cache-control"], "no-store")

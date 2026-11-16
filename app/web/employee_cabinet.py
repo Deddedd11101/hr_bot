@@ -8,7 +8,7 @@ from pathlib import Path
 from urllib.parse import parse_qsl
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy import and_
 
@@ -20,7 +20,7 @@ from ..models import (
     Grade, GradeAssessment, GradeDevelopmentCycle, GradeDevelopmentMilestone,
 )
 from ..staff_email_verification import is_verified, verification_required
-from ..vacation import VacationPeriod, preview as preview_vacation, requests_for, submit as submit_vacation
+from ..vacation import VacationPeriod, calendar_month, preview as preview_vacation, requests_for, submit as submit_vacation
 
 router = APIRouter(prefix="/employee-cabinet")
 PILOT_EMPLOYEE_IDS = {70, 80, 84}
@@ -194,6 +194,16 @@ def vacation_preview(request: Request, period: VacationPeriod):
         authorize(db, request)
         try:
             return JSONResponse(preview_vacation(db, period), headers=PRIVATE_HEADERS)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc), headers=PRIVATE_HEADERS) from exc
+
+
+@router.get("/vacation/calendar")
+def vacation_calendar(request: Request, month: str | None = Query(None, pattern=r"^[0-9]{4}-(0[1-9]|1[0-2])$")):
+    with get_session() as db:
+        authorize(db, request)
+        try:
+            return JSONResponse(calendar_month(db, month), headers=PRIVATE_HEADERS)
         except ValueError as exc:
             raise HTTPException(422, str(exc), headers=PRIVATE_HEADERS) from exc
 

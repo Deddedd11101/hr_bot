@@ -35,7 +35,19 @@ h1{font-size:22px;line-height:1.25}h2{font-size:16px}
 .vacation-balances dd{margin-top:6px;font-weight:600}
 #development dl{margin-bottom:14px}
 .vacation-form{display:grid;gap:10px;margin:16px 0}.vacation-dates{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
-.vacation-dates label,.vacation-dates input{display:block;width:100%;min-width:0}.vacation-dates input{font:inherit;padding:6px 4px}
+.vacation-dates button{text-align:left;color:var(--ink);background:var(--card)}
+.vacation-form button,.directory-search{border-radius:12px;border-color:color-mix(in srgb,var(--accent) 30%,var(--line))}
+.vacation-picker{margin:0;padding:10px;background:var(--card);border:1px solid var(--line);border-radius:12px}
+.calendar-head{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px}
+.calendar-head button{min-width:38px;padding:4px}
+.calendar-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px;text-align:center}
+.calendar-grid small{font-size:11px}
+.calendar-grid button{padding:5px 0;min-height:36px;border:0;border-radius:8px;color:var(--ink)}
+.calendar-grid button.is-off{color:var(--muted);background:var(--bg)}
+.calendar-grid button.is-range{background:var(--highlight)}
+.calendar-grid button[aria-pressed=true]{background:#bada1e;color:#181817;font-weight:700}
+.calendar-key{margin-top:8px}
+#vacation-submit{background:var(--highlight);font-weight:600}
 .directory-search{width:100%;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink);padding:9px 11px;font:inherit}
 .directory-group{margin-top:14px}.directory-group h3{margin:0;font-size:13px;color:var(--muted)}
 .directory-person{display:flex;align-items:center;gap:9px;min-width:0}
@@ -53,7 +65,13 @@ h1{font-size:22px;line-height:1.25}h2{font-size:16px}
   <section id="development" hidden></section>
   <section hidden><h2>Отпуск <span id="vacation-year"></span></h2><dl class="vacation-balances"><div><dt>Использовано в этом году</dt><dd id="vacation-used">Не указано</dd></div><div><dt>Осталось</dt><dd id="vacation-remaining">Не указано</dd></div></dl>
     <form id="vacation-form" class="vacation-form">
-      <div class="vacation-dates"><label>Начало<input name="starts_on" type="date" required></label><label>Последний день<input name="ends_on" type="date" required></label></div>
+      <input name="starts_on" type="hidden"><input name="ends_on" type="hidden">
+      <div class="vacation-dates"><button id="vacation-start" type="button" aria-expanded="false" aria-controls="vacation-picker">Начало</button><button id="vacation-end" type="button" aria-expanded="false" aria-controls="vacation-picker">Последний день</button></div>
+      <div id="vacation-picker" class="vacation-picker" hidden>
+        <div class="calendar-head"><button id="month-prev" type="button" aria-label="Предыдущий месяц">‹</button><strong id="calendar-month"></strong><button id="month-next" type="button" aria-label="Следующий месяц">›</button></div>
+        <div id="calendar-grid" class="calendar-grid"></div>
+        <small id="calendar-status" class="calendar-key" role="status"></small>
+      </div>
       <p id="vacation-status" role="status"></p>
       <button id="vacation-submit" type="submit">Проверить даты</button>
     </form>
@@ -75,5 +93,5 @@ h1{font-size:22px;line-height:1.25}h2{font-size:16px}
 <button role="tab" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/></svg>Отпуск</button>
 <button role="tab" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2m20 0v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8"/><circle cx="9" cy="7" r="4"/></svg>Коллеги</button>
 </div></nav>
-<script src="/static/employee-cabinet.js?v=6" defer></script>
+<script src="/static/employee-cabinet.js?v=7" defer></script>
 </html>

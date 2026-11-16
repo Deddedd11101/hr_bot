@@ -1,3 +1,4 @@
+from calendar import monthrange
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -57,6 +58,19 @@ def preview(db, period):
     calendar = CalendarDates(db)
     workdays = sum(calendar.working(period.starts_on + timedelta(days=i)) for i in range(span + 1))
     return dict(calendar_days=span + 1, workdays=workdays, non_workdays=span + 1 - workdays)
+
+
+def calendar_month(db, month):
+    from .adaptation_planning import CalendarDates
+
+    calendar = CalendarDates(db)
+    today = datetime.now(ZoneInfo(settings.TIMEZONE)).date()
+    first = date.fromisoformat(f"{month}-01") if month else today.replace(day=1)
+    days = []
+    for number in range(1, monthrange(first.year, first.month)[1] + 1):
+        day = first.replace(day=number)
+        days.append(dict(date=day.isoformat(), workday=calendar.working(day)))
+    return dict(today=today.isoformat(), month=first.isoformat()[:7], days=days)
 
 
 def request_payload(row):
