@@ -101,6 +101,12 @@ coverage_percent, fully_met, missing_requirements, unassessed, unmet.
 Дни — целые неотрицательные числа или null; смена года при сохранении даёт 409.
 Собственный баланс доступен через подписанный профиль Mini App.
 
+Подписанные маршруты Mini App: `POST /employee-cabinet/vacation/preview`
+проверяет `starts_on` и `ends_on` по опубликованному календарю; `GET/POST
+/employee-cabinet/vacation/requests` читает и сохраняет собственные заявки.
+Точный повтор активной заявки не создаёт дубль, пересечение отклоняется.
+`GET /api/employees/{employee_id}/vacation/requests` требует HR/admin-сессию.
+
 `PUT /api/employees/{employee_id}/grade/development/kickoff` сохраняет явный
 разовый старт: `due_at` (МСК), `specialization_id`, `scenario_key` для
 организации ИПР, `intro_scenario_key` и `plan_scenario_key`.

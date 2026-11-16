@@ -34,6 +34,8 @@ h1{font-size:22px;line-height:1.25}h2{font-size:16px}
 .vacation-balances>div{display:block;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--card)}
 .vacation-balances dd{margin-top:6px;font-weight:600}
 #development dl{margin-bottom:14px}
+.vacation-form{display:grid;gap:10px;margin:16px 0}.vacation-dates{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.vacation-dates label,.vacation-dates input{display:block;width:100%;min-width:0}.vacation-dates input{font:inherit;padding:6px 4px}
 </style>
 <main>
  <header><p class="brand"><img src="/static/favicon.png" alt="">Личный кабинет</p><h1 id="name"></h1><p id="position"></p></header>
@@ -43,7 +45,14 @@ h1{font-size:22px;line-height:1.25}h2{font-size:16px}
   <section><h2>Команда</h2><dl id="team"></dl></section>
   <section hidden><h2>Мои файлы</h2><ul id="files"></ul></section>
   <section id="development" hidden></section>
-  <section hidden><h2>Отпуск <span id="vacation-year"></span></h2><dl class="vacation-balances"><div><dt>Использовано в этом году</dt><dd id="vacation-used">Не указано</dd></div><div><dt>Осталось</dt><dd id="vacation-remaining">Не указано</dd></div></dl></section>
+  <section hidden><h2>Отпуск <span id="vacation-year"></span></h2><dl class="vacation-balances"><div><dt>Использовано в этом году</dt><dd id="vacation-used">Не указано</dd></div><div><dt>Осталось</dt><dd id="vacation-remaining">Не указано</dd></div></dl>
+    <form id="vacation-form" class="vacation-form">
+      <div class="vacation-dates"><label>Начало<input name="starts_on" type="date" required></label><label>Последний день<input name="ends_on" type="date" required></label></div>
+      <p id="vacation-status" role="status"></p>
+      <button id="vacation-submit" type="submit">Проверить даты</button>
+    </form>
+    <h2>Мои заявки</h2><ul id="vacation-requests"></ul>
+  </section>
  </div>
 </main>
 <nav id="navigation" aria-label="Разделы кабинета" hidden><div class="tabs" role="tablist"><span id="marker" class="marker" aria-hidden="true"></span>
@@ -52,5 +61,5 @@ h1{font-size:22px;line-height:1.25}h2{font-size:16px}
 <button role="tab" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 17 6-6 4 4 8-8m-6 0h6v6"/></svg>Развитие</button>
 <button role="tab" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/></svg>Отпуск</button>
 </div></nav>
-<script src="/static/employee-cabinet.js?v=3" defer></script>
+<script src="/static/employee-cabinet.js?v=4" defer></script>
 </html>

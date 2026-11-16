@@ -23,12 +23,69 @@ function fields(id, pairs) {
   }
 }
 
-async function request(path) {
+async function request(path, data) {
   const response = await fetch(`/employee-cabinet/${path}`, {
-    headers: {'X-Telegram-Init-Data': tg.initData}, credentials: 'omit', cache: 'no-store',
+    headers: {'X-Telegram-Init-Data': tg.initData, ...(data ? {'Content-Type': 'application/json'} : {})},
+    ...(data ? {method: 'POST', body: JSON.stringify(data)} : {}), credentials: 'omit', cache: 'no-store',
   });
-  if (!response.ok) throw new Error(response.status === 403 ? 'Открой кабинет заново через бота.' : 'Не удалось загрузить данные.');
+  if (!response.ok) {
+    const error = await response.json().catch(() => null);
+    throw new Error(response.status === 403 ? 'Открой кабинет заново через бота.' :
+      typeof error?.detail === 'string' ? error.detail : 'Не удалось выполнить запрос.');
+  }
   return response;
+}
+
+function setupVacation() {
+  const form = byId('vacation-form');
+  const button = byId('vacation-submit');
+  const notice = byId('vacation-status');
+  const list = byId('vacation-requests');
+  let checked = null;
+  async function refresh() {
+    const rows = await (await request('vacation/requests')).json();
+    list.replaceChildren(...rows.map(row => {
+      const item = make('li', '');
+      item.append(make('span', `${dateLabel(row.starts_on)} – ${dateLabel(row.ends_on)}`),
+        make('small', {pending:'Ожидает рассмотрения', approved:'Согласована', rejected:'Отклонена'}[row.status] || row.status));
+      return item;
+    }));
+    if (!rows.length) list.append(make('li', 'Заявок пока нет'));
+  }
+  form.oninput = () => {
+    checked = null;
+    notice.textContent = '';
+    button.textContent = 'Проверить даты';
+  };
+  form.onsubmit = async event => {
+    event.preventDefault();
+    const period = Object.fromEntries(new FormData(form));
+    const key = JSON.stringify(period);
+    const inputs = [...form.querySelectorAll('input')];
+    button.disabled = true;
+    inputs.forEach(input => { input.disabled = true; });
+    try {
+      if (checked === key) {
+        await request('vacation/requests', period);
+        form.reset();
+        checked = null;
+        button.textContent = 'Проверить даты';
+        notice.textContent = 'Заявка сохранена.';
+        await refresh().catch(() => { notice.textContent = 'Заявка сохранена. Список не удалось обновить.'; });
+      } else {
+        const days = await (await request('vacation/preview', period)).json();
+        checked = key;
+        notice.textContent = `Календарных: ${days.calendar_days} · рабочих: ${days.workdays} · нерабочих: ${days.non_workdays}`;
+        button.textContent = 'Подать заявку';
+      }
+    } catch (error) {
+      notice.textContent = error.message;
+    } finally {
+      button.disabled = false;
+      inputs.forEach(input => { input.disabled = false; });
+    }
+  };
+  void refresh().catch(error => { list.replaceChildren(make('li', error.message)); });
 }
 
 function disclosure(title, open = false) {
@@ -157,6 +214,7 @@ async function start() {
       }
     }
     tabs();
+    setupVacation();
     if (data.files.length) data.files.forEach(file => byId('files').append(fileRow(file)));
     else byId('files').append(make('li', 'Файлов пока нет'));
     byId('content').hidden = false;

@@ -5,16 +5,24 @@ import { Feedback, useAction } from "@/grades/components";
 import { errorMessage, request } from "@/grades/data";
 
 type Balance = {year: number; used_days: number | null; remaining_days: number | null};
+type VacationRequest = {id: number; starts_on: string; ends_on: string; workdays: number; status: string};
+const statuses: Record<string, string> = {pending: "Ожидает рассмотрения", approved: "Согласована", rejected: "Отклонена"};
+const dateLabel = (value: string) => value.split("-").reverse().join(".");
 
 export function VacationBalance({employeeId}: {employeeId: number}) {
   const endpoint = `/api/employees/${employeeId}/vacation`;
   const [balance, setBalance] = useState<Balance | null>(null);
   const [error, setError] = useState("");
+  const [requests, setRequests] = useState<VacationRequest[] | null>(null);
+  const [requestsError, setRequestsError] = useState("");
   const action = useAction();
   useEffect(() => {
     const controller = new AbortController();
     request<Balance>(endpoint, "GET", undefined, controller.signal).then(setBalance).catch(error => {
       if (!controller.signal.aborted) setError(errorMessage(error));
+    });
+    request<VacationRequest[]>(`${endpoint}/requests`, "GET", undefined, controller.signal).then(setRequests).catch(error => {
+      if (!controller.signal.aborted) setRequestsError(errorMessage(error));
     });
     return () => controller.abort();
   }, [endpoint]);
@@ -38,5 +46,15 @@ export function VacationBalance({employeeId}: {employeeId: number}) {
       </div>
       <Button type="submit" disabled={action.busy}>Сохранить баланс</Button>
     </form>}
+    <h3 className="border-t pt-3 font-medium">Заявки на отпуск</h3>
+    <Feedback error={requestsError} />
+    {!requests && !requestsError && <p role="status">Загрузка заявок…</p>}
+    {requests?.length === 0 && <p className="text-sm text-muted-foreground">Заявок пока нет.</p>}
+    {!!requests?.length && <ul className="divide-y">
+      {requests.map(row => <li key={row.id} className="flex flex-wrap justify-between gap-2 py-2 text-sm">
+        <span>{dateLabel(row.starts_on)} – {dateLabel(row.ends_on)}</span>
+        <span className="text-muted-foreground">Рабочих дней: {row.workdays} · {statuses[row.status] ?? row.status}</span>
+      </li>)}
+    </ul>}
   </section>;
 }

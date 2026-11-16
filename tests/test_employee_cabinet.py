@@ -3,7 +3,7 @@ import hmac
 import json
 import time
 import unittest
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
@@ -19,6 +19,28 @@ from app.web import employee_cabinet as cabinet
 
 
 class EmployeeCabinetTests(unittest.TestCase):
+    def test_vacation_request_preview_duplicate_and_owner(self):
+        from app.adaptation_planning import CalendarDates
+        from app.models import EmployeeVacationRequest
+        from app.vacation import VacationPeriod, preview, requests_for, submit
+
+        engine = create_engine("sqlite://")
+        cabinet.Employee.__table__.create(engine)
+        EmployeeVacationRequest.__table__.create(engine)
+        period = VacationPeriod(starts_on=date(2090, 1, 1), ends_on=date(2090, 1, 3))
+        with sessionmaker(bind=engine)() as db:
+            db.add(cabinet.Employee(id=70, full_name="Employee", created_at=datetime.now()))
+            db.commit()
+            with patch.object(CalendarDates, "working", side_effect=lambda day: day.day != 2):
+                self.assertEqual(preview(db, period), dict(calendar_days=3, workdays=2, non_workdays=1))
+                first = submit(db, 70, period)
+                self.assertEqual(submit(db, 70, period), first)
+                with self.assertRaisesRegex(ValueError, "уже есть заявка"):
+                    submit(db, 70, VacationPeriod(starts_on=period.ends_on, ends_on=period.ends_on))
+                self.assertEqual(requests_for(db, 70), [first])
+                self.assertEqual(requests_for(db, 80), [])
+        engine.dispose()
+
     def test_vacation_balance_preserves_zero_and_is_scoped_by_employee_and_year(self):
         from app.models import EmployeeVacationBalance
         from app.vacation import BalanceInput, balance, save_balance
@@ -80,7 +102,7 @@ class EmployeeCabinetTests(unittest.TestCase):
         with TestClient(app) as client:
             self.assertEqual(client.get("/employee-cabinet").status_code, 200)
             self.assertIn("Использовано в этом году", client.get("/employee-cabinet").text)
-            for path in ("profile", "files/1"):
+            for path in ("profile", "files/1", "vacation/requests"):
                 response = client.get(f"/employee-cabinet/{path}")
                 self.assertEqual(response.status_code, 403)
                 self.assertEqual(response.headers["cache-control"], "no-store")

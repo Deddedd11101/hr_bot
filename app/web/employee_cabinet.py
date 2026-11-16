@@ -16,6 +16,7 @@ from ..database import get_session
 from ..messaging.identity import find_employees_by_channel_user_id, get_primary_chat_id
 from ..models import Employee, EmployeeAdaptationPlanItem, EmployeeFile, Grade, GradeAssessment, GradeDevelopmentCycle, GradeDevelopmentMilestone
 from ..staff_email_verification import is_verified, verification_required
+from ..vacation import VacationPeriod, preview as preview_vacation, requests_for, submit as submit_vacation
 
 router = APIRouter(prefix="/employee-cabinet")
 PILOT_EMPLOYEE_IDS = {70, 80, 84}
@@ -146,6 +147,35 @@ def profile(request: Request):
                        "material": {"ipr": "ipr", "probation_plan": "adaptation"}.get(item.category)}
                       for item in own_files(db, employee).order_by(EmployeeFile.id.desc())],
         }, headers=PRIVATE_HEADERS)
+
+
+@router.get("/vacation/requests")
+def vacation_requests(request: Request):
+    with get_session() as db:
+        employee = authorize(db, request)
+        return JSONResponse(requests_for(db, employee.id), headers=PRIVATE_HEADERS)
+
+
+@router.post("/vacation/preview")
+def vacation_preview(request: Request, period: VacationPeriod):
+    with get_session() as db:
+        authorize(db, request)
+        try:
+            return JSONResponse(preview_vacation(db, period), headers=PRIVATE_HEADERS)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc), headers=PRIVATE_HEADERS) from exc
+
+
+@router.post("/vacation/requests")
+def vacation_submit(request: Request, period: VacationPeriod):
+    with get_session() as db:
+        employee = authorize(db, request)
+        try:
+            result = submit_vacation(db, employee.id, period)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc), headers=PRIVATE_HEADERS) from exc
+        db.commit()
+        return JSONResponse(result, headers=PRIVATE_HEADERS)
 
 
 @router.get("/files/{file_id}")

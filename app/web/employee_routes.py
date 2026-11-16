@@ -49,7 +49,7 @@ from .employees import (
     _serialize_hr_notes_history,
     _serialize_manual_bot_message_history,
 )
-from ..vacation import BalanceInput, balance, current_year, save_balance
+from ..vacation import BalanceInput, balance, current_year, requests_for, save_balance
 from .support import render_template, require_api_auth, require_auth
 
 router = APIRouter()
@@ -614,6 +614,13 @@ def update_employee_vacation(request: Request, employee_id: int, values: Balance
     save_balance(db, employee_id, account.id, values)
     db.commit()
     return balance(db, employee_id)
+
+
+@router.get("/api/employees/{employee_id}/vacation/requests")
+def employee_vacation_requests(request: Request, employee_id: int, db: Session = Depends(get_db)):
+    require_api_auth(request)
+    _maintenance_employee(db, employee_id)
+    return requests_for(db, employee_id)
 
 
 @router.get("/api/employees/{employee_id}/hr-notes")
