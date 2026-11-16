@@ -15,7 +15,7 @@ from ..mass_targeting import deserialize_target_selection, deserialize_target_va
 from ..messaging import as_messenger
 from ..messaging.identity import get_primary_chat_id
 from ..models import (Employee, FlowLaunchRequest, GradeAssessment, GradeDevelopmentAction as Action, GradeDevelopmentCycle as Cycle,
-                      GradeDevelopmentDelivery as Delivery, GradeDevelopmentMilestone as Milestone,
+                      GradeDevelopmentDelivery as Delivery, GradeDevelopmentDraft as Draft, GradeDevelopmentMilestone as Milestone,
                       HrSettings, MassScenarioAction, MassScenarioRecipient, ScenarioTemplate)
 from ..notifications import _notification_recipients
 from ..scenario_engine import (INTERACTIVE_RESPONSE_TYPES, ScenarioRecipientBusy, get_conflicting_progress_for_survey_launch,
@@ -179,6 +179,7 @@ def payload(db, employee_id):
     cycle = db.scalar(select(Cycle).where(Cycle.employee_id == employee_id))
     latest = _latest(db, employee_id)
     rows = list(db.scalars(select(Milestone).where(Milestone.employee_id == employee_id).order_by(Milestone.due_at, Milestone.id)))
+    draft = db.get(Draft, employee_id)
     current = [item for item in rows if cycle and item.assessment_id == cycle.assessment_id]
     ids = [item.id for item in rows]
     deliveries = [dict(id=d.id, milestone_id=d.milestone_id, role=d.role, status=d.status, last_error=d.last_error)
@@ -191,7 +192,8 @@ def payload(db, employee_id):
                 FlowLaunchRequest.processed_at.is_(None), FlowLaunchRequest.launch_type != "adaptation_plan").limit(1)):
             result["last_error"] = None
         return result
-    return dict(kickoff=kickoff_payload(db, employee), revision=cycle.revision if cycle else 0,
+    return dict(kickoff=kickoff_payload(db, employee), revision=cycle.revision if cycle else draft.revision if draft else 0,
+        draft=json.loads(draft.plan_json) if draft else None, has_cycle=cycle is not None,
         assessment_id=cycle.assessment_id if cycle else (latest.id if latest else None),
         latest_final_assessment_id=latest.id if latest else None,
         anchor_date=cycle.anchor_date.isoformat() if cycle else (_assessment_anchor(latest).isoformat() if latest and not _unknown_date(latest) else None),
@@ -219,6 +221,8 @@ def configure(db, employee_id, data, *, allow_actions=False):
         raise ValueError("Неизвестные поля настроек цикла развития")
     _lock(db, employee_id)
     cycle = db.scalar(select(Cycle).where(Cycle.employee_id == employee_id))
+    if not allow_actions and db.get(Draft, employee_id):
+        raise GradeConflictError("Используйте редактор черновика цикла")
     if cycle and not allow_actions and db.scalar(select(Action.id).join(Milestone, Milestone.id == Action.milestone_id)
             .where(Milestone.employee_id == employee_id, Milestone.assessment_id == cycle.assessment_id).limit(1)):
         raise GradeConflictError("Используйте настройки списка действий цикла")

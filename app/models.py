@@ -184,6 +184,13 @@ class GradeDevelopmentCycle(Base):
     review12_scenario_key: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
 
 
+class GradeDevelopmentDraft(Base):
+    __tablename__ = "grade_development_drafts"
+    employee_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    revision: Mapped[int] = mapped_column(Integer)
+    plan_json: Mapped[str] = mapped_column(Text)
+
+
 class GradeDevelopmentMilestone(Base):
     __tablename__ = "grade_development_milestones"
     __table_args__ = (UniqueConstraint("employee_id", "assessment_id", "kind"),)

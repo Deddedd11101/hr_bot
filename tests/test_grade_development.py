@@ -28,6 +28,37 @@ NOW = datetime(2026, 10, 27, 9)
 
 
 class GradeDevelopmentTests(unittest.TestCase):
+    def test_meeting_draft_is_inert_until_explicit_save(self):
+        from app.grades.development_actions import configure
+
+        assessment = self.db.get(GradeAssessment, 1)
+        assessment.status = "draft"
+        self.db.flush()
+        data = dict(assessment_id=None, expected_revision=0, anchor_date="", anchor_source="meeting",
+                    enabled=False, actions={kind: [] for kind in dev.KINDS})
+        saved = configure(self.db, 1, 1, data)
+        self.assertIsNone(saved["draft"]["anchor_date"])
+        self.assertFalse(saved["has_cycle"])
+        with self.assertRaises(grades.GradeConflictError):
+            configure(self.db, 1, 1, data)
+        data.update(expected_revision=1, anchor_date="2026-11-04")
+        saved = configure(self.db, 1, 1, data)
+        self.assertEqual(saved["draft"]["anchor_date"], "2026-11-04")
+        assessment.status = "final"
+        self.db.flush()
+        dev.renew_after_finalization(self.db, assessment)
+        self.assertEqual(self.db.query(Milestone).count(), 0)
+        self.assertEqual(self.db.query(FlowLaunchRequest).count(), 0)
+        data.update(assessment_id=1, expected_revision=2)
+        with patch.object(dev, "calendar_dates", return_value={
+            "ipr6": "2027-05-04T10:00", "ipr12": "2027-11-04T10:00", "review12": "2027-11-04T10:10",
+        }):
+            saved = configure(self.db, 1, 1, data)
+        self.assertIsNone(saved["draft"])
+        self.assertTrue(saved["has_cycle"])
+        self.assertFalse(saved["enabled"])
+        self.assertEqual(saved["revision"], 3)
+
     def test_meeting_anchor_preserves_dates_after_new_assessment(self):
         proposed = {"ipr6": "2027-05-04T10:00", "ipr12": "2027-11-04T10:00", "review12": "2027-11-04T10:10"}
         with patch.object(dev, "calendar_dates", return_value=proposed) as calendar:

@@ -34,6 +34,8 @@ SQLite compatibility patch additive/idempotent, без backfill. Не являе
 `onboarding_events.scenario_title` и `step_title` — nullable snapshots названий на момент отправки. Текст `message` сохраняется без изменений. `flow_launch_requests.requested_by_account_id` — nullable ID инициатора запуска из карточки или планирования адаптации; для автоматических и исторических записей может отсутствовать. SQLite compatibility patch добавляет колонки без backfill и удаления истории. `processed_at` означает обработку запроса, а не доказанную доставку.
 
 GradeReviewCollection.snapshot_json дополнительно хранит frozen open_questions.
+`grade_development_drafts` хранит один незапущенный план на сотрудника,
+его revision и настройки даты/действий в JSON. Планировщик эту таблицу не читает.
 
 `grade_development_kickoffs` хранит один явный разовый старт на сотрудника:
 локальную дату запуска, шаблон оценки, сценарий организации ИПР, инициатора,
