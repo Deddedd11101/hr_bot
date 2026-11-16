@@ -14,6 +14,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import NullPool
 
 from app.web import employee_cabinet as cabinet
 
@@ -159,10 +160,47 @@ class EmployeeCabinetTests(unittest.TestCase):
         with TestClient(app) as client:
             self.assertEqual(client.get("/employee-cabinet").status_code, 200)
             self.assertIn("Использовано в этом году", client.get("/employee-cabinet").text)
-            for path in ("profile", "files/1", "vacation/requests"):
+            for path in ("profile", "files/1", "vacation/requests", "colleagues"):
                 response = client.get(f"/employee-cabinet/{path}")
                 self.assertEqual(response.status_code, 403)
                 self.assertEqual(response.headers["cache-control"], "no-store")
+
+    def test_colleagues_exposes_only_work_directory_fields(self):
+        from app.models import CatalogGroup, CatalogMembership
+
+        with TemporaryDirectory() as directory:
+            engine = create_engine(f"sqlite:///{(Path(directory) / 'directory.db').as_posix()}", poolclass=NullPool)
+            self.addCleanup(engine.dispose)
+            for model in (cabinet.Employee, CatalogGroup, CatalogMembership):
+                model.__table__.create(engine)
+            sessions = sessionmaker(bind=engine)
+            with sessions() as db:
+                for person_id, name, stage, username in (
+                    (70, "Viewer", "staff", None), (71, "Analyst", "ipr", "@analyst_1"),
+                    (72, "Candidate", "candidate", "@candidate_1"), (73, "Designer", "adaptation", "bad/path"),
+                    (74, "Former", "dismissed", "@former_1"), (75, "PM", "staff", "@pm_person"),
+                ):
+                    db.add(cabinet.Employee(id=person_id, full_name=name, employee_stage=stage,
+                                            telegram_username=username, created_at=datetime.now()))
+                db.add(CatalogGroup(id=10, scope="people", name="Analytics", normalized_name="analytics"))
+                db.add(CatalogMembership(scope="people", group_id=10, object_id=71))
+                db.commit()
+            app = FastAPI()
+            app.include_router(cabinet.router)
+            with patch.object(cabinet, "get_session", sessions), patch.object(
+                cabinet, "authorize", return_value=SimpleNamespace(id=70)
+            ), patch.object(cabinet, "get_primary_chat_id", side_effect=lambda person, **_: "123" if person.id == 71 else None):
+                with TestClient(app) as client:
+                    response = client.get("/employee-cabinet/colleagues")
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.headers["cache-control"], "no-store")
+            rows = {row["name"]: row for row in response.json()}
+            self.assertEqual(set(rows), {"Analyst", "Designer", "PM"})
+            self.assertEqual(rows["Analyst"], {"name": "Analyst", "position": None, "username": "analyst_1",
+                                               "group_id": 10, "group_name": "Analytics"})
+            self.assertIsNone(rows["Designer"]["group_name"])
+            self.assertIsNone(rows["Designer"]["username"])
+            self.assertIsNone(rows["PM"]["username"])
 
     def test_download_enforces_owner_direction_and_storage_path(self):
         with TemporaryDirectory() as directory:

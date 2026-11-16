@@ -26,7 +26,7 @@ details{padding:0 12px;margin:10px 0;border:1px solid var(--line);background:var
 body{font-size:14px}
 h1{font-size:22px;line-height:1.25}h2{font-size:16px}
 .brand{display:flex;align-items:center;gap:8px;font-size:12px}.brand img{width:20px;height:20px;object-fit:contain}
-.tabs{grid-template-columns:repeat(4,minmax(0,1fr))}.marker{width:25%}
+.tabs{grid-template-columns:repeat(5,minmax(0,1fr))}.marker{width:20%}
 .tabs button{display:grid;place-items:center;gap:2px;padding:4px 1px;font-size:11px}
 .tabs svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linejoin:round;stroke-linecap:round}
 @supports(backdrop-filter:blur(14px)){nav{background:color-mix(in srgb,var(--card) 86%,transparent);backdrop-filter:blur(14px)}}
@@ -36,6 +36,12 @@ h1{font-size:22px;line-height:1.25}h2{font-size:16px}
 #development dl{margin-bottom:14px}
 .vacation-form{display:grid;gap:10px;margin:16px 0}.vacation-dates{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
 .vacation-dates label,.vacation-dates input{display:block;width:100%;min-width:0}.vacation-dates input{font:inherit;padding:6px 4px}
+.directory-search{width:100%;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink);padding:9px 11px;font:inherit}
+.directory-group{margin-top:14px}.directory-group h3{margin:0;font-size:13px;color:var(--muted)}
+.directory-person{display:flex;align-items:center;gap:9px;min-width:0}
+.directory-avatar{width:32px;height:32px;flex:none;padding:6px;background:var(--highlight);border-radius:50%;object-fit:contain}
+.directory-chat{min-width:44px;min-height:44px;display:grid;place-items:center}
+.directory-chat svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
 </style>
 <main>
  <header><p class="brand"><img src="/static/favicon.png" alt="">Личный кабинет</p><h1 id="name"></h1><p id="position"></p></header>
@@ -53,6 +59,13 @@ h1{font-size:22px;line-height:1.25}h2{font-size:16px}
     </form>
     <h2>Мои заявки</h2><ul id="vacation-requests"></ul>
   </section>
+  <section id="colleagues" hidden>
+    <h2>Коллеги</h2>
+    <input id="colleague-search" class="directory-search" type="search" aria-label="Поиск коллег" placeholder="Имя, должность или группа">
+    <p id="colleague-status" role="status"></p>
+    <button id="colleague-retry" type="button" hidden>Повторить</button>
+    <div id="colleague-groups"></div>
+  </section>
  </div>
 </main>
 <nav id="navigation" aria-label="Разделы кабинета" hidden><div class="tabs" role="tablist"><span id="marker" class="marker" aria-hidden="true"></span>
@@ -60,6 +73,7 @@ h1{font-size:22px;line-height:1.25}h2{font-size:16px}
 <button role="tab" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6M8 13h8m-8 4h8"/></svg>Документы</button>
 <button role="tab" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 17 6-6 4 4 8-8m-6 0h6v6"/></svg>Развитие</button>
 <button role="tab" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/></svg>Отпуск</button>
+<button role="tab" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2m20 0v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8"/><circle cx="9" cy="7" r="4"/></svg>Коллеги</button>
 </div></nav>
-<script src="/static/employee-cabinet.js?v=5" defer></script>
+<script src="/static/employee-cabinet.js?v=6" defer></script>
 </html>

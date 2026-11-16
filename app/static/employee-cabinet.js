@@ -8,16 +8,22 @@ function make(tag, text) {
   return node;
 }
 
+function chatLink(username, text) {
+  if (!/^[A-Za-z0-9_]{5,32}$/.test(username || '')) return null;
+  const link = make('a', text);
+  link.href = `https://t.me/${username}`;
+  link.onclick = event => {
+    if (tg?.openTelegramLink) { event.preventDefault(); tg.openTelegramLink(link.href); }
+  };
+  return link;
+}
+
 function fields(id, pairs) {
   for (const [label, value] of pairs) {
     const row = make('div', '');
     const field = make('dd', typeof value === 'object' ? value?.name || 'Не указано' : value || 'Не указано');
-    if (value?.username && /^[A-Za-z0-9_]{5,32}$/.test(value.username)) {
-      const link = make('a', field.textContent);
-      link.href = `https://t.me/${value.username}`;
-      link.onclick = event => { if (tg?.openTelegramLink) { event.preventDefault(); tg.openTelegramLink(link.href); } };
-      field.replaceChildren(link);
-    }
+    const link = chatLink(value?.username, field.textContent);
+    if (link) field.replaceChildren(link);
     row.append(make('dt', label), field);
     byId(id).append(row);
   }
@@ -144,16 +150,91 @@ function showDevelopment(data, files) {
   body.append(list);root.append(block);
 }
 
+function setupColleagues() {
+  const field = byId('colleague-search');
+  const notice = byId('colleague-status');
+  const retry = byId('colleague-retry');
+  const root = byId('colleague-groups');
+  const normalize = value => (value || '').toLocaleLowerCase('ru').replaceAll('ё', 'е');
+  const collator = new Intl.Collator('ru');
+  let people = null;
+  let loading = false;
+  function render() {
+    if (!people) return;
+    root.replaceChildren();
+    const terms = normalize(field.value).trim().split(/\s+/).filter(Boolean);
+    const groups = new Map();
+    for (const person of people) {
+      const label = person.group_name || 'Без группы';
+      const searchable = normalize([person.name, person.position, label].join(' '));
+      if (!terms.every(term => searchable.includes(term))) continue;
+      if (!groups.has(person.group_id)) groups.set(person.group_id, {label, people: []});
+      groups.get(person.group_id).people.push(person);
+    }
+    notice.textContent = groups.size ? '' : people.length ? 'Никого не нашли.' : 'Список коллег пока пуст.';
+    const sorted = [...groups.entries()].sort(([a, left], [b, right]) =>
+      Number(a == null) - Number(b == null) || collator.compare(left.label, right.label));
+    for (const [, group] of sorted) {
+      const block = make('div', '');
+      block.className = 'directory-group';
+      const list = make('ul', '');
+      for (const person of group.people) {
+        const row = make('li', '');
+        const info = make('div', '');
+        info.className = 'directory-person';
+        const image = make('img', '');
+        image.className = 'directory-avatar'; image.src = '/static/favicon.png'; image.alt = '';
+        const title = make('div', person.name);
+        if (person.position) title.append(make('small', person.position));
+        info.append(image, title); row.append(info);
+        const link = chatLink(person.username, '');
+        if (link) {
+          link.className = 'directory-chat';
+          link.setAttribute('aria-label', `Открыть чат: ${person.name}`);
+          link.title = 'Открыть чат в Telegram';
+          const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+          const path = document.createElementNS(svg.namespaceURI, 'path');
+          svg.setAttribute('viewBox', '0 0 24 24'); svg.setAttribute('aria-hidden', 'true');
+          path.setAttribute('d', 'm22 2-7 20-4-9-9-4 20-7ZM22 2 11 13');
+          svg.append(path); link.append(svg); row.append(link);
+        }
+        list.append(row);
+      }
+      block.append(make('h3', group.label), list); root.append(block);
+    }
+  }
+  async function load() {
+    if (people || loading) return;
+    loading = true;
+    retry.hidden = true;
+    notice.textContent = 'Загрузка…';
+    try {
+      people = await (await request('colleagues')).json();
+      people.sort((a, b) => collator.compare(a.name, b.name));
+      render();
+    } catch (error) {
+      notice.textContent = error.message;
+      people = null;
+      retry.hidden = false;
+    } finally { loading = false; }
+  }
+  retry.onclick = load;
+  field.oninput = render;
+  return load;
+}
+
 function tabs() {
   const navigation = byId('navigation');
   const buttons = Array.from(navigation.querySelectorAll('button'));
   const sections = Array.from(byId('content').querySelectorAll('section'));
+  const loadColleagues = setupColleagues();
   let current = 0;
   buttons.forEach((button, index) => {button.onclick = () => {
     const direction = Math.sign(index - current);current = index;
     sections.forEach((section, i) => {section.hidden = (i < 2 ? 0 : i - 1) !== index;});
     buttons.forEach((item, i) => item.setAttribute('aria-selected', String(i === index)));
     byId('marker').style.transform = `translateX(${index * 100}%)`;
+    if (!byId('colleagues').hidden) void loadColleagues();
     if (direction && !matchMedia('(prefers-reduced-motion: reduce)').matches) byId('content').animate(
       [{opacity:.65, transform:`translateX(${12 * direction}px)`},{opacity:1, transform:'translateX(0)'}], {duration:220});
     window.scrollTo(0, 0);
