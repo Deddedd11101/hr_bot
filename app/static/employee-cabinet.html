@@ -8,7 +8,7 @@
 <style>
 :root{color-scheme:light dark;--bg:#f8f8f7;--ink:#181817;--muted:#5f615e;--line:#dedfdb;--accent:#147343}
 @media(prefers-color-scheme:dark){:root{--bg:#171717;--ink:#f0f0ef;--muted:#b7b8b4;--line:#393a37;--accent:#73c99a}}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,sans-serif}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 Inter,system-ui,sans-serif}
 main{max-width:590px;margin:auto;padding:24px 18px max(24px,env(safe-area-inset-bottom));overflow-wrap:anywhere}
 h1{font-size:26px;margin:4px 0 0}h2{font-size:17px;margin:0 0 8px}p,dl,dd{margin:0}header p,dt,small,#status{color:var(--muted)}
 section{margin-top:22px;border-top:1px solid var(--line);padding-top:14px}dl>div,li{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px;padding:8px 0;border-bottom:1px solid var(--line)}
@@ -16,20 +16,23 @@ ul{list-style:none;padding:0;margin:0}li{grid-template-columns:minmax(0,1fr) aut
 button{border:1px solid var(--line);border-radius:6px;color:var(--accent);background:transparent;padding:8px;font:inherit;cursor:pointer}button:disabled{opacity:.6}#status{margin-top:12px}
 :root{--radius:.875rem;--accent:oklch(.548 .116 156.9);--card:#fff;--highlight:#e4f3ea}
 @media(prefers-color-scheme:dark){:root{--accent:oklch(.675 .121 158.2);--card:#242422;--highlight:#243b2e}}
-main{padding-bottom:calc(92px + env(safe-area-inset-bottom))}button{border-radius:calc(var(--radius) - 4px)}a{color:var(--accent)}
-nav{position:fixed;bottom:0;left:0;right:0;z-index:1;padding:8px 12px max(8px,env(safe-area-inset-bottom));background:var(--card);border-top:1px solid var(--line)}
-.tabs{position:relative;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));max-width:570px;margin:auto}.marker{position:absolute;inset:0 auto 0 0;width:33.333%;background:var(--highlight);border-radius:var(--radius);transition:transform .22s ease;pointer-events:none}
-.tabs button{position:relative;min-height:44px;border:0;color:var(--muted);font-size:13px}.tabs button[aria-selected=true]{color:var(--accent);font-weight:650}
+main{padding-bottom:calc(98px + env(safe-area-inset-bottom))}a{color:var(--accent)}
+button{border-radius:8px;transition:background-color .16s ease,transform .16s ease}
+button:not(:disabled):active{transform:scale(.96)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+nav{position:fixed;bottom:max(8px,env(safe-area-inset-bottom));left:6px;right:6px;z-index:1}
+.tabs{position:relative;display:grid;grid-template-columns:repeat(6,minmax(0,1fr));max-width:570px;margin:auto;padding:4px;border:1px solid var(--line);background:var(--card);border-radius:18px;box-shadow:0 4px 18px #0002}
+.marker{position:absolute;inset:4px auto 4px 4px;width:calc((100% - 8px) / 6);background:var(--highlight);border-radius:13px;transition:transform .26s cubic-bezier(.2,.75,.3,1);pointer-events:none}
+.tabs button{position:relative;display:grid;grid-template-rows:22px auto;place-items:center;align-content:center;gap:3px;min-height:50px;min-width:0;padding:3px 0;border:0;color:var(--muted);font-size:10px;line-height:1.15;text-align:center}
+.tabs button[aria-current=page]{color:var(--ink);font-weight:700}
+.tabs svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linejoin:round;stroke-linecap:round}
+.tabs button[aria-current=page] svg{color:var(--accent)}
+@supports(backdrop-filter:blur(14px)){.tabs{background:color-mix(in srgb,var(--card) 88%,transparent);backdrop-filter:blur(14px)}}
 details{padding:0 12px;margin:10px 0;border:1px solid var(--line);background:var(--card);border-radius:var(--radius)}summary{padding:11px 0;font-weight:600;cursor:pointer}details>div{padding-bottom:12px}
 .radar{display:block;width:100%;max-width:320px;margin:8px auto}.radar polygon{stroke:var(--accent);stroke-width:1.5}.radar .grid{stroke:var(--line);fill:none}
-@media(prefers-reduced-motion:reduce){.marker{transition:none}}
-body{font-size:14px}
+@media(prefers-reduced-motion:reduce){.marker,button{transition:none}button:not(:disabled):active{transform:none}}
 h1{font-size:22px;line-height:1.25}h2{font-size:16px}
 .brand{display:flex;align-items:center;gap:8px;font-size:12px}.brand img{width:20px;height:20px;object-fit:contain}
-.tabs{grid-template-columns:repeat(5,minmax(0,1fr))}.marker{width:20%}
-.tabs button{display:grid;place-items:center;gap:2px;padding:4px 1px;font-size:11px}
-.tabs svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linejoin:round;stroke-linecap:round}
-@supports(backdrop-filter:blur(14px)){nav{background:color-mix(in srgb,var(--card) 86%,transparent);backdrop-filter:blur(14px)}}
 .vacation-balances{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
 .vacation-balances>div{display:block;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--card)}
 .vacation-balances dd{margin-top:6px;font-weight:600}
@@ -48,6 +51,9 @@ h1{font-size:22px;line-height:1.25}h2{font-size:16px}
 .calendar-grid button[aria-pressed=true]{background:#bada1e;color:#181817;font-weight:700}
 .calendar-key{margin-top:8px}
 #vacation-submit{background:var(--highlight);font-weight:600}
+#files button,#colleague-retry{background:var(--card);min-height:40px}
+#knowledge-items li{display:block}
+#knowledge-items a{display:block;padding:8px 0;text-underline-offset:3px}
 .directory-search{width:100%;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink);padding:9px 11px;font:inherit}
 .directory-group{margin-top:14px}.directory-group h3{margin:0;font-size:13px;color:var(--muted)}
 .directory-person{display:flex;align-items:center;gap:9px;min-width:0}
@@ -59,12 +65,11 @@ h1{font-size:22px;line-height:1.25}h2{font-size:16px}
  <header><p class="brand"><img src="/static/favicon.png" alt="">Личный кабинет</p><h1 id="name"></h1><p id="position"></p></header>
  <p id="status" role="status"></p>
  <div id="content" hidden>
-  <section><h2>Профиль</h2><dl id="profile"></dl></section>
-  <section><h2>Команда</h2><dl id="team"></dl></section>
-  <section><button id="knowledge-open" type="button">База знаний →</button></section>
-  <section hidden><h2>Мои файлы</h2><ul id="files"></ul></section>
-  <section id="development" hidden></section>
-  <section hidden><h2>Отпуск <span id="vacation-year"></span></h2><dl class="vacation-balances"><div><dt>Использовано в этом году</dt><dd id="vacation-used">Не указано</dd></div><div><dt>Осталось</dt><dd id="vacation-remaining">Не указано</dd></div></dl>
+  <section data-view="profile"><h2>Профиль</h2><dl id="profile"></dl></section>
+  <section data-view="profile"><h2>Команда</h2><dl id="team"></dl></section>
+  <section data-view="files" hidden><h2>Мои файлы</h2><ul id="files"></ul></section>
+  <section data-view="development" id="development" hidden></section>
+  <section data-view="vacation" hidden><h2>Отпуск <span id="vacation-year"></span></h2><dl class="vacation-balances"><div><dt>Использовано в этом году</dt><dd id="vacation-used">Не указано</dd></div><div><dt>Осталось</dt><dd id="vacation-remaining">Не указано</dd></div></dl>
     <form id="vacation-form" class="vacation-form">
       <input name="starts_on" type="hidden"><input name="ends_on" type="hidden">
       <div class="vacation-dates"><button id="vacation-start" type="button" aria-expanded="false" aria-controls="vacation-picker">Начало</button><button id="vacation-end" type="button" aria-expanded="false" aria-controls="vacation-picker">Последний день</button></div>
@@ -78,27 +83,27 @@ h1{font-size:22px;line-height:1.25}h2{font-size:16px}
     </form>
     <h2>Мои заявки</h2><ul id="vacation-requests"></ul>
   </section>
-  <section id="colleagues" hidden>
+  <section data-view="colleagues" id="colleagues" hidden>
     <h2>Коллеги</h2>
     <input id="colleague-search" class="directory-search" type="search" aria-label="Поиск коллег" placeholder="Имя, должность или группа">
     <p id="colleague-status" role="status"></p>
     <button id="colleague-retry" type="button" hidden>Повторить</button>
     <div id="colleague-groups"></div>
   </section>
-  <section id="knowledge" hidden>
-    <button id="knowledge-back" type="button">‹ Профиль</button>
+  <section data-view="knowledge" id="knowledge" hidden>
     <h2>База знаний</h2>
     <p id="knowledge-status" role="status"></p>
     <div id="knowledge-items"></div>
   </section>
  </div>
 </main>
-<nav id="navigation" aria-label="Разделы кабинета" hidden><div class="tabs" role="tablist"><span id="marker" class="marker" aria-hidden="true"></span>
-<button role="tab" aria-selected="true"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21v-2a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v2"/></svg>Профиль</button>
-<button role="tab" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6M8 13h8m-8 4h8"/></svg>Документы</button>
-<button role="tab" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 17 6-6 4 4 8-8m-6 0h6v6"/></svg>Развитие</button>
-<button role="tab" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/></svg>Отпуск</button>
-<button role="tab" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2m20 0v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8"/><circle cx="9" cy="7" r="4"/></svg>Коллеги</button>
+<nav id="navigation" aria-label="Разделы кабинета" hidden><div class="tabs"><span id="marker" class="marker" aria-hidden="true"></span>
+<button type="button" data-view="profile" aria-current="page"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21v-2a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v2"/></svg>Профиль</button>
+<button type="button" data-view="files" aria-label="Документы"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/><path d="M3 11h18"/></svg>Файлы</button>
+<button type="button" data-view="development"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 17 6-6 4 4 8-8m-6 0h6v6"/></svg>Развитие</button>
+<button type="button" data-view="vacation"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18m6 5h6"/></svg>Отпуск</button>
+<button type="button" data-view="colleagues"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2m20 0v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8"/><circle cx="9" cy="7" r="4"/></svg>Коллеги</button>
+<button type="button" data-view="knowledge" aria-label="База знаний"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 7v14m0-14a7 7 0 0 0-5-2H3v14h4a7 7 0 0 1 5 2m0-14a7 7 0 0 1 5-2h4v14h-4a7 7 0 0 0-5 2"/></svg>Знания</button>
 </div></nav>
-<script src="/static/employee-cabinet.js?v=8" defer></script>
+<script src="/static/employee-cabinet.js?v=9" defer></script>
 </html>

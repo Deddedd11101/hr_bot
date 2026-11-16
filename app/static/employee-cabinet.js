@@ -315,7 +315,6 @@ async function loadKnowledge() {
     const list = make('ul', '');
     for (const item of items) {
       const row = make('li', '');
-      row.style.display = 'block';
       if (item.children) {
         const [section, body] = disclosure(item.label);
         render(item.children, body);
@@ -347,29 +346,29 @@ function tabs() {
   const buttons = Array.from(navigation.querySelectorAll('button'));
   const sections = Array.from(byId('content').querySelectorAll('section'));
   const loadColleagues = setupColleagues();
+  let transition;
   let current = 0;
   buttons.forEach((button, index) => {button.onclick = () => {
-    const direction = Math.sign(index - current);current = index;
-    sections.forEach((section, i) => {section.hidden = (i < 3 ? 0 : i - 2) !== index;});
-    byId('name').closest('header').hidden = index !== 0;
-    buttons.forEach((item, i) => item.setAttribute('aria-selected', String(i === index)));
+    const direction = Math.sign(index - current);
+    current = index;
+    const view = button.dataset.view;
+    sections.forEach(section => {section.hidden = section.dataset.view !== view;});
+    byId('name').closest('header').hidden = view !== 'profile';
+    buttons.forEach(item => {
+      if (item === button) item.setAttribute('aria-current', 'page');
+      else item.removeAttribute('aria-current');
+    });
     byId('marker').style.transform = `translateX(${index * 100}%)`;
-    if (!byId('colleagues').hidden) void loadColleagues();
-    if (direction && !matchMedia('(prefers-reduced-motion: reduce)').matches) byId('content').animate(
-      [{opacity:.65, transform:`translateX(${12 * direction}px)`},{opacity:1, transform:'translateX(0)'}], {duration:220});
+    if (view === 'colleagues') void loadColleagues();
+    if (view === 'knowledge') void loadKnowledge();
+    if (direction && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      transition?.cancel();
+      transition = byId('content').animate(
+        [{opacity:.7, transform:`translateX(${8 * direction}px)`},{opacity:1, transform:'translateX(0)'}],
+        {duration:200, easing:'cubic-bezier(.2,.75,.3,1)'});
+    }
     window.scrollTo(0, 0);
   };});
-  byId('knowledge-open').onclick = () => {
-    sections.forEach(section => { section.hidden = section.id !== 'knowledge'; });
-    byId('name').closest('header').hidden = true;
-    window.scrollTo(0, 0);
-    byId('knowledge-back').focus();
-    void loadKnowledge();
-  };
-  byId('knowledge-back').onclick = () => {
-    buttons[0].click();
-    byId('knowledge-open').focus();
-  };
   navigation.hidden = false;
 }
 
