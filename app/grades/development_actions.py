@@ -1,6 +1,6 @@
 """Optional, independently claimed actions at each development milestone."""
 import json
-from datetime import datetime
+from datetime import date, datetime
 from uuid import UUID, NAMESPACE_URL, uuid5
 
 from sqlalchemy import select, update
@@ -91,6 +91,8 @@ def validate(db, employee, data, *, existing_midyear_reviews=()):
 
 def configure(db, employee_id, actor_id, data):
     from ..web.grades import GradeConflictError
+    if not isinstance(data, dict) or set(data) - {"assessment_id", "expected_revision", "anchor_date", "anchor_source", "enabled", "due_dates", "actions"}:
+        raise ValueError("Неизвестные поля настроек цикла развития")
     dev._lock(db, employee_id)
     employee = db.get(Employee, employee_id)
     if not employee:
@@ -104,6 +106,42 @@ def configure(db, employee_id, actor_id, data):
     enabled = base.get("enabled")
     if type(enabled) is not bool:
         raise ValueError("enabled должен быть логическим значением")
+    cycle = db.scalar(select(dev.Cycle).where(dev.Cycle.employee_id == employee_id))
+    draft = db.get(dev.Draft, employee_id)
+    revision = data.get("expected_revision")
+    if draft and (type(revision) is not int or revision != draft.revision):
+        raise GradeConflictError("Черновик изменился. Обновите страницу")
+    incomplete = base.get("anchor_source") == "meeting" and (
+        not base.get("anchor_date") or dev._latest(db, employee_id) is None
+    )
+    if incomplete:
+        if cycle or enabled:
+            raise ValueError("Для рабочего цикла укажите дату встречи и сохраните исходную оценку")
+        if not dev._active_staff(employee):
+            raise ValueError("Сотрудник недоступен")
+        if not draft:
+            if type(revision) is not int or revision != 0:
+                raise GradeConflictError("Настройки цикла изменились. Обновите страницу")
+            draft = dev.Draft(employee_id=employee_id)
+            db.add(draft)
+        anchor = base.get("anchor_date") or None
+        if anchor is not None:
+            anchor = date.fromisoformat(anchor).isoformat()
+        overrides = base.get("due_dates", {})
+        if not isinstance(overrides, dict) or set(overrides) - set(dev.KINDS):
+            raise ValueError("Некорректные даты этапов")
+        for value in overrides.values():
+            if not isinstance(value, str) or datetime.fromisoformat(value).tzinfo is not None:
+                raise ValueError("Даты этапов задаются по Москве без часового смещения")
+        draft.revision = revision + 1
+        draft.plan_json = json.dumps(dict(anchor_source="meeting", anchor_date=anchor,
+                                          due_dates=overrides, actions=data["actions"]))
+        db.flush()
+        return dev.payload(db, employee_id)
+    if draft:
+        db.delete(draft)
+        db.flush()
+        base["expected_revision"] = 0
     selected = [a["scenario_key"] for values in clean.values() for a in values if a["type"] == "scenario"]
     if enabled and selected:
         pending = db.scalar(select(FlowLaunchRequest.id).where(FlowLaunchRequest.employee_id == employee_id,
@@ -163,6 +201,8 @@ def configure(db, employee_id, actor_id, data):
     if enabled and not dev._active_staff(employee):
         raise ValueError("Сотрудник недоступен")
     cycle.enabled = enabled
+    if draft:
+        cycle.revision = revision + 1
     db.flush()
     return dev.payload(db, employee_id)
 

@@ -96,6 +96,7 @@ def _ensure_sqlite_schema() -> None:
             "grade_skill_importances", "grade_skill_expectations", "employee_grade_profiles",
             "grade_assessments", "grade_assessment_values", "employee_grade_decisions", "grade_assessment_revisions",
             "grade_development_cycles", "grade_development_milestones", "grade_development_deliveries",
+            "grade_development_drafts",
         ):
             Base.metadata.tables[table_name].create(conn, checkfirst=True)
         for table, column, ddl in (
@@ -104,6 +105,7 @@ def _ensure_sqlite_schema() -> None:
             ("grade_specializations", "skill_ids_json", "TEXT"),
             ("grade_specializations", "assessment_guidance_json", "TEXT"),
             ("grade_assessments", "archived_at", "DATETIME"),
+            ("grade_development_cycles", "anchor_source", "TEXT NOT NULL DEFAULT 'assessment'"),
         ):
             known = {row[1] for row in conn.execute(text(f"PRAGMA table_info({table})"))}
             if column not in known:

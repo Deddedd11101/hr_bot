@@ -57,6 +57,9 @@ def configure(db, employee_id, actor_id, data):
     if not dev._active_staff(employee):
         raise ValueError("Сотрудник недоступен")
     row = db.get(Kickoff, employee_id, populate_existing=True)
+    cycle = db.scalar(select(dev.Cycle).where(dev.Cycle.employee_id == employee_id))
+    if not row and cycle and cycle.anchor_source == "meeting":
+        raise ValueError("Для цикла от встречи разовый старт не нужен")
     if row and row.collection_id:
         raise ValueError("Разовая оценка 360 уже запущена")
     try:

@@ -15,7 +15,7 @@ from ..mass_targeting import deserialize_target_selection, deserialize_target_va
 from ..messaging import as_messenger
 from ..messaging.identity import get_primary_chat_id
 from ..models import (Employee, FlowLaunchRequest, GradeAssessment, GradeDevelopmentAction as Action, GradeDevelopmentCycle as Cycle,
-                      GradeDevelopmentDelivery as Delivery, GradeDevelopmentMilestone as Milestone,
+                      GradeDevelopmentDelivery as Delivery, GradeDevelopmentDraft as Draft, GradeDevelopmentMilestone as Milestone,
                       HrSettings, MassScenarioAction, MassScenarioRecipient, ScenarioTemplate)
 from ..notifications import _notification_recipients
 from ..scenario_engine import (INTERACTIVE_RESPONSE_TYPES, ScenarioRecipientBusy, get_conflicting_progress_for_survey_launch,
@@ -179,6 +179,7 @@ def payload(db, employee_id):
     cycle = db.scalar(select(Cycle).where(Cycle.employee_id == employee_id))
     latest = _latest(db, employee_id)
     rows = list(db.scalars(select(Milestone).where(Milestone.employee_id == employee_id).order_by(Milestone.due_at, Milestone.id)))
+    draft = db.get(Draft, employee_id)
     current = [item for item in rows if cycle and item.assessment_id == cycle.assessment_id]
     ids = [item.id for item in rows]
     deliveries = [dict(id=d.id, milestone_id=d.milestone_id, role=d.role, status=d.status, last_error=d.last_error)
@@ -191,10 +192,12 @@ def payload(db, employee_id):
                 FlowLaunchRequest.processed_at.is_(None), FlowLaunchRequest.launch_type != "adaptation_plan").limit(1)):
             result["last_error"] = None
         return result
-    return dict(kickoff=kickoff_payload(db, employee), revision=cycle.revision if cycle else 0,
+    return dict(kickoff=kickoff_payload(db, employee), revision=cycle.revision if cycle else draft.revision if draft else 0,
+        draft=json.loads(draft.plan_json) if draft else None, has_cycle=cycle is not None,
         assessment_id=cycle.assessment_id if cycle else (latest.id if latest else None),
         latest_final_assessment_id=latest.id if latest else None,
         anchor_date=cycle.anchor_date.isoformat() if cycle else (_assessment_anchor(latest).isoformat() if latest and not _unknown_date(latest) else None),
+        anchor_source=cycle.anchor_source if cycle else "assessment",
         enabled=cycle.enabled if cycle else False,
         **{kind + "_scenario_key": getattr(cycle, kind + "_scenario_key") if cycle else None for kind in KINDS},
         milestones=[dict(visible_item(item), actions=[action_payload(a) for a in db.scalars(select(Action).where(Action.milestone_id == item.id).order_by(Action.id))]) for item in current],
@@ -214,27 +217,32 @@ def _lock(db, employee_id):
 
 def configure(db, employee_id, data, *, allow_actions=False):
     from ..web.grades import GradeConflictError
-    if not isinstance(data, dict) or set(data) - {"assessment_id", "expected_revision", "anchor_date", "enabled", "due_dates", *(k + "_scenario_key" for k in KINDS)}:
+    if not isinstance(data, dict) or set(data) - {"assessment_id", "expected_revision", "anchor_date", "anchor_source", "enabled", "due_dates", *(k + "_scenario_key" for k in KINDS)}:
         raise ValueError("Неизвестные поля настроек цикла развития")
     _lock(db, employee_id)
     cycle = db.scalar(select(Cycle).where(Cycle.employee_id == employee_id))
+    if not allow_actions and db.get(Draft, employee_id):
+        raise GradeConflictError("Используйте редактор черновика цикла")
     if cycle and not allow_actions and db.scalar(select(Action.id).join(Milestone, Milestone.id == Action.milestone_id)
             .where(Milestone.employee_id == employee_id, Milestone.assessment_id == cycle.assessment_id).limit(1)):
         raise GradeConflictError("Используйте настройки списка действий цикла")
     expected = data.get("expected_revision")
     if type(expected) is not int or expected != (cycle.revision if cycle else 0):
         raise GradeConflictError("Настройки цикла изменились. Обновите страницу")
-    latest = _latest(db, employee_id)
+    source = data.get("anchor_source", cycle.anchor_source if cycle else "assessment")
+    if source not in ("assessment", "meeting"):
+        raise ValueError("Некорректная точка отсчёта цикла")
+    latest = db.get(GradeAssessment, cycle.assessment_id) if cycle and (source == "meeting" or cycle.anchor_source == "meeting") else _latest(db, employee_id)
     if not latest or type(data.get("assessment_id")) is not int or data["assessment_id"] != latest.id:
         raise ValueError("Выберите последнюю завершённую оценку")
     raw = data.get("anchor_date")
-    if raw is None and not _unknown_date(latest):
+    if raw is None and source != "meeting" and not _unknown_date(latest):
         anchor = _assessment_anchor(latest)
     else:
         try:
             anchor = date.fromisoformat(raw)
         except (ValueError, TypeError):
-            raise ValueError("Укажите дату исходного ревью в формате ГГГГ-ММ-ДД") from None
+            raise ValueError("Укажите дату начала цикла в формате ГГГГ-ММ-ДД") from None
     if type(data.get("enabled")) is not bool:
         raise ValueError("enabled должен быть логическим значением")
     if (data["enabled"] or not cycle) and not _active_staff(db.get(Employee, employee_id)):
@@ -268,9 +276,13 @@ def configure(db, employee_id, data, *, allow_actions=False):
     old = list(db.scalars(select(Milestone).where(Milestone.employee_id == employee_id)))
     current = {item.kind: item for item in old if item.assessment_id == latest.id}
     same_anchor = bool(cycle and cycle.assessment_id == latest.id and cycle.anchor_date == anchor)
+    if source == "meeting" and (not same_anchor or cycle.anchor_source != source):
+        dates = {kind: datetime.fromisoformat(value) for kind, value in calendar_dates(db, employee_id, anchor.isoformat()).items()}
     for kind in KINDS:
         item = current.get(kind)
-        if item and same_anchor:
+        if item and same_anchor and (source != "meeting" or cycle.anchor_source == source):
+            dates[kind] = item.due_at
+        if item and item.status not in EDITABLE:
             dates[kind] = item.due_at
         if kind in overrides:
             try:
@@ -295,6 +307,7 @@ def configure(db, employee_id, data, *, allow_actions=False):
         if item.assessment_id != latest.id and item.status in EDITABLE:
             item.status = "cancelled"
     cycle.assessment_id, cycle.anchor_date, cycle.enabled = latest.id, anchor, data["enabled"]
+    cycle.anchor_source = source
     cycle.revision = expected + 1
     for kind, key in keys.items():
         setattr(cycle, kind + "_scenario_key", key)
@@ -310,7 +323,7 @@ def configure(db, employee_id, data, *, allow_actions=False):
 def renew_after_finalization(db, assessment):
     """Only existing explicit configurations renew; correction/replay never calls this."""
     cycle = db.scalar(select(Cycle).where(Cycle.employee_id == assessment.employee_id))
-    if not cycle or cycle.assessment_id == assessment.id:
+    if not cycle or cycle.assessment_id == assessment.id or cycle.anchor_source == "meeting":
         return
     previous_assessment_id = cycle.assessment_id
     anchor = assessment.finalized_at.replace(tzinfo=ZoneInfo("UTC")).astimezone(MSK).date()

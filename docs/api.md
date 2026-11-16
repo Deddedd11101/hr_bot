@@ -233,7 +233,12 @@ Final сохраняется без изменений; archived доступе�
   missing calendar coverage returns 422. Existing dates are not changed.
 - `PUT /api/employees/{employee_id}/grade/development/actions`: authenticated
   transactional save, assessment_id/expected_revision/anchor_date/enabled,
+  optional `anchor_source` (`assessment` or `meeting`; GET returns the stored mode),
   optional due_dates, actions={ipr6:[],ipr12:[],review12:[]}.
+  Для нового цикла `meeting` без даты или завершённой оценки разрешён
+  `enabled=false`: сохраняется черновик, GET возвращает `draft` и
+  `has_cycle=false`. Повторное сохранение с обоими условиями создаёт цикл
+  и удаляет черновик в одной транзакции.
   Действие: key UUID, type=scenario/feedback/review, scenario_key либо null,
   recipient_ids для feedback/review, specialization_id для review. До 10 на этап.
   Необязательный `due_at` — локальный ISO datetime по Москве, не раньше начала
