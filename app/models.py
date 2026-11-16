@@ -45,6 +45,35 @@ class AdaptationPlanTemplate(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
 
 
+class EmployeeVacationBalance(Base):
+    __tablename__ = "employee_vacation_balances"
+    employee_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    year: Mapped[int] = mapped_column(Integer, primary_key=True)
+    used_days: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    remaining_days: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    updated_by_account_id: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
+class EmployeeVacationRequest(Base):
+    __tablename__ = "employee_vacation_requests"
+    __table_args__ = {"sqlite_autoincrement": True}
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    employee_id: Mapped[int] = mapped_column(Integer, index=True)
+    starts_on: Mapped[date] = mapped_column(Date)
+    ends_on: Mapped[date] = mapped_column(Date)
+    workdays: Mapped[int] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(String(16), default="pending")
+    created_at: Mapped[datetime] = mapped_column(DateTime)
+    manager_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    manager_revision: Mapped[int] = mapped_column(Integer, default=1)
+    manager_notice: Mapped[str] = mapped_column(String(16), default="pending")
+    hr_notice: Mapped[str] = mapped_column(String(16), default="pending")
+    manager_decided_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    hr_decided_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    hr_account_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+
+
 class EmployeeAdaptationPlanItem(Base):
     __tablename__ = "employee_adaptation_plan_items"
     __table_args__ = (UniqueConstraint("employee_id", "entry_key"),)

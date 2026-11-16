@@ -8,17 +8,23 @@ from pathlib import Path
 from urllib.parse import parse_qsl
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import FileResponse, JSONResponse
+from sqlalchemy import and_
 
 from ..config import settings
 from ..database import get_session
 from ..messaging.identity import find_employees_by_channel_user_id, get_primary_chat_id
-from ..models import Employee, EmployeeAdaptationPlanItem, EmployeeFile, Grade, GradeAssessment, GradeDevelopmentCycle, GradeDevelopmentMilestone
+from ..models import (
+    CatalogGroup, CatalogMembership, Employee, EmployeeAdaptationPlanItem, EmployeeFile,
+    Grade, GradeAssessment, GradeDevelopmentCycle, GradeDevelopmentMilestone,
+)
 from ..staff_email_verification import is_verified, verification_required
+from ..vacation import VacationPeriod, calendar_month, preview as preview_vacation, requests_for, submit as submit_vacation
 
 router = APIRouter(prefix="/employee-cabinet")
 PILOT_EMPLOYEE_IDS = {70, 80, 84}
+STAFF_STAGES = ("staff", "adaptation", "ipr")
 PRIVATE_HEADERS = {"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"}
 
 
@@ -50,7 +56,7 @@ def pilot_employee(db, telegram_id):
     if len(matches) != 1:
         return None
     person = matches[0]
-    if (person.id in PILOT_EMPLOYEE_IDS and person.employee_stage in {"staff", "adaptation", "ipr"}
+    if (person.id in PILOT_EMPLOYEE_IDS and person.employee_stage in STAFF_STAGES
             and not person.is_bot_blocked and verification_required(person)
             and is_verified(db, person, telegram_id) and get_primary_chat_id(person, db=db) == telegram_id):
         return person
@@ -96,11 +102,21 @@ def development(db, employee):
                      "categories": [{"name": row["categoryName"], "percent": round(25 * row["current"])}
                                     for row in assessment.get("categories", []) if row.get("assessed_count", 1)]}
     names = {"ipr6": "Промежуточная встреча", "ipr12": "Итоговая встреча", "review12": "Годовое ревью"}
+    adapting = employee.employee_stage == "adaptation"
+    rows = (
+        [{"title": item.title, "date": local_date(item.requested_at), "status": item.status} for item in adaptation]
+        if adapting else
+        [{"title": names[item.kind], "date": item.due_at.date().isoformat(),
+          "status": "paused" if not cycle.enabled and item.status in {"planned", "blocked"} else item.status}
+         for item in milestones if item.kind in names and item.status != "cancelled"]
+    )
+    active_states = {"starting", "started", "in_progress", "running"}
+    current = next((row for row in reversed(rows) if row["status"] in active_states), None)
+    upcoming = next((row for row in rows if row["status"] in {"planned", "scheduled", "blocked", "paused"}), None)
     return {
-        "active": "adaptation" if employee.employee_stage == "adaptation" else "development",
-        "adaptation": [{"title": item.title, "date": local_date(item.requested_at), "status": item.status} for item in adaptation],
-        "cycle": [{"title": names[item.kind], "date": local_date(item.due_at), "status": item.status}
-                  for item in milestones if item.kind in names],
+        "active": "adaptation" if adapting else "development",
+        "current": current,
+        "upcoming": upcoming,
         "grade": grade,
     }
 
@@ -112,6 +128,8 @@ def cabinet_page():
 
 @router.get("/profile")
 def profile(request: Request):
+    from ..vacation import balance
+
     with get_session() as db:
         employee = authorize(db, request)
 
@@ -125,12 +143,81 @@ def profile(request: Request):
         return JSONResponse({
             "name": employee.full_name, "position": employee.desired_position,
             "email": employee.work_email, "hours": employee.work_hours,
+            "birthday": employee.birth_date.strftime("%d.%m") if employee.birth_date else None,
+            "vacation": balance(db, employee.id),
             "first_workday": employee.first_workday.isoformat() if employee.first_workday else None,
             "manager": contact(employee.manager_employee_id), "adaptation_mentor": contact(employee.mentor_adaptation_employee_id),
             "development_mentor": contact(employee.mentor_ipr_employee_id), "development": development(db, employee),
-            "files": [{"id": item.id, "name": item.original_filename, "size": item.file_size}
+            "files": [{"id": item.id, "name": item.original_filename, "size": item.file_size,
+                       "material": {"ipr": "ipr", "probation_plan": "adaptation"}.get(item.category)}
                       for item in own_files(db, employee).order_by(EmployeeFile.id.desc())],
         }, headers=PRIVATE_HEADERS)
+
+
+@router.get("/vacation/requests")
+def vacation_requests(request: Request):
+    with get_session() as db:
+        employee = authorize(db, request)
+        return JSONResponse(requests_for(db, employee.id), headers=PRIVATE_HEADERS)
+
+
+def directory_entries(db, viewer_id):
+    rows = db.query(Employee, CatalogGroup.id, CatalogGroup.name).outerjoin(
+        CatalogMembership, and_(CatalogMembership.scope == "people", CatalogMembership.object_id == Employee.id),
+    ).outerjoin(
+        CatalogGroup, and_(CatalogGroup.scope == "people", CatalogGroup.id == CatalogMembership.group_id),
+    ).filter(Employee.employee_stage.in_(STAFF_STAGES), Employee.id != viewer_id)
+    entries = []
+    for person, group_id, group_name in rows:
+        name = (person.full_name or "").strip()
+        if not name:
+            continue
+        username = (person.telegram_username or "").strip().removeprefix("@")
+        if (not re.fullmatch(r"[A-Za-z0-9_]{5,32}", username) or person.is_bot_blocked
+                or not get_primary_chat_id(person, db=db, channel="telegram")):
+            username = None
+        entries.append({"name": name, "position": person.desired_position, "username": username,
+                        "group_id": group_id, "group_name": group_name})
+    return entries
+
+
+@router.get("/colleagues")
+def colleagues(request: Request):
+    with get_session() as db:
+        employee = authorize(db, request)
+        return JSONResponse(directory_entries(db, employee.id), headers=PRIVATE_HEADERS)
+
+
+@router.post("/vacation/preview")
+def vacation_preview(request: Request, period: VacationPeriod):
+    with get_session() as db:
+        authorize(db, request)
+        try:
+            return JSONResponse(preview_vacation(db, period), headers=PRIVATE_HEADERS)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc), headers=PRIVATE_HEADERS) from exc
+
+
+@router.get("/vacation/calendar")
+def vacation_calendar(request: Request, month: str | None = Query(None, pattern=r"^[0-9]{4}-(0[1-9]|1[0-2])$")):
+    with get_session() as db:
+        authorize(db, request)
+        try:
+            return JSONResponse(calendar_month(db, month), headers=PRIVATE_HEADERS)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc), headers=PRIVATE_HEADERS) from exc
+
+
+@router.post("/vacation/requests")
+def vacation_submit(request: Request, period: VacationPeriod):
+    with get_session() as db:
+        employee = authorize(db, request)
+        try:
+            result = submit_vacation(db, employee.id, period)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc), headers=PRIVATE_HEADERS) from exc
+        db.commit()
+        return JSONResponse(result, headers=PRIVATE_HEADERS)
 
 
 @router.get("/files/{file_id}")

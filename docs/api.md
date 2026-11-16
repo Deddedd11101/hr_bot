@@ -18,12 +18,16 @@ source_of_truth: true
 
 `GET /employee-cabinet/profile` и `GET /employee-cabinet/files/{file_id}`
 требуют подписанный `X-Telegram-Init-Data` не старше 30 минут. Доступ только
-у привязанного и верифицированного сотрудника №70, при включённом пилоте.
+у привязанных и верифицированных сотрудников из списка пилота, при включённом пилоте.
 Профиль возвращает разрешённые рабочие поля, имена назначенных коллег и список
 собственных входящих файлов, этапы адаптации, даты цикла развития и агрегаты
 последней финальной оценки. Черновики, персональные ответы коллег и внутренние
 файлы HR не выдаются. Скачивание повторно проверяет владельца, направление
 файла и путь внутри каталога сотрудника. Ответы не кешируются.
+
+`GET /employee-cabinet/colleagues` использует тот же подписанный доступ. Отдаёт
+имя, должность, группу справочника сотрудников и необязательный Telegram username
+действующих коллег. Числовые Telegram ID, почта, даты рождения и поля HR не выдаются.
 
 ## Сохранённые задания шагов (10.11.2026)
 
@@ -95,6 +99,29 @@ scores, reviewers[].scores/categories/comments[{question, answer}], grades,
 current_grade_id и recommendation: method, grade_id/name либо null, levels с
 coverage_percent, fully_met, missing_requirements, unassessed, unmet.
 Это auth-protected HR-данные, не публичный endpoint.
+
+`GET/PUT /api/employees/{employee_id}/vacation` требует HR/admin-сессию.
+Баланс текущего года передаётся как `year`, `used_days`, `remaining_days`.
+Дни — целые неотрицательные числа или null; смена года при сохранении даёт 409.
+Собственный баланс доступен через подписанный профиль Mini App.
+
+Подписанные маршруты Mini App: `POST /employee-cabinet/vacation/preview`
+проверяет `starts_on` и `ends_on` по опубликованному календарю; `GET/POST
+/employee-cabinet/vacation/requests` читает и сохраняет собственные заявки.
+Точный повтор активной заявки не создаёт дубль, пересечение отклоняется.
+`GET /employee-cabinet/vacation/calendar?month=YYYY-MM` возвращает текущую дату
+в часовом поясе системы и рабочие/нерабочие дни месяца из опубликованного
+производственного календаря. Отсутствие данных календаря даёт 422.
+`GET /api/employees/{employee_id}/vacation/requests` требует HR/admin-сессию.
+`POST /api/employees/{employee_id}/vacation/requests/{request_id}/decision`
+принимает строгий boolean `approved` от HR/admin: согласование возможно после
+руководителя, отклонение — до или после его решения. Неверный этап даёт 409.
+Согласование не меняет остаток автоматически.
+`POST /api/employees/{employee_id}/vacation/requests/{request_id}/route-to-manager`
+перенаправляет ожидающую заявку текущему руководителю (HR/admin). Допустимо
+при смене получателя или после устранения блокировки до попытки отправки.
+Недействующий получатель или этап дают 409. Старые кнопки становятся недействительными.
+HR-список дополнительно возвращает `manager_issue` и `can_route` для ожидающих заявок.
 
 `PUT /api/employees/{employee_id}/grade/development/kickoff` сохраняет явный
 разовый старт: `due_at` (МСК), `specialization_id`, `scenario_key` для

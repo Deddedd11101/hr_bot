@@ -17,6 +17,7 @@ import { CandidateStage } from "./candidate-stage";
 import { EmployeeFeedbackSurveys } from "./feedback-surveys";
 import { EmployeeScenarioResults } from "./scenario-results";
 import { AdaptationPlanner } from "./adaptation-planner";
+import { VacationBalance } from "./vacation-balance";
 import { ScenarioQueue } from "./scenario-queue";
 import { EmployeeFileWorkspace, EmployeeFeedbackFiles } from "./file-workspace";
 import { TELEGRAM_DOCUMENT_TEMPLATE_TAGS, type TelegramCustomEmoji, type TelegramTemplateTag } from "@/components/ui/telegram-message-tools";
@@ -906,6 +907,7 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
                         <TabsTrigger value="history">История</TabsTrigger>
                         {!isCandidate ? <TabsTrigger value="adaptation">Адаптация</TabsTrigger> : null}
                         {!isCandidate ? <TabsTrigger value="grade">Грейд</TabsTrigger> : null}
+                        {!isCandidate ? <TabsTrigger value="vacation">Отпуск</TabsTrigger> : null}
                     </TabsList></div>
                     <TabsContent value="overview" keepMounted className="admin-page-stack min-w-0">
                         <EmployeeProfileSection {...profileProps} view="overview" />
@@ -926,6 +928,7 @@ export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
                     <TabsContent value="history" keepMounted className="admin-page-stack min-w-0"><EmployeeOperationsSection {...operationsProps} view="history" /></TabsContent>
                     {!isCandidate ? <TabsContent value="adaptation" keepMounted className="admin-page-stack min-w-0"><AdaptationPlanner employeeId={Number(form.id)} visible={activeTab === "adaptation"} /><details className="min-w-0"><summary className="cursor-pointer py-3 text-sm font-medium text-muted-foreground">Сопровождение и документы</summary><EmployeeProfileSection {...profileProps} view="adaptation" /></details><details className="min-w-0"><summary className="cursor-pointer py-3 text-sm font-medium text-muted-foreground">Разовый запуск и история</summary><EmployeeOperationsSection {...operationsProps} launchItems={launchItems.filter(item => item.purpose === "adaptation")} manualLaunchItems={manualLaunchItems.filter(item => item.purpose === "adaptation")} view="adaptation" /></details></TabsContent> : null}
                     {!isCandidate ? <TabsContent value="grade" keepMounted className="admin-page-surface min-w-0 p-4">{gradeOpened && <React.Suspense fallback={<p role="status">Загрузка грейда...</p>}><GradeTab employeeId={Number(form.id)} visible={activeTab === "grade"} /></React.Suspense>}</TabsContent> : null}
+                    {!isCandidate ? <TabsContent value="vacation" className="admin-page-surface min-w-0 p-4"><VacationBalance key={form.id} employeeId={Number(form.id)} /></TabsContent> : null}
                 </Tabs>
             </div>
         </>

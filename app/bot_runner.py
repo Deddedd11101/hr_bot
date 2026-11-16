@@ -451,6 +451,8 @@ async def on_menu_button(callback: CallbackQuery) -> None:
 
 
 async def main() -> None:
+    from .vacation_delivery import deliver_pending, vacation_decision_callback
+
     if not settings.TELEGRAM_BOT_TOKEN:
         raise RuntimeError("TELEGRAM_BOT_TOKEN не задан. Укажите его в .env")
 
@@ -465,6 +467,7 @@ async def main() -> None:
 
     dp.message.register(on_start, CommandStart())
     dp.message.register(on_employee_cabinet, Command("cabinet"))
+    dp.callback_query.register(vacation_decision_callback, lambda callback: (callback.data or "").startswith("vacation:"))
     dp.callback_query.register(
         on_scenario_button,
         lambda callback: callback.data is not None and callback.data.startswith(CALLBACK_PREFIX),
@@ -494,6 +497,7 @@ async def main() -> None:
         id="scan_employees",
         replace_existing=True,
     )
+    scheduler.add_job(deliver_pending, "interval", seconds=60, args=[bot], id="vacation_notices")
 
     print("HR Telegram bot is running. Press Ctrl+C to stop.")
 

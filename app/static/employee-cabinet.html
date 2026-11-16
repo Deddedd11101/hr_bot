@@ -23,17 +23,75 @@ nav{position:fixed;bottom:0;left:0;right:0;z-index:1;padding:8px 12px max(8px,en
 details{padding:0 12px;margin:10px 0;border:1px solid var(--line);background:var(--card);border-radius:var(--radius)}summary{padding:11px 0;font-weight:600;cursor:pointer}details>div{padding-bottom:12px}
 .radar{display:block;width:100%;max-width:320px;margin:8px auto}.radar polygon{stroke:var(--accent);stroke-width:1.5}.radar .grid{stroke:var(--line);fill:none}
 @media(prefers-reduced-motion:reduce){.marker{transition:none}}
+body{font-size:14px}
+h1{font-size:22px;line-height:1.25}h2{font-size:16px}
+.brand{display:flex;align-items:center;gap:8px;font-size:12px}.brand img{width:20px;height:20px;object-fit:contain}
+.tabs{grid-template-columns:repeat(5,minmax(0,1fr))}.marker{width:20%}
+.tabs button{display:grid;place-items:center;gap:2px;padding:4px 1px;font-size:11px}
+.tabs svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linejoin:round;stroke-linecap:round}
+@supports(backdrop-filter:blur(14px)){nav{background:color-mix(in srgb,var(--card) 86%,transparent);backdrop-filter:blur(14px)}}
+.vacation-balances{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.vacation-balances>div{display:block;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--card)}
+.vacation-balances dd{margin-top:6px;font-weight:600}
+#development dl{margin-bottom:14px}
+.vacation-form{display:grid;gap:10px;margin:16px 0}.vacation-dates{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.vacation-dates button{text-align:left;color:var(--ink);background:var(--card)}
+.vacation-form button,.directory-search{border-radius:12px;border-color:color-mix(in srgb,var(--accent) 30%,var(--line))}
+.vacation-picker{margin:0;padding:10px;background:var(--card);border:1px solid var(--line);border-radius:12px}
+.calendar-head{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px}
+.calendar-head button{min-width:38px;padding:4px}
+.calendar-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px;text-align:center}
+.calendar-grid small{font-size:11px}
+.calendar-grid button{padding:5px 0;min-height:36px;border:0;border-radius:8px;color:var(--ink)}
+.calendar-grid button.is-off{color:var(--muted);background:var(--bg)}
+.calendar-grid button.is-range{background:var(--highlight)}
+.calendar-grid button[aria-pressed=true]{background:#bada1e;color:#181817;font-weight:700}
+.calendar-key{margin-top:8px}
+#vacation-submit{background:var(--highlight);font-weight:600}
+.directory-search{width:100%;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink);padding:9px 11px;font:inherit}
+.directory-group{margin-top:14px}.directory-group h3{margin:0;font-size:13px;color:var(--muted)}
+.directory-person{display:flex;align-items:center;gap:9px;min-width:0}
+.directory-avatar{width:32px;height:32px;flex:none;padding:6px;background:var(--highlight);border-radius:50%;object-fit:contain}
+.directory-chat{min-width:44px;min-height:44px;display:grid;place-items:center}
+.directory-chat svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
 </style>
 <main>
- <header><p>Личный кабинет</p><h1 id="name"></h1><p id="position"></p></header>
+ <header><p class="brand"><img src="/static/favicon.png" alt="">Личный кабинет</p><h1 id="name"></h1><p id="position"></p></header>
  <p id="status" role="status"></p>
  <div id="content" hidden>
   <section><h2>Профиль</h2><dl id="profile"></dl></section>
   <section><h2>Команда</h2><dl id="team"></dl></section>
   <section hidden><h2>Мои файлы</h2><ul id="files"></ul></section>
   <section id="development" hidden></section>
+  <section hidden><h2>Отпуск <span id="vacation-year"></span></h2><dl class="vacation-balances"><div><dt>Использовано в этом году</dt><dd id="vacation-used">Не указано</dd></div><div><dt>Осталось</dt><dd id="vacation-remaining">Не указано</dd></div></dl>
+    <form id="vacation-form" class="vacation-form">
+      <input name="starts_on" type="hidden"><input name="ends_on" type="hidden">
+      <div class="vacation-dates"><button id="vacation-start" type="button" aria-expanded="false" aria-controls="vacation-picker">Начало</button><button id="vacation-end" type="button" aria-expanded="false" aria-controls="vacation-picker">Последний день</button></div>
+      <div id="vacation-picker" class="vacation-picker" hidden>
+        <div class="calendar-head"><button id="month-prev" type="button" aria-label="Предыдущий месяц">‹</button><strong id="calendar-month"></strong><button id="month-next" type="button" aria-label="Следующий месяц">›</button></div>
+        <div id="calendar-grid" class="calendar-grid"></div>
+        <small id="calendar-status" class="calendar-key" role="status"></small>
+      </div>
+      <p id="vacation-status" role="status"></p>
+      <button id="vacation-submit" type="submit">Проверить даты</button>
+    </form>
+    <h2>Мои заявки</h2><ul id="vacation-requests"></ul>
+  </section>
+  <section id="colleagues" hidden>
+    <h2>Коллеги</h2>
+    <input id="colleague-search" class="directory-search" type="search" aria-label="Поиск коллег" placeholder="Имя, должность или группа">
+    <p id="colleague-status" role="status"></p>
+    <button id="colleague-retry" type="button" hidden>Повторить</button>
+    <div id="colleague-groups"></div>
+  </section>
  </div>
 </main>
-<nav id="navigation" aria-label="Разделы кабинета" hidden><div class="tabs" role="tablist"><span id="marker" class="marker" aria-hidden="true"></span><button role="tab" aria-selected="true">Профиль</button><button role="tab" aria-selected="false">Документы</button><button role="tab" aria-selected="false">Развитие</button></div></nav>
-<script src="/static/employee-cabinet.js" defer></script>
+<nav id="navigation" aria-label="Разделы кабинета" hidden><div class="tabs" role="tablist"><span id="marker" class="marker" aria-hidden="true"></span>
+<button role="tab" aria-selected="true"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21v-2a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v2"/></svg>Профиль</button>
+<button role="tab" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6M8 13h8m-8 4h8"/></svg>Документы</button>
+<button role="tab" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 17 6-6 4 4 8-8m-6 0h6v6"/></svg>Развитие</button>
+<button role="tab" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/></svg>Отпуск</button>
+<button role="tab" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2m20 0v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8"/><circle cx="9" cy="7" r="4"/></svg>Коллеги</button>
+</div></nav>
+<script src="/static/employee-cabinet.js?v=7" defer></script>
 </html>
