@@ -14,38 +14,47 @@ from .staff_email_verification import chat_id_allowed
 logger = logging.getLogger(__name__)
 
 
-def manager_chat(db, row):
-    employee = db.get(Employee, row.employee_id)
-    manager = db.get(Employee, row.manager_id) if row.manager_id else None
-    if (not employee or not manager or manager.id == employee.id
-            or employee.manager_employee_id != manager.id or manager.is_bot_blocked
-            or manager.employee_stage not in {"staff", "adaptation", "ipr"}):
-        return None
+def manager_contact(db, employee, manager_id):
+    if not employee or not employee.manager_employee_id:
+        return None, "Руководитель не назначен в карточке сотрудника"
+    if employee.manager_employee_id != manager_id:
+        return None, "Руководитель изменился после подачи заявки"
+    manager = db.get(Employee, manager_id)
+    if not manager or manager.id == employee.id or manager.employee_stage not in {"staff", "adaptation", "ipr"}:
+        return None, "Назначенный руководитель недоступен"
+    if manager.is_bot_blocked:
+        return None, "У руководителя заблокирован доступ к боту"
     chat = get_primary_chat_id(manager, db=db, channel="telegram")
     if not chat or not chat.isdecimal() or chat.startswith("0"):
-        return None
+        return None, "У руководителя нет подтверждённой привязки Telegram"
     owners = find_employees_by_channel_user_id(db, channel="telegram", external_user_id=chat)
-    return chat if [owner.id for owner in owners] == [manager.id] else None
+    if [owner.id for owner in owners] != [manager.id]:
+        return None, "Telegram руководителя нельзя однозначно сопоставить с его карточкой"
+    return chat, None
+
+
+def manager_chat(db, row):
+    return manager_contact(db, db.get(Employee, row.employee_id), row.manager_id)[0]
 
 
 async def deliver_pending(bot):
     for status, column in (("pending", "manager_notice"), ("pending_hr", "hr_notice")):
         flag = getattr(EmployeeVacationRequest, column)
         with SessionLocal() as db:
-            ids = [r.id for r in db.query(EmployeeVacationRequest.id)
-                   .filter(EmployeeVacationRequest.status == status, flag == "pending")
-                   .order_by(EmployeeVacationRequest.id).limit(25)]
-        for row_id in ids:
+            rows = db.query(EmployeeVacationRequest.id, EmployeeVacationRequest.manager_revision)
+            jobs = rows.filter(EmployeeVacationRequest.status == status, flag == "pending").order_by(
+                EmployeeVacationRequest.id).limit(25).all()
+        for row_id, revision in jobs:
             with SessionLocal() as db:
                 result = db.execute(update(EmployeeVacationRequest).where(
                     EmployeeVacationRequest.id == row_id, EmployeeVacationRequest.status == status,
-                    flag == "pending",
+                    flag == "pending", EmployeeVacationRequest.manager_revision == revision,
                 ).values({column: "sending"}))
                 db.commit()
                 if not result.rowcount:
                     continue
                 row = db.get(EmployeeVacationRequest, row_id)
-                if not row or row.status != status:
+                if not row or row.status != status or row.manager_revision != revision:
                     continue
                 keyboard = None
                 if status == "pending":
@@ -57,8 +66,8 @@ async def deliver_pending(bot):
                         f"{row.starts_on:%d.%m.%Y} – {row.ends_on:%d.%m.%Y} · рабочих дней: {row.workdays}"
                     )
                     keyboard = InlineKeyboardMarkup(inline_keyboard=[[
-                        InlineKeyboardButton(text="Согласовать", callback_data=f"vacation:{row_id}:yes"),
-                        InlineKeyboardButton(text="Отклонить", callback_data=f"vacation:{row_id}:no"),
+                        InlineKeyboardButton(text="Согласовать", callback_data=f"vacation:{row_id}:{revision}:yes"),
+                        InlineKeyboardButton(text="Отклонить", callback_data=f"vacation:{row_id}:{revision}:no"),
                     ]])
                 else:
                     hr = db.get(HrSettings, 1)
@@ -77,6 +86,7 @@ async def deliver_pending(bot):
             with SessionLocal() as db:
                 db.execute(update(EmployeeVacationRequest).where(
                     EmployeeVacationRequest.id == row_id, flag == "sending",
+                    EmployeeVacationRequest.manager_revision == revision,
                 ).values({column: outcome}))
                 db.commit()
 
@@ -84,14 +94,15 @@ async def deliver_pending(bot):
 async def vacation_decision_callback(callback: CallbackQuery):
     from .vacation import decide
 
-    match = re.fullmatch(r"vacation:([0-9]{1,18}):(yes|no)", callback.data or "")
+    match = re.fullmatch(r"vacation:([0-9]{1,18}):([0-9]{1,18}):(yes|no)", callback.data or "")
     if not match or not callback.message or callback.message.chat.type != ChatType.PRIVATE:
         return await callback.answer("Заявка недоступна", show_alert=True)
     if callback.message.chat.id != callback.from_user.id:
         return await callback.answer("Заявка недоступна", show_alert=True)
     with SessionLocal() as db:
         try:
-            decide(db, int(match[1]), approved=match[2] == "yes", telegram_id=str(callback.from_user.id))
+            decide(db, int(match[1]), approved=match[3] == "yes", telegram_id=str(callback.from_user.id),
+                   manager_revision=int(match[2]))
             db.commit()
         except LookupError:
             return await callback.answer("Заявка не найдена", show_alert=True)

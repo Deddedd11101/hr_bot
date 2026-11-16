@@ -55,7 +55,7 @@ class EmployeeCabinetTests(unittest.TestCase):
     def test_vacation_request_preview_duplicate_and_owner(self):
         from app.adaptation_planning import CalendarDates
         from app.models import EmployeeVacationRequest
-        from app.vacation import VacationPeriod, decide, preview, requests_for, submit
+        from app.vacation import VacationPeriod, decide, preview, requests_for, route_to_current_manager, submit
 
         engine = create_engine("sqlite://")
         cabinet.Employee.__table__.create(engine)
@@ -77,12 +77,23 @@ class EmployeeCabinetTests(unittest.TestCase):
                     decide(db, row_id, approved=True, employee_id=80, hr_account_id=1)
                 with self.assertRaises(ValueError):
                     decide(db, row_id, approved=True, employee_id=70, hr_account_id=1)
-                with patch("app.vacation_delivery.manager_chat", return_value="123"):
-                    with self.assertRaises(PermissionError):
-                        decide(db, row_id, approved=True, telegram_id="456")
-                    self.assertEqual(decide(db, row_id, approved=True, telegram_id="123")["status"], "pending_hr")
+                self.assertIn("не назначен", requests_for(db, 70, for_hr=True)[0]["manager_issue"])
+                self.assertNotIn("manager_issue", requests_for(db, 70)[0])
+                db.get(cabinet.Employee, 70).manager_employee_id = 71
+                db.flush()
+                self.assertTrue(requests_for(db, 70, for_hr=True)[0]["can_route"])
+                with patch("app.vacation_delivery.manager_contact", return_value=("123", None)):
+                    self.assertEqual(route_to_current_manager(db, 70, row_id)["manager_notice"], "pending")
                     with self.assertRaises(ValueError):
-                        decide(db, row_id, approved=False, telegram_id="123")
+                        route_to_current_manager(db, 70, row_id)
+                with patch("app.vacation_delivery.manager_chat", return_value="123"):
+                    with self.assertRaisesRegex(ValueError, "устарела"):
+                        decide(db, row_id, approved=True, telegram_id="123", manager_revision=1)
+                    with self.assertRaises(PermissionError):
+                        decide(db, row_id, approved=True, telegram_id="456", manager_revision=2)
+                    self.assertEqual(decide(db, row_id, approved=True, telegram_id="123", manager_revision=2)["status"], "pending_hr")
+                    with self.assertRaises(ValueError):
+                        decide(db, row_id, approved=False, telegram_id="123", manager_revision=2)
                 self.assertEqual(decide(db, row_id, approved=True, employee_id=70, hr_account_id=1)["status"], "approved")
                 self.assertEqual(db.get(EmployeeVacationRequest, row_id).hr_account_id, 1)
         engine.dispose()

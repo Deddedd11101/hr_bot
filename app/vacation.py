@@ -64,9 +64,23 @@ def request_payload(row):
                 workdays=row.workdays, status=row.status, manager_notice=row.manager_notice, hr_notice=row.hr_notice)
 
 
-def requests_for(db, employee_id):
-    return [request_payload(row) for row in db.query(EmployeeVacationRequest).filter_by(employee_id=employee_id)
+def requests_for(db, employee_id, *, for_hr=False):
+    return [(hr_request_payload(db, row) if for_hr else request_payload(row))
+            for row in db.query(EmployeeVacationRequest).filter_by(employee_id=employee_id)
             .order_by(EmployeeVacationRequest.id.desc()).limit(50)]
+
+
+def hr_request_payload(db, row):
+    from .vacation_delivery import manager_contact
+
+    payload = request_payload(row)
+    if row.status != "pending":
+        return payload
+    employee = db.get(Employee, row.employee_id)
+    _, issue = manager_contact(db, employee, row.manager_id)
+    return dict(payload, manager_issue=issue, can_route=(
+        row.manager_id != employee.manager_employee_id or row.manager_notice == "unavailable"
+    ) if employee and employee.manager_employee_id else False)
 
 
 def submit(db, employee_id, period):
@@ -92,21 +106,49 @@ def submit(db, employee_id, period):
     return request_payload(row)
 
 
-def decide(db, row_id, *, approved, employee_id=None, hr_account_id=None, telegram_id=None):
+def _locked_request(db, row_id, employee_id):
     from .web.grades import _lock_employee
-    from .vacation_delivery import manager_chat
 
     row = db.get(EmployeeVacationRequest, row_id)
     if not row or (employee_id is not None and row.employee_id != employee_id):
         raise LookupError("Заявка не найдена")
     _lock_employee(db, row.employee_id)
     db.refresh(row)
+    return row
+
+
+def route_to_current_manager(db, employee_id, row_id):
+    from .vacation_delivery import manager_contact
+
+    row = _locked_request(db, row_id, employee_id)
+    employee = db.get(Employee, employee_id, populate_existing=True)
+    if row.status != "pending":
+        raise ValueError("Заявка уже не на этапе согласования руководителем")
+    current_manager = employee.manager_employee_id
+    if current_manager == row.manager_id and row.manager_notice != "unavailable":
+        raise ValueError("Повторная отправка текущему руководителю недоступна")
+    chat, issue = manager_contact(db, employee, current_manager)
+    if not chat:
+        raise ValueError(issue)
+    row.manager_id = current_manager
+    row.manager_revision += 1
+    row.manager_notice = "pending"
+    db.flush()
+    return hr_request_payload(db, row)
+
+
+def decide(db, row_id, *, approved, employee_id=None, hr_account_id=None, telegram_id=None, manager_revision=None):
+    from .vacation_delivery import manager_chat
+
+    row = _locked_request(db, row_id, employee_id)
     if hr_account_id is not None:
         if row.status != "pending_hr" and (approved or row.status != "pending"):
             raise ValueError("Заявку нельзя согласовать или отклонить на этом этапе")
         row.hr_account_id, row.hr_decided_at = hr_account_id, utc_now()
         row.status = "approved" if approved else "rejected"
     else:
+        if manager_revision != row.manager_revision:
+            raise ValueError("Кнопка устарела: заявка была перенаправлена")
         if not telegram_id or manager_chat(db, row) != telegram_id:
             raise PermissionError("Решение может принять только назначенный руководитель")
         if row.status != "pending":

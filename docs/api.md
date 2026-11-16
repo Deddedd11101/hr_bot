@@ -110,6 +110,11 @@ coverage_percent, fully_met, missing_requirements, unassessed, unmet.
 принимает строгий boolean `approved` от HR/admin: согласование возможно после
 руководителя, отклонение — до или после его решения. Неверный этап даёт 409.
 Согласование не меняет остаток автоматически.
+`POST /api/employees/{employee_id}/vacation/requests/{request_id}/route-to-manager`
+перенаправляет ожидающую заявку текущему руководителю (HR/admin). Допустимо
+при смене получателя или после устранения блокировки до попытки отправки.
+Недействующий получатель или этап дают 409. Старые кнопки становятся недействительными.
+HR-список дополнительно возвращает `manager_issue` и `can_route` для ожидающих заявок.
 
 `PUT /api/employees/{employee_id}/grade/development/kickoff` сохраняет явный
 разовый старт: `due_at` (МСК), `specialization_id`, `scenario_key` для

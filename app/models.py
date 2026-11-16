@@ -66,6 +66,7 @@ class EmployeeVacationRequest(Base):
     status: Mapped[str] = mapped_column(String(16), default="pending")
     created_at: Mapped[datetime] = mapped_column(DateTime)
     manager_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    manager_revision: Mapped[int] = mapped_column(Integer, default=1)
     manager_notice: Mapped[str] = mapped_column(String(16), default="pending")
     hr_notice: Mapped[str] = mapped_column(String(16), default="pending")
     manager_decided_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
