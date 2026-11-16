@@ -306,6 +306,42 @@ function setupColleagues() {
   return load;
 }
 
+async function loadKnowledge() {
+  const notice = byId('knowledge-status');
+  const root = byId('knowledge-items');
+  root.replaceChildren();
+  notice.textContent = 'Загрузка…';
+  function render(items, target) {
+    const list = make('ul', '');
+    for (const item of items) {
+      const row = make('li', '');
+      row.style.display = 'block';
+      if (item.children) {
+        const [section, body] = disclosure(item.label);
+        render(item.children, body);
+        row.append(section);
+      } else {
+        const url = new URL(item.url);
+        if (!['http:', 'https:'].includes(url.protocol)) continue;
+        const link = make('a', item.label);
+        link.href = url.href;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        row.append(link);
+      }
+      list.append(row);
+    }
+    target.append(list);
+  }
+  try {
+    const items = await (await request('knowledge')).json();
+    render(items, root);
+    notice.textContent = items.length ? '' : 'Материалов пока нет.';
+  } catch (error) {
+    notice.textContent = error.message;
+  }
+}
+
 function tabs() {
   const navigation = byId('navigation');
   const buttons = Array.from(navigation.querySelectorAll('button'));
@@ -314,7 +350,7 @@ function tabs() {
   let current = 0;
   buttons.forEach((button, index) => {button.onclick = () => {
     const direction = Math.sign(index - current);current = index;
-    sections.forEach((section, i) => {section.hidden = (i < 2 ? 0 : i - 1) !== index;});
+    sections.forEach((section, i) => {section.hidden = (i < 3 ? 0 : i - 2) !== index;});
     byId('name').closest('header').hidden = index !== 0;
     buttons.forEach((item, i) => item.setAttribute('aria-selected', String(i === index)));
     byId('marker').style.transform = `translateX(${index * 100}%)`;
@@ -323,6 +359,17 @@ function tabs() {
       [{opacity:.65, transform:`translateX(${12 * direction}px)`},{opacity:1, transform:'translateX(0)'}], {duration:220});
     window.scrollTo(0, 0);
   };});
+  byId('knowledge-open').onclick = () => {
+    sections.forEach(section => { section.hidden = section.id !== 'knowledge'; });
+    byId('name').closest('header').hidden = true;
+    window.scrollTo(0, 0);
+    byId('knowledge-back').focus();
+    void loadKnowledge();
+  };
+  byId('knowledge-back').onclick = () => {
+    buttons[0].click();
+    byId('knowledge-open').focus();
+  };
   navigation.hidden = false;
 }
 

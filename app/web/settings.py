@@ -63,6 +63,7 @@ def _serialize_hr_settings(settings_row: HrSettings) -> dict:
         "default_menu_set_id": settings_row.default_menu_set_id,
         "default_employee_menu_set_id": settings_row.default_employee_menu_set_id,
         "default_candidate_menu_set_id": settings_row.default_candidate_menu_set_id,
+        "cabinet_knowledge_menu_set_id": settings_row.cabinet_knowledge_menu_set_id,
     }
 
 

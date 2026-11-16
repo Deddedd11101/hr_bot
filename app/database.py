@@ -841,6 +841,7 @@ def _ensure_sqlite_schema() -> None:
             "default_menu_set_id": "INTEGER",
             "default_employee_menu_set_id": "INTEGER",
             "default_candidate_menu_set_id": "INTEGER",
+            "cabinet_knowledge_menu_set_id": "INTEGER",
         }
         for col, ddl in hr_settings_required.items():
             if hr_settings_columns and col not in hr_settings_columns:

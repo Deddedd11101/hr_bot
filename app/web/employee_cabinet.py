@@ -16,8 +16,8 @@ from ..config import settings
 from ..database import get_session
 from ..messaging.identity import find_employees_by_channel_user_id, get_primary_chat_id
 from ..models import (
-    CatalogGroup, CatalogMembership, Employee, EmployeeAdaptationPlanItem, EmployeeFile,
-    Grade, GradeAssessment, GradeDevelopmentCycle, GradeDevelopmentMilestone,
+    BotMenuSet, CatalogGroup, CatalogMembership, Employee, EmployeeAdaptationPlanItem, EmployeeFile,
+    Grade, GradeAssessment, GradeDevelopmentCycle, GradeDevelopmentMilestone, HrSettings,
 )
 from ..staff_email_verification import is_verified, verification_required
 from ..vacation import VacationPeriod, calendar_month, preview as preview_vacation, requests_for, submit as submit_vacation
@@ -186,6 +186,47 @@ def colleagues(request: Request):
     with get_session() as db:
         employee = authorize(db, request)
         return JSONResponse(directory_entries(db, employee.id), headers=PRIVATE_HEADERS)
+
+
+def knowledge_links(db, employee, root_id):
+    from ..messaging.service import _menu_button_rows, menu_set_matches_employee
+
+    seen = set()
+
+    def walk(menu_id, depth):
+        if not menu_id or menu_id in seen or depth > 8 or len(seen) >= 64:
+            return []
+        seen.add(menu_id)
+        menu = db.get(BotMenuSet, menu_id)
+        if not menu or menu.employee_scope == "candidates" or not menu_set_matches_employee(employee, menu):
+            return []
+        stages = {value.strip() for value in (menu.target_employee_stages or "").split(",") if value.strip()}
+        if stages and employee.employee_stage not in stages:
+            return []
+        items = []
+        for row in _menu_button_rows(db, menu):
+            for button in row:
+                label = button.label.strip()
+                if not label:
+                    continue
+                if button.action_type == "open_url":
+                    items.append({"label": label, "url": button.url})
+                elif button.action_type == "open_set":
+                    children = walk(button.target_menu_set_id, depth + 1)
+                    if children:
+                        items.append({"label": label, "children": children})
+        return items
+
+    return walk(root_id, 0)
+
+
+@router.get("/knowledge")
+def knowledge(request: Request):
+    with get_session() as db:
+        employee = authorize(db, request)
+        hr = db.get(HrSettings, 1)
+        return JSONResponse(knowledge_links(db, employee, hr.cabinet_knowledge_menu_set_id if hr else None),
+                            headers=PRIVATE_HEADERS)
 
 
 @router.post("/vacation/preview")

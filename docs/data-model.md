@@ -273,6 +273,9 @@ batch; старые события не backfill-ятся. Timed records pin pro
 
 ### Files и documents
 
+`hr_settings.cabinet_knowledge_menu_set_id` хранит необязательный ID набора
+меню для базы знаний. Не изменяет корень меню бота, очищается при удалении набора.
+
 `hr_settings.notification_recipient_ids` сохраняет legacy numeric IDs и новые
 `employee:<id>` токены дополнительных HR-получателей; `observer:employee:<id>`
 явно включает также копии остальных настроенных служебных notification rules. Список общий для HR

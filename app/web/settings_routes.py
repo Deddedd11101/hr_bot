@@ -237,6 +237,8 @@ def delete_menu_set(
             hr_settings.default_employee_menu_set_id = None
         if hr_settings.default_candidate_menu_set_id == menu_set_id:
             hr_settings.default_candidate_menu_set_id = None
+        if hr_settings.cabinet_knowledge_menu_set_id == menu_set_id:
+            hr_settings.cabinet_knowledge_menu_set_id = None
         db.delete(menu_set)
         db.commit()
     return RedirectResponse(url="/settings", status_code=status.HTTP_303_SEE_OTHER)
@@ -813,6 +815,15 @@ def update_hr_settings_api(
     default_menu_set_id = payload.get("default_menu_set_id")
     default_employee_menu_set_id = payload.get("default_employee_menu_set_id")
     default_candidate_menu_set_id = payload.get("default_candidate_menu_set_id")
+    if "cabinet_knowledge_menu_set_id" in payload:
+        knowledge_id = payload["cabinet_knowledge_menu_set_id"]
+        if knowledge_id is not None:
+            if type(knowledge_id) is not int or not 0 < knowledge_id < 2**63:
+                raise HTTPException(422, "Выберите набор меню для базы знаний")
+            knowledge_set = db.get(BotMenuSet, knowledge_id)
+            if not knowledge_set or knowledge_set.employee_scope == "candidates":
+                raise HTTPException(422, "Набор базы знаний должен быть доступен сотрудникам")
+        hr_settings.cabinet_knowledge_menu_set_id = knowledge_id
     hr_settings.hr_name = str(payload.get("hr_name") or "").strip() or None
     hr_settings.notification_recipient_ids = recipients or None
     hr_settings.default_menu_set_id = int(default_menu_set_id) if str(default_menu_set_id or "").isdigit() else None
@@ -1028,6 +1039,8 @@ def delete_menu_set_api(
         hr_settings.default_employee_menu_set_id = None
     if hr_settings.default_candidate_menu_set_id == menu_set_id:
         hr_settings.default_candidate_menu_set_id = None
+    if hr_settings.cabinet_knowledge_menu_set_id == menu_set_id:
+        hr_settings.cabinet_knowledge_menu_set_id = None
     db.delete(menu_set)
     db.commit()
     return _settings_workspace_payload(db, current_user)
