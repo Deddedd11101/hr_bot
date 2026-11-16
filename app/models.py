@@ -57,6 +57,7 @@ class EmployeeVacationBalance(Base):
 
 class EmployeeVacationRequest(Base):
     __tablename__ = "employee_vacation_requests"
+    __table_args__ = {"sqlite_autoincrement": True}
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     employee_id: Mapped[int] = mapped_column(Integer, index=True)
     starts_on: Mapped[date] = mapped_column(Date)
@@ -64,6 +65,12 @@ class EmployeeVacationRequest(Base):
     workdays: Mapped[int] = mapped_column(Integer)
     status: Mapped[str] = mapped_column(String(16), default="pending")
     created_at: Mapped[datetime] = mapped_column(DateTime)
+    manager_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    manager_notice: Mapped[str] = mapped_column(String(16), default="pending")
+    hr_notice: Mapped[str] = mapped_column(String(16), default="pending")
+    manager_decided_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    hr_decided_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    hr_account_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 
 
 class EmployeeAdaptationPlanItem(Base):

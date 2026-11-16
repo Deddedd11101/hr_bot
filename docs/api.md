@@ -106,6 +106,10 @@ coverage_percent, fully_met, missing_requirements, unassessed, unmet.
 /employee-cabinet/vacation/requests` читает и сохраняет собственные заявки.
 Точный повтор активной заявки не создаёт дубль, пересечение отклоняется.
 `GET /api/employees/{employee_id}/vacation/requests` требует HR/admin-сессию.
+`POST /api/employees/{employee_id}/vacation/requests/{request_id}/decision`
+принимает строгий boolean `approved` от HR/admin: согласование возможно после
+руководителя, отклонение — до или после его решения. Неверный этап даёт 409.
+Согласование не меняет остаток автоматически.
 
 `PUT /api/employees/{employee_id}/grade/development/kickoff` сохраняет явный
 разовый старт: `due_at` (МСК), `specialization_id`, `scenario_key` для

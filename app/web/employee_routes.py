@@ -49,7 +49,7 @@ from .employees import (
     _serialize_hr_notes_history,
     _serialize_manual_bot_message_history,
 )
-from ..vacation import BalanceInput, balance, current_year, requests_for, save_balance
+from ..vacation import BalanceInput, VacationDecision, balance, current_year, decide, requests_for, save_balance
 from .support import render_template, require_api_auth, require_auth
 
 router = APIRouter()
@@ -621,6 +621,24 @@ def employee_vacation_requests(request: Request, employee_id: int, db: Session =
     require_api_auth(request)
     _maintenance_employee(db, employee_id)
     return requests_for(db, employee_id)
+
+
+@router.post("/api/employees/{employee_id}/vacation/requests/{request_id}/decision")
+def decide_employee_vacation(
+    request: Request, employee_id: int, request_id: int, values: VacationDecision, db: Session = Depends(get_db),
+):
+    account = require_api_auth(request)
+    if account.role not in {"admin", "hr"}:
+        raise HTTPException(403, "Решение может принять только HR или администратор")
+    _maintenance_employee(db, employee_id)
+    try:
+        result = decide(db, request_id, approved=values.approved, employee_id=employee_id, hr_account_id=account.id)
+    except LookupError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    db.commit()
+    return result
 
 
 @router.get("/api/employees/{employee_id}/hr-notes")

@@ -7,7 +7,7 @@ from datetime import date, datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 from urllib.parse import urlencode
 
 from fastapi import FastAPI
@@ -18,11 +18,44 @@ from sqlalchemy.orm import sessionmaker
 from app.web import employee_cabinet as cabinet
 
 
+class VacationDeliveryTests(unittest.IsolatedAsyncioTestCase):
+    async def test_notices_sent_once_and_in_order(self):
+        from app.models import EmployeeVacationRequest, HrSettings
+        from app.vacation_delivery import deliver_pending
+
+        engine = create_engine("sqlite://")
+        self.addCleanup(engine.dispose)
+        for model in (cabinet.Employee, EmployeeVacationRequest, HrSettings):
+            model.__table__.create(engine)
+        session = sessionmaker(bind=engine)
+        with session() as db:
+            db.add(cabinet.Employee(id=70, full_name="Employee", created_at=datetime.now()))
+            db.add(HrSettings(id=1, telegram_user_id="456", created_at=datetime.now(), updated_at=datetime.now()))
+            db.add(EmployeeVacationRequest(id=1, employee_id=70, starts_on=date(2090, 1, 2),
+                                          ends_on=date(2090, 1, 3), workdays=2, created_at=datetime.now()))
+            db.commit()
+        bot = SimpleNamespace(send_message=AsyncMock())
+        with patch("app.vacation_delivery.SessionLocal", session), patch(
+            "app.vacation_delivery.manager_chat", return_value="123"
+        ), patch("app.vacation_delivery.chat_id_allowed", return_value=True):
+            await deliver_pending(bot)
+            await deliver_pending(bot)
+            self.assertEqual([call.args[0] for call in bot.send_message.await_args_list], [123])
+            with session() as db:
+                row = db.get(EmployeeVacationRequest, 1)
+                self.assertEqual(row.manager_notice, "sent")
+                row.status = "pending_hr"
+                db.commit()
+            await deliver_pending(bot)
+            await deliver_pending(bot)
+        self.assertEqual([call.args[0] for call in bot.send_message.await_args_list], [123, 456])
+
+
 class EmployeeCabinetTests(unittest.TestCase):
     def test_vacation_request_preview_duplicate_and_owner(self):
         from app.adaptation_planning import CalendarDates
         from app.models import EmployeeVacationRequest
-        from app.vacation import VacationPeriod, preview, requests_for, submit
+        from app.vacation import VacationPeriod, decide, preview, requests_for, submit
 
         engine = create_engine("sqlite://")
         cabinet.Employee.__table__.create(engine)
@@ -39,6 +72,19 @@ class EmployeeCabinetTests(unittest.TestCase):
                     submit(db, 70, VacationPeriod(starts_on=period.ends_on, ends_on=period.ends_on))
                 self.assertEqual(requests_for(db, 70), [first])
                 self.assertEqual(requests_for(db, 80), [])
+                row_id = first["id"]
+                with self.assertRaises(LookupError):
+                    decide(db, row_id, approved=True, employee_id=80, hr_account_id=1)
+                with self.assertRaises(ValueError):
+                    decide(db, row_id, approved=True, employee_id=70, hr_account_id=1)
+                with patch("app.vacation_delivery.manager_chat", return_value="123"):
+                    with self.assertRaises(PermissionError):
+                        decide(db, row_id, approved=True, telegram_id="456")
+                    self.assertEqual(decide(db, row_id, approved=True, telegram_id="123")["status"], "pending_hr")
+                    with self.assertRaises(ValueError):
+                        decide(db, row_id, approved=False, telegram_id="123")
+                self.assertEqual(decide(db, row_id, approved=True, employee_id=70, hr_account_id=1)["status"], "approved")
+                self.assertEqual(db.get(EmployeeVacationRequest, row_id).hr_account_id, 1)
         engine.dispose()
 
     def test_vacation_balance_preserves_zero_and_is_scoped_by_employee_and_year(self):

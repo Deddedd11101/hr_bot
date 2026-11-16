@@ -4,7 +4,7 @@ from zoneinfo import ZoneInfo
 from pydantic import BaseModel, Field
 
 from .config import settings
-from .models import EmployeeVacationBalance, EmployeeVacationRequest
+from .models import Employee, EmployeeVacationBalance, EmployeeVacationRequest
 from .time_utils import utc_now
 
 
@@ -43,6 +43,10 @@ class VacationPeriod(BaseModel):
     ends_on: date
 
 
+class VacationDecision(BaseModel):
+    approved: bool = Field(strict=True)
+
+
 def preview(db, period):
     from .adaptation_planning import CalendarDates
 
@@ -57,7 +61,7 @@ def preview(db, period):
 
 def request_payload(row):
     return dict(id=row.id, starts_on=row.starts_on.isoformat(), ends_on=row.ends_on.isoformat(),
-                workdays=row.workdays, status=row.status)
+                workdays=row.workdays, status=row.status, manager_notice=row.manager_notice, hr_notice=row.hr_notice)
 
 
 def requests_for(db, employee_id):
@@ -70,7 +74,7 @@ def submit(db, employee_id, period):
 
     _lock_employee(db, employee_id)
     overlaps = db.query(EmployeeVacationRequest).filter(
-        EmployeeVacationRequest.employee_id == employee_id, EmployeeVacationRequest.status.in_(("pending", "approved")),
+        EmployeeVacationRequest.employee_id == employee_id, EmployeeVacationRequest.status.in_(("pending", "pending_hr", "approved")),
         EmployeeVacationRequest.starts_on <= period.ends_on, EmployeeVacationRequest.ends_on >= period.starts_on,
     )
     same = overlaps.filter_by(starts_on=period.starts_on, ends_on=period.ends_on).first()
@@ -79,8 +83,35 @@ def submit(db, employee_id, period):
     if overlaps.first():
         raise ValueError("На эти даты уже есть заявка на отпуск")
     days = preview(db, period)
+    employee = db.get(Employee, employee_id)
     row = EmployeeVacationRequest(employee_id=employee_id, starts_on=period.starts_on, ends_on=period.ends_on,
-                                  workdays=days["workdays"], status="pending", created_at=utc_now())
+                                  workdays=days["workdays"], status="pending", created_at=utc_now(),
+                                  manager_id=employee.manager_employee_id)
     db.add(row)
+    db.flush()
+    return request_payload(row)
+
+
+def decide(db, row_id, *, approved, employee_id=None, hr_account_id=None, telegram_id=None):
+    from .web.grades import _lock_employee
+    from .vacation_delivery import manager_chat
+
+    row = db.get(EmployeeVacationRequest, row_id)
+    if not row or (employee_id is not None and row.employee_id != employee_id):
+        raise LookupError("Заявка не найдена")
+    _lock_employee(db, row.employee_id)
+    db.refresh(row)
+    if hr_account_id is not None:
+        if row.status != "pending_hr" and (approved or row.status != "pending"):
+            raise ValueError("Заявку нельзя согласовать или отклонить на этом этапе")
+        row.hr_account_id, row.hr_decided_at = hr_account_id, utc_now()
+        row.status = "approved" if approved else "rejected"
+    else:
+        if not telegram_id or manager_chat(db, row) != telegram_id:
+            raise PermissionError("Решение может принять только назначенный руководитель")
+        if row.status != "pending":
+            raise ValueError("Решение по заявке уже принято")
+        row.manager_decided_at = utc_now()
+        row.status = "pending_hr" if approved else "rejected"
     db.flush()
     return request_payload(row)

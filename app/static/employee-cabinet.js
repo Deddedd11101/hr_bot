@@ -47,7 +47,7 @@ function setupVacation() {
     list.replaceChildren(...rows.map(row => {
       const item = make('li', '');
       item.append(make('span', `${dateLabel(row.starts_on)} – ${dateLabel(row.ends_on)}`),
-        make('small', {pending:'Ожидает рассмотрения', approved:'Согласована', rejected:'Отклонена'}[row.status] || row.status));
+        make('small', {pending:'У руководителя', pending_hr:'У HR', approved:'Согласована', rejected:'Отклонена'}[row.status] || row.status));
       return item;
     }));
     if (!rows.length) list.append(make('li', 'Заявок пока нет'));
