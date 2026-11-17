@@ -282,8 +282,36 @@ function setupColleagues() {
   const collator = new Intl.Collator('ru');
   let people = null;
   let loading = false;
+  const avatarLoads = new Map();
+  async function showAvatar(image) {
+    const id = image.dataset.avatarId;
+    if (!avatarLoads.has(id)) {
+      avatarLoads.set(id, request(`colleagues/${id}/avatar`).then(response => response.blob()).catch(() => null));
+    }
+    const blob = await avatarLoads.get(id);
+    if (!blob || !image.isConnected) return;
+    const url = URL.createObjectURL(blob);
+    image.onload = () => {
+      URL.revokeObjectURL(url);
+      image.classList.add('has-avatar');
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(url);
+      image.onerror = image.onload = null;
+      image.src = '/static/favicon.png';
+    };
+    image.src = url;
+  }
+  const avatars = typeof IntersectionObserver === 'function' ? new IntersectionObserver(entries => {
+    for (const entry of entries) {
+      if (!entry.isIntersecting) continue;
+      avatars.unobserve(entry.target);
+      void showAvatar(entry.target);
+    }
+  }) : null;
   function render() {
     if (!people) return;
+    avatars?.disconnect();
     root.replaceChildren();
     const terms = normalize(field.value).trim().split(/\s+/).filter(Boolean);
     const groups = new Map();
@@ -307,6 +335,10 @@ function setupColleagues() {
         info.className = 'directory-person';
         const image = make('img', '');
         image.className = 'directory-avatar'; image.src = '/static/favicon.png'; image.alt = '';
+        if (avatars && Number.isSafeInteger(person.avatar_id) && person.avatar_id > 0) {
+          image.dataset.avatarId = String(person.avatar_id);
+          avatars.observe(image);
+        }
         const title = make('div', person.name);
         if (person.position) title.append(make('small', person.position));
         info.append(image, title); row.append(info);

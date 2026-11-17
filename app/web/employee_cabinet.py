@@ -9,7 +9,7 @@ from urllib.parse import parse_qsl
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, HTTPException, Query, Request
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from sqlalchemy import and_
 
 from ..config import settings
@@ -172,13 +172,24 @@ def directory_entries(db, viewer_id):
         name = (person.full_name or "").strip()
         if not name:
             continue
+        chat_id = directory_chat(db, person)
         username = (person.telegram_username or "").strip().removeprefix("@")
-        if (not re.fullmatch(r"[A-Za-z0-9_]{5,32}", username) or person.is_bot_blocked
-                or not get_primary_chat_id(person, db=db, channel="telegram")):
+        if not re.fullmatch(r"[A-Za-z0-9_]{5,32}", username) or not chat_id:
             username = None
         entries.append({"name": name, "position": person.desired_position, "username": username,
+                        "avatar_id": person.id if chat_id else None,
                         "group_id": group_id, "group_name": group_name})
     return entries
+
+
+def directory_chat(db, person):
+    if not person or person.is_bot_blocked or person.employee_stage not in STAFF_STAGES:
+        return None
+    chat_id = get_primary_chat_id(person, db=db, channel="telegram")
+    if not chat_id or not re.fullmatch(r"[1-9][0-9]{0,15}", chat_id):
+        return None
+    owners = find_employees_by_channel_user_id(db, channel="telegram", external_user_id=chat_id)
+    return chat_id if [owner.id for owner in owners] == [person.id] else None
 
 
 @router.get("/colleagues")
@@ -186,6 +197,26 @@ def colleagues(request: Request):
     with get_session() as db:
         employee = authorize(db, request)
         return JSONResponse(directory_entries(db, employee.id), headers=PRIVATE_HEADERS)
+
+
+@router.get("/colleagues/{employee_id}/avatar")
+async def colleague_avatar(request: Request, employee_id: int):
+    from starlette.concurrency import run_in_threadpool
+
+    from ..cabinet_avatars import telegram_avatar
+
+    def resolve_chat():
+        with get_session() as db:
+            viewer = authorize(db, request)
+            if viewer.id == employee_id or not 0 < employee_id < 2**63:
+                return None
+            return directory_chat(db, db.get(Employee, employee_id))
+
+    chat_id = await run_in_threadpool(resolve_chat)
+    data = await telegram_avatar(chat_id) if chat_id else None
+    if data is None:
+        raise HTTPException(404, headers=PRIVATE_HEADERS)
+    return Response(data, media_type="image/jpeg", headers=PRIVATE_HEADERS)
 
 
 def knowledge_links(db, employee, root_id):
