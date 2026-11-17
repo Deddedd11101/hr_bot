@@ -483,6 +483,37 @@ function fileRow(file) {
   return row;
 }
 
+function setupDesktopFullscreen() {
+  if (!['tdesktop', 'macos', 'unigram'].includes(tg.platform) || !tg.isVersionAtLeast?.('8.0')
+      || typeof tg.requestFullscreen !== 'function' || typeof tg.exitFullscreen !== 'function') return;
+  const button = byId('fullscreen-toggle');
+  const sync = () => {
+    const fullscreen = !!tg.isFullscreen;
+    document.documentElement.classList.toggle('cabinet-fullscreen', fullscreen);
+    button.textContent = fullscreen ? 'Выйти из полноэкранного режима' : 'На весь экран';
+  };
+  const failure = ({error} = {}) => {
+    sync();
+    if (error !== 'ALREADY_FULLSCREEN') {
+      status.textContent = 'Этот клиент Telegram не смог переключить режим окна.';
+      if (error === 'UNSUPPORTED') button.hidden = true;
+    }
+  };
+  tg.onEvent?.('fullscreenChanged', sync);
+  tg.onEvent?.('fullscreenFailed', failure);
+  button.onclick = () => {
+    status.textContent = '';
+    try {
+      if (tg.isFullscreen) tg.exitFullscreen();
+      else tg.requestFullscreen();
+    } catch {
+      failure();
+    }
+  };
+  sync();
+  button.hidden = false;
+}
+
 async function start() {
   if (tg?.isVersionAtLeast?.('6.9')) {
     tg.setHeaderColor?.('#BADA1E');
@@ -508,6 +539,7 @@ async function start() {
       }
     }
     tabs();
+    setupDesktopFullscreen();
     setupVacation();
     if (data.files.length) data.files.forEach(file => byId('files').append(fileRow(file)));
     else byId('files').append(make('li', 'Файлов пока нет'));
