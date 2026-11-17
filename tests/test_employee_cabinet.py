@@ -163,7 +163,7 @@ class EmployeeCabinetTests(unittest.TestCase):
         with TestClient(app) as client:
             self.assertEqual(client.get("/employee-cabinet").status_code, 200)
             self.assertIn("Использовано в этом году", client.get("/employee-cabinet").text)
-            for path in ("profile", "files/1", "vacation/requests", "vacation/calendar", "colleagues", "knowledge"):
+            for path in ("profile", "files/1", "vacation/requests", "vacation/calendar", "colleagues", "colleagues/71/avatar", "knowledge"):
                 response = client.get(f"/employee-cabinet/{path}")
                 self.assertEqual(response.status_code, 403)
                 self.assertEqual(response.headers["cache-control"], "no-store")
@@ -221,15 +221,24 @@ class EmployeeCabinetTests(unittest.TestCase):
             app.include_router(cabinet.router)
             with patch.object(cabinet, "get_session", sessions), patch.object(
                 cabinet, "authorize", return_value=SimpleNamespace(id=70)
-            ), patch.object(cabinet, "get_primary_chat_id", side_effect=lambda person, **_: "123" if person.id == 71 else None):
+            ), patch.object(cabinet, "get_primary_chat_id", side_effect=lambda person, **_: "123" if person.id == 71 else None), patch.object(
+                cabinet, "find_employees_by_channel_user_id", return_value=[SimpleNamespace(id=71)],
+            ), patch("app.cabinet_avatars.telegram_avatar", new_callable=AsyncMock, return_value=b"\xff\xd8\xff") as avatar:
                 with TestClient(app) as client:
                     response = client.get("/employee-cabinet/colleagues")
+                    photo = client.get("/employee-cabinet/colleagues/71/avatar")
+                    self.assertEqual(photo.status_code, 200)
+                    self.assertEqual(photo.headers["content-type"], "image/jpeg")
+                    self.assertEqual(photo.headers["cache-control"], "no-store")
+                    for excluded in (70, 72, 74, 75, 999):
+                        self.assertEqual(client.get(f"/employee-cabinet/colleagues/{excluded}/avatar").status_code, 404)
+                    avatar.assert_awaited_once_with("123")
             self.assertEqual(response.status_code, 200)
             self.assertEqual(response.headers["cache-control"], "no-store")
             rows = {row["name"]: row for row in response.json()}
             self.assertEqual(set(rows), {"Analyst", "Designer", "PM"})
             self.assertEqual(rows["Analyst"], {"name": "Analyst", "position": None, "username": "analyst_1",
-                                               "group_id": 10, "group_name": "Analytics"})
+                                               "avatar_id": 71, "group_id": 10, "group_name": "Analytics"})
             self.assertIsNone(rows["Designer"]["group_name"])
             self.assertIsNone(rows["Designer"]["username"])
             self.assertIsNone(rows["PM"]["username"])
