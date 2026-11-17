@@ -41,6 +41,16 @@ button:not(:disabled):active{transform:scale(.96)}
   .tabs .tab-label{display:none}
   .tabs svg{width:22px;height:22px}
 }
+@media(min-width:760px){
+  .cabinet-desktop body{padding-left:236px}
+  .cabinet-desktop main{padding-bottom:28px}
+  .cabinet-desktop #navigation{top:calc(24px + var(--cabinet-top,0px));bottom:auto;left:18px;right:auto;width:200px}
+  .cabinet-desktop .tabs{grid-template-columns:1fr;gap:3px;padding:6px;border-radius:14px}
+  .cabinet-desktop .marker{display:none}
+  .cabinet-desktop .tabs button{grid-template:1fr / 22px minmax(0,1fr);justify-items:start;gap:10px;min-height:42px;padding:6px 10px;text-align:left;font-size:14px}
+  .cabinet-desktop .tabs button[aria-current]{background:var(--highlight)}
+}
+.cabinet-fullscreen{--cabinet-top:calc(max(env(safe-area-inset-top,0px),var(--tg-safe-area-inset-top,0px)) + var(--tg-content-safe-area-inset-top,0px))}
 .breadcrumbs{display:flex;align-items:center;flex-wrap:wrap;gap:7px;margin-bottom:12px;color:var(--muted);font-size:13px}
 .breadcrumbs button{border:0;padding:4px 0;color:inherit;text-decoration:underline;text-underline-offset:3px}
 .breadcrumbs [aria-current]{color:var(--ink)}
@@ -142,5 +152,5 @@ h1{font-size:22px;line-height:1.25}h2{font-size:16px}
 <button type="button" data-view="colleagues" aria-label="Коллеги" title="Коллеги"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2m20 0v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8"/><circle cx="9" cy="7" r="4"/></svg><span class="tab-label">Коллеги</span></button>
 <button type="button" data-view="knowledge" aria-label="База знаний" title="База знаний"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 7v14m0-14a7 7 0 0 0-5-2H3v14h4a7 7 0 0 1 5 2m0-14a7 7 0 0 1 5-2h4v14h-4a7 7 0 0 0-5 2"/></svg><span class="tab-label">Знания</span></button>
 </div></nav>
-<script src="/static/employee-cabinet.js?v=13" defer></script>
+<script src="/static/employee-cabinet.js?v=14" defer></script>
 </html>
