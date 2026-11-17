@@ -29,10 +29,10 @@ function fields(id, pairs) {
   }
 }
 
-async function request(path, data) {
+async function request(path, data, signal) {
   const response = await fetch(`/employee-cabinet/${path}`, {
     headers: {'X-Telegram-Init-Data': tg.initData, ...(data ? {'Content-Type': 'application/json'} : {})},
-    ...(data ? {method: 'POST', body: JSON.stringify(data)} : {}), credentials: 'omit', cache: 'no-store',
+    ...(data ? {method: 'POST', body: JSON.stringify(data)} : {}), credentials: 'omit', cache: 'no-store', signal,
   });
   if (!response.ok) {
     const error = await response.json().catch(() => null);
@@ -483,6 +483,61 @@ function fileRow(file) {
   return row;
 }
 
+function playCabinetLogo() {
+  const mark = byId('cabinet-loader').querySelector('.cabinet-loader-mark');
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    mark.classList.add('is-ready');
+    return;
+  }
+  const pointCount = 80;
+  const shapes = [...mark.querySelectorAll('path')].map(path => {
+    const original = path.getAttribute('d');
+    const length = path.getTotalLength();
+    const target = Array.from({length:pointCount}, (_, i) => path.getPointAtLength(length * i / pointCount));
+    const box = path.getBBox();
+    const cx = box.x + box.width / 2, cy = box.y + box.height / 2;
+    const area = target.reduce((sum, point, i) => {
+      const next = target[(i + 1) % pointCount];
+      return sum + point.x * next.y - next.x * point.y;
+    }, 0);
+    const angle = Math.atan2(target[0].y - cy, target[0].x - cx);
+    const points = target.map((point, i) => {
+      const theta = angle + Math.sign(area || 1) * 2 * Math.PI * i / pointCount;
+      const x = cx + Math.cos(theta) * 4.8, y = cy + Math.sin(theta) * 4.8;
+      return [x, y, point.x - x, point.y - y];
+    });
+    return {path, original, points};
+  });
+  const paint = (shape, morph) => {
+    const outline = shape.points.map(([x, y, dx, dy], i) =>
+      `${i ? 'L' : 'M'}${(x + dx * morph).toFixed(2)} ${(y + dy * morph).toFixed(2)}`).join('');
+    shape.path.setAttribute('d', outline + 'Z');
+  };
+  shapes.forEach(shape => paint(shape, 0));
+  mark.classList.add('is-ready');
+  return new Promise(resolve => {
+    const start = performance.now();
+    let frame;
+    const finish = () => {
+      clearTimeout(fallback);
+      cancelAnimationFrame(frame);
+      shapes.forEach(shape => shape.path.setAttribute('d', shape.original));
+      resolve();
+    };
+    const fallback = setTimeout(finish, 1200);
+    function tick(now) {
+      const elapsed = now - start;
+      shapes.forEach((shape, i) => {
+        const t = Math.min(1, Math.max(0, (elapsed - 150 - i * 95) / 590));
+        paint(shape, .93 * (1 - (1 - t) ** 3));
+      });
+      if (elapsed < 1030) frame = requestAnimationFrame(tick);
+      else finish();
+    }
+    frame = requestAnimationFrame(tick);
+  });
+}
+
 function setupDesktopFullscreen() {
   if (!['tdesktop', 'macos', 'unigram'].includes(tg.platform)) return;
   document.documentElement.classList.add('cabinet-desktop');
@@ -494,6 +549,7 @@ function setupDesktopFullscreen() {
   try { rememberWindowed = localStorage.getItem(preferenceKey) === 'windowed'; } catch {}
   let fullscreenBefore = !!tg.isFullscreen;
   let manualRequest = false;
+  let settleAutomatic = () => {};
   const sync = () => {
     const fullscreen = !!tg.isFullscreen;
     document.documentElement.classList.toggle('cabinet-fullscreen', fullscreen);
@@ -501,6 +557,7 @@ function setupDesktopFullscreen() {
   };
   const failure = ({error} = {}) => {
     sync();
+    settleAutomatic();
     if (error !== 'ALREADY_FULLSCREEN') {
       if (manualRequest) status.textContent = 'Этот клиент Telegram не смог переключить режим окна.';
       if (error === 'UNSUPPORTED') button.hidden = true;
@@ -515,6 +572,7 @@ function setupDesktopFullscreen() {
     }
     manualRequest = false;
     sync();
+    settleAutomatic();
   });
   tg.onEvent?.('fullscreenFailed', failure);
   button.onclick = () => {
@@ -530,7 +588,11 @@ function setupDesktopFullscreen() {
   sync();
   button.hidden = false;
   if (!rememberWindowed && !tg.isFullscreen) {
-    try { tg.requestFullscreen(); } catch { failure(); }
+    return new Promise(resolve => {
+      const timeout = setTimeout(resolve, 850);
+      settleAutomatic = () => { clearTimeout(timeout); resolve(); };
+      try { tg.requestFullscreen(); } catch { failure(); }
+    });
   }
 }
 
@@ -541,12 +603,17 @@ async function start() {
   tg?.ready();
   if (!tg?.initData) {
     status.textContent = 'Открой кабинет из Telegram командой /cabinet.';
+    byId('cabinet-loader').remove();
     return;
   }
   tg.expand();
-  status.textContent = 'Загрузка…';
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10000);
   try {
-    const data = await (await request('profile')).json();
+    const profile = request('profile', undefined, controller.signal).then(response => response.json()).finally(() => clearTimeout(timeout));
+    const desktop = setupDesktopFullscreen();
+    const animation = playCabinetLogo();
+    const [data] = await Promise.all([profile, desktop, animation]);
     byId('name').textContent = data.name || 'Профиль сотрудника';
     byId('position').textContent = data.position || '';
     fields('profile', [['Рабочая почта', data.email], ['Рабочие часы', data.hours], ['День рождения', data.birthday]]);
@@ -559,14 +626,18 @@ async function start() {
       }
     }
     tabs();
-    setupDesktopFullscreen();
     setupVacation();
     if (data.files.length) data.files.forEach(file => byId('files').append(fileRow(file)));
     else byId('files').append(make('li', 'Файлов пока нет'));
     byId('content').hidden = false;
     status.textContent = '';
   } catch (error) {
-    status.textContent = error.message;
+    status.textContent = controller.signal.aborted ? 'Кабинет не ответил. Открой его снова через бота.' : error.message;
+  } finally {
+    const loader = byId('cabinet-loader');
+    loader.setAttribute('aria-hidden', 'true');
+    loader.classList.add('is-done');
+    setTimeout(() => loader.remove(), 200);
   }
 }
 
