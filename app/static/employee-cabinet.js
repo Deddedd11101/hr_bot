@@ -56,10 +56,29 @@ function setupVacation() {
   const end = form.elements.ends_on;
   const buttons = [[byId('vacation-start'), start], [byId('vacation-end'), end]];
   const months = new Map();
+  const pendingMonths = new Map();
   const monthFormat = new Intl.DateTimeFormat('ru', {month:'long', year:'numeric', timeZone:'UTC'});
   let month = new Date().toISOString().slice(0, 7);
   let selecting = start;
   let loadVersion = 0;
+  let displayedMonth;
+
+  function shiftMonth(value, delta) {
+    const target = new Date(`${value}-01T00:00:00Z`);
+    target.setUTCMonth(target.getUTCMonth() + delta);
+    const next = target.toISOString().slice(0, 7);
+    return /^\d{4}-\d{2}$/.test(next) ? next : null;
+  }
+  function fetchMonth(value) {
+    if (!pendingMonths.has(value)) {
+      const load = request(`vacation/calendar?month=${encodeURIComponent(value)}`)
+        .then(response => response.json())
+        .then(data => { months.set(value, data); return data; })
+        .finally(() => pendingMonths.delete(value));
+      pendingMonths.set(value, load);
+    }
+    return pendingMonths.get(value);
+  }
 
   function updateDates() {
     for (const [control, field] of buttons) {
@@ -73,16 +92,17 @@ function setupVacation() {
     month = nextMonth;
     const version = ++loadVersion;
     const first = new Date(`${month}-01T00:00:00Z`);
-    byId('calendar-month').textContent = monthFormat.format(first);
-    grid.replaceChildren();
-    calendarStatus.textContent = 'Загрузка календаря…';
+    if (!months.has(nextMonth)) {
+      grid.inert = true;
+      grid.setAttribute('aria-busy', 'true');
+      calendarStatus.textContent = 'Загрузка календаря…';
+      if (!displayedMonth) byId('calendar-month').textContent = monthFormat.format(first);
+    }
     try {
-      if (!months.has(month)) {
-        const loaded = await (await request(`vacation/calendar?month=${encodeURIComponent(nextMonth)}`)).json();
-        months.set(nextMonth, loaded);
-      }
+      const data = months.get(nextMonth) || await fetchMonth(nextMonth);
       if (version !== loadVersion) return;
-      const data = months.get(nextMonth);
+      byId('calendar-month').textContent = monthFormat.format(first);
+      grid.replaceChildren();
       for (const name of ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс']) grid.append(make('small', name));
       for (let i = 0; i < (first.getUTCDay() + 6) % 7; i++) grid.append(make('span', ''));
       for (const day of data.days) {
@@ -111,8 +131,26 @@ function setupVacation() {
         grid.append(cell);
       }
       calendarStatus.textContent = 'Серый фон — нерабочий день';
+      if (displayedMonth !== nextMonth && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        grid.animate([{opacity:.55},{opacity:1}], {duration:150});
+      }
+      displayedMonth = nextMonth;
+      for (const delta of [-1, 1]) {
+        const adjacent = shiftMonth(nextMonth, delta);
+        if (adjacent && !months.has(adjacent)) void fetchMonth(adjacent).catch(() => {});
+      }
     } catch (error) {
-      if (version === loadVersion) calendarStatus.textContent = error.message;
+      if (version === loadVersion) {
+        displayedMonth = null;
+        byId('calendar-month').textContent = monthFormat.format(first);
+        grid.replaceChildren();
+        calendarStatus.textContent = error.message;
+      }
+    } finally {
+      if (version === loadVersion) {
+        grid.inert = false;
+        grid.removeAttribute('aria-busy');
+      }
     }
   }
   for (const [control, field] of buttons) control.onclick = () => {
@@ -123,17 +161,19 @@ function setupVacation() {
     updateDates();
   };
   for (const [id, delta] of [['month-prev', -1], ['month-next', 1]]) byId(id).onclick = () => {
-    const target = new Date(`${month}-01T00:00:00Z`);
-    target.setUTCMonth(target.getUTCMonth() + delta);
-    const next = target.toISOString().slice(0, 7);
-    if (/^\d{4}-\d{2}$/.test(next)) void showMonth(next);
+    const next = shiftMonth(month, delta);
+    if (next) void showMonth(next);
   };
   async function refresh() {
     const rows = await (await request('vacation/requests')).json();
     list.replaceChildren(...rows.map(row => {
       const item = make('li', '');
-      item.append(make('span', `${dateLabel(row.starts_on)} – ${dateLabel(row.ends_on)}`),
-        make('small', {pending:'У руководителя', pending_hr:'У HR', approved:'Согласована', rejected:'Отклонена'}[row.status] || row.status));
+      const dates = make('span', `${dateLabel(row.starts_on)} – ${dateLabel(row.ends_on)}`);
+      dates.className = 'vacation-period';
+      const badge = make('small', {pending:'У руководителя', pending_hr:'У HR', approved:'Согласована', rejected:'Отклонена'}[row.status] || row.status);
+      badge.className = 'vacation-badge';
+      badge.dataset.status = row.status;
+      item.append(dates, badge);
       return item;
     }));
     if (!rows.length) list.append(make('li', 'Заявок пока нет'));
@@ -306,23 +346,80 @@ function setupColleagues() {
   return load;
 }
 
+async function loadKnowledge() {
+  const notice = byId('knowledge-status');
+  const root = byId('knowledge-items');
+  root.replaceChildren();
+  notice.textContent = 'Загрузка…';
+  function render(items, target) {
+    const list = make('ul', '');
+    for (const item of items) {
+      const row = make('li', '');
+      if (item.children) {
+        const [section, body] = disclosure(item.label);
+        render(item.children, body);
+        row.append(section);
+      } else {
+        const url = new URL(item.url);
+        if (!['http:', 'https:'].includes(url.protocol)) continue;
+        const link = make('a', item.label);
+        link.href = url.href;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        row.append(link);
+      }
+      list.append(row);
+    }
+    target.append(list);
+  }
+  try {
+    const items = await (await request('knowledge')).json();
+    render(items, root);
+    notice.textContent = items.length ? '' : 'Материалов пока нет.';
+  } catch (error) {
+    notice.textContent = error.message;
+  }
+}
+
 function tabs() {
   const navigation = byId('navigation');
   const buttons = Array.from(navigation.querySelectorAll('button'));
   const sections = Array.from(byId('content').querySelectorAll('section'));
   const loadColleagues = setupColleagues();
+  let transition;
   let current = 0;
-  buttons.forEach((button, index) => {button.onclick = () => {
-    const direction = Math.sign(index - current);current = index;
-    sections.forEach((section, i) => {section.hidden = (i < 2 ? 0 : i - 1) !== index;});
-    byId('name').closest('header').hidden = index !== 0;
-    buttons.forEach((item, i) => item.setAttribute('aria-selected', String(i === index)));
+  function showView(view, index) {
+    const direction = Math.sign(index - current);
+    current = index;
+    sections.forEach(section => {section.hidden = section.dataset.view !== view;});
+    byId('name').closest('header').hidden = view !== 'profile';
+    buttons.forEach((item, i) => {
+      if (i === index) item.setAttribute('aria-current', view === 'files' ? 'location' : 'page');
+      else item.removeAttribute('aria-current');
+    });
     byId('marker').style.transform = `translateX(${index * 100}%)`;
-    if (!byId('colleagues').hidden) void loadColleagues();
-    if (direction && !matchMedia('(prefers-reduced-motion: reduce)').matches) byId('content').animate(
-      [{opacity:.65, transform:`translateX(${12 * direction}px)`},{opacity:1, transform:'translateX(0)'}], {duration:220});
+    if (view === 'colleagues') void loadColleagues();
+    if (view === 'knowledge') void loadKnowledge();
+    if (direction && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      transition?.cancel();
+      transition = byId('content').animate(
+        [{opacity:.7, transform:`translateX(${8 * direction}px)`},{opacity:1, transform:'translateX(0)'}],
+        {duration:200, easing:'cubic-bezier(.2,.75,.3,1)'});
+    }
     window.scrollTo(0, 0);
-  };});
+  }
+  buttons.forEach((button, index) => { button.onclick = () => showView(button.dataset.view, index); });
+  byId('documents-open').onclick = () => {
+    showView('files', 0);
+    byId('documents').querySelector('h2').focus();
+  };
+  document.querySelectorAll('[data-back-profile]').forEach(crumb => {
+    crumb.onclick = () => {
+      const fromDocuments = crumb.closest('section').id === 'documents';
+      showView('profile', 0);
+      (fromDocuments ? byId('documents-open') : buttons[0]).focus();
+    };
+  });
   navigation.hidden = false;
 }
 

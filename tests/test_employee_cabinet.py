@@ -163,10 +163,39 @@ class EmployeeCabinetTests(unittest.TestCase):
         with TestClient(app) as client:
             self.assertEqual(client.get("/employee-cabinet").status_code, 200)
             self.assertIn("Использовано в этом году", client.get("/employee-cabinet").text)
-            for path in ("profile", "files/1", "vacation/requests", "vacation/calendar", "colleagues"):
+            for path in ("profile", "files/1", "vacation/requests", "vacation/calendar", "colleagues", "knowledge"):
                 response = client.get(f"/employee-cabinet/{path}")
                 self.assertEqual(response.status_code, 403)
                 self.assertEqual(response.headers["cache-control"], "no-store")
+
+    def test_knowledge_only_exports_visible_active_links_and_breaks_cycles(self):
+        from app.models import BotMenuButton, BotMenuSet
+
+        engine = create_engine("sqlite://")
+        self.addCleanup(engine.dispose)
+        for model in (BotMenuSet, BotMenuButton):
+            model.__table__.create(engine)
+        with sessionmaker(bind=engine)() as db:
+            db.add_all([
+                BotMenuSet(id=1, title="Root"), BotMenuSet(id=2, title="Section"),
+                BotMenuSet(id=3, title="Private", target_employee_ids="80"),
+                BotMenuSet(id=4, title="Wrong stage", target_employee_stages="adaptation"),
+                BotMenuButton(menu_set_id=1, label="Guides", action_type="open_set", target_menu_set_id=2, is_active=True),
+                BotMenuButton(menu_set_id=1, label="Private", action_type="open_set", target_menu_set_id=3, is_active=True),
+                BotMenuButton(menu_set_id=1, label="Other stage", action_type="open_set", target_menu_set_id=4, is_active=True),
+                BotMenuButton(menu_set_id=2, label="Back", action_type="open_set", target_menu_set_id=1, is_active=True),
+                BotMenuButton(menu_set_id=2, label="Read", action_type="open_url", url="https://example.com/guide", is_active=True),
+                BotMenuButton(menu_set_id=2, label="Unsafe", action_type="open_url", url="javascript:alert(1)", is_active=True),
+                BotMenuButton(menu_set_id=2, label="Hidden", action_type="open_url", url="https://example.com/hidden", is_active=False),
+                BotMenuButton(menu_set_id=2, label="Run", action_type="launch_scenario", is_active=True),
+                BotMenuButton(menu_set_id=3, label="Hidden", action_type="open_url", url="https://example.com/private", is_active=True),
+                BotMenuButton(menu_set_id=4, label="Hidden", action_type="open_url", url="https://example.com/other", is_active=True),
+            ])
+            db.commit()
+            employee = cabinet.Employee(id=70, employee_stage="staff")
+            self.assertEqual(cabinet.knowledge_links(db, employee, 1), [
+                {"label": "Guides", "children": [{"label": "Read", "url": "https://example.com/guide"}]},
+            ])
 
     def test_colleagues_exposes_only_work_directory_fields(self):
         from app.models import CatalogGroup, CatalogMembership

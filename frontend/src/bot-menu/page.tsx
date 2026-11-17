@@ -90,6 +90,7 @@ type HrSettings = {
   default_menu_set_id: number | null;
   default_employee_menu_set_id: number | null;
   default_candidate_menu_set_id: number | null;
+  cabinet_knowledge_menu_set_id: number | null;
 };
 
 type Workspace = {
@@ -184,6 +185,7 @@ function normalizeWorkspace(workspace: Workspace): Workspace {
       default_menu_set_id: null,
       default_employee_menu_set_id: null,
       default_candidate_menu_set_id: null,
+      cabinet_knowledge_menu_set_id: null,
     },
     menu_role_scope_labels: workspace.menu_role_scope_labels || { all: "Для всех ролей" },
     menu_employee_scope_labels:
@@ -1025,7 +1027,7 @@ export function BotMenuPage({ apiUrl }: BotMenuPageProps) {
       <StatusAlert type="error" message={error} />
 
       <SettingsCard title={selectedMenuSet ? selectedMenuSet.title || "Набор меню" : "Наборы меню"}>
-        <div className="grid gap-4 rounded-lg border border-border bg-muted/35 p-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto_auto] xl:items-end">
+        <div className="grid gap-4 rounded-lg border border-border bg-muted/35 p-3 sm:grid-cols-2 xl:grid-cols-4 xl:items-end">
           <Field>
             <FieldLabel>Общий fallback-набор</FieldLabel>
             <AppSelect
@@ -1057,6 +1059,15 @@ export function BotMenuPage({ apiUrl }: BotMenuPageProps) {
               }
               options={candidateRootMenuOptions}
               placeholder="Не выбран"
+            />
+          </Field>
+          <Field>
+            <FieldLabel>База знаний в кабинете</FieldLabel>
+            <AppSelect
+              value={String(workspace.hr_settings.cabinet_knowledge_menu_set_id ?? "")}
+              onChange={(value) => updateHrSettingsLocal({ cabinet_knowledge_menu_set_id: value ? Number(value) : null })}
+              options={employeeRootMenuOptions}
+              placeholder="Не выбрана"
             />
           </Field>
           <Button
