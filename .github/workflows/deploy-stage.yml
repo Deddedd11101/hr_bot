@@ -3,6 +3,11 @@ name: Deploy Stage
 on:
   workflow_dispatch:
     inputs:
+      reviewed_dialog_cleanup:
+        description: "One-time repair of reviewed stale dialogs on cards 44, 43 and 13 (no deploy)"
+        type: choice
+        options: ["off", "dry-run", "apply"]
+        default: "off"
       ref:
         description: "Git ref to deploy to stage: usually stage; branch, tag, or commit SHA"
         required: true
@@ -86,6 +91,8 @@ jobs:
       GRADE_WIDGET_PILOT: ${{ inputs.grade_widget_pilot }}
       EMPLOYEE_CABINET_PILOT: ${{ inputs.employee_cabinet_pilot }}
       GRADE_REVIEW_WEBAPP: ${{ inputs.grade_review_webapp }}
+      REVIEWED_DIALOG_CLEANUP: ${{ inputs.reviewed_dialog_cleanup }}
+      WORKFLOW_SHA: ${{ github.sha }}
 
     steps:
       - name: Deploy over SSH
@@ -95,7 +102,7 @@ jobs:
           username: ${{ secrets.STAGE_USERNAME }}
           password: ${{ secrets.STAGE_PASSWORD }}
           port: ${{ secrets.STAGE_PORT }}
-          envs: DEPLOY_REF,STAGE_DB_PATH,GRADE_WIDGET_PILOT,EMPLOYEE_CABINET_PILOT,GRADE_REVIEW_WEBAPP
+          envs: DEPLOY_REF,STAGE_DB_PATH,GRADE_WIDGET_PILOT,EMPLOYEE_CABINET_PILOT,GRADE_REVIEW_WEBAPP,REVIEWED_DIALOG_CLEANUP,WORKFLOW_SHA
           script: |
             set -euo pipefail
             pilot="${GRADE_WIDGET_PILOT:-keep}"
@@ -117,6 +124,25 @@ jobs:
             if [ ! -f "${db_path}" ]; then
               echo "Stage SQLite database not found: ${db_path}"
               exit 1
+            fi
+            cleanup="${REVIEWED_DIALOG_CLEANUP:-off}"
+            case "$cleanup" in off|dry-run|apply) ;; *) exit 1 ;; esac
+            if [[ "$cleanup" != off ]]; then
+              [[ "$DEPLOY_REF" == stage && "$pilot" == keep && "$cabinet" == keep && "$review" == keep ]]
+              [[ "$WORKFLOW_SHA" =~ ^[0-9a-f]{40}$ ]]
+              git fetch origin stage
+              [[ "$(git rev-parse FETCH_HEAD)" == "$WORKFLOW_SHA" ]]
+              cleanup_dialogs() {
+                local employee_id="$1"
+                shift
+                git show "$WORKFLOW_SHA:tools/repair_reviewed_stale_dialogs.py" |
+                  .venv/bin/python - --db "$db_path" --employee-id "$employee_id" "$@"
+              }
+              for id in 44 43 13; do cleanup_dialogs "$id"; done
+              if [[ "$cleanup" == apply ]]; then
+                for id in 44 43 13; do cleanup_dialogs "$id" --apply; done
+              fi
+              exit 0
             fi
             mkdir -p backups
             deploy_ts="$(date +%Y%m%d-%H%M%S)"
