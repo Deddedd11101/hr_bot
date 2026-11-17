@@ -11,6 +11,16 @@ related:
 source_of_truth: true
 ---
 
+## 17.11.2026 — кабинет сотрудника: база знаний и навигация
+
+- PR #235, deployed `7f2b3e5849f88b8f5ababe081b75f42390358a7e`.
+  Deploy Stage `44045370083`: preflight и deploy прошли. SQLite backup
+  и снимок сценариев созданы, fingerprint сценариев не изменился.
+- Оболочка и JS версии 11 вернули 200, `/employee-cabinet/knowledge` без
+  подписи Telegram вернул 403 с `Cache-Control: no-store`.
+- Пилот не меняли. Источник материалов при выкладке не настраивали;
+  просмотр материалов в живом Telegram не проверен.
+
 ## 17.11.2026 — закрытие девяти старых диалогов
 
 - PR #239, workflow `44058626063`, режим `reviewed_dialog_cleanup=apply`.
