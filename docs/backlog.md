@@ -65,6 +65,12 @@ source_of_truth: true
 
 ## Очередь запусков: первый безопасный срез (10.11.2026)
 
+- 17.11: Stage Diagnostics `44052724134` подтвердила четыре старых диалога
+  карточки №44 (№30, 102, 103, 104). Подготовлен одноразовый
+  `tools/repair_roman_stale_dialogs.py`: сначала dry-run, затем отдельный
+  `--apply` на stage с проверенным backup. При изменении снимка или наличии
+  продолжения скрипт отказывается от записи. На стенде не применён.
+
 - Feature unified-scheduled-dispatch: «Запустить сейчас» scenario/survey использует
   поадресный ledger; legacy scheduler jobs и step/follow-up запросы сохраняются
   в новой durable таблице с UTC временем, batch и progress epoch. Карточка показывает
