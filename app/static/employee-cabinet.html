@@ -28,7 +28,7 @@ button:not(:disabled):active{transform:scale(.96)}
 .tabs button[aria-current]{color:var(--ink);font-weight:700}
 .tabs svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linejoin:round;stroke-linecap:round}
 .tabs button[aria-current] svg{color:var(--accent)}
-@supports(backdrop-filter:blur(14px)) or (-webkit-backdrop-filter:blur(14px)){.tabs{background:color-mix(in srgb,var(--card) 76%,transparent);-webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px)}}
+@supports(backdrop-filter:blur(14px)) or (-webkit-backdrop-filter:blur(14px)){.tabs{background:color-mix(in srgb,var(--card) 64%,transparent);-webkit-backdrop-filter:blur(20px);backdrop-filter:blur(20px)}}
 .breadcrumbs{display:flex;align-items:center;flex-wrap:wrap;gap:7px;margin-bottom:12px;color:var(--muted);font-size:13px}
 .breadcrumbs button{border:0;padding:4px 0;color:inherit;text-decoration:underline;text-underline-offset:3px}
 .breadcrumbs [aria-current]{color:var(--ink)}
@@ -49,13 +49,24 @@ h1{font-size:22px;line-height:1.25}h2{font-size:16px}
 .vacation-picker{margin:0;padding:10px;background:var(--card);border:1px solid var(--line);border-radius:12px}
 .calendar-head{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px}
 .calendar-head button{min-width:38px;padding:4px}
-.calendar-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px;text-align:center}
+.calendar-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));grid-template-rows:17px repeat(6,36px);gap:4px;text-align:center}
+.calendar-grid[aria-busy=true]{opacity:.55}
+.calendar-grid button,.vacation-period,.vacation-balances dd{font-family:Consolas,"SFMono-Regular",Menlo,monospace;font-variant-numeric:tabular-nums}
 .calendar-grid small{font-size:11px}
 .calendar-grid button{padding:5px 0;min-height:36px;border:0;border-radius:8px;color:var(--ink)}
 .calendar-grid button.is-off{color:var(--muted);background:var(--bg)}
 .calendar-grid button.is-range{background:var(--highlight)}
 .calendar-grid button[aria-pressed=true]{background:#bada1e;color:#181817;font-weight:700}
-.calendar-key{margin-top:8px}
+.calendar-key{margin-top:8px;min-height:1.5em}
+.vacation-badge{display:inline-flex;align-items:center;gap:5px;min-height:23px;padding:2px 7px;border-radius:999px;background:var(--bg);color:var(--muted);font-size:11px;font-weight:650;white-space:nowrap}
+.vacation-badge::before{content:"";width:5px;height:5px;border-radius:50%;background:currentColor}
+.vacation-badge[data-status=pending],.vacation-badge[data-status=pending_hr]{background:#fff0c2;color:#754604}
+.vacation-badge[data-status=approved]{background:var(--highlight);color:var(--accent)}
+.vacation-badge[data-status=rejected]{background:#f9e4e5;color:#932a37}
+@media(prefers-color-scheme:dark){
+  .vacation-badge[data-status=pending],.vacation-badge[data-status=pending_hr]{background:#40321c;color:#ffd67b}
+  .vacation-badge[data-status=rejected]{background:#45272d;color:#ffadb5}
+}
 #vacation-submit{background:var(--highlight);font-weight:600}
 #files button,#colleague-retry{background:var(--card);min-height:40px}
 #knowledge-items li{display:block}
@@ -115,5 +126,5 @@ h1{font-size:22px;line-height:1.25}h2{font-size:16px}
 <button type="button" data-view="colleagues"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2m20 0v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8"/><circle cx="9" cy="7" r="4"/></svg>Коллеги</button>
 <button type="button" data-view="knowledge" aria-label="База знаний"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 7v14m0-14a7 7 0 0 0-5-2H3v14h4a7 7 0 0 1 5 2m0-14a7 7 0 0 1 5-2h4v14h-4a7 7 0 0 0-5 2"/></svg>Знания</button>
 </div></nav>
-<script src="/static/employee-cabinet.js?v=10" defer></script>
+<script src="/static/employee-cabinet.js?v=11" defer></script>
 </html>
