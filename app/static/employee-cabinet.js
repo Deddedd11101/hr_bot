@@ -348,14 +348,13 @@ function tabs() {
   const loadColleagues = setupColleagues();
   let transition;
   let current = 0;
-  buttons.forEach((button, index) => {button.onclick = () => {
+  function showView(view, index) {
     const direction = Math.sign(index - current);
     current = index;
-    const view = button.dataset.view;
     sections.forEach(section => {section.hidden = section.dataset.view !== view;});
     byId('name').closest('header').hidden = view !== 'profile';
-    buttons.forEach(item => {
-      if (item === button) item.setAttribute('aria-current', 'page');
+    buttons.forEach((item, i) => {
+      if (i === index) item.setAttribute('aria-current', view === 'files' ? 'location' : 'page');
       else item.removeAttribute('aria-current');
     });
     byId('marker').style.transform = `translateX(${index * 100}%)`;
@@ -368,7 +367,19 @@ function tabs() {
         {duration:200, easing:'cubic-bezier(.2,.75,.3,1)'});
     }
     window.scrollTo(0, 0);
-  };});
+  }
+  buttons.forEach((button, index) => { button.onclick = () => showView(button.dataset.view, index); });
+  byId('documents-open').onclick = () => {
+    showView('files', 0);
+    byId('documents').querySelector('h2').focus();
+  };
+  document.querySelectorAll('[data-back-profile]').forEach(crumb => {
+    crumb.onclick = () => {
+      const fromDocuments = crumb.closest('section').id === 'documents';
+      showView('profile', 0);
+      (fromDocuments ? byId('documents-open') : buttons[0]).focus();
+    };
+  });
   navigation.hidden = false;
 }
 
