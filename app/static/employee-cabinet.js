@@ -484,9 +484,16 @@ function fileRow(file) {
 }
 
 function setupDesktopFullscreen() {
-  if (!['tdesktop', 'macos', 'unigram'].includes(tg.platform) || !tg.isVersionAtLeast?.('8.0')
+  if (!['tdesktop', 'macos', 'unigram'].includes(tg.platform)) return;
+  document.documentElement.classList.add('cabinet-desktop');
+  if (!tg.isVersionAtLeast?.('8.0')
       || typeof tg.requestFullscreen !== 'function' || typeof tg.exitFullscreen !== 'function') return;
   const button = byId('fullscreen-toggle');
+  const preferenceKey = 'hrbot:cabinet:desktop-fullscreen';
+  let rememberWindowed = false;
+  try { rememberWindowed = localStorage.getItem(preferenceKey) === 'windowed'; } catch {}
+  let fullscreenBefore = !!tg.isFullscreen;
+  let manualRequest = false;
   const sync = () => {
     const fullscreen = !!tg.isFullscreen;
     document.documentElement.classList.toggle('cabinet-fullscreen', fullscreen);
@@ -495,14 +502,24 @@ function setupDesktopFullscreen() {
   const failure = ({error} = {}) => {
     sync();
     if (error !== 'ALREADY_FULLSCREEN') {
-      status.textContent = 'Этот клиент Telegram не смог переключить режим окна.';
+      if (manualRequest) status.textContent = 'Этот клиент Telegram не смог переключить режим окна.';
       if (error === 'UNSUPPORTED') button.hidden = true;
     }
+    manualRequest = false;
   };
-  tg.onEvent?.('fullscreenChanged', sync);
+  tg.onEvent?.('fullscreenChanged', () => {
+    const fullscreen = !!tg.isFullscreen;
+    if (fullscreen !== fullscreenBefore) {
+      try { localStorage.setItem(preferenceKey, fullscreen ? 'fullscreen' : 'windowed'); } catch {}
+      fullscreenBefore = fullscreen;
+    }
+    manualRequest = false;
+    sync();
+  });
   tg.onEvent?.('fullscreenFailed', failure);
   button.onclick = () => {
     status.textContent = '';
+    manualRequest = true;
     try {
       if (tg.isFullscreen) tg.exitFullscreen();
       else tg.requestFullscreen();
@@ -512,6 +529,9 @@ function setupDesktopFullscreen() {
   };
   sync();
   button.hidden = false;
+  if (!rememberWindowed && !tg.isFullscreen) {
+    try { tg.requestFullscreen(); } catch { failure(); }
+  }
 }
 
 async function start() {
