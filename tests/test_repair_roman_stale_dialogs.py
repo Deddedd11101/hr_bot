@@ -4,7 +4,7 @@ import sqlite3
 from tempfile import TemporaryDirectory
 import unittest
 
-from tools.repair_roman_stale_dialogs import EXPECTED, repair
+from tools.repair_reviewed_stale_dialogs import SCOPES, EXPECTED, repair
 
 
 class RomanRepairTests(unittest.TestCase):
@@ -23,6 +23,7 @@ class RomanRepairTests(unittest.TestCase):
                 CREATE TABLE flow_launch_requests (employee_id, flow_key, processed_at, skip_step_key);
                 CREATE TABLE scenario_answer_runs (id, status, answer);
                 CREATE TABLE onboarding_events (employee_id, event_key, scheduled_at, sent_at, message);
+                CREATE TABLE employees (id INTEGER PRIMARY KEY);
                 INSERT INTO scenario_answer_runs VALUES (1, 'in_progress', 'preserve me');
             """)
             for row_id, (recipient, key, step, updated) in EXPECTED.items():
@@ -49,3 +50,18 @@ class RomanRepairTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "claimed step"):
             repair(self.path, apply=True)
         self.assertFalse((self.path.parent / "backups").exists())
+
+    def test_exact_anna_and_orphan_scopes_preserve_other_dialogs(self):
+        with closing(sqlite3.connect(self.path)) as db, db:
+            for employee_id in (43, 13):
+                for dialog_id, (recipient, key, step, updated) in SCOPES[employee_id].items():
+                    db.execute("""INSERT INTO scenario_progress
+                        (id,employee_id,recipient_employee_id,scenario_key,current_step_key,updated_at)
+                        VALUES (?,?,?,?,?,?)""", (dialog_id, employee_id, recipient, key, step, updated))
+            db.execute("INSERT INTO scenario_progress (id,employee_id,waiting_for_response) VALUES (45,13,1)")
+        for employee_id in (43, 13):
+            self.assertEqual(repair(self.path, apply=True, employee_id=employee_id)["dialog_ids"], list(SCOPES[employee_id]))
+        with closing(sqlite3.connect(self.path)) as db:
+            self.assertEqual(db.execute("SELECT id FROM scenario_progress WHERE is_completed=1 ORDER BY id").fetchall(),
+                             [(44,), (56,), (60,), (111,), (145,)])
+            self.assertEqual(db.execute("SELECT employee_id FROM onboarding_events").fetchall(), [(43,)])
