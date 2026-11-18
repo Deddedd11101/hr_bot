@@ -8,8 +8,8 @@
 :root{color-scheme:light dark;--bg:#fafaf9;--fg:#1a1916;--panel:#fff;--line:#e8e6e1;--muted:#6b6963;--hover:#f5f4f2;--accent:#BADA1E;--ease:cubic-bezier(.22,1,.36,1)}
 @media(prefers-color-scheme:dark){:root{--bg:#141412;--fg:#f5f3ef;--panel:#1c1b18;--line:#2e2c28;--muted:#a9a59d;--hover:#252420}}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.5 Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
-main{height:100vh;height:min(100dvh,var(--tg-viewport-stable-height,100dvh));display:grid;grid-template-rows:auto minmax(0,1fr) auto;max-width:960px;margin:auto}
-header{padding:12px 16px 8px}h1,h2,p{margin:0 0 8px}h1{font-size:19px}h2{font-size:18px;overflow-wrap:anywhere}
+main{height:100vh;height:var(--tg-viewport-height,100dvh);display:grid;grid-template-rows:auto minmax(0,1fr) auto;max-width:960px;margin:auto}
+header{padding:8px 16px 6px}h1,h2,p{margin:0 0 6px}h1{font-size:17px}h2{font-size:18px;overflow-wrap:anywhere}
 .scroll{min-height:0;overflow:auto;overscroll-behavior:contain;padding:0 16px 12px}
 .track{height:5px;border-radius:999px;background:var(--line);overflow:hidden;margin:0}
 .fill{width:100%;height:100%;background:var(--accent);transform:scaleX(0);transform-origin:left;transition:transform .28s var(--ease)}
@@ -19,7 +19,7 @@ button{cursor:pointer;min-height:44px;transition:background-color .16s,border-co
 button:enabled:not(.primary):hover{background:var(--hover)}button:enabled:active{transform:scale(.985)}
 button:disabled{opacity:.5;cursor:default}button[aria-pressed=true]{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
 button:focus-visible,textarea:focus-visible{outline:2px solid var(--fg);outline-offset:2px}
-.options{display:grid;gap:6px}.option{width:100%;text-align:left;padding:8px 10px;font-size:13px;font-weight:400;line-height:1.4;overflow-wrap:anywhere}
+.options{display:grid;gap:6px}.option{width:100%;text-align:left;padding:7px 10px;font-size:13px;font-weight:400;line-height:1.4;overflow-wrap:anywhere}
 .primary{background:var(--accent);color:#171717;border-color:var(--accent);font-weight:650}
 footer{padding:8px 16px calc(8px + env(safe-area-inset-bottom,0px));border-top:1px solid var(--line);background:var(--bg)}
 .actions{display:flex;flex-wrap:wrap;gap:6px}.actions button{font-size:13px;padding:6px 10px}.actions .primary{margin-inline-start:auto}
@@ -67,5 +67,5 @@ dialog::backdrop{background:#0008}
   </form>
 </dialog>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
-<script src="/static/grade-review.js?v=3" defer></script>
+<script src="/static/grade-review.js?v=4" defer></script>
 </html>
