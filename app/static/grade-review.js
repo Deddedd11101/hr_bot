@@ -208,29 +208,6 @@ function render() {
   next.disabled = Boolean(!editingFromSummary && item.options && selected === undefined);
 }
 
-function celebrateSubmission() {
-  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-  const layer = add('div', '', document.body, 'confetti');
-  layer.setAttribute('aria-hidden', 'true');
-  const animations = [];
-  for (let i = 0; i < 46; i++) {
-    const piece = add('i', '', layer, 'confetti-piece');
-    const side = i % 2;
-    piece.style.left = side ? '80%' : '20%';
-    piece.style.background = ['#BADA1E', '#ffffff', '#a3a3a3'][i % 3];
-    const x = (Math.random() - .5) * Math.min(window.innerWidth, 600);
-    const y = 100 + Math.random() * 240;
-    const spin = (Math.random() - .5) * 900;
-    const animation = piece.animate([
-      {transform: 'translate(0,0) rotate(0deg)', opacity: 0},
-      {transform: `translate(${x * .6}px,${-y}px) rotate(${spin / 2}deg)`, opacity: 1, offset: .32},
-      {transform: `translate(${x}px,${y}px) rotate(${spin}deg)`, opacity: 0},
-    ], {duration: 1200 + Math.random() * 250, easing: 'cubic-bezier(.15,.6,.5,1)', fill: 'both'});
-    animations.push(animation.finished.catch(() => {}));
-  }
-  Promise.all(animations).then(() => layer.remove());
-}
-
 async function save() {
   if (busy) return;
   busy = true;
@@ -241,8 +218,7 @@ async function save() {
     model.revision = result.revision;
     model.completed = true;
     model.editable = false;
-    status.textContent = 'Спасибо! Оценка отправлена.';
-    celebrateSubmission();
+    status.textContent = '';
   } catch (error) {
     status.textContent = error.message;
   } finally {
