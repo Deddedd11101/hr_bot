@@ -11,6 +11,19 @@ related:
 source_of_truth: true
 ---
 
+## 18.11.2026 — оформление сводки оценки
+
+- PR #249, deployed `947d87c1ed1adcde5e6a33ba8ca21f4bb8ce9f25`.
+  CI `44274857077` и Deploy Stage `44275284057` passed; три локальных
+  navigation tests passed. Плавное раскрытие/сворачивание одного ответа,
+  отступ описания, скруглённая кнопка справа и компактный текст подтверждения.
+- Конфетти отклонено пользователем и удалено до merge/deploy.
+- SQLite backup verified, scenario fingerprint unchanged; employees/workspace
+  HTTP 303, публичная форма и JS v6 HTTP 200. Проверены наличие animation
+  duration 260 и отсутствие celebrateSubmission в публичном JS.
+- В локальном браузере проверено взаимное закрытие пунктов. Пользовательская
+  приёмка живого Telegram после выкладки открыта. Реальные оценки не менялись.
+
 ## 17.11.2026 — кабинет сотрудника: база знаний и навигация
 
 - PR #235, deployed `7f2b3e5849f88b8f5ababe081b75f42390358a7e`.
