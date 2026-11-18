@@ -11,6 +11,21 @@ related:
 source_of_truth: true
 ---
 
+## 18.11.2026 — последовательное прохождение оценки
+
+- PR #247: deployed `1258f1da396a04969aa9522318f8e1855fff9a42`,
+  Deploy Stage `44271112521`: preflight и deploy passed.
+- CI passed; три Node navigation regression tests passed. Убрана ранняя
+  кнопка сводки, из незавершённой сводки доступно продолжение с первого
+  неотвеченного вопроса. Явный пропуск не требует повторного ответа.
+- Высота следует viewport Telegram, отступы компактнее, нижние кнопки
+  закреплены. Длинный текст по-прежнему может требовать прокрутку.
+- SQLite backup verified; scenario fingerprint unchanged. HTTP smoke:
+  employees/workspace 303; публичная форма и JS v4 200, новый код присутствует.
+  Telegram connectivity check прошёл; workflow не обнаружил свежих delivery
+  errors. Прохождение и геометрия в живом Telegram ещё не проверены.
+- Оценки, участники и реальные запуски не менялись.
+
 ## 17.11.2026 — кабинет сотрудника: база знаний и навигация
 
 - PR #235, deployed `7f2b3e5849f88b8f5ababe081b75f42390358a7e`.
