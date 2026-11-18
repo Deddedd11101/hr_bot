@@ -85,14 +85,35 @@ function renderSummary(items) {
     const description = value === undefined ? 'Ответ ещё не выбран.' : value === null
       ? (item.skip || 'Вопрос пропущен.') : item.options ? (item.options[value] ?? label) : value;
     const details = add('details', '', table, 'summary-item');
-    details.setAttribute('name', 'review-answer');
-    details.addEventListener('toggle', () => {
-      if (!details.open) return;
-      for (const other of table.querySelectorAll('details[open]')) {
-        if (other !== details) other.open = false;
-      }
-    });
     const row = add('summary', '', details, 'summary-line');
+    let animation;
+    let expanded = false;
+    const expand = open => {
+      const from = details.getBoundingClientRect().height;
+      animation?.cancel();
+      expanded = open;
+      row.setAttribute('aria-expanded', String(open));
+      details.open = true;
+      const to = open ? details.scrollHeight : row.getBoundingClientRect().height;
+      if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        details.open = open;
+        return;
+      }
+      animation = details.animate([{height: `${from}px`}, {height: `${to}px`}], {
+        duration: 260, easing: 'cubic-bezier(.22,1,.36,1)',
+      });
+      animation.onfinish = () => { details.open = open; animation = undefined; };
+    };
+    details.closeAnswer = () => { if (expanded) expand(false); };
+    row.onclick = event => {
+      event.preventDefault();
+      if (!expanded) {
+        for (const other of table.querySelectorAll('details')) {
+          if (other !== details) other.closeAnswer();
+        }
+      }
+      expand(!expanded);
+    };
     add('span', item.title, row);
     add('span', label, row, 'summary-badge');
     add('p', description, details, 'summary-text');
