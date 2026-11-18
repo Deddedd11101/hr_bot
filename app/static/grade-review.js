@@ -124,6 +124,11 @@ function render() {
     add('h2', model.editable ? 'Проверь ответы' : model.completed ? 'Оценка отправлена' : 'Опрос закрыт');
     renderSummary(items);
     if (model.editable) {
+      const unanswered = items.findIndex(item => !Object.hasOwn(answers, item.key));
+      if (unanswered !== -1) button('Продолжить опрос', () => {
+        editingFromSummary = false;
+        go(unanswered);
+      }, actions);
       button('Отправить оценку', () => {
         confirmation.returnValue = '';
         confirmation.showModal();
@@ -164,7 +169,6 @@ function render() {
     };
   }
   if (!editingFromSummary && index > 0) button('Назад', () => go(index - 1), actions);
-  if (!editingFromSummary && (count || model.completed)) button('Все ответы', () => go(index, true), actions);
   const next = button(editingFromSummary ? 'К ответам' : index + 1 === items.length ? 'Проверить ответы' : 'Далее', () => {
     if (field) answers[item.key] = field.value.trim() || null;
     if (editingFromSummary || index + 1 === items.length) {
@@ -210,6 +214,11 @@ async function start() {
     byId('subject').textContent = model.subject;
     status.textContent = '';
     reviewing = model.completed || !model.editable;
+    if (!reviewing) {
+      const unanswered = model.questions.findIndex(item => !Object.hasOwn(answers, item.key));
+      reviewing = unanswered === -1;
+      index = unanswered === -1 ? 0 : unanswered;
+    }
     render();
   } catch (error) {
     status.textContent = error.message;
