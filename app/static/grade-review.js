@@ -85,6 +85,13 @@ function renderSummary(items) {
     const description = value === undefined ? 'Ответ ещё не выбран.' : value === null
       ? (item.skip || 'Вопрос пропущен.') : item.options ? (item.options[value] ?? label) : value;
     const details = add('details', '', table, 'summary-item');
+    details.setAttribute('name', 'review-answer');
+    details.addEventListener('toggle', () => {
+      if (!details.open) return;
+      for (const other of table.querySelectorAll('details[open]')) {
+        if (other !== details) other.open = false;
+      }
+    });
     const row = add('summary', '', details, 'summary-line');
     add('span', item.title, row);
     add('span', label, row, 'summary-badge');
