@@ -98,11 +98,9 @@ h1{font-size:22px;line-height:1.25}h2{font-size:16px}
   .vacation-badge[data-status=rejected]{background:#45272d;color:#ffadb5}
 }
 #vacation-submit{background:var(--highlight);font-weight:600}
-.schedule-toolbar{display:grid;gap:10px;margin:14px 0}.schedule-toolbar input,.schedule-toolbar select{width:100%;min-height:40px;background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:12px;padding:8px}
-.schedule-row{display:block;padding:12px 0}.schedule-row strong{display:block;font-size:14px}.schedule-row small{color:var(--muted);margin:3px 0}
-.schedule-strip{position:relative;height:8px;border-radius:4px;background:var(--line);margin-top:8px;overflow:hidden}
-.schedule-strip span{position:absolute;height:100%;border-radius:4px;background:#BADA1E}
-.schedule-pages{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:12px}
+.vacation-heading{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:12px}.vacation-heading h2{margin:0}
+.vacation-heading button{border-radius:999px;padding:6px 12px;color:var(--ink);background:var(--card);font-size:12px}
+.schedule-frame{display:block;width:100%;height:440px;border:0;margin-top:10px;border-radius:8px;background:var(--bg)}
 #files button,#colleague-retry{background:var(--card);min-height:40px}
 #knowledge-items li{display:block}
 #knowledge-items a{display:block;padding:8px 0;text-underline-offset:3px}
@@ -137,7 +135,7 @@ h1{font-size:22px;line-height:1.25}h2{font-size:16px}
     <h2 tabindex="-1">Документы</h2><ul id="files"></ul>
   </section>
   <section data-view="development" id="development" hidden></section>
-  <section data-view="vacation" hidden><h2>Отпуск <span id="vacation-year"></span></h2><dl class="vacation-balances"><div><dt>Использовано в этом году</dt><dd id="vacation-used">Не указано</dd></div><div><dt>Осталось</dt><dd id="vacation-remaining">Не указано</dd></div></dl>
+  <section data-view="vacation" hidden><div class="vacation-heading"><h2>Отпуск <span id="vacation-year"></span></h2><button id="schedule-open" type="button" aria-controls="leave-schedule">График коллег</button></div><dl class="vacation-balances"><div><dt>Использовано в этом году</dt><dd id="vacation-used">Не указано</dd></div><div><dt>Осталось</dt><dd id="vacation-remaining">Не указано</dd></div></dl>
     <form id="vacation-form" class="vacation-form">
       <input name="starts_on" type="hidden"><input name="ends_on" type="hidden">
       <div class="vacation-dates"><button id="vacation-start" type="button" aria-expanded="false" aria-controls="vacation-picker">Начало</button><button id="vacation-end" type="button" aria-expanded="false" aria-controls="vacation-picker">Последний день</button></div>
@@ -149,20 +147,12 @@ h1{font-size:22px;line-height:1.25}h2{font-size:16px}
       <p id="vacation-status" role="status"></p>
       <button id="vacation-submit" type="submit">Проверить даты</button>
     </form>
-    <button id="schedule-open" class="profile-entry" type="button" aria-controls="leave-schedule">График отпусков коллег →</button>
     <h2>Мои заявки</h2><ul id="vacation-requests"></ul>
   </section>
   <section data-view="leave-schedule" id="leave-schedule" hidden>
     <nav class="breadcrumbs" aria-label="Хлебные крошки"><button id="schedule-back" type="button">Отпуск</button><span aria-hidden="true">/</span><span aria-current="page">График коллег</span></nav>
     <h2 tabindex="-1">График отпусков</h2>
-    <div class="schedule-toolbar">
-      <div class="calendar-head"><button id="schedule-prev-month" type="button" aria-label="Предыдущий месяц">‹</button><strong id="schedule-month"></strong><button id="schedule-next-month" type="button" aria-label="Следующий месяц">›</button></div>
-      <input id="schedule-search" type="search" aria-label="Поиск сотрудника или группы" placeholder="Сотрудник или группа" maxlength="200">
-      <select id="schedule-group" aria-label="Группа сотрудников"><option value="">Все группы</option><option value="0">Без группы</option></select>
-    </div>
-    <p id="schedule-status" role="status"></p><button id="schedule-retry" type="button" hidden>Повторить</button>
-    <ul id="schedule-items"></ul>
-    <nav class="schedule-pages" aria-label="Страницы графика"><button id="schedule-prev-page" type="button">Назад</button><small id="schedule-count"></small><button id="schedule-next-page" type="button">Далее</button></nav>
+    <iframe id="schedule-frame" class="schedule-frame" title="Годовой график отпусков коллег" referrerpolicy="no-referrer"></iframe>
   </section>
   <section data-view="colleagues" id="colleagues" hidden>
     <h2>Коллеги</h2>
@@ -186,5 +176,5 @@ h1{font-size:22px;line-height:1.25}h2{font-size:16px}
 <button type="button" data-view="colleagues" aria-label="Коллеги" title="Коллеги"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2m20 0v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8"/><circle cx="9" cy="7" r="4"/></svg><span class="tab-label">Коллеги</span></button>
 <button type="button" data-view="knowledge" aria-label="База знаний" title="База знаний"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 7v14m0-14a7 7 0 0 0-5-2H3v14h4a7 7 0 0 1 5 2m0-14a7 7 0 0 1 5-2h4v14h-4a7 7 0 0 0-5 2"/></svg><span class="tab-label">Знания</span></button>
 </div></nav>
-<script src="/static/employee-cabinet.js?v=16" defer></script>
+<script src="/static/employee-cabinet.js?v=17" defer></script>
 </html>

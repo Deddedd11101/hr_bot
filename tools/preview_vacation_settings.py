@@ -16,7 +16,7 @@ os.environ.update(DATABASE_URL=f"sqlite:///{directory / 'preview.db'}",
                   ADMIN_SESSION_SECRET=secrets.token_hex(32),
                   DEFAULT_ADMIN_LOGIN="preview", DEFAULT_ADMIN_PASSWORD="Local-preview-vacation-only!",
                   DEFAULT_HR_PASSWORD="Local-preview-hr-only!", STAFF_EMAIL_OTP_ENABLED="true",
-                  STAFF_EMAIL_SMTP_PASSWORD="", EMPLOYEE_CABINET_URL="http://127.0.0.1:8047/employee-cabinet",
+                  STAFF_EMAIL_SMTP_PASSWORD="", EMPLOYEE_CABINET_URL="http://127.0.0.1:8048/employee-cabinet",
                   FILE_STORAGE_DIR=str(directory / "files"), ADMIN_SESSION_COOKIE_SECURE="false",
                   DOTENV_OVERRIDE="false")
 
@@ -48,6 +48,9 @@ with SessionLocal() as db:
     for employee_id, offset in ((1, 0), (2, 3)):
         db.add(EmployeeVacationRequest(employee_id=employee_id, starts_on=today() + timedelta(days=offset),
             ends_on=today() + timedelta(days=offset + 7), workdays=5, status="approved", created_at=utc_now()))
+    for employee_id, month in ((1, 4), (2, 7)):
+        db.add(EmployeeVacationRequest(employee_id=employee_id, starts_on=date(today().year, month, 5),
+            ends_on=date(today().year, month, 19), workdays=10, status="approved", created_at=utc_now()))
     save_account(db, 1, account.id, AccountInput(contract_key="demo-contract",
         employed_on=date(2025, 4, 17), reviewed_through=today(), revision=0,
         reason="Синтетические данные локального предпросмотра"))
@@ -81,4 +84,4 @@ if __name__ == "__main__":
         bootstrap = '<script>window.Telegram={WebApp:{initData:' + json.dumps(urlencode(fields)) + ',platform:"web",ready(){},expand(){}}};</script>'
         return HTMLResponse(html.replace('<script src="https://telegram.org/js/telegram-web-app.js"></script>', bootstrap), headers={"Cache-Control": "no-store"})
 
-    uvicorn.run(app, host="127.0.0.1", port=8047)
+    uvicorn.run(app, host="127.0.0.1", port=8048)

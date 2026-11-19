@@ -26,12 +26,13 @@ def vacation_schedule_page(request: Request):
 
 @router.get("/api/vacation-schedule")
 def vacation_schedule_api(request: Request, month: str | None = Query(None, pattern=r"^[0-9]{4}-(0[1-9]|1[0-2])$"),
+    year: int | None = Query(None, ge=1900, le=2100),
     search: str = Query("", max_length=200), group_id: int | None = Query(None, ge=0),
     page: int = Query(1, ge=1, le=10000), db: Session = Depends(get_db)):
     require_api_auth(request)
     from ..vacation_schedule import schedule
     try:
-        return schedule(db, month=month, search=search, group_id=group_id, page=page)
+        return schedule(db, month=month, year=year, search=search, group_id=group_id, page=page)
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
 

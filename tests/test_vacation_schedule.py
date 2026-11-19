@@ -76,6 +76,27 @@ class VacationScheduleTests(unittest.TestCase):
         self.assertEqual(page["items"][0]["employee_id"], 2)
         self.assertEqual(schedule(self.db, month="2027-02")["total"], 0)
 
+    def test_full_year_is_not_paginated(self):
+        for _ in range(40):
+            self.add_leave(2, "approved", date(2027, 7, 1), date(2027, 7, 14))
+        self.db.commit()
+        data = schedule(self.db, year=2027)
+        self.assertEqual(data["total"], 42)
+        self.assertEqual(len(data["items"]), 42)
+        self.assertEqual(data["period_start"], "2027-01-01")
+        self.assertEqual(data["period_end"], "2027-12-31")
+        self.assertEqual(len(data["people"]), 2)
+        self.assertEqual(len(schedule(self.db, year=2028)["people"]), 2)
+        self.assertEqual(schedule(self.db, year=2026)["total"], 1)
+        with self.assertRaises(ValueError):
+            schedule(self.db, year=2027, month="2027-01")
+
+    def test_year_api_keeps_filters_and_authorization(self):
+        response = self.client.get("/api/vacation-schedule?year=2027&search=тестовый&group_id=1", headers={"x-test-auth": "yes"})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["total"], 1)
+        self.assertEqual(self.client.get("/employee-cabinet/vacation/team-schedule?year=2027").status_code, 403)
+
     def test_admin_auth_and_validation(self):
         self.assertEqual(self.client.get("/api/vacation-schedule").status_code, 401)
         response = self.client.get("/api/vacation-schedule?month=2027-01&group_id=1", headers={"x-test-auth": "yes"})

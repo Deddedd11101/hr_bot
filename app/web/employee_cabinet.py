@@ -164,13 +164,14 @@ def vacation_requests(request: Request):
 @router.get("/vacation/team-schedule")
 def vacation_team_schedule(request: Request,
     month: str | None = Query(None, pattern=r"^[0-9]{4}-(0[1-9]|1[0-2])$"),
+    year: int | None = Query(None, ge=1900, le=2100),
     search: str = Query("", max_length=200), group_id: int | None = Query(None, ge=0),
     page: int = Query(1, ge=1, le=10000)):
     from ..vacation_schedule import schedule
     with get_session() as db:
         authorize(db, request)
         try:
-            return JSONResponse(schedule(db, month=month, search=search, group_id=group_id, page=page), headers=PRIVATE_HEADERS)
+            return JSONResponse(schedule(db, month=month, year=year, search=search, group_id=group_id, page=page), headers=PRIVATE_HEADERS)
         except ValueError as exc:
             raise HTTPException(422, str(exc), headers=PRIVATE_HEADERS) from exc
 
