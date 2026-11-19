@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Feedback, useAction } from "@/grades/components";
 import { errorMessage, request } from "@/grades/data";
+import { VacationAccounts } from "./vacation-accounts";
 
 type Balance = {year: number; used_days: number | null; remaining_days: number | null};
 type VacationRequest = {id: number; starts_on: string; ends_on: string; workdays: number; status: string; manager_notice: string; hr_notice: string; manager_issue?: string | null; can_route?: boolean};
@@ -45,7 +46,8 @@ export function VacationBalance({employeeId}: {employeeId: number}) {
     return () => controller.abort();
   }, [endpoint]);
   return <section className="space-y-3">
-    <h2 className="font-medium">Баланс отпуска{balance ? ` · ${balance.year}` : ""}</h2>
+    <VacationAccounts employeeId={employeeId} />
+    <h2 className="font-medium">Ручной баланс · действующий{balance ? ` · ${balance.year}` : ""}</h2>
     <Feedback error={error || action.error} message={action.message} />
     {!balance && !error && <p role="status">Загрузка…</p>}
     {balance && <form className="max-w-lg space-y-3" onSubmit={event => {

@@ -16,6 +16,28 @@ source_of_truth: true
 
 ## Telegram Mini App: кабинет сотрудника
 
+### Настройки отпускного учёта (feature-пакет, 19.11.2026)
+
+- `GET /api/employees/{employee_id}/leave-accounts`: admin/hr; список
+  договоров, employed_on, reviewed_through (нет исключаемых периодов по дату),
+  month_end_policy, revision и три journal-баланса. Суммы строками с двумя
+  знаками; unknown available = null. Не legacy-баланс.
+- `PUT /api/employees/{employee_id}/leave-accounts`: admin/hr; contract_key
+  (ASCII буквы/цифры/_/-), employed_on, reviewed_through|null, month_end_policy
+  (`clamp_to_last_day` или null), revision (0 для создания), обязательный reason.
+  Даты фактические, не будущие; дата проверки между трудоустройством и сегодня.
+  Write-lock Employee + optimistic revision; 409 при stale или смене даты/
+  политики после журналирования. Возвращает список договоров.
+  Не записывает opening/accrual, не меняет first_workday и не запускает worker.
+- `POST /api/employees/{employee_id}/leave-accounts/accrual-preview`: admin/hr;
+  contract_key, through. Read-only preview из сохранённых настроек и opening:
+  items(month_start,earned_on,amount,posted), new_total, opening_through.
+  409 без среза/проверки исключений, при будущей дате или неоднозначном month-end;
+  404 нет договора/сотрудника, 401/403 по авторизации. API применения ещё нет.
+
+Настройки не подменяют дату договора датой адаптации. Доступ ЛК к HR-полям
+не расширяется.
+
 `GET /employee-cabinet/profile` и `GET /employee-cabinet/files/{file_id}`
 требуют подписанный `X-Telegram-Init-Data` не старше 30 минут. Доступ только
 у привязанных и верифицированных сотрудников из списка пилота, при включённом пилоте.

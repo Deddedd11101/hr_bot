@@ -87,6 +87,7 @@ def _ensure_sqlite_schema() -> None:
     with engine.begin() as conn:
         # Grade is additive: use the same model DDL for startup and compatibility.
         for table_name in (
+            "employee_leave_accounts",
             "employee_leave_operations",
             "scenario_step_deliveries",
             "mass_scenario_recipients",
