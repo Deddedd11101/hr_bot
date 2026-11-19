@@ -11,12 +11,13 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 os.chdir(ROOT)
 directory = Path(tempfile.mkdtemp(prefix="hrbot-vacation-preview-"))
+port = int(os.environ.get("VACATION_PREVIEW_PORT", "8048"))
 os.environ.update(DATABASE_URL=f"sqlite:///{directory / 'preview.db'}",
                   TELEGRAM_BOT_TOKEN="123456:local-preview-no-delivery",
                   ADMIN_SESSION_SECRET=secrets.token_hex(32),
                   DEFAULT_ADMIN_LOGIN="preview", DEFAULT_ADMIN_PASSWORD="Local-preview-vacation-only!",
                   DEFAULT_HR_PASSWORD="Local-preview-hr-only!", STAFF_EMAIL_OTP_ENABLED="true",
-                  STAFF_EMAIL_SMTP_PASSWORD="", EMPLOYEE_CABINET_URL="http://127.0.0.1:8048/employee-cabinet",
+                  STAFF_EMAIL_SMTP_PASSWORD="", EMPLOYEE_CABINET_URL=f"http://127.0.0.1:{port}/employee-cabinet",
                   FILE_STORAGE_DIR=str(directory / "files"), ADMIN_SESSION_COOKIE_SECURE="false",
                   DOTENV_OVERRIDE="false")
 
@@ -84,4 +85,4 @@ if __name__ == "__main__":
         bootstrap = '<script>window.Telegram={WebApp:{initData:' + json.dumps(urlencode(fields)) + ',platform:"web",ready(){},expand(){}}};</script>'
         return HTMLResponse(html.replace('<script src="https://telegram.org/js/telegram-web-app.js"></script>', bootstrap), headers={"Cache-Control": "no-store"})
 
-    uvicorn.run(app, host="127.0.0.1", port=8048)
+    uvicorn.run(app, host="127.0.0.1", port=port)
