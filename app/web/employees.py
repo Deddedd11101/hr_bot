@@ -1487,6 +1487,13 @@ def _delete_employee_record(db: Session, employee: Employee) -> str:
     employee_id = employee.id
     # Serialize with Grade creation/finalization before any filesystem side effects.
     db.execute(update(Employee).where(Employee.id == employee_id).values(id=Employee.id))
+    from ..models import EmployeeLeaveAccount, EmployeeLeaveOperation
+    if db.scalar(select(EmployeeLeaveAccount.id).where(
+            EmployeeLeaveAccount.employee_id == employee_id).limit(1)) is not None:
+        raise HTTPException(409, "Нельзя удалить карточку с настройками отпускного учёта.")
+    if db.scalar(select(EmployeeLeaveOperation.id).where(
+            EmployeeLeaveOperation.employee_id == employee_id).limit(1)) is not None:
+        raise HTTPException(409, "Нельзя удалить карточку с журналом отпускных операций.")
     from ..models import ScenarioStepDelivery
     if db.query(ScenarioStepDelivery.id).filter(ScenarioStepDelivery.status == "starting",
             or_(ScenarioStepDelivery.employee_id == employee_id, ScenarioStepDelivery.recipient_employee_id == employee_id)).first():

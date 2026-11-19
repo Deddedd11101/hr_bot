@@ -52,6 +52,7 @@ from .employees import (
 from ..vacation import (
     BalanceInput, VacationDecision, balance, current_year, decide, requests_for, route_to_current_manager, save_balance,
 )
+from ..vacation_accounts import AccountInput, AccrualPreviewInput, list_accounts, save_account, account_preview
 from .support import render_template, require_api_auth, require_auth
 
 router = APIRouter()
@@ -605,6 +606,45 @@ def employee_vacation(request: Request, employee_id: int, db: Session = Depends(
     require_api_auth(request)
     _maintenance_employee(db, employee_id)
     return balance(db, employee_id)
+
+
+@router.get("/api/employees/{employee_id}/leave-accounts")
+def employee_leave_accounts(request: Request, employee_id: int, db: Session = Depends(get_db)):
+    account = require_api_auth(request)
+    if account.role not in {"admin", "hr"}:
+        raise HTTPException(403, "Настройки отпусков доступны HR и администратору")
+    _maintenance_employee(db, employee_id)
+    return list_accounts(db, employee_id)
+
+
+@router.put("/api/employees/{employee_id}/leave-accounts")
+def update_employee_leave_accounts(request: Request, employee_id: int, values: AccountInput,
+                                   db: Session = Depends(get_db)):
+    account = require_api_auth(request)
+    if account.role not in {"admin", "hr"}:
+        raise HTTPException(403, "Настройки отпусков доступны HR и администратору")
+    _maintenance_employee(db, employee_id)
+    try:
+        save_account(db, employee_id, account.id, values)
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    db.commit()
+    return list_accounts(db, employee_id)
+
+
+@router.post("/api/employees/{employee_id}/leave-accounts/accrual-preview")
+def employee_leave_accrual_preview(request: Request, employee_id: int, values: AccrualPreviewInput,
+                                   db: Session = Depends(get_db)):
+    account = require_api_auth(request)
+    if account.role not in {"admin", "hr"}:
+        raise HTTPException(403, "Расчёт доступен HR и администратору")
+    _maintenance_employee(db, employee_id)
+    try:
+        return account_preview(db, employee_id, values)
+    except LookupError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
 
 
 @router.put("/api/employees/{employee_id}/vacation")

@@ -16,6 +16,59 @@ source_of_truth: true
 
 ## Telegram Mini App: кабинет сотрудника
 
+### Настройки отпускного учёта (feature-пакет, 19.11.2026)
+
+Уточнение пакета графика: обычный UI использует один отпускной счёт сотрудника,
+не показывает contract_key и не предлагает создавать договоры. Внутренний
+scope сохранён для совместимости; создание второго счёта отклоняется 409.
+
+### Общий график отпусков
+
+Годовой режим: `year=1900..2100` вместо month, совместно передавать нельзя.
+Все согласованные отпуска года возвращаются без pagination, плюс
+people(employee_id,name,group_name) действующих сотрудников, включая тех,
+у кого нет отпусков. Поиск/группы действуют и на people, и на items. Ответ
+содержит year, period_start, period_end. При >5000 подходящих отпусков —
+явная ошибка с предложением сузить фильтр, не молчаливая обрезка.
+Старый месячный read contract сохранён для совместимости; новые UI используют
+годовой режим. Query year поддержан и в cabinet team-schedule с прежней
+Telegram-подписью, пилотом, Cache-Control и минимальным набором полей.
+
+`GET /api/vacation-schedule` требует admin-session. Query: month (ГГГГ-ММ,
+1900–2100), search (до200), group_id (0 = без группы), page (от1), 30 строк
+на страницу. Только approved заявки действующих staff/adaptation/ipr;
+исключаются pending/rejected/cancelled, кандидаты и записи без карточки/ФИО.
+Диапазон пересекается с выбранным месяцем, границы включены. Поиск casefold
+по ФИО/группе совместим с группой и страницами. Ответ: month, days_in_month,
+total, page, page_size, groups(id,name), items(employee_id,name,group_id,
+group_name,starts_on,ends_on). Total — отпуска, не уникальные сотрудники.
+
+`GET /employee-cabinet/vacation/team-schedule` отдаёт тот же минимальный
+read model, но требует действительную Telegram-подпись и существующий пилотный
+доступ; Cache-Control: no-store. Не расширяет allowlist пилота. Нет комментариев,
+причин отказов, контактов, остатков, внутренних ID заявок и HR-данных.
+Сервис ничего не согласует, не резервирует и не отправляет уведомлений.
+
+- `GET /api/employees/{employee_id}/leave-accounts`: admin/hr; список
+  договоров, employed_on, reviewed_through (нет исключаемых периодов по дату),
+  month_end_policy, revision и три journal-баланса. Суммы строками с двумя
+  знаками; unknown available = null. Не legacy-баланс.
+- `PUT /api/employees/{employee_id}/leave-accounts`: admin/hr; contract_key
+  (ASCII буквы/цифры/_/-), employed_on, reviewed_through|null, month_end_policy
+  (`clamp_to_last_day` или null), revision (0 для создания), обязательный reason.
+  Даты фактические, не будущие; дата проверки между трудоустройством и сегодня.
+  Write-lock Employee + optimistic revision; 409 при stale или смене даты/
+  политики после журналирования. Возвращает список договоров.
+  Не записывает opening/accrual, не меняет first_workday и не запускает worker.
+- `POST /api/employees/{employee_id}/leave-accounts/accrual-preview`: admin/hr;
+  contract_key, through. Read-only preview из сохранённых настроек и opening:
+  items(month_start,earned_on,amount,posted), new_total, opening_through.
+  409 без среза/проверки исключений, при будущей дате или неоднозначном month-end;
+  404 нет договора/сотрудника, 401/403 по авторизации. API применения ещё нет.
+
+Настройки не подменяют дату договора датой адаптации. Доступ ЛК к HR-полям
+не расширяется.
+
 `GET /employee-cabinet/profile` и `GET /employee-cabinet/files/{file_id}`
 требуют подписанный `X-Telegram-Init-Data` не старше 30 минут. Доступ только
 у привязанных и верифицированных сотрудников из списка пилота, при включённом пилоте.

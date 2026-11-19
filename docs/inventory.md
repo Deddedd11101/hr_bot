@@ -54,6 +54,10 @@ source_of_truth: false
 
 ## Feature Docs
 
+[[features/vacations]] — согласованные целевые правила отпусков, форс-мажора
+и day off; явно отделяет существующий baseline от ещё не реализованных
+балансов/начислений/версий и открытых миграционных решений.
+
 | Документ | Категория | Текущий статус аудита |
 | --- | --- | --- |
 | [[features/bot-identity]] | Product and feature behavior | Актуален по текущему `/start` identity flow: numeric ID first, затем public username fallback, candidate auto-create only on `/start`, blocked-user deny и interim username-based employee linking; OTP/linking invite остаются будущим решением. |
