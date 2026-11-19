@@ -1,5 +1,5 @@
 import { useEffect, useId, useState } from "react";
-import { Plus, Calculator, Save } from "lucide-react";
+import { Calculator, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DatePicker } from "@/components/ui/date-picker";
@@ -14,7 +14,7 @@ type Account = {contract_key: string; employed_on: string; reviewed_through: str
 type Preview = {opening_through: string; new_total: string;
   items: {month_start: string; earned_on: string; amount: string; posted: boolean}[]};
 const names: Record<string, string> = {annual: "Ежегодный отпуск", force_majeure: "Форс-мажор", day_off: "Day off"};
-const blank = {contract_key: "", employed_on: "", reviewed_through: "", month_end_policy: "none", revision: 0, reason: ""};
+const blank = {contract_key: "primary", employed_on: "", reviewed_through: "", month_end_policy: "none", revision: 0, reason: ""};
 const formatDate = (value: string) => value.split("-").reverse().join(".");
 
 export function VacationAccounts({employeeId}: {employeeId: number}) {
@@ -48,14 +48,10 @@ export function VacationAccounts({employeeId}: {employeeId: number}) {
     <div className="flex flex-wrap items-center justify-between gap-2">
       <div><h2 className="font-medium">Отпускной учёт</h2>
         <p className="text-sm text-muted-foreground">Автоматические начисления не включены</p></div>
-      <Button variant="outline" size="sm" disabled={action.busy || dirty} onClick={() => edit()}><Plus />Договор</Button>
     </div>
     <Feedback error={error || action.error} message={action.message} />
     {!accounts && !error && <p role="status" className="text-sm text-muted-foreground">Загрузка настроек…</p>}
     {accounts && <>
-      {accounts.length > 0 && <Choice label="Договор" value={selected?.contract_key ?? "new"}
-        options={[...accounts.map(row => ({value: row.contract_key, label: row.contract_key})), {value: "new", label: "Новый договор"}]}
-        disabled={action.busy || dirty} onChange={key => edit(accounts.find(row => row.contract_key === key))} />}
       {selected && <div className="grid gap-4 sm:grid-cols-3">{selected.balances.map(item => <div key={item.kind} className="space-y-1 border-l-2 pl-3">
         <p className="text-sm text-muted-foreground">{names[item.kind]}</p>
         <p className="text-lg font-medium tabular-nums">{item.available ?? "Не указан"}{item.available !== null && <span className="ml-1 text-sm font-normal text-muted-foreground">{item.unit === "hours" ? "ч" : "дн."}</span>}</p>
@@ -70,9 +66,6 @@ export function VacationAccounts({employeeId}: {employeeId: number}) {
         }, "Настройки сохранены. Начисления не запускались.");
       }}>
         <FieldGroup className="grid gap-4 sm:grid-cols-2">
-          <Field><FieldLabel htmlFor={`${id}-contract`}>Ключ договора</FieldLabel>
-            <Input id={`${id}-contract`} value={form.contract_key} onChange={e => change("contract_key", e.target.value)}
-              required pattern="[a-zA-Z0-9_-]+" maxLength={128} disabled={action.busy || form.revision > 0} placeholder="Например, zephyr-main" /></Field>
           <Field><FieldLabel>Дата трудоустройства по договору</FieldLabel><DatePicker value={form.employed_on}
             onValueChange={value => change("employed_on", value)} disabled={action.busy} />
             <FieldDescription>Не меняет дату выхода для адаптации</FieldDescription></Field>

@@ -2,6 +2,7 @@ import React from "react";
 import {
   BadgeCheck,
   Bot,
+  CalendarDays,
   ChevronLeft,
   ChevronRight,
   FolderOpen,
@@ -37,6 +38,7 @@ const OVERLAY_QUERY = "(max-width: 900px)";
 const navItems = [
   { key: "dashboard", label: "Дашборд", href: "/app/dashboard", icon: LayoutDashboard },
   { key: "employees", label: "Люди", href: "/app/employees", icon: Users },
+  { key: "vacations", label: "График отпусков", href: "/app/vacation-schedule", icon: CalendarDays },
   { key: "messages", label: "Сообщения", href: "/app/messages", icon: Send },
   { key: "flows", label: "Сценарии", href: "/app/flows/workspace-v2", icon: Workflow },
   { key: "surveys", label: "Опросы", href: "/app/surveys/workspace", icon: FileCheck2 },

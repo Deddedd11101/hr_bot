@@ -101,6 +101,13 @@ class VacationAccountApiTests(unittest.TestCase):
         self.db.rollback()
         self.assertEqual(self.db.query(EmployeeLeaveAccount).one().employed_on, date(2026, 2, 5))
 
+    def test_one_account_per_employee(self):
+        self.client.put(self.url, headers=self.headers, json=self.values)
+        response = self.client.put(self.url, headers=self.headers, json={**self.values, "contract_key": "another"})
+        self.assertEqual(response.status_code, 409)
+        self.db.rollback()
+        self.assertEqual(self.db.query(EmployeeLeaveAccount).count(), 1)
+
 
 if __name__ == "__main__":
     unittest.main()

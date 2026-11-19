@@ -66,6 +66,8 @@ def save_account(db, employee_id, actor_id, values):
         EmployeeLeaveAccount.contract_key == values.contract_key))
     policy = values.month_end_policy.value if values.month_end_policy else None
     if row is None:
+        if db.scalar(select(EmployeeLeaveAccount.id).where(EmployeeLeaveAccount.employee_id == employee_id).limit(1)) is not None:
+            raise ValueError("Для сотрудника уже настроен отпускной учёт. Второй счёт сейчас не поддерживается.")
         if values.revision != 0:
             raise ValueError("Настройки изменились, обновите вкладку")
         row = EmployeeLeaveAccount(employee_id=employee_id, contract_key=values.contract_key, revision=1)

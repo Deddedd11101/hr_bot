@@ -413,11 +413,77 @@ async function loadKnowledge() {
   }
 }
 
+function setupTeamSchedule() {
+  const search = byId('schedule-search');
+  const group = byId('schedule-group');
+  const notice = byId('schedule-status');
+  const list = byId('schedule-items');
+  const retry = byId('schedule-retry');
+  let month = new Intl.DateTimeFormat('sv-SE', {year:'numeric', month:'2-digit', timeZone:'Europe/Moscow'}).format(new Date());
+  let page = 1;
+  let controller;
+  let timer;
+  async function load() {
+    controller?.abort();
+    const current = new AbortController();
+    controller = current;
+    notice.textContent = 'Загрузка графика…'; retry.hidden = true;
+    list.replaceChildren();
+    byId('schedule-prev-page').disabled = true;
+    byId('schedule-next-page').disabled = true;
+    byId('schedule-month').textContent = new Intl.DateTimeFormat('ru', {month:'long', year:'numeric', timeZone:'UTC'}).format(new Date(`${month}-01T12:00:00Z`));
+    byId('schedule-prev-month').disabled = month <= '1900-01';
+    byId('schedule-next-month').disabled = month >= '2100-12';
+    const params = new URLSearchParams({month, search:search.value, page:String(page)});
+    if (group.value) params.set('group_id', group.value);
+    try {
+      const data = await (await request(`vacation/team-schedule?${params}`, undefined, current.signal)).json();
+      if (current.signal.aborted) return;
+      const selected = group.value;
+      group.replaceChildren();
+      for (const item of [{id:'',name:'Все группы'},{id:'0',name:'Без группы'}, ...data.groups]) {
+        const option = make('option', item.name); option.value = String(item.id); group.append(option);
+      }
+      group.value = selected;
+      for (const item of data.items) {
+        const row = make('li', ''); row.className = 'schedule-row';
+        row.append(make('strong', item.name), make('small', item.group_name), make('span', `${item.starts_on.split('-').reverse().join('.')} – ${item.ends_on.split('-').reverse().join('.')}`));
+        const strip = make('div', ''); strip.className = 'schedule-strip'; strip.setAttribute('aria-hidden', 'true');
+        const bar = make('span', '');
+        const first = Math.max(1, item.starts_on.slice(0,7) < month ? 1 : Number(item.starts_on.slice(-2)));
+        const last = Math.min(data.days_in_month, item.ends_on.slice(0,7) > month ? data.days_in_month : Number(item.ends_on.slice(-2)));
+        bar.style.left = `${(first - 1) / data.days_in_month * 100}%`;
+        bar.style.width = `${(last - first + 1) / data.days_in_month * 100}%`;
+        strip.append(bar); row.append(strip); list.append(row);
+      }
+      notice.textContent = data.items.length ? 'Только согласованные отпуска' : 'Согласованных отпусков за этот месяц нет.';
+      byId('schedule-count').textContent = `Отпусков: ${data.total} · Страница ${page}`;
+      byId('schedule-prev-page').disabled = page === 1;
+      byId('schedule-next-page').disabled = page * data.page_size >= data.total;
+    } catch (error) {
+      if (!current.signal.aborted) {notice.textContent = error.message; retry.hidden = false;}
+    }
+  }
+  function moveMonth(delta) {
+    const value = new Date(`${month}-01T12:00:00Z`); value.setUTCMonth(value.getUTCMonth() + delta);
+    month = value.toISOString().slice(0,7); page = 1; void load();
+  }
+  byId('schedule-prev-month').onclick = () => moveMonth(-1);
+  byId('schedule-next-month').onclick = () => moveMonth(1);
+  byId('schedule-prev-page').onclick = () => {page--; void load();};
+  byId('schedule-next-page').onclick = () => {page++; void load();};
+  group.onchange = () => {page = 1; void load();};
+  search.oninput = () => {clearTimeout(timer); controller?.abort(); page = 1; timer = setTimeout(load, 250);};
+  retry.onclick = load;
+  return load;
+}
+
 function tabs() {
   const navigation = byId('navigation');
   const buttons = Array.from(navigation.querySelectorAll('button'));
   const sections = Array.from(byId('content').querySelectorAll('section'));
   const loadColleagues = setupColleagues();
+  const loadSchedule = setupTeamSchedule();
   let transition;
   let current = 0;
   function showView(view, index) {
@@ -432,6 +498,7 @@ function tabs() {
     byId('marker').style.transform = `translateX(${index * 100}%)`;
     if (view === 'colleagues') void loadColleagues();
     if (view === 'knowledge') void loadKnowledge();
+    if (view === 'leave-schedule') void loadSchedule();
     if (direction && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
       transition?.cancel();
       transition = byId('content').animate(
@@ -445,6 +512,8 @@ function tabs() {
     showView('files', 0);
     byId('documents').querySelector('h2').focus();
   };
+  byId('schedule-open').onclick = () => {showView('leave-schedule', 2); byId('leave-schedule').querySelector('h2').focus();};
+  byId('schedule-back').onclick = () => {showView('vacation', 2); byId('schedule-open').focus();};
   document.querySelectorAll('[data-back-profile]').forEach(crumb => {
     crumb.onclick = () => {
       const fromDocuments = crumb.closest('section').id === 'documents';

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Request, Query
+from fastapi import APIRouter, Depends, Request, Query, HTTPException
 from typing import Literal
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
@@ -14,6 +14,26 @@ templates = Jinja2Templates(directory="app/templates")
 def get_db():
     with get_session() as db:
         yield db
+
+
+@router.get("/app/vacation-schedule")
+def vacation_schedule_page(request: Request):
+    auth_redirect = require_auth(request)
+    if auth_redirect:
+        return auth_redirect
+    return render_template(request, templates, "react_vacation_schedule.html", {"active_tab": "vacations"})
+
+
+@router.get("/api/vacation-schedule")
+def vacation_schedule_api(request: Request, month: str | None = Query(None, pattern=r"^[0-9]{4}-(0[1-9]|1[0-2])$"),
+    search: str = Query("", max_length=200), group_id: int | None = Query(None, ge=0),
+    page: int = Query(1, ge=1, le=10000), db: Session = Depends(get_db)):
+    require_api_auth(request)
+    from ..vacation_schedule import schedule
+    try:
+        return schedule(db, month=month, search=search, group_id=group_id, page=page)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
 
 
 @router.get("/app/dashboard")

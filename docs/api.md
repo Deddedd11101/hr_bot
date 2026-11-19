@@ -18,6 +18,27 @@ source_of_truth: true
 
 ### Настройки отпускного учёта (feature-пакет, 19.11.2026)
 
+Уточнение пакета графика: обычный UI использует один отпускной счёт сотрудника,
+не показывает contract_key и не предлагает создавать договоры. Внутренний
+scope сохранён для совместимости; создание второго счёта отклоняется 409.
+
+### Общий график отпусков
+
+`GET /api/vacation-schedule` требует admin-session. Query: month (ГГГГ-ММ,
+1900–2100), search (до200), group_id (0 = без группы), page (от1), 30 строк
+на страницу. Только approved заявки действующих staff/adaptation/ipr;
+исключаются pending/rejected/cancelled, кандидаты и записи без карточки/ФИО.
+Диапазон пересекается с выбранным месяцем, границы включены. Поиск casefold
+по ФИО/группе совместим с группой и страницами. Ответ: month, days_in_month,
+total, page, page_size, groups(id,name), items(employee_id,name,group_id,
+group_name,starts_on,ends_on). Total — отпуска, не уникальные сотрудники.
+
+`GET /employee-cabinet/vacation/team-schedule` отдаёт тот же минимальный
+read model, но требует действительную Telegram-подпись и существующий пилотный
+доступ; Cache-Control: no-store. Не расширяет allowlist пилота. Нет комментариев,
+причин отказов, контактов, остатков, внутренних ID заявок и HR-данных.
+Сервис ничего не согласует, не резервирует и не отправляет уведомлений.
+
 - `GET /api/employees/{employee_id}/leave-accounts`: admin/hr; список
   договоров, employed_on, reviewed_through (нет исключаемых периодов по дату),
   month_end_policy, revision и три journal-баланса. Суммы строками с двумя

@@ -35,6 +35,7 @@ export default defineConfig({
       preserveEntrySignatures: "strict",
       input: {
         dashboard: path.resolve(__dirname, "./src/dashboard/main.tsx"),
+        "vacation-schedule": path.resolve(__dirname, "./src/vacation-schedule/main.tsx"),
         "shell-sidebar": path.resolve(__dirname, "./src/shell-sidebar/main.tsx"),
         "scenario-workspace": path.resolve(__dirname, "./src/scenario-workspace/main.tsx"),
         "employees-list": path.resolve(__dirname, "./src/employees-list/main.tsx"),
