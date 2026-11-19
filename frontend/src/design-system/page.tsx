@@ -2574,6 +2574,16 @@ function PrimitivesSection() {
             ]}
           />
         </ExampleBlock>
+        <ExampleBlock id="vacation-timeline" title="График отсутствий · Table + ScrollArea">
+          <ScrollArea className="h-44 rounded-lg border [&_[data-slot=table-container]]:overflow-visible">
+            <Table><TableHeader><TableRow><TableHead className="sticky left-0 bg-background">Сотрудник</TableHead>
+              {[1, 2, 3, 4, 5].map(day => <TableHead key={day} className="min-w-12 text-center">{day}</TableHead>)}
+            </TableRow></TableHeader><TableBody>{["Сотрудник 1", "Сотрудник 2"].map((name, row) => <TableRow key={name}>
+              <TableCell className="sticky left-0 bg-background">{name}</TableCell>
+              {[1, 2, 3, 4, 5].map(day => <TableCell key={day} className="px-0"><span className={`block h-6 ${day > row + 1 && day < row + 4 ? "bg-primary/80" : ""}`} /></TableCell>)}
+            </TableRow>)}</TableBody></Table>
+          </ScrollArea>
+        </ExampleBlock>
         <ExampleBlock id="page-section" title="PageSection" playground>
           <Playground
             tabs={[

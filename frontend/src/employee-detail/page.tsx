@@ -40,7 +40,7 @@ export type EmployeeDetailPageProps = {
 export function EmployeeDetailPage(props: EmployeeDetailPageProps) {
     const { apiUrl, saveUrl, listUrl, flashMessage, flashType } = props;
     const [gradeOpened, setGradeOpened] = React.useState(false);
-    const [activeTab, setActiveTab] = React.useState("overview");
+    const [activeTab, setActiveTab] = React.useState(() => new URLSearchParams(window.location.search).get("tab") === "vacation" ? "vacation" : "overview");
 
     const [state, setState] = React.useState({
         loading: true,

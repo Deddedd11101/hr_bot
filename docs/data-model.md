@@ -17,6 +17,16 @@ source_of_truth: true
 
 ## Организационные группы
 
+`employee_leave_accounts`: additive настройки employee_id + contract_key
+(unique), employed_on, reviewed_through|null, month_end_policy|null, revision,
+updated_at, updated_by_account_id, reason последнего изменения. AUTOINCREMENT;
+создаётся metadata.create_all и SQLite compatibility тем же DDL. Без backfill,
+без чтения Employee.first_workday и без включения scheduler. Смена якоря/политики
+после операций того же договора запрещена до reconciliation. Хранится последний
+автор/основание настроек; полная история ревизий настроек ещё не реализована.
+Удаление карточки с настройками блокируется 409. Это не UI выдачи полномочий
+директору и не источник факта завершения адаптации.
+
 - `catalog_groups`: id, scope (`people`/`scenarios`), name, normalized_name, revision. Unique(scope, normalized_name), composite unique(scope,id), scope check, SQLite AUTOINCREMENT предотвращает повторное использование удалённого group id для stale drop target. Отдельные additive tables через Base.metadata.create_all; старые строки Employee/ScenarioTemplate не изменяются и не backfill-ятся.
 - `catalog_memberships`: composite PK(scope, object_id) гарантирует одну группу; group_id индексирован, composite FK(scope,group_id) → catalog_groups(scope,id), scope check. Полиморфный object_id проверяется API по Employee/ScenarioTemplate; cleanup в central delete helpers предотвращает наследование membership при переиспользовании id. Прямой SQL вне API должен сохранять этот инвариант; SQLite FK enforcement не считается единственной защитой.
 - Группа не является статусом, должностью, назначением, security audience или runtime ownership. Удаление группы очищает только metadata membership. Импорт/экспорт сценариев не переносит группы между средами; это UI-каталог, не сценарный контракт запуска.
@@ -38,6 +48,26 @@ GradeReviewCollection.snapshot_json дополнительно хранит froz
 `employee_vacation_balances` хранит вручную введённые использованные и оставшиеся
 целые дни (NULL означает «не указано»), один баланс на сотрудника и год, автора
 и время последнего обновления. Баланс удаляется при удалении карточки.
+
+`employee_leave_operations` — additive журнал новой модели (feature-пакет,
+runtime-заявки и scheduler ещё не подключены). employee_id, явный contract_key,
+kind (annual/force_majeure/day_off), operation_key, operation, amount_exact,
+reservation_key, reason, actor, effective_on, created_at. Unique по
+(employee_id, contract_key, kind, operation_key); check kinds/operations;
+AUTOINCREMENT и employee index. Exact amount — каноническая строка Fraction,
+не float. Единицы определяются kind: day_off часы, остальные дни.
+Opening использует фиксированный ключ opening; повтор с другим содержимым
+отклоняется. Reserve/release/consume связаны явным reservation_key версии
+заявки; нельзя погасить чужой резерв. Запись сериализуется update-lock
+Employee, commit/rollback и авторизация принадлежат вызывающему сервису.
+Доступных routes и автоматического backfill нет. Старые балансы не меняются.
+Удаление карточки с новым журналом блокируется 409 до принятия retention policy,
+чтобы не потерять аудит и не привязать его к повторно использованному ID.
+Чтение возвращает итог всех записанных операций, не исторический as-of срез;
+effective_on — дата основания, не команда будущему scheduler. Будущие
+начисления не создавать заранее. Таблица создаётся metadata.create_all и
+SQLite compatibility тем же DDL; преобразования старых таблиц нет.
+
 `employee_vacation_requests` хранит период, снимок количества рабочих дней,
 статус заявки и время создания, руководителя на момент подачи, отметки доставки
 руководителю и HR, время принятия решений и аккаунт HR. При перенаправлении

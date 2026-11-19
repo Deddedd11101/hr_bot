@@ -413,11 +413,22 @@ async function loadKnowledge() {
   }
 }
 
+function setupTeamSchedule() {
+  const frame = byId('schedule-frame');
+  window.addEventListener('message', event => {
+    if (event.origin !== location.origin || event.source !== frame.contentWindow || event.data?.type !== 'cabinet-gantt-height') return;
+    const height = event.data.height;
+    if (typeof height === 'number' && Number.isFinite(height)) frame.style.height = `${Math.max(350, Math.min(900, height))}px`;
+  });
+  return () => {if (!frame.getAttribute('src')) frame.src = '/static/cabinet-vacation-gantt.html';};
+}
+
 function tabs() {
   const navigation = byId('navigation');
   const buttons = Array.from(navigation.querySelectorAll('button'));
   const sections = Array.from(byId('content').querySelectorAll('section'));
   const loadColleagues = setupColleagues();
+  const loadSchedule = setupTeamSchedule();
   let transition;
   let current = 0;
   function showView(view, index) {
@@ -432,6 +443,7 @@ function tabs() {
     byId('marker').style.transform = `translateX(${index * 100}%)`;
     if (view === 'colleagues') void loadColleagues();
     if (view === 'knowledge') void loadKnowledge();
+    if (view === 'leave-schedule') void loadSchedule();
     if (direction && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
       transition?.cancel();
       transition = byId('content').animate(
@@ -445,6 +457,8 @@ function tabs() {
     showView('files', 0);
     byId('documents').querySelector('h2').focus();
   };
+  byId('schedule-open').onclick = () => {showView('leave-schedule', 2); byId('leave-schedule').querySelector('h2').focus();};
+  byId('schedule-back').onclick = () => {showView('vacation', 2); byId('schedule-open').focus();};
   document.querySelectorAll('[data-back-profile]').forEach(crumb => {
     crumb.onclick = () => {
       const fromDocuments = crumb.closest('section').id === 'documents';
