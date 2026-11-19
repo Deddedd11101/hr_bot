@@ -45,6 +45,28 @@ class AdaptationPlanTemplate(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
 
 
+class EmployeeLeaveOperation(Base):
+    __tablename__ = "employee_leave_operations"
+    __table_args__ = (
+        UniqueConstraint("employee_id", "contract_key", "kind", "operation_key"),
+        CheckConstraint("kind IN ('annual', 'force_majeure', 'day_off')"),
+        CheckConstraint("operation IN ('opening', 'accrual', 'adjustment', 'reserve', 'release', 'consume')"),
+        {"sqlite_autoincrement": True},
+    )
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    employee_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    contract_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    kind: Mapped[str] = mapped_column(String(24), nullable=False)
+    operation_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    operation: Mapped[str] = mapped_column(String(16), nullable=False)
+    amount_exact: Mapped[str] = mapped_column(String(256), nullable=False)
+    reservation_key: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    reason: Mapped[str] = mapped_column(String(1024), nullable=False)
+    actor: Mapped[str] = mapped_column(String(128), nullable=False)
+    effective_on: Mapped[date] = mapped_column(Date, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utc_now)
+
+
 class EmployeeVacationBalance(Base):
     __tablename__ = "employee_vacation_balances"
     employee_id: Mapped[int] = mapped_column(Integer, primary_key=True)
