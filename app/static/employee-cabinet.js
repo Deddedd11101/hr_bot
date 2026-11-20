@@ -56,6 +56,16 @@ function setupVacation() {
   const end = form.elements.ends_on;
   const buttons = [[byId('vacation-start'), start], [byId('vacation-end'), end]];
   const kindLabels = {annual:'Отпуск', force_majeure:'Отгул', day_off:'Day off'};
+  const annualBalance = ['vacation-used', 'vacation-remaining'].map(id => ({
+    text: byId(id).textContent, empty: byId(id).classList.contains('is-empty'),
+  }));
+  function renderBalance() {
+    for (const [index, id] of ['vacation-used', 'vacation-remaining'].entries()) {
+      const value = form.elements.kind.value === 'annual' ? annualBalance[index] : {text:'Не указано', empty:true};
+      byId(id).textContent = value.text;
+      byId(id).classList.toggle('is-empty', value.empty);
+    }
+  }
   const isDayOff = () => form.elements.kind.value === 'day_off';
   const months = new Map();
   const pendingMonths = new Map();
@@ -205,7 +215,7 @@ function setupVacation() {
   for (const radio of form.querySelectorAll('[name=kind]')) radio.onchange = () => {
     selecting = start;
     invalidatePreview();
-    byId('vacation-main').querySelector('.vacation-balances').hidden = form.elements.kind.value !== 'annual';
+    renderBalance();
     updateDates();
   };
   for (const [id, delta] of [['month-prev', -1], ['month-next', 1]]) byId(id).onclick = () => {
@@ -244,7 +254,7 @@ function setupVacation() {
         await request('vacation/requests', period);
         form.reset();
         start.value = end.value = '';
-        byId('vacation-main').querySelector('.vacation-balances').hidden = false;
+        renderBalance();
         checked = null;
         button.textContent = 'Проверить даты';
         notice.textContent = 'Заявка сохранена.';
