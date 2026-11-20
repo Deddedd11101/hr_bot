@@ -112,6 +112,12 @@ function setupVacation() {
       byId(id).setAttribute('aria-pressed', String(selecting === field));
     }
     done.disabled = !start.value || !end.value;
+    for (const cell of grid.querySelectorAll('button[data-date]')) {
+      const day = cell.dataset.date;
+      cell.disabled = cell.dataset.past === 'true' || (selecting === end && !!start.value && day < start.value);
+      cell.classList.toggle('is-range', !!end.value && day > start.value && day < end.value);
+      cell.setAttribute('aria-pressed', String(day === start.value || day === end.value));
+    }
     button.disabled = busy || !start.value || !end.value;
   }
   async function showMonth(nextMonth) {
@@ -134,6 +140,8 @@ function setupVacation() {
       for (const day of data.days) {
         const cell = make('button', String(Number(day.date.slice(-2))));
         cell.type = 'button';
+        cell.dataset.date = day.date;
+        cell.dataset.past = String(day.date < data.today);
         cell.disabled = day.date < data.today || (selecting === end && !!start.value && day.date < start.value);
         cell.classList.toggle('is-off', !day.workday);
         cell.classList.toggle('is-range', !!end.value && day.date > start.value && day.date < end.value);
@@ -144,7 +152,6 @@ function setupVacation() {
           if (start.value && end.value && start.value > end.value) end.value = '';
           if (selecting === start && !end.value) {
             selecting = end;
-            void showMonth(month);
           }
           updateDates();
         };

@@ -44,7 +44,9 @@ dd {font-weight:500}
 .vacation-balances dd {margin-top:var(--space-2);font-size:24px;line-height:1.25;font-weight:600}
 .vacation-balances dd.is-empty {font-size:14px;line-height:1.5;font-weight:400;color:var(--muted)}
 .calendar-grid button,.vacation-period,.vacation-balances dd {font-family:inherit;font-variant-numeric:tabular-nums}
-.vacation-workspace {display:grid;gap:var(--space-8)}
+.vacation-workspace {display:grid;grid-template-columns:minmax(0,1fr);gap:var(--space-8)}
+.vacation-workspace>* {min-width:0}
+.vacation-period {overflow-wrap:normal}
 .vacation-form {margin:0;gap:var(--space-4)}
 .vacation-dates {gap:var(--space-3)}
 .vacation-dates button {min-height:56px;padding:var(--space-4);border-color:var(--line);border-radius:var(--control-radius)}
@@ -87,7 +89,6 @@ summary {padding:var(--space-4) 0;min-height:52px;font-weight:500}
   .cabinet-desktop .tabs button {min-height:44px;padding:10px 12px;border-radius:var(--control-radius);font-size:14px}
   .cabinet-desktop .tabs button[aria-current] {background:var(--highlight)}
   .cabinet-desktop .tabs button[aria-current]:not(:disabled):hover {background:var(--highlight)}
-  .cabinet-desktop .vacation-workspace {grid-template-columns:minmax(280px,520px) minmax(0,1fr);align-items:start}
   .cabinet-desktop #leave-schedule {margin:0}
 }
 @media(prefers-reduced-motion:reduce) {
@@ -103,7 +104,10 @@ summary {padding:var(--space-4) 0;min-height:52px;font-weight:500}
 .vacation-heading[hidden] {display:none}
 .vacation-switch [role=tab] {min-height:36px;padding:8px 16px;border:0;border-radius:999px;background:transparent;font-size:13px;white-space:nowrap}
 .vacation-switch [aria-selected=true],.vacation-switch [aria-selected=true]:not(:disabled):hover {background:var(--highlight);color:var(--ink)}
-#vacation-main {margin-top:0}
+#vacation-main {margin-top:0;container-type:inline-size;container-name:vacation-panel}
+@container vacation-panel (min-width:880px) {
+  .vacation-workspace {grid-template-columns:minmax(320px,520px) minmax(280px,1fr);align-items:start}
+}
 .calendar-open,.calendar-open body {overflow:hidden}
 .date-sheet {position:fixed;inset:auto 0 0;margin:0;width:100%;max-width:none;max-height:calc(100dvh - 24px);padding:24px 16px max(16px,env(safe-area-inset-bottom));border:1px solid var(--line);border-radius:24px 24px 0 0;background:var(--card);color:var(--ink);overflow:auto;overscroll-behavior:contain}
 .date-sheet::backdrop {background:#0008}
