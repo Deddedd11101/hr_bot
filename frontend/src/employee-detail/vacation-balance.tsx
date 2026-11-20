@@ -6,7 +6,8 @@ import { errorMessage, request } from "@/grades/data";
 import { VacationAccounts } from "./vacation-accounts";
 
 type Balance = {year: number; used_days: number | null; remaining_days: number | null};
-type VacationRequest = {id: number; starts_on: string; ends_on: string; workdays: number; status: string; manager_notice: string; hr_notice: string; manager_issue?: string | null; can_route?: boolean};
+type VacationRequest = {id: number; starts_on: string; ends_on: string; workdays: number; kind?: string; employee_comment?: string; status: string; manager_notice: string; hr_notice: string; manager_issue?: string | null; can_route?: boolean};
+const kinds: Record<string, string> = {annual: "Отпуск", force_majeure: "Отгул", day_off: "Day off"};
 const statuses: Record<string, string> = {pending: "У руководителя", pending_hr: "У HR", approved: "Согласована", rejected: "Отклонена"};
 const notices: Record<string, string> = {
   pending: "Уведомление в очереди", unavailable: "Telegram получателя недоступен",
@@ -74,7 +75,8 @@ export function VacationBalance({employeeId}: {employeeId: number}) {
       {requests.map(row => <li key={row.id} className="flex flex-wrap justify-between gap-2 py-2 text-sm">
         <span>{dateLabel(row.starts_on)} – {dateLabel(row.ends_on)}</span>
         <div>
-          <p className="text-muted-foreground">Рабочих дней: {row.workdays} · {statuses[row.status] ?? row.status}</p>
+          <p>{kinds[row.kind ?? "annual"] ?? row.kind} · Рабочих дней: {row.workdays} · {statuses[row.status] ?? row.status}</p>
+          {row.employee_comment && <p className="max-w-lg whitespace-pre-wrap break-words">{row.employee_comment}</p>}
           <p className="text-muted-foreground">{row.manager_issue || notices[row.status === "pending" ? row.manager_notice : row.status === "pending_hr" ? row.hr_notice : "sent"]}</p>
         </div>
         {(row.status === "pending" || row.status === "pending_hr") && <div className="flex flex-wrap gap-2">

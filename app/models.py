@@ -100,6 +100,8 @@ class EmployeeVacationRequest(Base):
     starts_on: Mapped[date] = mapped_column(Date)
     ends_on: Mapped[date] = mapped_column(Date)
     workdays: Mapped[int] = mapped_column(Integer)
+    kind: Mapped[str] = mapped_column(String(24), nullable=False, default="annual", server_default="annual")
+    employee_comment: Mapped[str] = mapped_column(String(1024), nullable=False, default="", server_default="")
     status: Mapped[str] = mapped_column(String(16), default="pending")
     created_at: Mapped[datetime] = mapped_column(DateTime)
     manager_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)

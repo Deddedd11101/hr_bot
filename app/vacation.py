@@ -2,11 +2,14 @@ from calendar import monthrange
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 from .config import settings
 from .models import Employee, EmployeeVacationBalance, EmployeeVacationRequest
 from .time_utils import utc_now
+from .vacation_accounting import LeaveKind
+
+LEAVE_LABELS = {"annual": "Отпуск", "force_majeure": "Отгул", "day_off": "Day off"}
 
 
 class BalanceInput(BaseModel):
@@ -40,8 +43,11 @@ def save_balance(db, employee_id, actor_id, values):
 
 
 class VacationPeriod(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     starts_on: date
     ends_on: date
+    kind: LeaveKind = LeaveKind.ANNUAL
+    employee_comment: str = Field(default="", max_length=1024)
 
 
 class VacationDecision(BaseModel):
@@ -57,6 +63,8 @@ def preview(db, period):
         raise ValueError("Выберите будущий период не длиннее 366 календарных дней")
     calendar = CalendarDates(db)
     workdays = sum(calendar.working(period.starts_on + timedelta(days=i)) for i in range(span + 1))
+    if period.kind == LeaveKind.DAY_OFF and (span != 0 or workdays != 1):
+        raise ValueError("Day off оформляется на один полный рабочий день")
     return dict(calendar_days=span + 1, workdays=workdays, non_workdays=span + 1 - workdays)
 
 
@@ -75,6 +83,7 @@ def calendar_month(db, month):
 
 def request_payload(row):
     return dict(id=row.id, starts_on=row.starts_on.isoformat(), ends_on=row.ends_on.isoformat(),
+                kind=row.kind, employee_comment=row.employee_comment,
                 workdays=row.workdays, status=row.status, manager_notice=row.manager_notice, hr_notice=row.hr_notice)
 
 
@@ -107,12 +116,15 @@ def submit(db, employee_id, period):
     )
     same = overlaps.filter_by(starts_on=period.starts_on, ends_on=period.ends_on).first()
     if same:
+        if same.kind != period.kind.value or same.employee_comment != period.employee_comment.strip():
+            raise ValueError("На эти даты уже есть другая заявка. Сначала отмените или измените её через HR.")
         return request_payload(same)
     if overlaps.first():
         raise ValueError("На эти даты уже есть заявка на отпуск")
     days = preview(db, period)
     employee = db.get(Employee, employee_id)
     row = EmployeeVacationRequest(employee_id=employee_id, starts_on=period.starts_on, ends_on=period.ends_on,
+                                  kind=period.kind.value, employee_comment=period.employee_comment.strip(),
                                   workdays=days["workdays"], status="pending", created_at=utc_now(),
                                   manager_id=employee.manager_employee_id)
     db.add(row)

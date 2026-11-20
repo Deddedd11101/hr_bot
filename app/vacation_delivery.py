@@ -38,6 +38,7 @@ def manager_chat(db, row):
 
 
 async def deliver_pending(bot):
+    from .vacation import LEAVE_LABELS
     for status, column in (("pending", "manager_notice"), ("pending_hr", "hr_notice")):
         flag = getattr(EmployeeVacationRequest, column)
         with SessionLocal() as db:
@@ -62,9 +63,11 @@ async def deliver_pending(bot):
                     employee = db.get(Employee, row.employee_id)
                     name = escape(employee.full_name or f"Карточка №{row.employee_id}") if employee else ""
                     message = (
-                        f"Заявка на отпуск: {name}\n"
+                        f"Заявка: {LEAVE_LABELS.get(row.kind, row.kind)} — {name}\n"
                         f"{row.starts_on:%d.%m.%Y} – {row.ends_on:%d.%m.%Y} · рабочих дней: {row.workdays}"
                     )
+                    if row.employee_comment:
+                        message += f"\nКомментарий сотрудника: {escape(row.employee_comment)}"
                     keyboard = InlineKeyboardMarkup(inline_keyboard=[[
                         InlineKeyboardButton(text="Согласовать", callback_data=f"vacation:{row_id}:{revision}:yes"),
                         InlineKeyboardButton(text="Отклонить", callback_data=f"vacation:{row_id}:{revision}:no"),
@@ -74,7 +77,7 @@ async def deliver_pending(bot):
                     chat = (hr.telegram_user_id or "").strip() if hr else ""
                     if not chat.isdecimal() or chat.startswith("0") or not chat_id_allowed(db, chat):
                         chat = None
-                    message = f"Заявка на отпуск ожидает решения HR. Откройте вкладку «Отпуск» в карточке №{row.employee_id}."
+                    message = f"Заявка ({LEAVE_LABELS.get(row.kind, row.kind)}) ожидает решения HR. Откройте вкладку «Отпуск» в карточке №{row.employee_id}."
             outcome = "unavailable"
             if chat:
                 try:

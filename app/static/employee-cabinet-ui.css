@@ -134,3 +134,15 @@ summary {padding:var(--space-4) 0;min-height:52px;font-weight:500}
   .date-sheet {background:color-mix(in srgb,var(--card) 86%,transparent);backdrop-filter:blur(24px) saturate(120%);-webkit-backdrop-filter:blur(24px) saturate(120%)}
 }
 @media(prefers-reduced-motion:reduce) {.schedule-frame{transition:none}}
+.leave-types {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:0;padding:0;border:0;min-width:0}
+.leave-types legend {font-size:13px;margin-bottom:8px}
+.leave-types label {position:relative;display:flex;align-items:center;justify-content:center;min-height:44px;padding:8px;border:1px solid var(--line);border-radius:12px;background:var(--card);cursor:pointer}
+.leave-types input {position:absolute;opacity:0;width:1px;height:1px}
+.leave-types label:has(:checked) {background:var(--highlight);border-color:var(--accent)}
+.leave-types label:has(:focus-visible) {outline:2px solid var(--ink);outline-offset:3px}
+.leave-comment {display:grid;gap:8px;font-size:13px}
+.leave-comment span {color:var(--muted)}
+.leave-comment textarea {width:100%;padding:12px;resize:vertical;min-height:88px;max-height:240px;font:inherit;color:var(--ink);background:var(--card);border:1px solid var(--line);border-radius:12px}
+.vacation-dates.is-single,.date-range-tabs.is-single {grid-template-columns:1fr}
+.vacation-balances[hidden],.date-range-tabs button[hidden] {display:none}
+#vacation-requests small {overflow-wrap:anywhere}

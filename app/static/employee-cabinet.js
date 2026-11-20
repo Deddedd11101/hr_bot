@@ -55,6 +55,8 @@ function setupVacation() {
   const start = form.elements.starts_on;
   const end = form.elements.ends_on;
   const buttons = [[byId('vacation-start'), start], [byId('vacation-end'), end]];
+  const kindLabels = {annual:'Отпуск', force_majeure:'Отгул', day_off:'Day off'};
+  const isDayOff = () => form.elements.kind.value === 'day_off';
   const months = new Map();
   const pendingMonths = new Map();
   const monthFormat = new Intl.DateTimeFormat('ru', {month:'long', year:'numeric', timeZone:'UTC'});
@@ -102,6 +104,11 @@ function setupVacation() {
   }
 
   function updateDates() {
+    if (isDayOff()) end.value = start.value;
+    byId('vacation-end').hidden = isDayOff();
+    byId('date-range-end').hidden = isDayOff();
+    byId('vacation-start').parentElement.classList.toggle('is-single', isDayOff());
+    byId('date-range-start').parentElement.classList.toggle('is-single', isDayOff());
     for (const [control, field] of buttons) {
       const label = field === start ? 'Начало' : 'Последний день';
       control.textContent = field.value ? `${label}: ${dateLabel(field.value)}` : label;
@@ -114,7 +121,7 @@ function setupVacation() {
     done.disabled = !start.value || !end.value;
     for (const cell of grid.querySelectorAll('button[data-date]')) {
       const day = cell.dataset.date;
-      cell.disabled = cell.dataset.past === 'true' || (selecting === end && !!start.value && day < start.value);
+      cell.disabled = cell.dataset.past === 'true' || (isDayOff() && cell.dataset.workday === 'false') || (selecting === end && !!start.value && day < start.value);
       cell.classList.toggle('is-range', !!end.value && day > start.value && day < end.value);
       cell.setAttribute('aria-pressed', String(day === start.value || day === end.value));
     }
@@ -142,7 +149,8 @@ function setupVacation() {
         cell.type = 'button';
         cell.dataset.date = day.date;
         cell.dataset.past = String(day.date < data.today);
-        cell.disabled = day.date < data.today || (selecting === end && !!start.value && day.date < start.value);
+        cell.dataset.workday = String(day.workday);
+        cell.disabled = day.date < data.today || (isDayOff() && !day.workday) || (selecting === end && !!start.value && day.date < start.value);
         cell.classList.toggle('is-off', !day.workday);
         cell.classList.toggle('is-range', !!end.value && day.date > start.value && day.date < end.value);
         cell.setAttribute('aria-pressed', String(day.date === start.value || day.date === end.value));
@@ -150,7 +158,7 @@ function setupVacation() {
         cell.onclick = () => {
           selecting.value = day.date;
           if (start.value && end.value && start.value > end.value) end.value = '';
-          if (selecting === start && !end.value) {
+          if (selecting === start && !end.value && !isDayOff()) {
             selecting = end;
           }
           updateDates();
@@ -188,6 +196,18 @@ function setupVacation() {
     void showMonth((field.value || start.value).slice(0, 7) || month);
     updateDates();
   };
+  function invalidatePreview() {
+    checked = null;
+    notice.textContent = '';
+    button.textContent = 'Проверить даты';
+  }
+  form.elements.employee_comment.oninput = invalidatePreview;
+  for (const radio of form.querySelectorAll('[name=kind]')) radio.onchange = () => {
+    selecting = start;
+    invalidatePreview();
+    byId('vacation-main').querySelector('.vacation-balances').hidden = form.elements.kind.value !== 'annual';
+    updateDates();
+  };
   for (const [id, delta] of [['month-prev', -1], ['month-next', 1]]) byId(id).onclick = () => {
     const next = shiftMonth(month, delta);
     if (next) void showMonth(next);
@@ -201,7 +221,10 @@ function setupVacation() {
       const badge = make('small', {pending:'У руководителя', pending_hr:'У HR', approved:'Согласована', rejected:'Отклонена'}[row.status] || row.status);
       badge.className = 'vacation-badge';
       badge.dataset.status = row.status;
-      item.append(dates, badge);
+      const info = make('div', '');
+      info.append(dates, make('small', kindLabels[row.kind] || 'Отпуск'));
+      if (row.employee_comment) info.append(make('small', row.employee_comment));
+      item.append(info, badge);
       return item;
     }));
     if (!rows.length) list.append(make('li', 'Заявок пока нет'));
@@ -220,6 +243,8 @@ function setupVacation() {
       if (checked === key) {
         await request('vacation/requests', period);
         form.reset();
+        start.value = end.value = '';
+        byId('vacation-main').querySelector('.vacation-balances').hidden = false;
         checked = null;
         button.textContent = 'Проверить даты';
         notice.textContent = 'Заявка сохранена.';
