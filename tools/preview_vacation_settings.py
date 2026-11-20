@@ -76,13 +76,14 @@ if __name__ == "__main__":
     from app.main import app
 
     @app.get("/local-cabinet", include_in_schema=False)
-    def local_cabinet():
+    def local_cabinet(desktop: bool = False):
         fields = {"auth_date": str(int(time.time())), "user": json.dumps({"id": 123456789})}
         secret = hmac.digest(b"WebAppData", os.environ["TELEGRAM_BOT_TOKEN"].encode(), hashlib.sha256)
         check = "\n".join(f"{key}={value}" for key, value in sorted(fields.items()))
         fields["hash"] = hmac.new(secret, check.encode(), hashlib.sha256).hexdigest()
         html = (ROOT / "app/static/employee-cabinet.html").read_text(encoding="utf-8")
-        bootstrap = '<script>window.Telegram={WebApp:{initData:' + json.dumps(urlencode(fields)) + ',platform:"web",ready(){},expand(){}}};</script>'
+        platform = 'platform:"tdesktop",isFullscreen:true,isVersionAtLeast(){return true},requestFullscreen(){},exitFullscreen(){},' if desktop else 'platform:"web",'
+        bootstrap = '<script>window.Telegram={WebApp:{initData:' + json.dumps(urlencode(fields)) + ',' + platform + 'ready(){},expand(){}}};</script>'
         return HTMLResponse(html.replace('<script src="https://telegram.org/js/telegram-web-app.js"></script>', bootstrap), headers={"Cache-Control": "no-store"})
 
     uvicorn.run(app, host="127.0.0.1", port=port)

@@ -51,7 +51,20 @@ button:not(:disabled):active{transform:scale(.96)}
 }
 @media(min-width:760px){
   .cabinet-desktop body{padding-left:236px}
-  .cabinet-desktop main{padding-bottom:28px}
+  .cabinet-desktop body{height:100dvh;overflow:hidden}
+  .cabinet-desktop main{display:flex;flex-direction:column;width:100%;max-width:none;height:100dvh;min-height:0;padding-bottom:24px}
+  .cabinet-desktop main>header{flex:none}
+  .cabinet-desktop #status:empty{display:none}
+  .cabinet-desktop #content:not([hidden]){display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-content:start;column-gap:28px;flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:var(--line) transparent}
+  .cabinet-desktop #content>section{min-width:0;grid-column:1/-1}
+  .cabinet-desktop #content>section[data-view=profile]{grid-column:auto}
+  .cabinet-desktop #content>section:has(#documents-open){grid-column:1/-1}
+  .cabinet-desktop[data-cabinet-view=leave-schedule] #content{display:flex;flex-direction:column;overflow:hidden}
+  .cabinet-desktop #leave-schedule:not([hidden]){display:flex;flex-direction:column;flex:1;min-height:0;margin-top:0;padding-top:0;border-top:0}
+  .cabinet-desktop #leave-schedule>.breadcrumbs,.cabinet-desktop #leave-schedule>h2{flex:none}
+  .cabinet-desktop .schedule-frame{flex:1;min-height:0;height:0!important}
+  .cabinet-desktop #colleague-groups{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:24px}
+  .cabinet-desktop #knowledge-items{max-width:none}
   .cabinet-desktop #navigation{top:calc(24px + var(--cabinet-top,0px));bottom:auto;left:18px;right:auto;width:200px}
   .cabinet-desktop .tabs{grid-template-columns:1fr;gap:3px;padding:6px;border-radius:14px}
   .cabinet-desktop .marker{display:none}
@@ -176,5 +189,5 @@ h1{font-size:22px;line-height:1.25}h2{font-size:16px}
 <button type="button" data-view="colleagues" aria-label="Коллеги" title="Коллеги"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2m20 0v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8"/><circle cx="9" cy="7" r="4"/></svg><span class="tab-label">Коллеги</span></button>
 <button type="button" data-view="knowledge" aria-label="База знаний" title="База знаний"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 7v14m0-14a7 7 0 0 0-5-2H3v14h4a7 7 0 0 1 5 2m0-14a7 7 0 0 1 5-2h4v14h-4a7 7 0 0 0-5 2"/></svg><span class="tab-label">Знания</span></button>
 </div></nav>
-<script src="/static/employee-cabinet.js?v=17" defer></script>
+<script src="/static/employee-cabinet.js?v=18" defer></script>
 </html>

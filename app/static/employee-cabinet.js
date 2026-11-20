@@ -418,6 +418,7 @@ function setupTeamSchedule() {
   window.addEventListener('message', event => {
     if (event.origin !== location.origin || event.source !== frame.contentWindow || event.data?.type !== 'cabinet-gantt-height') return;
     const height = event.data.height;
+    if (document.documentElement.classList.contains('cabinet-desktop') && matchMedia('(min-width:760px)').matches) return;
     if (typeof height === 'number' && Number.isFinite(height)) frame.style.height = `${Math.max(350, Math.min(900, height))}px`;
   });
   return () => {if (!frame.getAttribute('src')) frame.src = '/static/cabinet-vacation-gantt.html';};
@@ -432,6 +433,7 @@ function tabs() {
   let transition;
   let current = 0;
   function showView(view, index) {
+    document.documentElement.dataset.cabinetView = view;
     const direction = Math.sign(index - current);
     current = index;
     sections.forEach(section => {section.hidden = section.dataset.view !== view;});
