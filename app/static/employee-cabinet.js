@@ -62,6 +62,27 @@ function setupVacation() {
   let selecting = start;
   let loadVersion = 0;
   let displayedMonth;
+  let originalDates;
+  const done = byId('date-sheet-done');
+  function closePicker(commit) {
+    if (!commit && originalDates) [start.value, end.value] = originalDates;
+    if (commit) {
+      checked = null;
+      notice.textContent = '';
+      button.textContent = 'Проверить даты';
+    }
+    picker.close();
+  }
+  picker.addEventListener('cancel', event => {event.preventDefault(); closePicker(false);});
+  picker.addEventListener('close', () => {
+    document.documentElement.classList.remove('calendar-open');
+    updateDates();
+  });
+  byId('date-sheet-cancel').onclick = () => closePicker(false);
+  done.onclick = () => {if (start.value && end.value) closePicker(true);};
+  for (const [id, field] of [['date-range-start', start], ['date-range-end', end]]) {
+    byId(id).onclick = () => {selecting = field; updateDates(); void showMonth(field.value.slice(0, 7) || month);};
+  }
 
   function shiftMonth(value, delta) {
     const target = new Date(`${value}-01T00:00:00Z`);
@@ -84,8 +105,13 @@ function setupVacation() {
     for (const [control, field] of buttons) {
       const label = field === start ? 'Начало' : 'Последний день';
       control.textContent = field.value ? `${label}: ${dateLabel(field.value)}` : label;
-      control.setAttribute('aria-expanded', String(!picker.hidden && selecting === field));
+      control.setAttribute('aria-expanded', String(picker.open && selecting === field));
     }
+    for (const [id, field, label] of [['date-range-start', start, 'Начало'], ['date-range-end', end, 'Последний день']]) {
+      byId(id).textContent = field.value ? `${label}: ${dateLabel(field.value)}` : label;
+      byId(id).setAttribute('aria-pressed', String(selecting === field));
+    }
+    done.disabled = !start.value || !end.value;
     button.disabled = busy || !start.value || !end.value;
   }
   async function showMonth(nextMonth) {
@@ -119,13 +145,7 @@ function setupVacation() {
           if (selecting === start && !end.value) {
             selecting = end;
             void showMonth(month);
-          } else {
-            picker.hidden = true;
-            buttons.find(([, field]) => field === selecting)[0].focus();
           }
-          checked = null;
-          notice.textContent = '';
-          button.textContent = 'Проверить даты';
           updateDates();
         };
         grid.append(cell);
@@ -154,10 +174,11 @@ function setupVacation() {
     }
   }
   for (const [control, field] of buttons) control.onclick = () => {
-    const wasOpen = !picker.hidden && selecting === field;
+    originalDates = [start.value, end.value];
     selecting = field;
-    picker.hidden = wasOpen;
-    if (!wasOpen) void showMonth((field.value || start.value).slice(0, 7) || month);
+    picker.showModal();
+    document.documentElement.classList.add('calendar-open');
+    void showMonth((field.value || start.value).slice(0, 7) || month);
     updateDates();
   };
   for (const [id, delta] of [['month-prev', -1], ['month-next', 1]]) byId(id).onclick = () => {
@@ -185,7 +206,7 @@ function setupVacation() {
     const period = Object.fromEntries(new FormData(form));
     const key = JSON.stringify(period);
     busy = true;
-    picker.hidden = true;
+    if (picker.open) closePicker(false);
     buttons.forEach(([control]) => { control.disabled = true; });
     updateDates();
     try {
@@ -436,7 +457,11 @@ function tabs() {
     document.documentElement.dataset.cabinetView = view;
     const direction = Math.sign(index - current);
     current = index;
-    sections.forEach(section => {section.hidden = section.dataset.view !== view;});
+    sections.forEach(section => {section.hidden = !section.dataset.view.split(' ').includes(view);});
+    for (const [id, selected] of [['schedule-back', view !== 'leave-schedule'], ['schedule-open', view === 'leave-schedule']]) {
+      byId(id).setAttribute('aria-selected', String(selected));
+      byId(id).tabIndex = selected ? 0 : -1;
+    }
     byId('name').closest('header').hidden = view !== 'profile';
     buttons.forEach((item, i) => {
       if (i === index) item.setAttribute('aria-current', view === 'files' ? 'location' : 'page');
@@ -459,8 +484,14 @@ function tabs() {
     showView('files', 0);
     byId('documents').querySelector('h2').focus();
   };
-  byId('schedule-open').onclick = () => {showView('leave-schedule', 2); byId('leave-schedule').querySelector('h2').focus();};
-  byId('schedule-back').onclick = () => {showView('vacation', 2); byId('schedule-open').focus();};
+  byId('schedule-open').onclick = () => showView('leave-schedule', 2);
+  byId('schedule-back').onclick = () => showView('vacation', 2);
+  for (const id of ['schedule-open', 'schedule-back']) byId(id).onkeydown = event => {
+    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+    event.preventDefault();
+    const target = event.key === 'Home' ? 'schedule-back' : event.key === 'End' ? 'schedule-open' : id === 'schedule-open' ? 'schedule-back' : 'schedule-open';
+    byId(target).click(); byId(target).focus();
+  };
   document.querySelectorAll('[data-back-profile]').forEach(crumb => {
     crumb.onclick = () => {
       const fromDocuments = crumb.closest('section').id === 'documents';

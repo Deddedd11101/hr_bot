@@ -99,3 +99,25 @@ summary {padding:var(--space-4) 0;min-height:52px;font-weight:500}
   .calendar-grid {grid-template-rows:20px repeat(6,44px)}
   .calendar-grid button {min-height:44px}
 }
+.vacation-switch {display:inline-flex;max-width:100%;padding:4px;gap:4px;border:1px solid var(--line);border-radius:999px;background:var(--card)}
+.vacation-heading[hidden] {display:none}
+.vacation-switch [role=tab] {min-height:36px;padding:8px 16px;border:0;border-radius:999px;background:transparent;font-size:13px;white-space:nowrap}
+.vacation-switch [aria-selected=true],.vacation-switch [aria-selected=true]:not(:disabled):hover {background:var(--highlight);color:var(--ink)}
+#vacation-main {margin-top:0}
+.calendar-open,.calendar-open body {overflow:hidden}
+.date-sheet {position:fixed;inset:auto 0 0;margin:0;width:100%;max-width:none;max-height:calc(100dvh - 24px);padding:24px 16px max(16px,env(safe-area-inset-bottom));border:1px solid var(--line);border-radius:24px 24px 0 0;background:var(--card);color:var(--ink);overflow:auto;overscroll-behavior:contain}
+.date-sheet::backdrop {background:#0008}
+.date-sheet[open] {animation:date-sheet-enter .18s ease-out}
+.date-sheet-head {display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:16px}
+.date-sheet-head h2 {margin:0}
+.date-sheet-head button {border:0;background:transparent;font-size:13px}
+.date-range-tabs {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-bottom:16px}
+.date-range-tabs button {padding:10px 8px;font-size:12px;font-weight:400;white-space:normal;background:var(--bg)}
+.date-range-tabs [aria-pressed=true] {border-color:var(--accent);background:var(--highlight)}
+#date-sheet-done {width:100%;margin-top:16px;background:var(--accent);color:#181817;border-color:transparent}
+@keyframes date-sheet-enter {from{opacity:.5;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+@media(min-width:760px) {
+  .date-sheet {inset:0;margin:auto;width:min(420px,calc(100vw - 48px));height:fit-content;max-height:calc(100dvh - 48px);border-radius:20px;padding:24px}
+  .cabinet-desktop .vacation-heading {flex:none;margin:0 0 24px}
+}
+@media(prefers-reduced-motion:reduce) {.date-sheet[open]{animation:none}}
