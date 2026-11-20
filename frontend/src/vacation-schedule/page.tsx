@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -74,7 +74,7 @@ export function VacationSchedule({embedded = false}: {embedded?: boolean}) {
     node.addEventListener("wheel", wheel, {passive: false});
     return () => node.removeEventListener("wheel", wheel);
   }, [data]);
-  useEffect(() => {
+  useLayoutEffect(() => {
     const measure = () => {
       const top = scrollRoot.current?.getBoundingClientRect().top;
       if (top !== undefined) setTableHeight(Math.max(140, window.innerHeight - top - (embedded ? 40 : 104)));
@@ -83,6 +83,11 @@ export function VacationSchedule({embedded = false}: {embedded?: boolean}) {
     window.addEventListener("resize", measure);
     return () => window.removeEventListener("resize", measure);
   }, [data, embedded]);
+  useEffect(() => {
+    if (!embedded || loading) return;
+    const frame = requestAnimationFrame(() => window.parent.postMessage({type: "cabinet-gantt-ready"}, location.origin));
+    return () => cancelAnimationFrame(frame);
+  }, [embedded, loading]);
   const people = useMemo(() => {
   const people = new Map<number, {name: string; group: string; entries: Entry[]}>();
   for (const person of data?.people ?? []) people.set(person.employee_id, {name: person.name, group: person.group_name, entries: []});

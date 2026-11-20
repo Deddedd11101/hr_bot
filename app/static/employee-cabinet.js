@@ -444,7 +444,13 @@ async function loadKnowledge() {
 function setupTeamSchedule() {
   const frame = byId('schedule-frame');
   window.addEventListener('message', event => {
-    if (event.origin !== location.origin || event.source !== frame.contentWindow || event.data?.type !== 'cabinet-gantt-height') return;
+    if (event.origin !== location.origin || event.source !== frame.contentWindow) return;
+    if (event.data?.type === 'cabinet-gantt-ready') {
+      frame.classList.add('is-ready');
+      byId('schedule-loading').hidden = true;
+      return;
+    }
+    if (event.data?.type !== 'cabinet-gantt-height') return;
     const height = event.data.height;
     if (document.documentElement.classList.contains('cabinet-desktop') && matchMedia('(min-width:760px)').matches) return;
     if (typeof height === 'number' && Number.isFinite(height)) frame.style.height = `${Math.max(350, Math.min(900, height))}px`;
@@ -458,9 +464,13 @@ function tabs() {
   const sections = Array.from(byId('content').querySelectorAll('section'));
   const loadColleagues = setupColleagues();
   const loadSchedule = setupTeamSchedule();
+  if (window.requestIdleCallback) window.requestIdleCallback(loadSchedule, {timeout:1500});
+  else setTimeout(loadSchedule, 0);
   let transition;
   let current = 0;
   function showView(view, index) {
+    const previousView = document.documentElement.dataset.cabinetView;
+    const switchingVacation = index === 2 && current === 2 && previousView !== view;
     document.documentElement.dataset.cabinetView = view;
     const direction = Math.sign(index - current);
     current = index;
@@ -478,10 +488,11 @@ function tabs() {
     if (view === 'colleagues') void loadColleagues();
     if (view === 'knowledge') void loadKnowledge();
     if (view === 'leave-schedule') void loadSchedule();
-    if (direction && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    if ((direction || switchingVacation) && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
       transition?.cancel();
-      transition = byId('content').animate(
-        [{opacity:.7, transform:`translateX(${8 * direction}px)`},{opacity:1, transform:'translateX(0)'}],
+      const target = switchingVacation ? byId(view === 'leave-schedule' ? 'leave-schedule' : 'vacation-main') : byId('content');
+      transition = target.animate(
+        [{opacity:.3, transform:switchingVacation ? 'translateY(4px)' : `translateX(${8 * direction}px)`},{opacity:1, transform:'translate(0)'}],
         {duration:200, easing:'cubic-bezier(.2,.75,.3,1)'});
     }
     window.scrollTo(0, 0);

@@ -125,7 +125,7 @@ h1{font-size:22px;line-height:1.25}h2{font-size:16px}
 .directory-chat{min-width:44px;min-height:44px;display:grid;place-items:center}
 .directory-chat svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
 </style>
-<link rel="stylesheet" href="/static/employee-cabinet-ui.css?v=4">
+<link rel="stylesheet" href="/static/employee-cabinet-ui.css?v=5">
 <div id="cabinet-loader" class="cabinet-loader" role="status" aria-label="Загрузка кабинета">
  <div class="cabinet-loader-mark" aria-hidden="true">
   <svg viewBox="0 0 49 49" xmlns="http://www.w3.org/2000/svg"><path d="M45.2874 27.8584V31.1795H41.9663H31.1468V41.9662V45.2873H27.8257H20.7008H17.3797V41.9662L17.3797 31.1795L6.64219 31.1795H3.32109V27.8584V20.7501V17.429L6.64219 17.4289H17.3797V6.64214V3.32104L20.7008 3.32104L27.8257 3.32104H31.1468V6.64214V17.4289H41.9663H45.2874V20.75V27.8584Z"/></svg>
@@ -152,7 +152,7 @@ h1{font-size:22px;line-height:1.25}h2{font-size:16px}
   <section data-view="vacation leave-schedule" class="vacation-heading" hidden><h2>Отпуск <span id="vacation-year"></span></h2>
     <div class="vacation-switch" role="tablist" aria-label="Отпуска">
       <button id="schedule-back" type="button" role="tab" aria-selected="true" aria-controls="vacation-main">Мои заявки</button>
-      <button id="schedule-open" type="button" role="tab" aria-selected="false" aria-controls="leave-schedule" tabindex="-1">График коллег</button>
+      <button id="schedule-open" type="button" role="tab" aria-selected="false" aria-controls="leave-schedule" tabindex="-1">График</button>
     </div>
   </section>
   <section data-view="vacation" id="vacation-main" role="tabpanel" aria-labelledby="schedule-back" hidden><dl class="vacation-balances"><div><dt>Использовано в этом году</dt><dd id="vacation-used">Не указано</dd></div><div><dt>Осталось</dt><dd id="vacation-remaining">Не указано</dd></div></dl>
@@ -173,6 +173,7 @@ h1{font-size:22px;line-height:1.25}h2{font-size:16px}
     <div><h2>Мои заявки</h2><ul id="vacation-requests"></ul></div></div>
   </section>
   <section data-view="leave-schedule" id="leave-schedule" role="tabpanel" aria-labelledby="schedule-open" hidden>
+    <p id="schedule-loading" role="status">Загрузка графика…</p>
     <iframe id="schedule-frame" class="schedule-frame" title="Годовой график отпусков коллег" referrerpolicy="no-referrer"></iframe>
   </section>
   <section data-view="colleagues" id="colleagues" hidden>
@@ -196,5 +197,5 @@ h1{font-size:22px;line-height:1.25}h2{font-size:16px}
 <button type="button" data-view="colleagues" aria-label="Коллеги" title="Коллеги"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2m20 0v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8"/><circle cx="9" cy="7" r="4"/></svg><span class="tab-label">Коллеги</span></button>
 <button type="button" data-view="knowledge" aria-label="База знаний" title="База знаний"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 7v14m0-14a7 7 0 0 0-5-2H3v14h4a7 7 0 0 1 5 2m0-14a7 7 0 0 1 5-2h4v14h-4a7 7 0 0 0-5 2"/></svg><span class="tab-label">Знания</span></button>
 </div></nav>
-<script src="/static/employee-cabinet.js?v=21" defer></script>
+<script src="/static/employee-cabinet.js?v=22" defer></script>
 </html>

@@ -70,6 +70,7 @@ dd {font-weight:500}
 .directory-group li:last-child {border-bottom:0}
 .directory-person {gap:var(--space-3)}
 .directory-avatar {width:36px;height:36px;background:var(--bg)}
+.directory-avatar:not(.has-avatar) {border-radius:0;background:transparent;padding:6px;object-fit:contain}
 .directory-chat {color:var(--ink);border-radius:var(--control-radius)}
 #files li {min-height:64px;padding:var(--space-4) 0;gap:var(--space-4)}
 details {margin:var(--space-3) 0;padding:0 16px;border-radius:var(--group-radius);border-color:var(--line)}
@@ -125,3 +126,11 @@ summary {padding:var(--space-4) 0;min-height:52px;font-weight:500}
   .cabinet-desktop .vacation-heading {flex:none;margin:0 0 24px}
 }
 @media(prefers-reduced-motion:reduce) {.date-sheet[open]{animation:none}}
+.schedule-frame {opacity:0;transition:opacity .18s ease}
+.schedule-frame.is-ready {opacity:1}
+#leave-schedule {position:relative}
+#schedule-loading {position:absolute;top:16px;left:8px;color:var(--muted);font-size:13px}
+@supports(backdrop-filter:blur(24px)) {
+  .date-sheet {background:color-mix(in srgb,var(--card) 86%,transparent);backdrop-filter:blur(24px) saturate(120%);-webkit-backdrop-filter:blur(24px) saturate(120%)}
+}
+@media(prefers-reduced-motion:reduce) {.schedule-frame{transition:none}}
