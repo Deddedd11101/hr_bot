@@ -15,6 +15,13 @@ related:
 source_of_truth: true
 ---
 
+В employee_vacation_requests подготовлены additive поля kind
+(TEXT NOT NULL DEFAULT 'annual') и employee_comment
+(TEXT NOT NULL DEFAULT ''). SQLite startup guard добавляет их идемпотентно;
+старые записи и решения не удаляются и не переносятся в новый журнал.
+Day off в заявке означает полный рабочий день. Часовые операции day_off
+из employee_leave_operations этим изменением не пересчитываются в дни.
+
 ## Организационные группы
 
 `employee_leave_accounts`: additive настройки employee_id + contract_key

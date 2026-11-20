@@ -102,6 +102,8 @@ def _ensure_sqlite_schema() -> None:
         ):
             Base.metadata.tables[table_name].create(conn, checkfirst=True)
         for table, column, ddl in (
+            ("employee_vacation_requests", "kind", "TEXT NOT NULL DEFAULT 'annual'"),
+            ("employee_vacation_requests", "employee_comment", "TEXT NOT NULL DEFAULT ''"),
             ("grade_skills", "revision", "INTEGER NOT NULL DEFAULT 1"),
             ("grade_skills", "description", "TEXT"),
             ("grade_specializations", "skill_ids_json", "TEXT"),

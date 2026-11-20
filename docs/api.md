@@ -14,6 +14,19 @@ related:
 source_of_truth: true
 ---
 
+## Типы заявок на отсутствие (подготовлено)
+
+`POST /employee-cabinet/vacation/preview` и `POST /employee-cabinet/vacation/requests`
+принимают прежние starts_on/ends_on и дополнительные kind
+(`annual`, `force_majeure`, `day_off`; default annual) и employee_comment
+(до 1024 символов, default пустой). Неизвестные поля запрещены.
+Day off — одна рабочая дата, обе границы совпадают; часы не принимаются.
+GET заявок кабинета/админки возвращает эти поля. Старые записи мигрируют
+в annual с пустым комментарием. Повтор идентичной заявки идемпотентен;
+другой тип/комментарий на те же активные даты не заменяет существующую запись.
+Авторизация и PRIVATE_HEADERS сохраняются. Preview пока возвращает только
+calendar_days/workdays/non_workdays, не величину автоматического списания.
+
 ## Telegram Mini App: кабинет сотрудника
 
 ### Настройки отпускного учёта (feature-пакет, 19.11.2026)
