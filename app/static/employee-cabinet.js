@@ -638,6 +638,7 @@ async function start() {
     if (data.vacation) {
       byId('vacation-year').textContent = data.vacation.year;
       for (const [id, days] of [['vacation-used', data.vacation.used_days], ['vacation-remaining', data.vacation.remaining_days]]) {
+        byId(id).classList.toggle('is-empty', days == null);
         byId(id).textContent = days == null ? 'Не указано' : new Intl.NumberFormat('ru', {style:'unit', unit:'day'}).format(days);
       }
     }
