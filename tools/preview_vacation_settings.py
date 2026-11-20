@@ -1,6 +1,7 @@
 """Disposable loopback preview with synthetic data; never starts a bot worker."""
 
 import os
+import json
 import secrets
 import sys
 import tempfile
@@ -29,6 +30,7 @@ from app.vacation import BalanceInput, save_balance  # noqa: E402
 from app.vacation_accounts import AccountInput, save_account, today  # noqa: E402
 from app.vacation_accounting import LeaveKind  # noqa: E402
 from app.vacation_ledger import append_operation  # noqa: E402
+from app.models import ProductionCalendarYear, ProductionCalendarVersion  # noqa: E402
 
 init_db()
 with SessionLocal() as db:
@@ -63,6 +65,20 @@ with SessionLocal() as db:
         operation="reserve", operation_key="demo-reserve", amount=7, reservation_key="demo-request:v1",
         effective_on=date(2026, 11, 1), actor="local-preview", reason="Тестовый резерв")
     save_balance(db, 1, account.id, BalanceInput(year=today().year, used_days=7, remaining_days=21))
+    save_balance(db, 70, account.id, BalanceInput(year=today().year, used_days=7, remaining_days=21))
+    # Synthetic weekday-only calendar for UI preview, not an official production calendar.
+    for year in (today().year, today().year + 1):
+        day = date(year, 1, 1)
+        days = []
+        while day.year == year:
+            days.append(dict(date=day.isoformat(), is_workday=day.weekday() < 5))
+            day += timedelta(days=1)
+        version = ProductionCalendarVersion(year=year, digest=f"local-preview-{year}",
+            days_json=json.dumps(days), source_name="Synthetic preview weekdays only",
+            created_at=utc_now(), created_by=account.id)
+        db.add(version)
+        db.flush()
+        db.add(ProductionCalendarYear(year=year, current_version_id=version.id))
     db.commit()
 
 if __name__ == "__main__":
@@ -76,13 +92,14 @@ if __name__ == "__main__":
     from app.main import app
 
     @app.get("/local-cabinet", include_in_schema=False)
-    def local_cabinet():
+    def local_cabinet(desktop: bool = False):
         fields = {"auth_date": str(int(time.time())), "user": json.dumps({"id": 123456789})}
         secret = hmac.digest(b"WebAppData", os.environ["TELEGRAM_BOT_TOKEN"].encode(), hashlib.sha256)
         check = "\n".join(f"{key}={value}" for key, value in sorted(fields.items()))
         fields["hash"] = hmac.new(secret, check.encode(), hashlib.sha256).hexdigest()
         html = (ROOT / "app/static/employee-cabinet.html").read_text(encoding="utf-8")
-        bootstrap = '<script>window.Telegram={WebApp:{initData:' + json.dumps(urlencode(fields)) + ',platform:"web",ready(){},expand(){}}};</script>'
+        platform = 'platform:"tdesktop",isFullscreen:true,isVersionAtLeast(){return true},requestFullscreen(){},exitFullscreen(){},' if desktop else 'platform:"web",'
+        bootstrap = '<script>window.Telegram={WebApp:{initData:' + json.dumps(urlencode(fields)) + ',' + platform + 'ready(){},expand(){}}};</script>'
         return HTMLResponse(html.replace('<script src="https://telegram.org/js/telegram-web-app.js"></script>', bootstrap), headers={"Cache-Control": "no-store"})
 
     uvicorn.run(app, host="127.0.0.1", port=port)
